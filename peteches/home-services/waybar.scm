@@ -1,5 +1,6 @@
 (define-module (peteches home-services waybar)
   #:use-module (gnu packages wm)
+  #:use-module (gnu packages linux)
   #:use-module (gnu home services)
   #:use-module (gnu home services shepherd)
   #:use-module (gnu services configuration)
@@ -12,7 +13,7 @@
 	    waybar-style))
 
 (define (waybar-profile config)
-  (list waybar))
+  (list waybar brightnessctl))
 
 (define (serialize-string field-name config)
   (scm->json-string '((field-name .  config))))
@@ -152,10 +153,151 @@
      base)))
 
 
-(define-configuration waybar-style)
+;; ---- THEMABLE STYLE ---------------------------------------------------------
+(define-configuration waybar-style
+  ;; preset name (sets sensible defaults); you can still override any field below
+  (theme
+   (string "modus-vivendi")
+   "Theme preset: modus-vivendi | modus-operandi | custom")
 
-(define (serialize-waybar-style config)
-  #~(string-append "" ""))
+  ;; typography & layout
+  (font-family
+   (string "Inter, JetBrainsMono Nerd Font, FiraCode Nerd Font, Noto Sans, sans-serif")
+   "CSS font-family used for the bar")
+  (font-size-pt
+   (number 15)
+   "Base font size in pt (HiDPI-friendly)")
+  (radius
+   (number 14)
+   "Corner radius for module pills")
+  (pill-opacity
+   (number 0.86)
+   "Opacity for module pill background (0..1)")
+  (shadow-opacity
+   (number 0.35)
+   "Opacity for module drop shadow (0..1)")
+
+  ;; palette (defaults follow Modus Vivendi)
+  (bg      (string "#000000") "Background base")
+  (fg      (string "#e6e6e6") "Foreground/base text")
+  (muted   (string "#9aa0a6") "Muted/secondary text")
+
+  (blue    (string "#2fafff") "Accent blue")
+  (cyan    (string "#00d3d0") "Accent cyan")
+  (green   (string "#44bc44") "Accent green")
+  (red     (string "#ff5f59") "Accent red")
+  (yellow  (string "#d0bc00") "Accent yellow")
+  (magenta (string "#feacd0") "Accent magenta")
+  (purple  (string "#b6a0ff") "Accent purple"))
+
+
+(define (serialize-waybar-style st)
+  (let* ((theme (waybar-style-theme st))
+         (st* (cond
+               ((string=? theme "modus-operandi")
+                (waybar-style
+                 (theme theme)
+                 (font-family (waybar-style-font-family st))
+                 (font-size-pt (waybar-style-font-size-pt st))
+                 (radius (waybar-style-radius st))
+                 (pill-opacity (waybar-style-pill-opacity st))
+                 (shadow-opacity (waybar-style-shadow-opacity st))
+                 ;; Light palette (rough Modus Operandi mapping)
+                 (bg "#ffffff") (fg "#000000") (muted "#555555")
+                 (blue "#0068b4") (cyan "#207f9e") (green "#005a5f")
+                 (red "#a60000") (yellow "#7a6000")
+                 (magenta "#721045") (purple "#531ab6")))
+               (else st)))
+         (fmt number->string)
+         (pill-rgba (string-append "rgba(17,19,23,"
+                                   (fmt (waybar-style-pill-opacity st*))
+                                   ")"))
+         (shadow-rgba (string-append "rgba(0,0,0,"
+                                     (fmt (waybar-style-shadow-opacity st*))
+                                     ")"))
+         (border-color (if (string=? (waybar-style-theme st*) "modus-operandi")
+                           "#e5e7eb" "#1c1f26"))
+         (bg-alt (if (string=? (waybar-style-theme st*) "modus-operandi")
+                     "#f3f3f3" "#111317")))
+    (string-append
+     "/* ---- Waybar GTK CSS theme (" (waybar-style-theme st*) ") ---------------- */\n"
+     "@define-color bg "      (waybar-style-bg st*)      ";\n"
+     "@define-color bg_alt "  bg-alt                     ";\n"
+     "@define-color fg "      (waybar-style-fg st*)      ";\n"
+     "@define-color muted "   (waybar-style-muted st*)   ";\n"
+     "@define-color blue "    (waybar-style-blue st*)    ";\n"
+     "@define-color cyan "    (waybar-style-cyan st*)    ";\n"
+     "@define-color green "   (waybar-style-green st*)   ";\n"
+     "@define-color red "     (waybar-style-red st*)     ";\n"
+     "@define-color yellow "  (waybar-style-yellow st*)  ";\n"
+     "@define-color magenta " (waybar-style-magenta st*) ";\n"
+     "@define-color purple "  (waybar-style-purple st*)  ";\n\n"
+
+     "* {\n"
+     "  font-family: " (waybar-style-font-family st*) ";\n"
+     "  font-size: " (fmt (waybar-style-font-size-pt st*)) "pt;\n"
+     "  min-height: 0;\n"
+     "}\n\n"
+
+     "window#waybar {\n"
+     "  background-color: transparent;\n"
+     "  color: @fg;\n"
+     "}\n\n"
+
+     ".modules-left, .modules-center, .modules-right { margin: 0 10px; }\n\n"
+
+     "#workspaces, #window, #clock, #tray, #cpu, #memory, #temperature,\n"
+     "#battery, #network, #pulseaudio, #backlight {\n"
+     "  background-color: " pill-rgba ";\n"
+     "  border-radius: " (fmt (waybar-style-radius st*)) "px;\n"
+     "  padding: 6px 12px;\n"
+     "  margin: 4px 6px;\n"
+     "  border: 1px solid " border-color ";\n"
+     "  box-shadow: 0 8px 22px " shadow-rgba ";\n"
+     "}\n\n"
+
+     "/* Workspaces */\n"
+     "#workspaces { padding: 4px 6px; }\n"
+     "#workspaces button {\n"
+     "  color: @muted;\n"
+     "  padding: 4px 10px;\n"
+     "  margin: 2px;\n"
+     "  border-radius: " (fmt (waybar-style-radius st*)) "px;\n"
+     "  background-color: transparent;\n"
+     "}\n"
+     "#workspaces button.focused,\n"
+     "#workspaces button.active {\n"
+     "  color: @fg;\n"
+     "  background-image: linear-gradient(to bottom right, @blue, @cyan);\n"
+     "}\n"
+     "#workspaces button.urgent { color: #000000; background-color: @yellow; }\n\n"
+
+     "/* Focused window, clock */\n"
+     "#window { font-weight: 600; }\n"
+     "#clock  { font-weight: 700; letter-spacing: 0.3px; }\n\n"
+
+     "/* Numeric readouts */\n"
+     "#cpu, #memory, #temperature, #battery, #network, #pulseaudio, #backlight {\n"
+     "  -gtk-icon-transform: scale(1.0);\n"
+     "}\n\n"
+
+     "/* States */\n"
+     "#battery.warning  { color: @yellow; }\n"
+     "#battery.critical { color: @red; }\n"
+     "#battery.charging { color: @green; }\n"
+     "#network.disconnected { color: @red; }\n\n"
+
+     "/* Subtle per-module borders */\n"
+     "#pulseaudio { border-color: rgba(47,175,255,0.35); }\n"
+     "#network    { border-color: rgba(0,211,208,0.35); }\n"
+     "#battery    { border-color: rgba(68,188,68,0.35); }\n"
+     "#cpu        { border-color: rgba(182,160,255,0.35); }\n"
+     "#memory     { border-color: rgba(254,172,208,0.35); }\n"
+     "#temperature{ border-color: rgba(255,95,89,0.35); }\n\n"
+
+     "#tray { padding-right: 10px; }\n")))
+
+
 
 (define-configuration waybar-configuration
   (config
@@ -170,7 +312,7 @@
    `("waybar/config.jsonc" ,(mixed-text-file "config.jsonc"
 					     (serialize-waybar-config
 					      (waybar-configuration-config config))))
-   `("waybar/styles.css" ,(mixed-text-file "style.css"
+   `("waybar/style.css" ,(mixed-text-file "style.css"
 					   (serialize-waybar-style
 					    (waybar-configuration-style config))))))
 

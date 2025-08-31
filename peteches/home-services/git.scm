@@ -1,6 +1,7 @@
 (define-module (peteches home-services git)
   #:use-module (guix gexp)
   #:use-module (gnu home services)
+  #:use-module (gnu packages nss)
   #:use-module (gnu packages version-control)
   #:use-module (gnu services configuration)
   #:use-module (srfi srfi-1)
@@ -112,7 +113,7 @@
 		 "\n"))
 
 (define (home-git-profile-service-type config)
-  (list git))
+  (list git nss-certs))
 
 (define (home-git-files-service-type config)
   (list

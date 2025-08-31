@@ -1,4 +1,4 @@
-(define-module (peteches packages aider)
+(define-module (peteches packages go-enum)
   #:use-module (guix)
   #:use-module ((guix licenses) #:prefix license:)
   #:use-module (guix git-download)

@@ -1,0 +1,174 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# ai-mode: wrapper around Shepherd services with explicit verbs.
+# Services assumed:
+#   - comfyui         → starts via ~/.local/bin/comfyui-launch (mutex vs kobold@4090)
+#   - kobold          → unified; args: {cpu|<AI-regex>} <model.gguf> [layers]
+
+MODE="${1:-}"
+
+models_dir="${HOME}/.local/share/models"
+
+resolve_model() {
+  local m="$1"
+  if [[ "$m" != /* ]]; then
+    echo "${models_dir}/${m}"
+  else
+    echo "$m"
+  fi
+}
+
+wait_vram_clear() {
+  # Poll for lingering GPU processes; harmless if nvidia-smi is absent.
+  for _ in $(seq 1 30); do
+    if command -v nvidia-smi >/dev/null 2>&1; then
+      if ! nvidia-smi | grep -Eqi 'kobold|koboldcpp|comfyui|python'; then
+        break
+      fi
+    else
+      break
+    fi
+    sleep 0.4
+  done
+}
+
+# ----- subcommands -----
+
+start_comfyui() {
+  herd start comfyui
+  echo "✅ comfyui: started on :8188 (4090)."
+}
+
+stop_comfyui()   { herd stop comfyui  >/dev/null 2>&1 || true; echo "🛑 comfyui: stopped."; }
+status_comfyui() { herd status comfyui || true; }
+
+start_kobold_cpu() {
+  local model="$1"; local layers="${2:-}"
+  model="$(resolve_model "$model")"
+  herd stop kobold >/dev/null 2>&1 || true
+  if [[ -n "$layers" ]]; then
+    herd start kobold cpu "$model" "$layers"
+  else
+    herd start kobold cpu "$model"
+  fi
+  echo "✅ kobold (CPU): :5001 → $model"
+}
+
+start_kobold_gpu() {
+  local regex="$1"; local model="$2"; local layers="${3:-}"
+  model="$(resolve_model "$model")"
+  herd stop kobold >/dev/null 2>&1 || true
+  wait_vram_clear
+  if [[ -n "$layers" ]]; then
+    herd start kobold "$regex" "$model" "$layers"
+  else
+    herd start kobold "$regex" "$model"
+  fi
+  echo "✅ kobold (GPU=${regex}): :5001 → $model"
+}
+
+stop_kobold()   { herd stop kobold   >/dev/null 2>&1 || true; echo "🛑 kobold: stopped."; }
+status_kobold() { herd status kobold || true; }
+
+stop_all() {
+  stop_comfyui
+  stop_kobold
+  wait_vram_clear
+  echo "🛑 all services stopped."
+}
+
+show_status() {
+  echo "— Shepherd —"
+  status_comfyui
+  status_kobold
+  if command -v nvidia-smi >/dev/null 2>&1; then
+    echo
+    echo "— GPU Processes —"
+    nvidia-smi || true
+  fi
+}
+
+# ----- CLI routing -----
+
+case "$MODE" in
+  comfyui)
+    action="${2:-start}"
+    case "$action" in
+      start)   start_comfyui ;;
+      stop)    stop_comfyui ;;
+      restart) stop_comfyui; start_comfyui ;;
+      status)  status_comfyui ;;
+      *) echo "Usage: ai-mode comfyui {start|stop|restart|status}"; exit 1;;
+    esac
+    ;;
+
+  kobold)
+    sub="${2:-}"
+    case "$sub" in
+      cpu)
+        [[ $# -lt 3 ]] && { echo "Usage: ai-mode kobold cpu <model.gguf> [layers]"; exit 2; }
+        start_kobold_cpu "$3" "${4:-}"
+        ;;
+      gpu)
+        [[ $# -lt 4 ]] && { echo "Usage: ai-mode kobold gpu <AI-regex> <model.gguf> [layers]"; exit 2; }
+        start_kobold_gpu "$3" "$4" "${5:-}"
+        ;;
+      stop)
+        stop_kobold
+        ;;
+      restart)
+        # restart preserves previous mode only if you reissue the same command; here we just stop.
+        echo "Tip: run the desired start command again (cpu/gpu) to 'restart' with explicit args."
+        stop_kobold
+        ;;
+      status)
+        status_kobold
+        ;;
+      *)
+        cat <<EOF
+Usage:
+  ai-mode kobold cpu <model.gguf> [layers]
+  ai-mode kobold gpu <AI-regex> <model.gguf> [layers]
+  ai-mode kobold {stop|status}
+Examples:
+  ai-mode kobold cpu qwen2.5-coder-7b-q4.gguf
+  ai-mode kobold gpu 1060 llama-3.1-8b-instruct-q4.gguf
+  ai-mode kobold gpu 4090 qwen2.5-coder-32b-q5.gguf 82
+EOF
+        exit 1;;
+    esac
+    ;;
+
+  stop-all|off)
+    stop_all
+    ;;
+
+  status)
+    show_status
+    ;;
+
+  *)
+    cat <<'EOF'
+Usage:
+  ai-mode comfyui {start|stop|restart|status}
+  ai-mode kobold cpu <model.gguf> [layers]
+  ai-mode kobold gpu <AI-regex> <model.gguf> [layers]
+  ai-mode stop-all
+  ai-mode status
+
+Notes:
+- <model.gguf> may be just a filename; it's resolved under ~/.local/share/models
+- [layers] is optional; if omitted, the kobold service auto-tunes gpu_layers
+- Mutex is enforced by the services: kobold on 4090 stops comfyui; comfyui stops kobold.
+
+Examples:
+  ai-mode comfyui start
+  ai-mode comfyui stop
+  ai-mode kobold cpu qwen2.5-coder-7b-q4.gguf
+  ai-mode kobold gpu 1060 llama-3.1-8b-instruct-q4.gguf
+  ai-mode kobold gpu 4090 qwen2.5-coder-32b-q5.gguf 82
+  ai-mode stop-all
+EOF
+    exit 1;;
+esac

@@ -1022,6 +1022,12 @@
 
 (define (home-hyprland-files-service config)
   (list
+   `("xdg-desktop-portal/portals.conf"
+     ,(plain-file "portals.conf"
+		 "#[[portals]]
+[preferred]
+default=hyprland
+"))
    `("hypr/hyprland.conf" ,(mixed-text-file "hyprland.conf"
 					    (string-append
 					     "source = ~/.config/hypr/submaps.conf\n"
@@ -1061,10 +1067,24 @@
 					     (serialize-home-hyprland-variable-configuration
 					      (home-hyprland-configuration-variables config))))))
 
+
+
+(define (home-hyprland-environment-variables-service-type config)
+  `(("XDG_SESSION_TYPE" . "wayland")
+    ("XDG_CURRENT_DESKTOP" . "Hyprland")
+    ("XDG_SESSION_DESKTOP" . "Hyprland")
+    ("MOZ_ENABLE_WAYLAND" . "1")
+    ("QT_QPA_PLATFORM" . "wayland")
+    ("GTK_USE_PORTAL" . "1")
+    ("NIXOS_OZONE_WL" . "1")))
+
 (define home-hyprland-service-type
   (service-type (name 'home-hyprland-config)
 		(extensions
 		 (list
+		  (service-extension
+		   home-environment-variables-service-type
+		   home-hyprland-environment-variables-service-type)
 		  (service-extension
 		   home-profile-service-type
 		   home-hyprland-profile-service)
