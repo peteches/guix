@@ -1,70 +1,61 @@
-(provide 'peteches-slack)
-(require 'peteches-auth-sources)
-(require 'emacs-slack)
-(message "Loading slack configs")
+;;; peteches-slack.el -*- lexical-binding: t; -*-
 
-(defun peteches/start-slack ()
-  "Wrap starting slack in a function to ensure I can input the gpg passphrase"
+(require 'slack)   ;; not 'emacs-slack
+(require 'alert)
+(require 'peteches-first-frame) ;; your first-frame-ready.el
+
+(defconst peteches/slack-name  "ScorePlay")
+(defconst peteches/slack-entry "scoreplaytalk.slack.com/peter.mccabe@scoreplay.io")
+(defconst peteches/slack-chans '("production-team" "internal-liverpool" "external-liverpool" "tech"))
+
+(defun peteches/slack--team-registered-p (name)
+  (and (boundp 'slack-teams)
+       (seq-some (lambda (t) (string= name (oref t name))) slack-teams)))
+
+(defun peteches/slack-register-from-pass ()
+  "Idempotently register the Slack team from pass/auth-source."
+  (unless (peteches/slack--team-registered-p peteches/slack-name)
+    (let* ((tok (auth-source-pass-get "api_token" peteches/slack-entry))
+           (ck  (auth-source-pass-get "cookie"    peteches/slack-entry)))
+      (when (and (stringp tok) (> (length tok) 0))
+        (apply #'slack-register-team
+               (append (list :name peteches/slack-name
+                             :token tok
+                             :subscribed-channels peteches/slack-chans
+                             :default t)
+                       (when (and (stringp ck) (> (length ck) 0))
+                         (list :cookie ck)))))
+      (message "[slack] %s"
+               (if (peteches/slack--team-registered-p peteches/slack-name)
+                   (format "Registered %s" peteches/slack-name)
+                 (format "No token yet for %s" peteches/slack-entry))))))
+
+;; IMPORTANT: run after your frame is truly ready (idle), not on first-frame-hook
+(add-hook 'first-frame-ready-hook #'peteches/slack-register-from-pass)
+
+;; Keymap: ensure we always register before starting
+(define-prefix-command 'peteches/slack-map)
+(global-set-key (kbd "C-c s") 'peteches/slack-map)
+
+(defun peteches/slack-start ()
   (interactive)
-  (slack-register-team
-   :name "ScorePlay"
-   :token (password-store-get-field "scoreplaytalk.slack.com/peter.mccabe@scoreplay.io" "api_token")
-   :cookie (password-store-get-field "scoreplaytalk.slack.com/peter.mccabe@scoreplay.io" "cookie")
-   :full-and-display-names t
-   :default t
-   :modeline-enabled t
-   :animate-image t
-   :subscribed-channels '("agent-dev", "tech"))
+  (peteches/slack-register-from-pass) ; idempotent guard
   (slack-start))
 
-;(add-to-list 'after-make-frame-functions 'peteches/start-slack)
+(define-key peteches/slack-map (kbd "s") #'peteches/slack-start)
+(define-key peteches/slack-map (kbd "r") #'slack-reconnect)
+(define-key peteches/slack-map (kbd "q") #'slack-ws-close)
+(define-key peteches/slack-map (kbd "c") #'slack-channel-select)
+(define-key peteches/slack-map (kbd "i") #'slack-im-select)
+(define-key peteches/slack-map (kbd "g") #'slack-group-select)
+(define-key peteches/slack-map (kbd "u") #'slack-select-unread-rooms)
+(define-key peteches/slack-map (kbd "t") #'slack-thread-select)
+(define-key peteches/slack-map (kbd "j") #'slack-join)
+(define-key peteches/slack-map (kbd "o") #'slack-room-open)
+(define-key peteches/slack-map (kbd "m") #'slack-buffer-kill)
 
-(defvar peteches/slack/keymap
-  (let ((map (make-sparse-keymap)))
-    (define-key map "K" 'slack-stop)
-    (define-key map "S" 'peteches/start-slack)
-    (define-key map "c" 'slack-select-rooms)
-    (define-key map "u" 'slack-select-unread-rooms)
-    (define-key map "U" 'slack-user-select)
-    (define-key map "s" 'slack-search-from-messages)
-    (define-key map "J" 'slack-jump-to-browser)
-    (define-key map "j" 'slack-jump-to-app)
-    (define-key map "e" 'slack-insert-emoji)
-    (define-key map "E" 'slack-message-edit)
-    (define-key map "r" 'slack-message-add-reaction)
-    (define-key map "t" 'slack-thread-show-or-create)
-    (define-key map "g" 'slack-message-redisplay)
-    (define-key map "G" 'slack-conversations-list-update-quick)
-    (define-key map "q" 'slack-quote-and-reply)
-    (define-key map "Q" 'slack-quote-and-reply-with-link)
-    map)
-  "Peteches Slack Keymap")
-
-(defvar slack-mode-map
-  (let ((map (make-sparse-keymap)))
-    (define-key map "@" 'slack-message-embed-mention)
-    (define-key map "#" 'slack-message-embed-channel)
-    map)
-  "My keybinds for slack-mode")
-
-(defvar slack-thread-message-buffer-mode-map
-  (let ((map (make-sparse-keymap)))
-    (define-key map "C-c '"  'slack-message-write-another-buffer)
-    (define-key map "@" 'slack-message-embed-mention)
-    (define-key map "#" 'slack-message-embed-channel)
-    map)
-  "My keybinds for slack threads")
-
-(defvar slack-message-buffer-mode-map
-  (let ((map (make-sparse-keymap)))
-    (define-key map "C-c '"  'slack-message-write-another-buffer)
-    map)
-  "My Keybinds for Slack messages")
-
-(defvar slack-message-compose-buffer-mode-map
-  (let ((map (make-sparse-keymap)))
-    (define-key map "C-c '" 'slack-message-send-from-buffer)
-    map)
-  "My keybinds for slack compose")
-
-(global-set-key (kbd "C-c S") peteches/slack/keymap)
+;; Usual prefs
+(setq slack-buffer-emojify t
+      slack-prefer-current-team t
+      alert-default-style 'notifications)
+(provide 'peteches-slack)

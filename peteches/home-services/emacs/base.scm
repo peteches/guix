@@ -3,15 +3,17 @@
   #:use-module (gnu home services)
   #:use-module (gnu packages databases)
   #:use-module (gnu packages emacs)
+  #:use-module (gnu packages emacs-build)
   #:use-module (gnu packages emacs-xyz)
   #:use-module (gnu packages fonts)
-  #:use-module (gnu packages golang-xyz)
+  #:use-module (gnu packages golang-apps)
   #:use-module (gnu packages guile-xyz)
   #:use-module (gnu packages rust-apps)
   #:use-module (gnu packages)
   #:use-module (gnu services shepherd)
   #:use-module (gnu services)
   #:use-module (guix gexp)
+  #:use-module (nongnu packages node)
   #:use-module (peteches packages emacs)
   #:export (home-emacs-base-service-type))
 
@@ -22,14 +24,15 @@
 	emacs-geiser
 	emacs-geiser-guile
 
+	yarn ; for mcp servers
+	
 	emacs-compat
 
-;	emacs-go-playground
+					;	emacs-go-playground
 
 	emacs-orderless
 
 	emacs-show-font
-
 	emacs-projectile
 	ripgrep
 	
@@ -60,11 +63,23 @@
 	emacs-pinentry
 
 	emacs-atom-one-dark-theme
+
+	emacs-yasnippet
+	emacs-yasnippet-snippets
+	emacs-company
+	emacs-company-quickhelp
+	emacs-company-org-block
+	emacs-company-lsp
+	emacs-company-emoji
+	
 	
 	;; language servers
 	guile-lsp-server
 	gopls
 	sqls
+
+	emacs-gptel
+	emacs-mcp
 	
 	emacs-all-the-icons
 	emacs-all-the-icons-dired
@@ -78,6 +93,7 @@
 (define (home-emacs-base-files-service config)
   (list
    `("emacs/lisp" ,(local-file "./configs/lisp" #:recursive? #t))
+   `("emacs/early-init.el" ,(local-file "./configs/early-init.el"))
    `("emacs/init.el" ,(local-file "./configs/init.el"))))
 
 (define (home-emacs-base-shepherd-service-type config)
@@ -85,6 +101,7 @@
    (shepherd-service
     (documentation "Manage my emacs deamon")
     (provision '(emacs))
+    (respawn? #t)
     (stop #~(make-kill-destructor))
     (start #~(make-forkexec-constructor
 	      '("emacs" "--fg-daemon")
