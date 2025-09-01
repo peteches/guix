@@ -1067,7 +1067,8 @@ default=hyprland
 					     (serialize-home-hyprland-variable-configuration
 					      (home-hyprland-configuration-variables config))))))
 
-
+(define (home-hyprland-activation-service-type config)
+  #~(system* #$(file-append hyprland "/bin/hyprctl") "reload"))
 
 (define (home-hyprland-environment-variables-service-type config)
   `(("XDG_SESSION_TYPE" . "wayland")
@@ -1082,6 +1083,9 @@ default=hyprland
   (service-type (name 'home-hyprland-config)
 		(extensions
 		 (list
+		  (service-extension
+		   home-activation-service-type
+		   home-hyprland-activation-service-type)
 		  (service-extension
 		   home-environment-variables-service-type
 		   home-hyprland-environment-variables-service-type)
