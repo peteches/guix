@@ -5,6 +5,7 @@
   #:use-module (gnu home services)
   #:use-module (gnu home)
   #:use-module (gnu packages admin)
+  #:use-module (gnu packages base)
   #:use-module (gnu packages rust-apps)
   #:use-module (gnu packages gnupg)
   #:use-module (gnu packages terminals)
@@ -23,7 +24,7 @@
   #:use-module (ice-9 textual-ports)
   #:use-module (peteches home-services desktop)
   #:use-module (peteches home-services emacs base)
- ;; #:use-module (peteches home-services firefox)
+  #:use-module (peteches home-services firefox)
   #:use-module (peteches home-services git)
   #:use-module (peteches home-services hyprland)
   #:use-module (peteches home-services mako)
@@ -48,6 +49,7 @@
    gnupg
    jq
    ripgrep
+   glibc-locales
    v4l-utils
    ;; shell-scripts
    wofi gawk grimblast clipman zbar pass-otp firefox wf-recorder ;; these should be deps of the shell-scripts package but doesn't work
@@ -290,179 +292,237 @@
 		     (guix-defaults? #t)
 		     (environment-variables '(("CGO_ENABLED" . "1")))))
 
-	   (service home-emacs-base-service-type)
-	   (service home-hyprland-service-type (home-hyprland-configuration
-						(monitors (list
-	     						   (monitor
-							    (scale 1.5))))
-						(env-vars '(("XCURSOR_SIZE" . "36")
-							    ("QT_QPA_PLATFORMTHEME" . "qt6ct")
-							    ("NVD_BACKEND" . "direct+")
-							    ("XDG_CURRENT_DESKTOP" . "Hyprland")
-							    ("XDG_SESSION_TYPE" . "wayland")
-							    ("XDG_SESSION_DESKTOP" . "Hyprland")))
-						(variables
-						 (home-hyprland-variable-configuration
-						  (general (general-category
-							    (gaps_in 5)
-							    (gaps_out 20)
-							    (border_size 2)
-							    (col.active_border "rgba(33ccffee) rgba(00ff99ee) 45deg")
-							    (col.inactive_border "rgba(595959aa)")
-							    (layout "dwindle")))
-						  (decoration (decoration-category
-							       (rounding 10)
-							       (blur (decoration-blur-category
-								      (enabled #t)
-								      (size 3)
-								      (passes 1)))))
-						  (input (input-category
-							  ;; (touchpad (input-touchpad-category
-							  ;; 	      natural_scroll true))
-							  (kb_layout "us")
-							  (kb_options "ctrl:nocaps")))))
-						(binds (list
-							(bind
-							 (mods "SUPER")
-							 (key "Return")
-							 (dispatcher "exec")
-							 (params "alacritty"))
-							(bind
-							 (mods "SUPER")
-							 (key "d")
-							 (dispatcher "exec")
-							 (params "wofi --show-run drun"))
-							(bind
-							 (mods "SUPER")
-							 (key "e")
-							 (dispatcher "exec")
-							 (params "emacsclient -c"))
+	   (service firefox-service-type
+		    (firefox-configuration
+		     ;; ----- two profiles
+		     (profiles
+		      (list
+		       (firefox-profile "Default" "default"
+					#:prefs '(("browser.startup.homepage" . "about:blank")))
+		       (firefox-profile "Other"   "other"
+					#:prefs '(("browser.startup.homepage" . "about:blank")))))
+		     (default-profile "Default")
 
-							(bind
-							 (mods "SUPER SHIFT")
-							 (key "d")
-							 (dispatcher "exec")
-							 (params "makoctl dismiss -a"))
+		     ;; ----- global prefs (merged into each profile; profile prefs override)
+		     (global-prefs
+		      '(
+			;; Privacy / fingerprinting / HTTPS
+			("privacy.resistFingerprinting"                         . #t)
+			("privacy.trackingprotection.enabled"                   . #t)
+			("privacy.trackingprotection.socialtracking.enabled"    . #t)
+			("dom.security.https_only_mode"                         . #t)
 
-							(bind
-							 (mods "SUPER SHIFT")
-							 (key "Return")
-							 (dispatcher "exec")
-							 (params "makoctl invoke"))
-							
-							(bind
-							 (mods "SUPER")
-							 (key "d")
-							 (dispatcher "exec")
-							 (params "wofi --show drun"))
+			;; Cookies: 5 = Total Cookie Protection / partitioned cookies
+			("network.cookie.cookieBehavior"                        . 5)
 
-							(bind
-							 (mods "SUPER")
-							 (key "b")
-							 (dispatcher "exec")
-							 (params "wofi-firefox.sh"))
+			;; Reduce passive leaks / speculation
+			("network.http.referer.XOriginPolicy"                   . 2)
+			("network.predictor.enabled"                            . #f)
+			("network.prefetch-next"                                . #f)
+			("network.dns.disablePrefetch"                          . #t)
 
-							(bind
-							 (mods "SUPER")
-							 (key "p")
-							 (dispatcher "exec")
-							 (params "wofi-password.sh"))
-							
-							(bind
-							 (mods "SUPER SHIFT")
-							 (key "q")
-							 (dispatcher "exit")
-							 (params ""))
+			;; Telemetry / studies / Pocket / suggestions
+			("toolkit.telemetry.enabled"                            . #f)
+			("toolkit.telemetry.unified"                            . #f)
+			("datareporting.healthreport.uploadEnabled"             . #f)
+			("app.shield.optoutstudies.enabled"                     . #f)
+			("experiments.enabled"                                  . #f)
+			("browser.ping-centre.telemetry"                        . #f)
+			("extensions.pocket.enabled"                            . #f)
+			("browser.newtabpage.activity-stream.feeds.section.topstories" . #f)
+			("browser.urlbar.quicksuggest.enabled"                  . #f)
+			("browser.urlbar.suggest.quicksuggest.sponsored"        . #f)
+			("browser.urlbar.suggest.quicksuggest.nonsponsored"     . #f)
+			("browser.urlbar.suggest.trending"                      . #f)
 
-							(bind
-							 (mods "SUPER")
-							 (key "q")
-							 (dispatcher "killactive")
-							 (params ""))
+			;; Safe browsing remote checks (set to #f if you prefer fewer pings)
+			;; ("browser.safebrowsing.downloads.remote.enabled"     . #f)
+			))
 
-							(bind
-							 (mods "SUPER")
-							 (key "f")
-							 (dispatcher "fullscreen")
-							 (params ""))
+		     ;; ----- global extensions (same XPI used for all profiles)
+		     (global-extensions
+		      `(
+			;; uBlock Origin
+			("uBlock0@raymondhill.net"
+			 . ,(local-file "./firefox-extensions/uBlock0_1.65.0.firefox.signed.xpi"))
 
-							(bind
-							 (mods "SUPER")
-							 (key "t")
-							 (dispatcher "togglesplit")
-							 (params ""))
-							
-							(bind
-							 (mods "SUPER SHIFT")
-							 (key "p")
-							 (dispatcher "exec")
-							 (params "wofi-screenshot.sh"))
+       			;; PassFF (Password Store)
+			("passff@invicem.pro"
+			 . ,(local-file "./firefox-extensions/passff_v1.22.1.xpi"))))))
+	  
+	  (service home-emacs-base-service-type)
+	  (service home-hyprland-service-type (home-hyprland-configuration
+					       (monitors (list
+	     						  (monitor
+							   (scale 1.5))))
+					       (env-vars '(("XCURSOR_SIZE" . "36")
+							   ("QT_QPA_PLATFORMTHEME" . "qt6ct")
+							   ("NVD_BACKEND" . "direct+")
+							   ("XDG_CURRENT_DESKTOP" . "Hyprland")
+							   ("XDG_SESSION_TYPE" . "wayland")
+							   ("XDG_SESSION_DESKTOP" . "Hyprland")))
+					       (variables
+						(home-hyprland-variable-configuration
+						 (general (general-category
+							   (gaps_in 5)
+							   (gaps_out 20)
+							   (border_size 2)
+							   (col.active_border "rgba(33ccffee) rgba(00ff99ee) 45deg")
+							   (col.inactive_border "rgba(595959aa)")
+							   (layout "dwindle")))
+						 (decoration (decoration-category
+							      (rounding 10)
+							      (blur (decoration-blur-category
+								     (enabled #t)
+								     (size 3)
+								     (passes 1)))))
+						 (input (input-category
+							 ;; (touchpad (input-touchpad-category
+							 ;; 	      natural_scroll true))
+							 (kb_layout "us")
+							 (kb_options "ctrl:nocaps")))))
+					       (binds (list
+						       (bind
+							(mods "SUPER")
+							(key "Return")
+							(dispatcher "exec")
+							(params "alacritty"))
+						       (bind
+							(mods "SUPER")
+							(key "d")
+							(dispatcher "exec")
+							(params "wofi --show-run drun"))
+						       (bind
+							(mods "SUPER")
+							(key "e")
+							(dispatcher "exec")
+							(params "emacsclient -c"))
 
-							(bind
-							 (mods "SUPER")
-							 (key "left")
-							 (dispatcher "movefocus")
-							 (params "l"))
+						       (bind
+							(mods "SUPER SHIFT")
+							(key "d")
+							(dispatcher "exec")
+							(params "makoctl dismiss -a"))
 
-							(bind
-							 (mods "SUPER")
-							 (key "right")
-							 (dispatcher "movefocus")
-							 (params "r"))
+						       (bind
+							(mods "SUPER SHIFT")
+							(key "Return")
+							(dispatcher "exec")
+							(params "makoctl invoke"))
+						       
+						       (bind
+							(mods "SUPER")
+							(key "d")
+							(dispatcher "exec")
+							(params "wofi --show drun"))
 
-							(bind
-							 (mods "SUPER")
-							 (key "up")
-							 (dispatcher "movefocus")
-							 (params "u"))
+						       (bind
+							(mods "SUPER")
+							(key "b")
+							(dispatcher "exec")
+							(params "wofi-firefox.sh"))
 
-							(bind
-							 (mods "SUPER")
-							 (key "down")
-							 (dispatcher "movefocus")
-							 (params "d"))
+						       (bind
+							(mods "SUPER")
+							(key "p")
+							(dispatcher "exec")
+							(params "wofi-password.sh"))
+						       
+						       (bind
+							(mods "SUPER SHIFT")
+							(key "q")
+							(dispatcher "exit")
+							(params ""))
 
-							(bind
-							 (mods "SUPER")
-							 (key "1")
-							 (dispatcher "workspace")
-							 (params "1"))
-							(bind
-							 (mods "SUPER SHIFT")
-							 (key "1")
-							 (dispatcher "movetoworkspace")
-							 (params "1"))
-							(bind
-							 (mods "SUPER")
-							 (key "2")
-							 (dispatcher "workspace")
-							 (params "2"))
-							(bind
-							 (mods "SUPER SHIFT")
-							 (key "2")
-							 (dispatcher "movetoworkspace")
-							 (params "2"))
-							(bind
-							 (mods "SUPER")
-							 (key "3")
-							 (dispatcher "workspace")
-							 (params "3"))
-							(bind
-							 (mods "SUPER SHIFT")
-							 (key "3")
-							 (dispatcher "movetoworkspace")
-							 (params "3"))
-							(bind
-							 (mods "SUPER")
-							 (key "4")
-							 (dispatcher "workspace")
-							 (params "4"))
-							(bind
-							 (mods "SUPER SHIFT")
-							 (key "4")
-							 (dispatcher "movetoworkspace")
-							 (params "4"))))
-						(command-execution						 
-						 (hyprland-execs
-						  (exec-once '("waybar" "alacritty" "mako")))))))
-	  %base-home-services)))
+						       (bind
+							(mods "SUPER")
+							(key "q")
+							(dispatcher "killactive")
+							(params ""))
+
+						       (bind
+							(mods "SUPER")
+							(key "f")
+							(dispatcher "fullscreen")
+							(params ""))
+
+						       (bind
+							(mods "SUPER")
+							(key "t")
+							(dispatcher "togglesplit")
+							(params ""))
+						       
+						       (bind
+							(mods "SUPER SHIFT")
+							(key "p")
+							(dispatcher "exec")
+							(params "wofi-screenshot.sh"))
+
+						       (bind
+							(mods "SUPER")
+							(key "left")
+							(dispatcher "movefocus")
+							(params "l"))
+
+						       (bind
+							(mods "SUPER")
+							(key "right")
+							(dispatcher "movefocus")
+							(params "r"))
+
+						       (bind
+							(mods "SUPER")
+							(key "up")
+							(dispatcher "movefocus")
+							(params "u"))
+
+						       (bind
+							(mods "SUPER")
+							(key "down")
+							(dispatcher "movefocus")
+							(params "d"))
+
+						       (bind
+							(mods "SUPER")
+							(key "1")
+							(dispatcher "workspace")
+							(params "1"))
+						       (bind
+							(mods "SUPER SHIFT")
+							(key "1")
+							(dispatcher "movetoworkspace")
+							(params "1"))
+						       (bind
+							(mods "SUPER")
+							(key "2")
+							(dispatcher "workspace")
+							(params "2"))
+						       (bind
+							(mods "SUPER SHIFT")
+							(key "2")
+							(dispatcher "movetoworkspace")
+							(params "2"))
+						       (bind
+							(mods "SUPER")
+							(key "3")
+							(dispatcher "workspace")
+							(params "3"))
+						       (bind
+							(mods "SUPER SHIFT")
+							(key "3")
+							(dispatcher "movetoworkspace")
+							(params "3"))
+						       (bind
+							(mods "SUPER")
+							(key "4")
+							(dispatcher "workspace")
+							(params "4"))
+						       (bind
+							(mods "SUPER SHIFT")
+							(key "4")
+							(dispatcher "movetoworkspace")
+							(params "4"))))
+					       (command-execution						 
+						(hyprland-execs
+						 (exec-once '("waybar" "alacritty" "mako")))))))
+  %base-home-services)))
