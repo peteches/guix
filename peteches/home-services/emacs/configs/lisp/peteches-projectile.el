@@ -25,4 +25,22 @@
 (unless (executable-find "fd")
   (setq projectile-generic-command "find . -type f -print0"))
 
+(defun peteches/projectile-switch-project-menu ()
+  "Offer a small menu of actions after switching to a Projectile project."
+  (let* ((actions
+          '(("VC status"          . projectile-vc)
+            ("Find file"          . projectile-find-file)
+            ("Switch to buffer"   . projectile-switch-to-buffer)
+            ("Recent file"        . projectile-recentf)
+            ("Dired"              . projectile-dired)
+            ("Eshell"             . projectile-run-eshell)
+            ("Compile project"    . projectile-compile-project)
+            ("Test project"       . projectile-test-project)))
+         (choice (completing-read
+                  (format "In %s → " (projectile-project-name))
+                  (mapcar #'car actions) nil t)))
+    (funcall (cdr (assoc choice actions)))))
+
+(setq projectile-switch-project-action #'peteches/projectile-switch-project-menu)
+
 (provide 'peteches-projectile)
