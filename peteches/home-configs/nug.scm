@@ -65,6 +65,8 @@
                        (firefox-profile-decl
 			(name "Work") (id "work")
 			(prefs `(("browser.startup.homepage" . "about:blank"))))
+		       (firefox-profile-decl
+			(name "Other") (id "other"))
                        (firefox-profile-decl
 			(name "Personal") (id "personal")
 			(prefs `(("dom.security.https_only_mode" . #t)))))
@@ -74,7 +76,6 @@
 			 ,(local-file "./firefox-extensions/darkreader-firefox-v4.9.110.xpi"))
 			("uBlock0@raymondhill.net" .
 			 ,(local-file "./firefox-extensions/uBlock0_1.65.0.firefox.signed.xpi"))))))
-	   (service home-xdg-base-directories-service-type)
 	   (service ai-service-type '())
 	   (service home-mako-service-type
 		    (mako-config))
@@ -142,20 +143,19 @@
 	   (service home-emacs-base-service-type)
 	   (service home-hyprland-service-type (home-hyprland-configuration
 						(monitors (list
-							   (monitor)
 	     						   (monitor
 							    (name "DP-3")
+							    (position "0x0")
 							    (scale 1))
 							   (monitor
 							    (name "DP-2")
-							    (position "auto-up"))))
+							    (position "auto-up"))
+							   (monitor
+							    (position "auto-right"))))
 						(env-vars '(("XCURSOR_SIZE" . "36")
-
-						 ("GBM_BACKEND" . "nvidia-drm")
-						 ("WLR_RENDERER_ALLOW_SOFTWARE" . "1")		
-						 ("WLR_NO_HARDWARE_CURSORS" . "1")		
-						
-
+							    ("GBM_BACKEND" . "nvidia-drm")
+							    ("WLR_RENDERER_ALLOW_SOFTWARE" . "1")		
+							    ("WLR_NO_HARDWARE_CURSORS" . "1")		
 							    ("QT_QPA_PLATFORMTHEME" . "qt5ct")
 							    ("NVD_BACKEND" . "direct+")
 							    ("LIBVA_DRIVER_NAME" . "nvidia")

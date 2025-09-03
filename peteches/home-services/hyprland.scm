@@ -743,7 +743,7 @@
 
 (define (serialize-position field-name pos) pos)
 
-(define position-regexp "(auto(-(left|right|up|down))?|[0-9]+x[0-9]+)$")
+(define position-regexp "(auto((-center)?-(left|right|up|down))?|[0-9]+x[0-9]+)$")
 
 (define (position? pos)
   (string-match position-regexp pos))
