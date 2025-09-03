@@ -34,8 +34,10 @@
   #:use-module (peteches home-services password-store)
   #:use-module (peteches home-services waybar)
   #:use-module (peteches home-services wofi)
-  #:use-module (peteches packages scripts))
-
+  #:use-module (peteches packages scripts)
+  #:use-module (peteches home-configs hyprland)
+  #:use-module (peteches home-configs mako)
+  #:use-module (peteches home-configs waybar))
 
 (define (get-ssh-host-key hosts)
   (let* ((port (open-input-pipe (string-append "ssh-keyscan " (string-join hosts))))
@@ -78,7 +80,7 @@
 			 ,(local-file "./firefox-extensions/uBlock0_1.65.0.firefox.signed.xpi"))))))
 	   (service ai-service-type '())
 	   (service home-mako-service-type
-		    (mako-config))
+		    (base-mako-config))
 	   (service home-git-service-type
 		    (home-git-configuration
 		     (applypatch-msg-hook (list (plain-file "applypatch-msg-hook" "echo applying patch")))
@@ -126,12 +128,30 @@
 		       "allow-loopback-pinentry\n"))
 		     (ssh-support? #t)))
 
-	   (service waybar-service-type (waybar-configuration
-					 (config (waybar-config
-						  (modules-left #("hyprland/workspaces"))
-						  (modules-center #("hyprland/window"))
-						  (modules-right #("battery" "clock"))
-						  (modules-config '(("clock" ("tooltip-format" . "<big>{:%Y %B}</big>\n<tt><small>{calendar}</small></tt>"))))))))
+	   (service waybar-service-type
+		    (waybar-configuration
+		     (config
+		      (waybar-config
+		       ;; Bar geometry & layout (HiDPI-friendly without custom CSS)
+		       (position "top")
+		       (height 46)
+		       (spacing 10)
+		       (margin-top 6)
+		       (margin-bottom 6)
+		       (margin-left 10)
+		       (margin-right 10)
+		       (fixed-center #t)
+		       (exclusive #t)
+		       (reload_style_on_change #t)
+		       (output "")
+
+		       ;; Hyprland modules
+		       (modules-left  #("hyprland/workspaces" "hyprland/window"))
+		       (modules-center #("clock"))
+		       (modules-right #("backlight" "wireplumber#source" "wireplumber#sink" "cpu" "memory" "temperature" "network" "battery" "tray"))
+
+		       ;; Module configs
+		       (modules-config base-waybar-modules-config)))))	  
 	   
 	   (service wofi-service-type)
 	   (service home-desktop-service-type)
@@ -149,191 +169,12 @@
 							    (scale 1))
 							   (monitor
 							    (name "DP-2")
-							    (position "auto-up"))
-							   (monitor
-							    (position "auto-right"))))
-						(env-vars '(("XCURSOR_SIZE" . "36")
-							    ("GBM_BACKEND" . "nvidia-drm")
-							    ("WLR_RENDERER_ALLOW_SOFTWARE" . "1")		
-							    ("WLR_NO_HARDWARE_CURSORS" . "1")		
-							    ("QT_QPA_PLATFORMTHEME" . "qt5ct")
-							    ("NVD_BACKEND" . "direct+")
-							    ("LIBVA_DRIVER_NAME" . "nvidia")
-							    ("__GLX_VENDOR_LIBRARY_NAME" . "nvidia")
-							    ("XDG_CURRENT_DESKTOP" . "Hyprland")
-							    ("WLR_DRM_DEVICES" . "/dev/dri/card1")
-							    ("WLR_BACKENDS" . "drm")
-							    ("XDG_SESSION_TYPE" . "wayland")
-							    ("XDG_SESSION_DESKTOP" . "Hyprland")))
-						(variables
-						 (home-hyprland-variable-configuration
-						  (general (general-category
-							    (gaps_in 5)
-							    (gaps_out 20)
-							    (border_size 2)
-							    (col.active_border "rgba(33ccffee) rgba(00ff99ee) 45deg")
-							    (col.inactive_border "rgba(595959aa)")
-							    (layout "dwindle")))
-						  (decoration (decoration-category
-							       (rounding 10)
-							       (blur (decoration-blur-category
-								      (enabled #t)
-								      (size 3)
-								      (passes 1)))))
-						  (input (input-category
-							  ;; (touchpad (input-touchpad-category
-							  ;; 	      natural_scroll true))
-							  (kb_layout "us")
-							  (kb_options "ctrl:nocaps")))))
-						(binds (list
-							(bind
-							 (mods "SUPER")
-							 (key "Return")
-							 (dispatcher "exec")
-							 (params "alacritty"))
-							(bind
-							 (mods "SUPER")
-							 (key "d")
-							 (dispatcher "exec")
-							 (params "wofi --show-run drun"))
-							(bind
-							 (mods "SUPER")
-							 (key "e")
-							 (dispatcher "exec")
-							 (params "emacsclient -c"))
-
-							(bind
-							 (mods "SUPER")
-							 (key "d")
-							 (dispatcher "exec")
-							 (params "wofi --show drun"))
-
-							(bind
-							 (mods "SUPER")
-							 (key "b")
-							 (dispatcher "exec")
-							 (params "wofi-firefox.sh"))
-
-							(bind
-							 (mods "SUPER")
-							 (key "p")
-							 (dispatcher "exec")
-							 (params "wofi-password.sh"))
-							
-							(bind
-							 (mods "SUPER SHIFT")
-							 (key "q")
-							 (dispatcher "exit")
-							 (params ""))
-
-							(bind
-							 (mods "SUPER")
-							 (key "q")
-							 (dispatcher "killactive")
-							 (params ""))
-
-							(bind
-							 (mods "SUPER")
-							 (key "f")
-							 (dispatcher "fullscreen")
-							 (params ""))
-
-							(bind
-							 (mods "SUPER")
-							 (key "t")
-							 (dispatcher "togglesplit")
-							 (params ""))
-							
-							(bind
-							 (mods "SUPER SHIFT")
-							 (key "p")
-							 (dispatcher "exec")
-							 (params "wofi-screenshot.sh"))
-
-							(bind
-							 (mods "SUPER")
-							 (key "left")
-							 (dispatcher "movefocus")
-							 (params "l"))
-
-							(bind
-							 (mods "SUPER")
-							 (key "right")
-							 (dispatcher "movefocus")
-							 (params "r"))
-
-							(bind
-							 (mods "SUPER")
-							 (key "up")
-							 (dispatcher "movefocus")
-							 (params "u"))
-
-							(bind
-							 (mods "SUPER")
-							 (key "down")
-							 (dispatcher "movefocus")
-							 (params "d"))
-
-							(bind
-							 (mods "SUPER")
-							 (key "1")
-							 (dispatcher "workspace")
-							 (params "1"))
-							(bind
-							 (mods "SUPER SHIFT")
-							 (key "1")
-							 (dispatcher "movetoworkspace")
-							 (params "1"))
-							(bind
-							 (mods "SUPER")
-							 (key "2")
-							 (dispatcher "workspace")
-							 (params "2"))
-							(bind
-							 (mods "SUPER SHIFT")
-							 (key "2")
-							 (dispatcher "movetoworkspace")
-							 (params "2"))
-							(bind
-							 (mods "SUPER")
-							 (key "3")
-							 (dispatcher "workspace")
-							 (params "3"))
-							(bind
-							 (mods "SUPER SHIFT")
-							 (key "3")
-							 (dispatcher "movetoworkspace")
-							 (params "3"))
-							(bind
-							 (mods "SUPER")
-							 (key "4")
-							 (dispatcher "workspace")
-							 (params "4"))
-							(bind
-							 (mods "SUPER SHIFT")
-							 (key "4")
-							 (dispatcher "movetoworkspace")
-							 (params "4"))
-							(bind
-							 (mods "SUPER")
-							 (key "5")
-							 (dispatcher "workspace")
-							 (params "5"))
-							(bind
-							 (mods "SUPER SHIFT")
-							 (key "5")
-							 (dispatcher "movetoworkspace")
-							 (params "5"))
-							(bind
-							 (mods "SUPER")
-							 (key "6")
-							 (dispatcher "workspace")
-							 (params "6"))
-							(bind
-							 (mods "SUPER SHIFT")
-							 (key "6")
-							 (dispatcher "movetoworkspace")
-							 (params "6"))))
+							    (position "auto-up"))))
+						(env-vars base-hyprland-env-vars)
+						(variables base-hyprland-variables)
+						(binds (append
+							base-hyprland-default-application-launcher-binds
+							(base-hyprland-window-workspace-binds 9)))
 						(command-execution						 
 						 (hyprland-execs
 						  (exec-once '("waybar" "mako")))))))
