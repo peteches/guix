@@ -1,0 +1,132 @@
+# =========================
+# Global Git Ignore (Linux)
+# =========================
+
+############################
+# Emacs / Editors
+############################
+*~
+\#*\#
+.\#*
+.emacs.desktop
+.emacs.desktop.lock
+*.elc
+eln-cache/
+.flycheck_*
+.projectile
+projectile-bookmarks.eld
+TAGS
+tags
+*.taghl
+.*.swp
+.*.swo
+.*.swx
+
+############################
+# Interpreted langs: bytecode & caches
+############################
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.mypy_cache/
+.pyre/
+.pytype/
+.tox/
+.coverage
+.coverage.*
+.cache/
+pip-wheel-metadata/
+.eggs/
+*.egg-info/
+.venv/
+venv/
+.python-version
+
+# Emacs Lisp (compiled handled above)
+# Common Lisp
+*.fasl
+*.ufasl
+*.fsl
+*.fas
+
+# Scheme (safe patterns only; avoid *.go to not hide Go source)
+compiled/
+*.zo
+*.import.scm
+
+############################
+# Linux / OS temp files
+############################
+.fuse_hidden*
+.nfs*
+.Trash-*
+.directory
+lost+found/
+core
+core.*
+
+############################
+# Common junk & backups
+############################
+*.log
+*.tmp
+*.temp
+*.bak
+*.old
+*.orig
+*.rej
+
+############################
+# Build / dist / coverage
+############################
+dist/
+build/
+out/
+tmp/
+temp/
+coverage/
+htmlcov/
+
+############################
+# Env / tooling
+############################
+.env
+.env.*
+.direnv/
+.idea/
+.vscode/
+*.iml
+
+############################
+# Archives / packages
+############################
+*.7z
+*.gz
+*.bz2
+*.xz
+*.zip
+*.tar
+*.tgz
+*.txz
+
+############################
+# C/C++/Rust miscellany (safe globals)
+############################
+*.dSYM/
+*.obj
+*.pch
+*.pdb
+*.ilk
+*.idb
+*.lib
+*.a
+*.lo
+*.la
+*.o
+*.so
+*.dll
+*.exe
+*.out
+*.app

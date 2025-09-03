@@ -54,6 +54,7 @@
    jq
    ripgrep
    pinentry-qt5
+   pre-commit
    ;; shell-scripts
    wofi gawk grimblast clipman zbar pass-otp wf-recorder ;; these should be deps of the shell-scripts package but doesn't work
    btop))
@@ -80,10 +81,11 @@
 			 ,(local-file "./firefox-extensions/uBlock0_1.65.0.firefox.signed.xpi"))))))
 	   (service ai-service-type '())
 	   (service home-mako-service-type
-		    (base-mako-config))
+		    base-mako-config)
 	   (service home-git-service-type
 		    (home-git-configuration
-		     (applypatch-msg-hook (list (plain-file "applypatch-msg-hook" "echo applying patch")))
+		     (applypatch-msg-hook (list (plain-file "applypatch-msg-hook" "echo applying patch updated")))
+		     (pre-commit-hook (list (plain-file "pre-commit" "pre-commit run --hook-stage pre-commit \"$@\"")))
 		     (config 
 		      (list (git-section
 			     (name "user")

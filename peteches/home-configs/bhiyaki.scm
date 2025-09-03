@@ -54,6 +54,7 @@
    ripgrep
    glibc-locales
    v4l-utils
+   pre-commit
    ;; shell-scripts
    wofi gawk grimblast clipman zbar pass-otp firefox wf-recorder ;; these should be deps of the shell-scripts package but doesn't work
    btop))
@@ -67,6 +68,8 @@
 	   (service home-git-service-type
 		    (home-git-configuration
 		     (applypatch-msg-hook (list (plain-file "applypatch-msg-hook" "echo applying patch")))
+		     (pre-commit-hook (list (local-file "./git-hooks/pre-commit")))
+		     (global-ignore (list (local-file "./git-ignore.txt")))
 		     (config 
 		      (list (git-section
 			     (name "user")
@@ -75,7 +78,17 @@
 				       ("signingkey" . "A6E8150FED0029D7"))))
 			    (git-section
 			     (name "core")
-			     (config '(("compression" . "6"))))
+			     (config '(("compression" . "6")
+				       ("editor" . "emacs-client --create-frame")
+				       ("hooksPath" . "~/.config/git/hooks"))))
+			    (git-section
+			     (name "pull")
+			     (config '(("ff" . "true")
+				       ("rebase" . "true"))))
+			    (git-section
+			     (name "rerere")
+			     (config '(("autoUpdate" . "true")
+				       ("enabled" . "true"))))
 			    (git-section
 			     (name "init")
 			     (config '(("defaultBranch" . "main"))))
