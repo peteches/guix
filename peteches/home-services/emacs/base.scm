@@ -69,7 +69,6 @@
 	emacs-company
 	emacs-company-quickhelp
 	emacs-company-org-block
-	emacs-company-lsp
 	emacs-company-emoji
 	
 	

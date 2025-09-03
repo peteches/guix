@@ -1,96 +1,97 @@
-;;;; Minimal, unobtrusive Company configuration (no use-package)
+;;;; Minimal, unobtrusive Company UI polish (no use-package)
 
-;; Core Company setup
 (require 'company)
 
-;; Don’t pop up the menu automatically; only show it when you invoke it.
-(setq company-idle-delay nil)            ; manual trigger only (no auto popup)
-(setq company-minimum-prefix-length 1)   ; start completing after 1 char when invoked
-(setq company-require-match 'never)      ; don’t force selecting from the menu
-(setq company-tooltip-align-annotations t)
+;; Core behavior: manual trigger, early prefix, slim UI
+(setq company-idle-delay nil
+      company-minimum-prefix-length 1
+      company-require-match nil
+      company-tooltip-align-annotations t
+      company-format-margin-function nil)
 
-;; Keep the UI slim (no icon margin). Safe on recent Company; ignored if unknown.
-(setq company-format-margin-function nil)
+;; Popup feel
+(setq company-selection-wrap-around t      ; cycle at ends
+      company-show-quick-access t          ; M-1..M-0 jump to candidate
+      company-tooltip-limit 12             ; keep list compact
+      company-echo-delay 0)                ; show metadata instantly
+;; ^ quick-access hints are documented in Company’s frontends.  ; FYI
 
-;; Enable globally after init.
+;; Enable globally
 (add-hook 'after-init-hook #'global-company-mode)
 
-;; Keybindings for manual completion:
-;; C-M-i is a good, WM-safe binding (equivalent to M-TAB in Emacs).
-(global-set-key (kbd "C-M-i") #'company-complete)
+;; Manual trigger: keep WM-safe key, avoid clobbering C-c C-c
+(global-set-key (kbd "C-<tab>") #'company-complete)
+
 (with-eval-after-load 'company
   (define-key company-active-map (kbd "<tab>") #'company-complete-selection)
   (define-key company-active-map (kbd "C-n")   #'company-select-next)
   (define-key company-active-map (kbd "C-p")   #'company-select-previous))
 
-;; ---------------------------------------------------------------------------
-;; LSP backend (company-lsp)
-;; ---------------------------------------------------------------------------
-;;
-;; company-lsp: Queries your active lsp-mode server via the LSP
-;; textDocument/completion request. Asynchronous; returns rich, language-aware
-;; candidates straight from the server.
-;;
-;; Notes:
-;; - Only produces candidates when lsp-mode is active for the buffer.
-;; - We combine it :with a few light, local backends so you also get file paths,
-;;   mode keywords, and nearby identifiers while LSP is thinking.
-(when (require 'company-lsp nil t)
-  ;; No global push; we curate backends per-mode below.
-  )
+;; --- LSP completion via CAPF (recommended path) ----------------------------
+(with-eval-after-load 'lsp-mode
+  ;; Use CAPF (company-capf will read from this).
+  (setq lsp-completion-provider :capf)) ; lsp-mode recommends CAPF
 
-;; ---------------------------------------------------------------------------
-;; Emoji backend (company-emoji)
-;; ---------------------------------------------------------------------------
-;;
-;; company-emoji: Completes emoji by shortcode (e.g., :smile:) and/or Unicode.
-;; Inserts the actual emoji character. Great for chat logs, docs, commit msgs.
-(when (require 'company-emoji nil t)
-  ;; Optionally, ensure your fontset can render color emoji:
- (when (member "Noto Color Emoji" (font-family-list))
-    (set-fontset-font t 'emoji (font-spec :family "Noto Color Emoji") nil 'prepend)))
-
-;; ---------------------------------------------------------------------------
-;; Curated backends per context, with comments describing each one.
-;; Company consults the first “group” that yields candidates; within a group
-;; we use `:with` to merge results from multiple backends.
-;; ---------------------------------------------------------------------------
-
+;; Backends per context
 (defun peteches/company-backends-prog ()
-  "Backends for programming modes (code + comments/strings)."
-  (set (make-local-variable 'company-backends)
-       '(
-         ;; Primary group for code:
-         (company-lsp                 ; LSP server completions (async, semantic)
-          :with
-          company-capf               ; Bridge to `completion-at-point-functions`
-                                     ; (good fallback: eglot, major-mode CAPFs)
-          company-dabbrev-code       ; Identifiers from current/other code buffers
-          company-files              ; File/dir paths in strings/imports/etc.
-          company-keywords)          ; Language keywords for current major mode
-
-         ;; Secondary helpers (queried if the first group yields nothing):
-         company-emoji               ; Emoji by :shortcode: or Unicode
-         company-dabbrev             ; Plain words from all open buffers
-         )))
+  "Backends for programming modes."
+  (setq-local company-backends
+              '((company-capf           ; LSP/Eglot/major-mode CAPFs
+                 :with company-files company-keywords company-dabbrev-code)
+                company-emoji           ; if loaded (see below)
+                company-dabbrev)))
 
 (add-hook 'prog-mode-hook #'peteches/company-backends-prog)
 
 (defun peteches/company-backends-text ()
-  "Backends for text-ish modes (org, markdown, commit messages, mail…)."
-  (set (make-local-variable 'company-backends)
-       '(
-         ;; Keep it lightweight and writing-centric:
-         company-emoji               ; Emoji completion for prose/notes/commits
-         company-dabbrev             ; Words from open buffers (great for prose)
-         company-files               ; Insert file paths as needed
-         )))
+  "Backends for text-ish modes."
+  (setq-local company-backends
+              '(company-emoji company-dabbrev company-files)))
 
 (add-hook 'text-mode-hook #'peteches/company-backends-text)
 
-;; Optional tweaks for dabbrev to feel smarter:
-(setq company-dabbrev-other-buffers t)   ; also scan other buffers
-(setq company-dabbrev-code-everywhere t) ; complete code symbols in strings/comments
-(setq company-dabbrev-ignore-case 'keep) ; preserve case
+;; Emoji backend (optional)
+(when (require 'company-emoji nil t)
+  (when (member "Noto Color Emoji" (font-family-list))
+    (set-fontset-font t 'emoji (font-spec :family "Noto Color Emoji") nil 'prepend)))
+
+;; Dabbrev tweaks
+(setq company-dabbrev-other-buffers t
+      company-dabbrev-code-everywhere t
+      company-dabbrev-ignore-case 'keep)
+
+(use-package company-box
+  :ensure t)
+;;;; --- company-box: icons + richer metadata --------------------------------
+;; Degrades gracefully if packages aren’t installed.
+(when (require 'company-box nil t)
+  (add-hook 'company-mode-hook #'company-box-mode)
+
+  ;; Compact, modern list; right-aligned annotations come from CAPF/LSP.
+  (setq company-tooltip-align-annotations t
+        company-box-show-single-candidate t
+        company-box-max-candidates 50
+        company-box-scrollbar t)
+
+  ;; Use all-the-icons if available for nice per-kind glyphs.
+  (when (require 'all-the-icons nil t)
+    (setq company-box-icons-alist 'company-box-icons-all-the-icons)))
+
+;; Make LSP/CAPF expose extra info (e.g., kind) so it shows up in the UI.
+(with-eval-after-load 'lsp-mode
+  (setq lsp-completion-show-kind t))  ; metadata in the candidate list
+
+;;;; --- Quickhelp: manual docs popup (no auto-show) -------------------------
+(when (require 'company-quickhelp nil t)
+  ;; Keep it quiet by default; only show when you ask for it.
+  (company-quickhelp-mode -1)
+
+  ;; During an active completion popup, press this to show the tooltip.
+  (with-eval-after-load 'company
+    (define-key company-active-map (kbd "C-c h") #'company-quickhelp-manual-begin))
+
+  ;; Optional: use a child frame if you have posframe installed.
+  (setq company-quickhelp-use-posframe (fboundp 'posframe-workable-p)))
+
 
 (provide 'peteches-company)

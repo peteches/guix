@@ -76,6 +76,7 @@
 (require 'peteches-abbrev)
 (require 'peteches-alert)
 (require 'peteches-auth-sources)
+(require 'peteches-company)
 (require 'peteches-eshell)
 (require 'peteches-golang)
 (require 'peteches-mcp)
