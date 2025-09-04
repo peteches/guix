@@ -1,0 +1,64 @@
+#!/bin/sh
+# AGiXT Telegram bot entrypoint (for per-bot start.sh)
+# Env expected (set by the Shepherd service):
+#   AGIXT_TG_DIR_REL, AGIXT_TG_CONFIG_PATH_REL, AGIXT_CREDENTIALS_FILE
+
+set -eu
+
+resolve_path() {
+  case "${1:-}" in
+    /*) printf '%s\n' "$1" ;;
+    ~/*) eval "printf '%s\n' $1" ;;
+    *)  printf '%s\n' "$HOME/$1" ;;
+  esac
+}
+
+: "${AGIXT_TG_DIR_REL:?missing AGIXT_TG_DIR_REL}"
+: "${AGIXT_TG_CONFIG_PATH_REL:?missing AGIXT_TG_CONFIG_PATH_REL}"
+: "${AGIXT_CREDENTIALS_FILE:?missing AGIXT_CREDENTIALS_FILE}"
+
+DIR="$(resolve_path "$AGIXT_TG_DIR_REL")"
+CFG="$(resolve_path "$AGIXT_TG_CONFIG_PATH_REL")"
+CRED="$(resolve_path "$AGIXT_CREDENTIALS_FILE")"
+VENV="$DIR/.venv"
+
+mkdir -p "$DIR"
+
+# venv
+python -m venv "$VENV" 2>/dev/null || python3 -m venv "$VENV"
+# shellcheck disable=SC1090
+. "$VENV/bin/activate"
+python -m pip install --upgrade pip wheel
+pip install agixtsdk python-telegram-bot==21.* requests
+
+# Load non-secret per-bot config (managed by Guix)
+if [ ! -f "$CFG" ]; then
+  echo "[agixt-bot] missing bot config: $CFG" >&2
+  exit 1
+fi
+# shellcheck disable=SC1090
+. "$CFG"
+
+# Load secrets (NOT managed by Guix)
+if [ ! -f "$CRED" ]; then
+  echo "[agixt-bot] missing credentials file: $CRED" >&2
+  exit 1
+fi
+# shellcheck disable=SC1090
+. "$CRED"
+
+# Required secrets
+: "${TELEGRAM_BOT_TOKEN:?Set TELEGRAM_BOT_TOKEN in $CRED}"
+: "${AGIXT_API_KEY:?Set AGIXT_API_KEY in $CRED}"
+
+# Export merged env for bot.py
+export TELEGRAM_BOT_TOKEN AGIXT_API_KEY AGIXT_BASE_URI AGIXT_AGENT AGIXT_CHAIN TELEGRAM_ALLOWED_USER_IDS
+
+# Run the bot
+if [ ! -f "$DIR/bot.py" ]; then
+  echo "[agixt-bot] bot.py not found at $DIR/bot.py" >&2
+  exit 1
+fi
+
+echo "[agixt-bot] starting bot in $DIR"
+exec python "$DIR/bot.py"

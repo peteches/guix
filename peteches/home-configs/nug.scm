@@ -24,6 +24,7 @@
   #:use-module (ice-9 popen)
   #:use-module (ice-9 textual-ports)
   #:use-module (peteches home-services ai)
+  #:use-module (peteches home-services agixt)
   #:use-module (peteches home-services desktop)
   #:use-module (peteches home-services emacs base)
   #:use-module (peteches home-services git)
@@ -108,6 +109,35 @@
 		     (password-store-dir "${HOME}/.local/share/password-store")))
 	   
 					;	   (service nyxt-service-type)
+
+	   (service home-agixt-backend-service-type
+		    (agixt-backend-configuration
+		     (instance-name "default")
+		     (base-uri "http://localhost:7437")
+		     (credentials-file ".config/agixt/cred-backend")
+		     (respawn? #t)))
+
+	   (service home-agixt-telegram-bots-service-type
+		    (agixt-telegram-bots-configuration
+		     (bots
+		      (list
+		       (agixt-telegram-bot-configuration
+			(name "leah")
+			(backend-instance-name "default")
+			(credentials-file ".config/agixt/cred-bot-leah")
+			(base-uri "http://localhost:7437")
+			(agent "AGiXT")
+			(chain "")
+			(allowed-user-ids '("7642100300")))
+		       (agixt-telegram-bot-configuration
+			(name "kim")
+			(backend-instance-name "default")
+			(credentials-file ".config/agixt/cred-bot-kim")
+			(base-uri "http://localhost:7437")
+			(agent "Secretary")
+			(chain "morning-briefing")
+			(allowed-user-ids '("7642100300")))))
+		     (respawn? #t)))	   
 	   
 	   (service home-openssh-service-type
 		    (home-openssh-configuration

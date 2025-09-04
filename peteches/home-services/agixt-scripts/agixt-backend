@@ -1,0 +1,77 @@
+#!/bin/sh
+# AGiXT backend entrypoint (for per-instance start.sh)
+# Env expected (set by the Shepherd service):
+#   AGIXT_DIR_REL, AGIXT_GIT_URL, AGIXT_GIT_BRANCH (may be empty)
+#   AGIXT_CREDENTIALS_FILE, AGIXT_BASE_URI
+
+set -eu
+
+resolve_path() {
+  case "${1:-}" in
+    /*) printf '%s\n' "$1" ;;
+    ~/*) eval "printf '%s\n' $1" ;;
+    *)  printf '%s\n' "$HOME/$1" ;;
+  esac
+}
+
+: "${AGIXT_DIR_REL:?missing AGIXT_DIR_REL}"
+: "${AGIXT_GIT_URL:?missing AGIXT_GIT_URL}"
+: "${AGIXT_CREDENTIALS_FILE:?missing AGIXT_CREDENTIALS_FILE}"
+: "${AGIXT_BASE_URI:=http://localhost:7437}"
+AGIXT_GIT_BRANCH="${AGIXT_GIT_BRANCH:-}"
+
+DIR="$(resolve_path "$AGIXT_DIR_REL")"
+CRED="$(resolve_path "$AGIXT_CREDENTIALS_FILE")"
+VENV="$DIR/.venv"
+
+mkdir -p "$DIR"
+
+# Clone or update
+if [ ! -d "$DIR/.git" ]; then
+  echo "[agixt] cloning $AGIXT_GIT_URL into $DIR"
+  rm -rf "$DIR"
+  git clone "$AGIXT_GIT_URL" "$DIR"
+else
+  echo "[agixt] updating repo in $DIR"
+  (cd "$DIR" && git pull --ff-only || true)
+fi
+
+# Optional explicit branch
+if [ -n "$AGIXT_GIT_BRANCH" ]; then
+  (cd "$DIR" && git checkout --quiet "$AGIXT_GIT_BRANCH")
+fi
+
+# Python venv
+cd "$DIR"
+python -m venv "$VENV" 2>/dev/null || python3 -m venv "$VENV"
+# shellcheck disable=SC1090
+. "$VENV/bin/activate"
+python -m pip install --upgrade pip wheel
+
+# Install requirements (repo-provided)
+if [ -f requirements.txt ]; then
+  pip install -r requirements.txt
+fi
+
+# Load secrets (NOT managed by Guix)
+if [ ! -f "$CRED" ]; then
+  echo "[agixt] missing credentials file: $CRED" >&2
+  exit 1
+fi
+# shellcheck disable=SC1090
+. "$CRED"
+
+# Ensure required secrets exist
+: "${AGIXT_API_KEY:?Set AGIXT_API_KEY in $CRED}"
+
+# Export for the child process
+export AGIXT_API_KEY
+export AGIXT_BASE_URI
+
+# Launch
+if [ -d agixt ]; then
+  cd agixt
+fi
+
+echo "[agixt] starting backend at ${AGIXT_BASE_URI}"
+exec python -u run-local.py
