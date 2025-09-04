@@ -180,7 +180,7 @@
 		       ;; Hyprland modules
 		       (modules-left  #("hyprland/workspaces" "hyprland/window"))
 		       (modules-center #("clock"))
-		       (modules-right #("backlight" "wireplumber#source" "wireplumber#sink" "cpu" "memory" "temperature" "network" "battery" "tray"))
+		       (modules-right #("wireplumber#source" "wireplumber#sink" "cpu" "memory" "temperature" "network" "tray"))
 
 		       ;; Module configs
 		       (modules-config base-waybar-modules-config)))))	  
