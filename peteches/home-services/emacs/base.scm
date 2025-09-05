@@ -10,6 +10,7 @@
   #:use-module (gnu packages guile-xyz)
   #:use-module (gnu packages rust-apps)
   #:use-module (gnu packages)
+  #:use-module (gnu packages commencement)
   #:use-module (gnu services shepherd)
   #:use-module (gnu services)
   #:use-module (guix gexp)
@@ -23,6 +24,8 @@
 	emacs-paredit
 	emacs-geiser
 	emacs-geiser-guile
+
+	gcc-toolchain ; to compile vterm / treesitter grammers
 
 	yarn ; for mcp servers
 	

@@ -73,6 +73,8 @@
 
 (setq ediff-window-setup-function 'ediff-setup-windows-plain)
 
+(require 'tsmark-core)
+
 (require 'peteches-abbrev)
 (require 'peteches-alert)
 (require 'peteches-auth-sources)
@@ -81,6 +83,9 @@
 (require 'peteches-golang)
 (require 'peteches-mcp)
 (require 'peteches-gptel)
+(require 'peteches-python)
+(require 'peteches-elisp)
+(require 'peteches-bash)
 (require 'peteches-magit)
 (require 'peteches-marginalia)
 (require 'peteches-orderless)
