@@ -73,11 +73,10 @@
 
 (setq ediff-window-setup-function 'ediff-setup-windows-plain)
 
-(require 'tsmark-core)
-
 (require 'peteches-abbrev)
 (require 'peteches-alert)
 (require 'peteches-auth-sources)
+(require 'peteches-combobulate)
 (require 'peteches-company)
 (require 'peteches-eshell)
 (require 'peteches-golang)

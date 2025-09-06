@@ -6,6 +6,7 @@
   #:use-module (gnu packages emacs-build)
   #:use-module (gnu packages emacs-xyz)
   #:use-module (gnu packages fonts)
+  #:use-module (gnu packages golang)
   #:use-module (gnu packages golang-apps)
   #:use-module (gnu packages guile-xyz)
   #:use-module (gnu packages rust-apps)
@@ -24,7 +25,7 @@
 	emacs-paredit
 	emacs-geiser
 	emacs-geiser-guile
-
+	emacs-combobulate
 	gcc-toolchain ; to compile vterm / treesitter grammers
 
 	yarn ; for mcp servers
@@ -77,6 +78,7 @@
 	
 	;; language servers
 	guile-lsp-server
+	go
 	gopls
 	sqls
 

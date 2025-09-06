@@ -5,12 +5,6 @@
 (with-eval-after-load 'geiser-guile
   (add-to-list 'geiser-guile-load-path "~/area_51/guix"))
 
-;; Guile/Scheme
-(add-hook 'scheme-mode-hook
-	  (lambda ()
-	    (require 'tsmark-backend-guile)
-	    (tsmark-mode 1)))
-
 ;; setup lsp stuff
 
 (add-hook 'scheme-mode-hook #'lsp)

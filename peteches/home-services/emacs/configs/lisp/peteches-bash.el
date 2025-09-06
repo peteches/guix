@@ -1,9 +1,4 @@
 ;; Shell (bash)
-(add-hook 'bash-ts-mode-hook
-	  (lambda ()
-	    (require 'tsmark-backend-sh)
-	    (tsmark-mode 1)))
-
 ;;; Install Bash Tree-sitter grammar
 ;;; Requires Emacs 29+
 

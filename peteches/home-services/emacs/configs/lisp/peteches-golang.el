@@ -715,9 +715,6 @@ With prefix arg ONLY-INSTALLED, limit to tools currently on PATH; otherwise upgr
                         (shell-quote-argument (peteches-go--project-root))
                         (peteches-go--race-flag))))
   (add-hook 'before-save-hook #'peteches-go-before-save nil t)
-    ;; tsmarks
-  (require 'tsmark-backend-go)
-  (tsmark-mode 1)
   (peteches-go--setup-company)
   (peteches-go--maybe-start-lsp)
   (peteches-go-minor-mode 1))
