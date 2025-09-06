@@ -77,7 +77,7 @@
     (mods "SUPER")
     (key "b")
     (dispatcher "exec")
-    (params "wofi-firefox.sh"))
+    (params "firefox-profile-launcher"))
 
    (bind
     (mods "SUPER")

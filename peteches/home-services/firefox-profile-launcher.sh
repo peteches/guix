@@ -1,24 +1,26 @@
 #!/bin/sh
-set -eu
+# Simple selector that reads a map file "<name>\t</path/to/wrapped/firefox>"
+# Map default location: ../share/firefox-wrappers.txt relative to this script.
+# Optional: set FIREFOX_WRAPPER_MAP to override. Optional config: ../share/firefox-launcher.cfg with wofi=...
 
-PROFILES_INI="$HOME/.mozilla/firefox/profiles.ini"
+selfdir="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
+mapf="${FIREFOX_WRAPPER_MAP:-"$selfdir/../share/firefox-wrappers.txt"}"
+cfg="${selfdir}/../share/firefox-launcher.cfg"
 
-if [ ! -f "$PROFILES_INI" ]; then
-  notify-send 'Firefox profiles' 'profiles.ini not found'
+wofi_cmd="wofi --dmenu --prompt 'Select Firefox Profile:'"
+[ -f "$cfg" ] && . "$cfg" 2>/dev/null
+
+choice="$1"; shift || true
+if [ -z "$choice" ]; then
+  # shellcheck disable=SC2162
+  names=$(cut -f1 "$mapf")
+  choice=$(printf "%s\n" $names | $wofi_cmd)
 fi
 
-# Build Name:Path list from profiles.ini
-choices=$(awk -F= '
-  /^\[Profile[0-9]+\]/{n="";p=""}
-  /^Name=/{n=$2}
-  /^Path=/{p=$2}
-  /^$/{if(n!=""&&p!=""){print n":"p}}
-  END{if(n!=""&&p!=""){print n":"p}}
-' "$PROFILES_INI")
+bin=$(awk -v n="$choice" -F'\t' '$1==n{print $2}' "$mapf")
+if [ -z "$bin" ]; then
+  echo "Unknown profile: $choice" >&2
+  exit 1
+fi
 
-[ -n "$choices" ] || { notify-send 'Firefox profiles' 'No profiles defined'; exit 1; }
-
-name=$(printf '%s\n' "$choices" | cut -d: -f1 | wofi --dmenu --prompt 'Select Firefox Profile:')
-[ -z "$name" ] && exit 0
-
-exec firefox -P "$name" --no-remote "$@"
+exec "$bin" -P "$choice" "$@"
