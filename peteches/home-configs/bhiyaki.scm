@@ -35,7 +35,8 @@
   #:use-module (peteches packages scripts)
   #:use-module (peteches home-configs hyprland)
   #:use-module (peteches home-configs mako)
-  #:use-module (peteches home-configs waybar))
+  #:use-module (peteches home-configs waybar)
+  #:use-module (peteches home-configs firefox))
 
 
 (define (get-ssh-host-key hosts)
@@ -156,60 +157,13 @@
 	   (service firefox-service-type
 		    (firefox-configuration
 		     ;; ----- two profiles
-		     (profiles
-		      (list
-		       (firefox-profile "Default" "default"
-					#:prefs '(("browser.startup.homepage" . "about:blank")))
-		       (firefox-profile "Other"   "other"
-					#:prefs '(("browser.startup.homepage" . "about:blank")))))
-		     (default-profile "Default")
+		     (profiles base-firefox-profiles)
 
 		     ;; ----- global prefs (merged into each profile; profile prefs override)
-		     (global-prefs
-		      '(
-			;; Privacy / fingerprinting / HTTPS
-			("privacy.resistFingerprinting"                         . #t)
-			("privacy.trackingprotection.enabled"                   . #t)
-			("privacy.trackingprotection.socialtracking.enabled"    . #t)
-			("dom.security.https_only_mode"                         . #t)
-
-			;; Cookies: 5 = Total Cookie Protection / partitioned cookies
-			("network.cookie.cookieBehavior"                        . 5)
-
-			;; Reduce passive leaks / speculation
-			("network.http.referer.XOriginPolicy"                   . 2)
-			("network.predictor.enabled"                            . #f)
-			("network.prefetch-next"                                . #f)
-			("network.dns.disablePrefetch"                          . #t)
-
-			;; Telemetry / studies / Pocket / suggestions
-			("toolkit.telemetry.enabled"                            . #f)
-			("toolkit.telemetry.unified"                            . #f)
-			("datareporting.healthreport.uploadEnabled"             . #f)
-			("app.shield.optoutstudies.enabled"                     . #f)
-			("experiments.enabled"                                  . #f)
-			("browser.ping-centre.telemetry"                        . #f)
-			("extensions.pocket.enabled"                            . #f)
-			("browser.newtabpage.activity-stream.feeds.section.topstories" . #f)
-			("browser.urlbar.quicksuggest.enabled"                  . #f)
-			("browser.urlbar.suggest.quicksuggest.sponsored"        . #f)
-			("browser.urlbar.suggest.quicksuggest.nonsponsored"     . #f)
-			("browser.urlbar.suggest.trending"                      . #f)
-
-			;; Safe browsing remote checks (set to #f if you prefer fewer pings)
-			;; ("browser.safebrowsing.downloads.remote.enabled"     . #f)
-			))
+		     (global-prefs base-firefox-global-prefs)
 
 		     ;; ----- global extensions (same XPI used for all profiles)
-		     (global-extensions
-		      `(
-			;; uBlock Origin
-			("uBlock0@raymondhill.net"
-			 . ,(local-file "./firefox-extensions/uBlock0_1.65.0.firefox.signed.xpi"))
-
-       			;; PassFF (Password Store)
-			("passff@invicem.pro"
-			 . ,(local-file "./firefox-extensions/passff_v1.22.1.xpi"))))))
+		     (global-extensions base-firefox-global-extensions)))
 	  
 	  (service home-emacs-base-service-type)
 	  (service home-hyprland-service-type (home-hyprland-configuration
