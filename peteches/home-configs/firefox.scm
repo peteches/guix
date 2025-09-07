@@ -52,4 +52,4 @@
 
     ;; PassFF (Password Store)
     ("passff@invicem.pro"
-     . ,(local-file "./firefox-extensions/passff_v1.22.1.xpi"))))
+     . ,(local-file "./firefox-extensions/passff-1.22.1.xpi"))))

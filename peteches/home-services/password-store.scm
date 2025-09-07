@@ -6,6 +6,7 @@
   #:use-module (shepherd service)
   #:use-module (gnu packages version-control)
   #:use-module (gnu packages password-utils)
+  #:use-module (gnu packages browser-extensions)
   #:use-module (guix gexp)
   #:export (home-password-store-configuration))
 
@@ -36,6 +37,7 @@
 (define (home-password-store-profile-service-type config)
   (list password-store
 	pass-otp
+	passff-host
 	git))
 
 (define (home-password-store-mcron-service-type config)
