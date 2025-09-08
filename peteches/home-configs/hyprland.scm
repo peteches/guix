@@ -3,8 +3,7 @@
   #:use-module (peteches home-services hyprland))
 
 (define-public base-hyprland-env-vars
-  `(("XCURSOR_SIZE" . "36")
-    ("QT_QPA_PLATFORMTHEME" . "qt6ct")
+  `(("QT_QPA_PLATFORMTHEME" . "qt6ct")
     ("NVD_BACKEND" . "direct+")
     ("XDG_CURRENT_DESKTOP" . "Hyprland")
     ("XDG_SESSION_TYPE" . "wayland")

@@ -9,12 +9,14 @@
   #:use-module (gnu packages compression)
   #:use-module (gnu packages rust-apps)
   #:use-module (gnu packages gnupg)
+  #:use-module (gnu packages gnome-xyz)
   #:use-module (gnu packages terminals)
   #:use-module (gnu packages version-control)
   #:use-module (gnu packages web)
   #:use-module (gnu packages xdisorg)
   #:use-module (gnu packages gawk)
   #:use-module (gnu packages wm)
+  #:use-module (gnu packages qt)
   #:use-module (gnu packages password-utils)
   #:use-module (nongnu packages mozilla)
   #:use-module (gnu packages aidc)
@@ -53,8 +55,11 @@
    eza
    git
    gnupg
+   pinentry-qt
+   qtwayland
    jq
    ripgrep
+   bibata-cursor-theme
    glibc-locales
    v4l-utils
    pre-commit
@@ -121,6 +126,7 @@
 	   
 	   (service home-gpg-agent-service-type
 		    (home-gpg-agent-configuration
+		     (pinentry-program (file-append pinentry-qt "/bin/pinentry-qt"))
 		     (extra-content "allow-emacs-pinentry")
 		     (ssh-support? #t)))
 	   
@@ -172,7 +178,10 @@
 					       (monitors (list
 	     						  (monitor
 							   (scale 1.5))))
-					       (env-vars base-hyprland-env-vars)
+					       (env-vars (append
+							  '(("XCURSOR_THEME" . "Bibata-Modern-Classic")
+							    ("XCURSOR_SIZE" . "64"))
+							  base-hyprland-env-vars))
 					       (variables base-hyprland-variables)
 					       (binds (append
 						       base-hyprland-default-application-launcher-binds
