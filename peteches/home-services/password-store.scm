@@ -44,7 +44,9 @@
   (list (push-pull-password-store-job config)))
 
 (define (home-password-store-environment-variables-service-type config)
-  `(("PASSWORD_STORE_DIR" . ,(home-password-store-configuration-password-store-dir config))))
+  `(("PASSWORD_STORE_DIR" . ,(home-password-store-configuration-password-store-dir config))
+    ("PASSWORD_STORE_ENABLE_EXTENSIONS" . "true")
+    ("PASSWORD_STORE_EXTENSIONS_DIR" . ,(string-append (getenv "HOME") "/.guix-home/profile/lib/password-store/extensions"))))
 
 (define-public home-password-store-service-type
   (service-type (name 'peteches-passwords)
