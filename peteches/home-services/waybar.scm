@@ -295,7 +295,16 @@
      "#memory     { border-color: rgba(254,172,208,0.35); }\n"
      "#temperature{ border-color: rgba(255,95,89,0.35); }\n\n"
 
-     "#tray { padding-right: 10px; }\n")))
+     "#tray { padding-right: 10px; }\n"
+     "#peteches-nvidia {padding: 0 8px; }\n"
+
+     "#peteches-nvidia.ok {color: #c0e8a0; }\n"
+
+     "#peteches-nvidia.warning {color: #ffd47e; }\n"
+     
+     "#peteches-nvidia.critical {color: #ff6b6b; }\n"
+
+     )))
 
 
 
@@ -309,6 +318,7 @@
 
 (define (waybar-files-service config)
   (list
+   `("waybar/scripts/nvidia.py" ,(local-file "waybar-scripts/nvidia.py" #:recursive? #t))
    `("waybar/config.jsonc" ,(mixed-text-file "config.jsonc"
 					     (serialize-waybar-config
 					      (waybar-configuration-config config))))

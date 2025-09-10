@@ -18,6 +18,15 @@
 				(cons "max-length" 80)
 				(cons "separate-outputs" #f)))
 
+			 ;; Nvidia monitor
+			 (cons "peteches/nvidia"
+			       (list
+				(cons "exec" "~/.config/waybar/scripts/nvidia.py")
+				(cons "return-type" "json")
+				(cons "interval" "5")
+				(cons "tooltip" "true")
+				(cons "on-click" "alacritty -e nvidia-smi")))
+			 
 			 ;; Center clock
 			 (cons "clock"
 			       (list
