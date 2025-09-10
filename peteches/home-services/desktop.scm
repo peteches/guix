@@ -12,6 +12,7 @@
   #:use-module (gnu packages video)
   #:use-module (gnu packages wm)
   #:use-module (gnu packages linux)
+  #:use-module (gnu packages pulseaudio)
   #:use-module (gnu packages xdisorg)
   #:use-module (gnu packages version-control)
   #:use-module (gnu packages rust-apps)
@@ -22,7 +23,9 @@
 
 ;; 1) Desktop packages as before
 (define (home-desktop-profile-service _config)
-  (list shell-scripts helvum dbus))   ; ensure dbus binary is in profile
+  (list shell-scripts helvum dbus
+        pipewire wireplumber
+        alsa-utils pulseaudio))  
 
 ;; 2) User D-Bus session bus as a Shepherd service.
 ;;    We provision it as 'dbus' because home-pipewire requires that.
@@ -37,15 +40,7 @@
          (list #$(file-append dbus "/bin/dbus-daemon")
                "--session"              ; session bus (reads system config)
                "--nofork"               ; let shepherd supervise it
-               "--print-address")       ; helpful for logs
-         ;; Make sure $XDG_RUNTIME_DIR exists; dbus defaults to $XDG_RUNTIME_DIR/bus.
-         #:environment-variables
-         (let* ((uid   (number->string (getuid)))
-                (xr    (or (getenv "XDG_RUNTIME_DIR")
-                           (string-append "/run/user/" uid))))
-           (list (string-append "XDG_RUNTIME_DIR=" xr)
-                 "DBUS_SESSION_BUS_ADDRESS="))) ; let libdbus default to $XDG_RUNTIME_DIR/bus
-     )
+               "--print-address")))
      (stop #~(make-kill-destructor))
      (respawn? #t))))
 

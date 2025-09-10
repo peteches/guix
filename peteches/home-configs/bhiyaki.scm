@@ -90,6 +90,9 @@
 				       ("editor" . "emacs-client --create-frame")
 				       ("hooksPath" . "~/.config/git/hooks"))))
 			    (git-section
+			     (name "url \"ssh://git@github.com:\"")
+			     (config '(("insteadOf" . "https://github.com/"))))
+			    (git-section
 			     (name "pull")
 			     (config '(("ff" . "true")
 				       ("rebase" . "true"))))

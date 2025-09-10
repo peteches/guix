@@ -11,7 +11,8 @@
 	     (gnu packages admin)
              (gnu packages wm)
              (gnu packages glib)         ; provides 'dbus' (dbus-run-session)
-             (guix gexp))
+             (guix gexp)
+	     (peteches systems network-mounts))
 
 (use-service-modules base linux cups desktop networking ssh xorg)
 
@@ -30,15 +31,26 @@
                 (home-directory "/home/peteches")
                 (supplementary-groups '("wheel" "netdev" "audio" "video")))
                %base-user-accounts))
-
+ ;; make locales available system-wide
+ (packages
+  (append
+   (list glibc-locales)         ; <- important
+   %base-packages))
+ 
  (services
   (append
    (list
-
     ;; Your original extras
     (service openssh-service-type)
     (service tor-service-type)
-    (service gpm-service-type))
+    (service gpm-service-type)
+    ;; add near your other services; requires (guix gexp) and (use-service-modules base)
+    (simple-service 'system-locale
+                    etc-service-type
+                    (list
+                     `("profile.d/00-locale.sh"
+                       ,(plain-file "00-locale.sh"
+                                    "export GUIX_LOCPATH=/run/current-system/profile/lib/locale\n")))))
    (modify-services %desktop-services
 		    (delete gdm-service-type))
    (list
@@ -54,8 +66,8 @@
 		 (terminal-switch #t)
 		 (default-session-command
  		   (greetd-agreety-session
-                      (command (file-append dbus "/bin/dbus-run-session"))
-		      (command-args (list "Hyprland"))))))))))))
+                    (command (file-append dbus "/bin/dbus-run-session"))
+		    (command-args (list "Hyprland"))))))))))))
 
  (bootloader (bootloader-configuration
 	      (bootloader grub-efi-bootloader)
@@ -69,13 +81,15 @@
 	 (type luks-device-mapping))))
 
  (file-systems
-  (cons* (file-system
-	  (mount-point "/boot/efi")
-	  (device (uuid "B6CE-8818" 'fat32))
-	  (type "vfat"))
-	 (file-system
-	  (mount-point "/")
-	  (device "/dev/mapper/cryptroot")
-	  (type "ext4")
-	  (dependencies mapped-devices))
-	 %base-file-systems)))
+  (cons*
+   scoreplay-cifs-mount
+   (file-system
+    (mount-point "/boot/efi")
+    (device (uuid "B6CE-8818" 'fat32))
+    (type "vfat"))
+   (file-system
+    (mount-point "/")
+    (device "/dev/mapper/cryptroot")
+    (type "ext4")
+    (dependencies mapped-devices))
+   %base-file-systems)))
