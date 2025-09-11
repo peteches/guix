@@ -14,6 +14,7 @@
   #:use-module (gnu packages xdisorg)
   #:use-module (gnu packages gawk)
   #:use-module (gnu packages wm)
+  #:use-module (gnu packages qt)
   #:use-module (gnu packages password-utils)
   #:use-module (nongnu packages mozilla)
   #:use-module (guix packages)
@@ -27,6 +28,7 @@
   #:use-module (peteches home-services agixt)
   #:use-module (peteches home-services desktop)
   #:use-module (peteches home-services emacs base)
+  #:use-module (peteches home-services ezlocalai)
   #:use-module (peteches home-services git)
   #:use-module (peteches home-services firefox)
   #:use-module (peteches home-services hyprland)
@@ -37,6 +39,7 @@
   #:use-module (peteches home-services wofi)
   #:use-module (peteches packages scripts)
   #:use-module (peteches home-configs hyprland)
+  #:use-module (peteches home-configs firefox)
   #:use-module (peteches home-configs mako)
   #:use-module (peteches home-configs waybar))
 
@@ -54,7 +57,8 @@
    gnupg
    jq
    ripgrep
-   pinentry-qt5
+   pinentry-qt
+   qtwayland
    pre-commit
    ;; shell-scripts
    wofi gawk grimblast clipman zbar pass-otp wf-recorder ;; these should be deps of the shell-scripts package but doesn't work
@@ -64,22 +68,15 @@
   (append (list
 	   (service firefox-service-type
 		    (firefox-configuration
-		     (profiles
-		      (list
-                       (firefox-profile-decl
-			(name "Work") (id "work")
-			(prefs `(("browser.startup.homepage" . "about:blank"))))
-		       (firefox-profile-decl
-			(name "Other") (id "other"))
-                       (firefox-profile-decl
-			(name "Personal") (id "personal")
-			(prefs `(("dom.security.https_only_mode" . #t)))))
-		      )
-		     (global-extensions
-		      `(("any@darkreader.org" .
-			 ,(local-file "./firefox-extensions/darkreader-firefox-v4.9.110.xpi"))
-			("uBlock0@raymondhill.net" .
-			 ,(local-file "./firefox-extensions/uBlock0_1.65.0.firefox.signed.xpi"))))))
+		     ;; ----- two profiles
+		     (profiles base-firefox-profiles)
+
+		     ;; ----- global prefs (merged into each profile; profile prefs override)
+		     (global-prefs base-firefox-global-prefs)
+
+		     ;; ----- global extensions (same XPI used for all profiles)
+		     (global-extensions base-firefox-global-extensions)))
+
 	   (service ai-service-type '())
 	   (service home-mako-service-type
 		    base-mako-config)
@@ -108,15 +105,70 @@
 		     (repo-uri "git@github.com:peteches/password-store.git")
 		     (password-store-dir "${HOME}/.local/share/password-store")))
 	   
-					;	   (service nyxt-service-type)
+	   
+	   (service ezlocalai-direct-home-service-type
+		    (ezlocalai-direct-home-configuration
+		     ;; keep ports if you want the demo UI; AGiXT only needs the API on 8091
+		     (http-port 8091)
+		     (ui-port 8502)
+		     ;; auto-update the venv packages on restart
+		     (auto-update? #t)
+		     ;; write non-secret env to ~/.config/ezlocalai/ezlocalai.env
+		     (env-overrides
+		      (list
+		       ;; LLM selection (fast + high-quality)
+		       (cons "DEFAULT_MODEL"          "dolphin-2.9.2-qwen2-7b")
+		       (cons "LLM_REPO"               "QuantFactory/dolphin-2.9.2-qwen2-7b-GGUF")
+		       (cons "LLM_FILE"               "dolphin-2.9.2-qwen2-7b.Q5_K_M.gguf") ; good speed/quality tradeoff
+
+		       ;; llama.cpp runtime knobs (let the GPU eat)
+		       (cons "N_GPU_LAYERS"           "999")     ; offload all layers if possible
+		       (cons "N_CTX"                  "8192")    ; long context (raise if you want, e.g. 16384)
+		       (cons "N_BATCH"                "1024")    ; larger batch = faster on big GPUs
+		       (cons "CACHE_TYPE_K"           "f16")     ; faster KV cache on GPU
+		       (cons "CACHE_TYPE_V"           "f16")
+		       (cons "MAIN_GPU"               "0")
+		       (cons "CUDA_VISIBLE_DEVICES"   "0")
+
+		       ;; speech (faster-whisper on GPU)
+		       (cons "ASR_MODEL"              "large-v3")
+		       (cons "ASR_DEVICE"             "cuda")
+		       (cons "ASR_COMPUTE_TYPE"       "float16")
+
+		       ;; Hugging Face cache to ezlocalai state (keeps things tidy)
+		       (cons "HF_HOME"                "$HOME/.local/share/ezlocalai/hf")
+		       (cons "HF_HUB_DISABLE_TELEMETRY" "1")
+
+		       ;; quiet / stability
+		       (cons "TOKENIZERS_PARALLELISM" "false")
+		       (cons "PYTORCH_CUDA_ALLOC_CONF" "expandable_segments:True,max_split_size_mb:128")))))
 
 	   (service home-agixt-backend-service-type
 		    (agixt-backend-configuration
 		     (instance-name "default")
-		     (base-uri "http://localhost:7437")
 		     (credentials-file ".config/agixt/cred-backend")
+		     (base-uri "http://localhost:7437")
+		     (workdir ".local/share")
 		     (respawn? #t)))
 
+	   ;; web app (Streamlit)
+	   (service home-agixt-webui-service-type
+		    (agixt-webui-configuration
+		     (instance-name "default") ; requires agixt-default
+		     (base-uri "http://localhost:7437")
+		     (credentials-file ".config/agixt/cred-backend")
+		     (port 8501)
+		     (respawn? #t)))
+
+	   ;; chat client (separate port; same UI by default)
+	   (service home-agixt-chatui-service-type
+		    (agixt-chatui-configuration
+		     (instance-name "default")
+		     (base-uri "http://localhost:7437")
+		     (credentials-file ".config/agixt/cred-backend")
+		     (port 3437)
+		     (respawn? #t)))
+	   
 	   (service home-agixt-telegram-bots-service-type
 		    (agixt-telegram-bots-configuration
 		     (bots
@@ -153,7 +205,7 @@
 
 	   (service home-gpg-agent-service-type
 		    (home-gpg-agent-configuration
-		     (pinentry-program  (file-append pinentry-qt5 "/bin/pinentry"))
+		     (pinentry-program  (file-append pinentry-qt "/bin/pinentry"))
 		     (extra-content
 		      (string-append
 		       "allow-emacs-pinentry\n"

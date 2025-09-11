@@ -33,16 +33,11 @@
   (list
    (shepherd-service
      (provision '(dbus))
-     (documentation "User D-Bus session bus")
-     (requirement '()) ; none
-     (start
-      #~(make-forkexec-constructor
-         (list #$(file-append dbus "/bin/dbus-daemon")
-               "--session"              ; session bus (reads system config)
-               "--nofork"               ; let shepherd supervise it
-               "--print-address")))
-     (stop #~(make-kill-destructor))
-     (respawn? #t))))
+     (documentation "Virtual: mark dbus ready when dbus-run-session is up.")
+     (requirement '())
+     (start #~(lambda _ #t))
+     (one-shot? #t))))
+
 
 ;; 3) PipeWire (with Pulse shim) through Home’s sound service.
 (define (home-desktop-pipewire-service _config)

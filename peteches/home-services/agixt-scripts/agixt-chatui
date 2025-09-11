@@ -1,0 +1,81 @@
+#!/bin/sh
+# AGiXT Chat UI entrypoint (defaults to Streamlit UI on a different port)
+set -eu
+
+# PATH for Guix Home + system profiles
+: "${PATH:=$HOME/.guix-home/profile/bin:$HOME/.guix-home/profile/sbin:$HOME/.guix-profile/bin:$HOME/.guix-profile/sbin:/run/current-system/profile/bin:/run/current-system/profile/sbin}"
+export PATH
+
+# TLS / CA bundle hints
+: "${SSL_CERT_FILE:=$HOME/.guix-home/profile/etc/ssl/certs/ca-certificates.crt}"
+[ -r "$SSL_CERT_FILE" ] || SSL_CERT_FILE="$HOME/.guix-profile/etc/ssl/certs/ca-certificates.crt"
+[ -r "$SSL_CERT_FILE" ] || SSL_CERT_FILE="/etc/ssl/certs/ca-certificates.crt"
+export SSL_CERT_FILE GIT_SSL_CAINFO="$SSL_CERT_FILE" CURL_CA_BUNDLE="$SSL_CERT_FILE" PIP_CERT="$SSL_CERT_FILE"
+
+# Expected env (set by Shepherd); provide defaults
+: "${AGIXT_DIR_REL:?missing AGIXT_DIR_REL}"
+: "${AGIXT_CREDENTIALS_FILE:?missing AGIXT_CREDENTIALS_FILE}"
+: "${AGIXT_BASE_URI:=http://localhost:7437}"
+: "${AGIXT_CHATUI_GIT_URL:=https://github.com/AGiXT/streamlit}"
+: "${AGIXT_CHATUI_PORT:=3437}"
+: "${AGIXT_CHAT_ENTRY:=Main.py}"
+
+# Resolve relative/tilde paths to absolute
+resolve() {
+  case "${1:-}" in
+    /*) printf '%s\n' "$1" ;;
+    ~/*) eval "printf '%s\n' $1" ;;
+    *)  printf '%s\n' "$HOME/$1" ;;
+  esac
+}
+
+DIR="$(resolve "$AGIXT_DIR_REL")"
+CRED="$(resolve "$AGIXT_CREDENTIALS_FILE")"
+UI_DIR="$DIR/chat-ui"
+VENV="$DIR/.venv"
+PY="$VENV/bin/python"
+
+# Create venv if missing
+if [ ! -x "$PY" ]; then
+  umask 022
+  python3 -m venv "$VENV" 2>/dev/null || python -m venv "$VENV"
+fi
+
+# Load API key if provided in a credentials file
+if [ -f "$CRED" ]; then
+  # shellcheck disable=SC1090
+  . "$CRED"
+fi
+export AGIXT_BASE_URI
+[ -n "${AGIXT_API_KEY:-}" ] && export AGIXT_API_KEY
+
+# Provide common alias envs some UI builds expect
+export AGIXT_URI="$AGIXT_BASE_URI"
+export API_URL="$AGIXT_BASE_URI"
+export AGIXT_API_BASE="$AGIXT_BASE_URI"
+export BACKEND_URL="$AGIXT_BASE_URI"
+
+# Ensure work dir exists
+mkdir -p "$DIR"
+
+# Clone / update Chat UI repo
+if [ ! -d "$UI_DIR/.git" ]; then
+  echo "[agixt-chatui] cloning $AGIXT_CHATUI_GIT_URL -> $UI_DIR"
+  rm -rf "$UI_DIR"
+  git clone "$AGIXT_CHATUI_GIT_URL" "$UI_DIR"
+else
+  echo "[agixt-chatui] updating UI in $UI_DIR"
+  (cd "$UI_DIR" && git pull --ff-only || true)
+fi
+
+# Install UI deps
+if [ -f "$UI_DIR/requirements.txt" ]; then
+  "$PY" -m pip install --upgrade pip wheel
+  "$PY" -m pip install -r "$UI_DIR/requirements.txt"
+fi
+
+# Run from the repo so Streamlit can load your .streamlit/secrets.toml
+cd "$UI_DIR"
+exec "$VENV/bin/streamlit" run "$AGIXT_CHAT_ENTRY" \
+  --server.port "$AGIXT_CHATUI_PORT" \
+  --server.headless true

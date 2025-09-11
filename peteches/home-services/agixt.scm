@@ -16,7 +16,10 @@
   #:use-module (guix build-system copy)
   #:use-module ((guix licenses) #:prefix license:)
   #:use-module (gnu packages)
+  #:use-module (gnu packages base)
   #:use-module (gnu packages bash)
+  #:use-module (gnu packages node)
+  #:use-module (gnu packages nss)
   #:use-module (gnu packages version-control)
   #:use-module (gnu packages python)
   #:use-module (gnu packages python-build)
@@ -25,7 +28,11 @@
   #:use-module (srfi srfi-13)         ; string-join
   #:export (home-agixt-backend-service-type
             home-agixt-telegram-bots-service-type
+	    home-agixt-webui-service-type
+	    home-agixt-chatui-service-type
             agixt-backend-configuration
+	    agixt-webui-configuration
+	    agixt-chatui-configuration
             agixt-telegram-bot-configuration
             agixt-telegram-bots-configuration))
 
@@ -43,7 +50,9 @@
        (list #:install-plan
              #~'(
                  ("agixt-backend"       "bin/")            ; executable
-                 ("agixt-telegram-bot"  "bin/")            ; executable
+		 ("agixt-webui"         "bin/")            ; executable
+		 ("agixt-chatui"        "bin/")            ; executable
+		 ("agixt-telegram-bot"  "bin/")            ; executable
                  ("telegram-bot.py"     "libexec/agixt/")  ; helper
                  )))
       (home-page "https://example.invalid/agixt-home-scripts")
@@ -117,42 +126,141 @@
 (define (agixt-bots-respawn? x) (boolean? x))
 (define (serialize-agixt-bots-respawn x) x)
 
+(define (agixt-port? x) (and (integer? x) (<= 1 x 65535)))
+(define (serialize-agixt-port x) x)
+
+(define (agixt-webui-repo-url? x) (and (string? x) (not (string-null? x))))
+(define (serialize-agixt-webui-repo-url x) x)
+
+(define (agixt-chatui-repo-url? x) (and (string? x) (not (string-null? x))))
+(define (serialize-agixt-chatui-repo-url x) x)
+
+(define (agixt-chatui-entry? x) (and (string? x) (not (string-null? x))))
+(define (serialize-agixt-chatui-entry x) x)
+
 ;; -----------------------------------------------------------------------------
 ;; Backend configuration + services
 ;; -----------------------------------------------------------------------------
-(define-configuration agixt-backend-configuration
+;; Web UI
+(define-configuration agixt-webui-configuration
   (instance-name
     (agixt-instance-name "default")
-    "Shepherd provision will be agixt-<instance>."
+    "Backend instance this UI is associated with. Provision: agixt-webui-<instance>."
      (serializer serialize-agixt-instance-name))
-  (agixt-git-url
-    (agixt-git-url "https://github.com/Josh-XT/AGiXT")
-    "Git repository URL for AGiXT."
-     (serializer serialize-agixt-git-url))
-  (agixt-git-branch
-    (agixt-git-branch #f)
-    "Optional branch to checkout."
-     (serializer serialize-agixt-git-branch))
   (base-uri
     (agixt-base-uri "http://localhost:7437")
     "AGiXT API base URI."
      (serializer serialize-agixt-base-uri))
   (credentials-file
-    (agixt-credentials-file ".config/agixt/credentials")
-    "Path to a POSIX shell file containing AGIXT_API_KEY (NOT managed by Guix)."
+    (agixt-credentials-file ".config/agixt/cred-backend")
+    "Shell file with AGIXT_API_KEY (NOT managed by Guix)."
      (serializer serialize-agixt-credentials-file))
   (workdir
     (agixt-workdir ".local/share")
     "Base working directory relative to $HOME."
      (serializer serialize-agixt-workdir))
+  (port
+    (agixt-port 8501)
+    "Streamlit port for the Web UI."
+     (serializer serialize-agixt-port))
+  (webui-git-url
+    (agixt-webui-repo-url "https://github.com/AGiXT/streamlit")
+    "Repository URL for the Streamlit UI."
+     (serializer serialize-agixt-webui-repo-url))
   (respawn?
     (agixt-backend-respawn #t)
-    "Whether Shepherd auto-respawns the backend."
+    "Whether Shepherd auto-respawns."
      (serializer serialize-agixt-backend-respawn)))
+
+;; Chat UI
+(define-configuration agixt-chatui-configuration
+  (instance-name
+    (agixt-instance-name "default")
+    "Backend instance this Chat UI is associated with. Provision: agixt-chatui-<instance>."
+     (serializer serialize-agixt-instance-name))
+  (base-uri
+    (agixt-base-uri "http://localhost:7437")
+    "AGiXT API base URI."
+     (serializer serialize-agixt-base-uri))
+  (credentials-file
+    (agixt-credentials-file ".config/agixt/cred-backend")
+    "Shell file with AGIXT_API_KEY (NOT managed by Guix)."
+     (serializer serialize-agixt-credentials-file))
+  (workdir
+    (agixt-workdir ".local/share")
+    "Base working directory relative to $HOME."
+     (serializer serialize-agixt-workdir))
+  (port
+    (agixt-port 3437)
+    "Port for the Chat UI."
+     (serializer serialize-agixt-port))
+  (chatui-git-url
+    (agixt-chatui-repo-url "https://github.com/AGiXT/streamlit")
+    "Repository URL for the Chat UI (defaults to Streamlit; you can change it later)."
+     (serializer serialize-agixt-chatui-repo-url))
+  (chat-entry
+    (agixt-chatui-entry "Main.py")
+    "Entry file within the Chat UI repository (e.g., Main.py)."
+     (serializer serialize-agixt-chatui-entry))
+  (respawn?
+    (agixt-bots-respawn #t)
+    "Whether Shepherd auto-respawns."
+     (serializer serialize-agixt-bots-respawn)))
+
+(define (agixt-webui-home-files cfg)
+  (let* ((inst (agixt-webui-configuration-instance-name cfg))
+         (wd   (agixt-webui-configuration-workdir cfg)))
+    (list
+     (list (string-append wd "/agixt-webui-" inst "/start.sh")
+           (file-append agixt-scripts "/bin/agixt-webui")))))
+
+(define (agixt-chatui-home-files cfg)
+  (let* ((inst (agixt-chatui-configuration-instance-name cfg))
+         (wd   (agixt-chatui-configuration-workdir cfg)))
+    (list
+     (list (string-append wd "/agixt-chatui-" inst "/start.sh")
+           (file-append agixt-scripts "/bin/agixt-chatui")))))
+
+(define (agixt-webui-packages _)
+  (list agixt-scripts bash git curl python python-pip coreutils nss-certs grep sed findutils))
+
+(define (agixt-chatui-packages _)
+  (list agixt-scripts bash git curl python python-pip coreutils nss-certs grep sed findutils))
+
+
+(define-configuration agixt-backend-configuration
+  (instance-name
+   (agixt-instance-name "default")
+   "Shepherd provision will be agixt-<instance>."
+   (serializer serialize-agixt-instance-name))
+  (agixt-git-url
+   (agixt-git-url "https://github.com/Josh-XT/AGiXT")
+   "Git repository URL for AGiXT."
+   (serializer serialize-agixt-git-url))
+  (agixt-git-branch
+   (agixt-git-branch #f)
+   "Optional branch to checkout."
+   (serializer serialize-agixt-git-branch))
+  (base-uri
+   (agixt-base-uri "http://localhost:7437")
+   "AGiXT API base URI."
+   (serializer serialize-agixt-base-uri))
+  (credentials-file
+   (agixt-credentials-file ".config/agixt/credentials")
+   "Path to a POSIX shell file containing AGIXT_API_KEY (NOT managed by Guix)."
+   (serializer serialize-agixt-credentials-file))
+  (workdir
+   (agixt-workdir ".local/share")
+   "Base working directory relative to $HOME."
+   (serializer serialize-agixt-workdir))
+  (respawn?
+   (agixt-backend-respawn #t)
+   "Whether Shepherd auto-respawns the backend."
+   (serializer serialize-agixt-backend-respawn)))
 
 (define (agixt-backend-packages _cfg)
   ;; Add our helper package + runtime deps to the user profile.
-  (list agixt-scripts bash git curl python python-pip))
+  (list agixt-scripts bash git curl node coreutils grep sed findutils nss-certs python python-pip))
 
 ;; Files via home-files-service-type: list of ("DEST" FILE-LIKE)
 (define (agixt-backend-home-files cfg)
@@ -164,30 +272,60 @@
 
 (define (agixt-backend-shepherd-services cfg)
   (let* ((inst      (agixt-backend-configuration-instance-name cfg))
-         (git-url   (agixt-backend-configuration-agixt-git-url cfg))
-         (git-branch (or (agixt-backend-configuration-agixt-git-branch cfg) ""))
-         (base      (agixt-backend-configuration-base-uri cfg))
-         (cred      (agixt-backend-configuration-credentials-file cfg))
-         (resp      (agixt-backend-configuration-respawn? cfg))
-         (wd        (agixt-backend-configuration-workdir cfg))
-         (prov      (string->symbol (string-append "agixt-" inst)))
-         (logf      (string-append "$HOME/" wd "/agixt-" inst "/agixt.log"))
-         (start     (string-append "sh \"$HOME/" wd "/agixt-" inst "/start.sh\""))
-         (dir-rel   (string-append wd "/agixt-" inst)))
+	 (git-url   (agixt-backend-configuration-agixt-git-url cfg))
+	 (git-branch (or (agixt-backend-configuration-agixt-git-branch cfg) ""))
+	 (base      (agixt-backend-configuration-base-uri cfg))
+	 (cred      (agixt-backend-configuration-credentials-file cfg))
+	 (resp      (agixt-backend-configuration-respawn? cfg))
+	 (wd        (agixt-backend-configuration-workdir cfg))
+	 (prov      (string->symbol (string-append "agixt-backend-" inst)))
+	 ;; what we exec
+	 (start-cmd (string-append "sh \"$HOME/" wd "/agixt-" inst "/start.sh\""))
+	 ;; values passed into the child env
+	 (dir-rel   (string-append wd "/agixt-" inst))
+	 (env-vars  (list (string-append "AGIXT_DIR_REL=" dir-rel)
+                          (string-append "AGIXT_GIT_URL=" git-url)
+                          (string-append "AGIXT_GIT_BRANCH=" git-branch)
+                          (string-append "AGIXT_BASE_URI=" base)
+                          (string-append "AGIXT_CREDENTIALS_FILE=" cred))))
     (list
      (shepherd-service
       (provision (list prov))
       (documentation (string-append "AGiXT backend (" inst ")"))
-      (start #~(make-forkexec-constructor
-                (list #$(file-append bash "/bin/sh") "-lc" #$start)
-                #:environment-variables
-                (list
-                 (string-append "AGIXT_DIR_REL=" #$dir-rel)
-                 (string-append "AGIXT_GIT_URL=" #$git-url)
-                 (string-append "AGIXT_GIT_BRANCH=" #$git-branch)
-                 (string-append "AGIXT_BASE_URI=" #$base)
-                 (string-append "AGIXT_CREDENTIALS_FILE=" #$cred))
-                #:log-file #$logf))
+      (start
+       #~(let* ((home      (or (getenv "HOME") "."))
+		(start-path (string-append home "/" #$dir-rel "/start.sh"))
+		(log-path   (string-append home "/" #$dir-rel "/agixt.log"))
+		;; Guix Home puts user packages here; include system as fallback.
+		(path       (string-append home "/.guix-home/profile/bin:"
+					   home "/.guix-home/profile/sbin:"
+					   home "/.guix-profile/bin:"
+					   home "/.guix-profile/sbin:"
+					   "/run/current-system/profile/bin:"
+					   "/run/current-system/profile/sbin"))
+		(ca-home (string-append home "/.guix-home/profile/etc/ssl/certs/ca-certificates.crt"))
+		(ca-user (string-append home "/.guix-profile/etc/ssl/certs/ca-certificates.crt"))
+		(ca-sys  "/etc/ssl/certs/ca-certificates.crt")
+		(caf     (cond ((access? ca-home R_OK) ca-home)
+                               ((access? ca-user R_OK) ca-user)
+                               (else ca-sys))))
+	   (make-forkexec-constructor
+	    ;; Run the script directly (shebang points to store bash).
+	    (list start-path)
+	    #:environment-variables
+	    (list
+	     (string-append "HOME=" home)
+	     (string-append "PATH=" path)
+	     (string-append "SSL_CERT_FILE=" caf)
+	     (string-append "GIT_SSL_CAINFO=" caf)
+	     (string-append "CURL_CA_BUNDLE=" caf)
+	     (string-append "PIP_CERT=" caf)
+	     (string-append "AGIXT_DIR_REL=" #$dir-rel)
+	     (string-append "AGIXT_GIT_URL=" #$git-url)
+	     (string-append "AGIXT_GIT_BRANCH=" #$git-branch)
+	     (string-append "AGIXT_BASE_URI=" #$base)
+	     (string-append "AGIXT_CREDENTIALS_FILE=" #$cred))
+	    #:log-file log-path)))
       (stop  #~(make-kill-destructor))
       (respawn? resp)))))
 
@@ -256,7 +394,7 @@
 
 (define (agixt-telegram-bots-packages _cfg)
   ;; Add our helper package + runtime deps to the user profile.
-  (list agixt-scripts bash git curl python python-pip))
+  (list agixt-scripts bash git curl nss-certs grep sed findutils python python-pip))
 
 ;; Files via home-files-service-type (alist)
 (define (agixt-telegram-bots-home-files cfg)
@@ -290,28 +428,179 @@
       (let* ((name    (agixt-telegram-bot-configuration-name b))
              (wd      (agixt-telegram-bot-configuration-workdir b))
              (prov    (string->symbol (string-append "agixt-telegram-" name)))
-             (logf    (string-append "$HOME/" wd "/agixt-tg-" name "/bot.log"))
-             (start   (string-append "sh \"$HOME/" wd "/agixt-tg-" name "/start.sh\""))
+             (start-cmd (string-append "sh \"$HOME/" wd "/agixt-tg-" name "/start.sh\""))
              (backend (agixt-telegram-bot-configuration-backend-instance-name b))
-             (req     (if backend (list (string->symbol (string-append "agixt-" backend))) '()))
+             (req     (if backend (list (string->symbol (string-append "agixt-backend-" backend))) '()))
              (cfg-rel (string-append ".config/agixt/bots/" name "/config.env"))
              (dir-rel (string-append wd "/agixt-tg-" name))
-             (cred    (agixt-telegram-bot-configuration-credentials-file b)))
-        (shepherd-service
-         (provision (list prov))
-         (requirement req)
-         (documentation (string-append "Telegram → AGiXT trigger bot (" name ")"))
-         (start #~(make-forkexec-constructor
-                   (list #$(file-append bash "/bin/sh") "-lc" #$start)
-                   #:environment-variables
-                   (list
-                    (string-append "AGIXT_TG_DIR_REL=" #$dir-rel)
-                    (string-append "AGIXT_TG_CONFIG_PATH_REL=" #$cfg-rel)
-                    (string-append "AGIXT_CREDENTIALS_FILE=" #$cred))
-                   #:log-file #$logf))
-         (stop  #~(make-kill-destructor))
-         (respawn? respawn?))))
+             (cred    (agixt-telegram-bot-configuration-credentials-file b))
+             ;; Values to pass into the child env (single place to maintain)
+             (env-vars (list (string-append "AGIXT_TG_DIR_REL=" dir-rel)
+                             (string-append "AGIXT_TG_CONFIG_PATH_REL=" cfg-rel)
+                             (string-append "AGIXT_CREDENTIALS_FILE=" cred))))
+	(shepherd-service
+	 (provision (list prov))
+	 (requirement req)
+	 (documentation (string-append "Telegram → AGiXT trigger bot (" name ")"))
+	 (start
+	  #~(let* ((home       (or (getenv "HOME") "."))
+		   (start-path (string-append home "/" #$dir-rel "/start.sh"))
+		   (log-path   (string-append home "/" #$dir-rel "/bot.log"))
+		   (path       (string-append home "/.guix-home/profile/bin:"
+					      home "/.guix-home/profile/sbin:"
+					      home "/.guix-profile/bin:"
+					      home "/.guix-profile/sbin:"
+					      "/run/current-system/profile/bin:"
+					      "/run/current-system/profile/sbin"))
+		   (ca-home (string-append home "/.guix-home/profile/etc/ssl/certs/ca-certificates.crt"))
+		   (ca-user (string-append home "/.guix-profile/etc/ssl/certs/ca-certificates.crt"))
+		   (ca-sys  "/etc/ssl/certs/ca-certificates.crt")
+		   (caf     (cond ((access? ca-home R_OK) ca-home)
+				  ((access? ca-user R_OK) ca-user)
+				  (else ca-sys))))
+	      (make-forkexec-constructor
+	       (list start-path)
+	       #:environment-variables
+	       (list
+		(string-append "HOME=" home)
+		(string-append "PATH=" path)
+		(string-append "SSL_CERT_FILE=" caf)
+		(string-append "GIT_SSL_CAINFO=" caf)
+		(string-append "CURL_CA_BUNDLE=" caf)
+		(string-append "PIP_CERT=" caf)
+		(string-append "AGIXT_TG_DIR_REL=" #$dir-rel)
+		(string-append "AGIXT_TG_CONFIG_PATH_REL=" #$cfg-rel)
+		(string-append "AGIXT_CREDENTIALS_FILE=" #$cred))
+	       #:log-file log-path)))
+
+	 (stop  #~(make-kill-destructor))
+	 (respawn? respawn?))))
     (map bot-svc (agixt-telegram-bots-configuration-bots cfg))))
+
+(define (agixt-webui-shepherd-services cfg)
+  (let* ((inst   (agixt-webui-configuration-instance-name cfg))
+         (wd     (agixt-webui-configuration-workdir cfg))
+         (prov   (string->symbol (string-append "agixt-webui-" inst)))
+         (req    (list (string->symbol (string-append "agixt-backend-" inst))))
+         (dir-rel (string-append wd "/agixt-webui-" inst))
+         (start-path (string-append "$HOME/" dir-rel "/start.sh"))
+         (base   (agixt-webui-configuration-base-uri cfg))
+         (cred   (agixt-webui-configuration-credentials-file cfg))
+         (port   (number->string (agixt-webui-configuration-port cfg)))
+         (repo   (agixt-webui-configuration-webui-git-url cfg))
+         (resp   (agixt-webui-configuration-respawn? cfg)))
+    (list
+     (shepherd-service
+      (provision (list prov))
+      (requirement req)
+      (documentation (string-append "AGiXT Web UI (Streamlit) for " inst))
+      (start
+       #~(let* ((home (or (getenv "HOME") "."))
+                (log-path (string-append home "/" #$dir-rel "/webui.log"))
+                (path (string-append home "/.guix-home/profile/bin:"
+                                     home "/.guix-home/profile/sbin:"
+                                     home "/.guix-profile/bin:"
+                                     home "/.guix-profile/sbin:"
+                                     "/run/current-system/profile/bin:"
+                                     "/run/current-system/profile/sbin"))
+                (ca-home (string-append home "/.guix-home/profile/etc/ssl/certs/ca-certificates.crt"))
+                (ca-user (string-append home "/.guix-profile/etc/ssl/certs/ca-certificates.crt"))
+                (ca-sys "/etc/ssl/certs/ca-certificates.crt")
+                (caf (cond ((access? ca-home R_OK) ca-home)
+                           ((access? ca-user R_OK) ca-user)
+                           (else ca-sys))))
+           (make-forkexec-constructor
+            (list #$(file-append bash "/bin/sh") "-lc" #$start-path)
+            #:environment-variables
+            (list
+             (string-append "HOME=" home)
+             (string-append "PATH=" path)
+             (string-append "SSL_CERT_FILE=" caf)
+             (string-append "GIT_SSL_CAINFO=" caf)
+             (string-append "CURL_CA_BUNDLE=" caf)
+             (string-append "PIP_CERT=" caf)
+             (string-append "AGIXT_DIR_REL=" #$dir-rel)
+             (string-append "AGIXT_CREDENTIALS_FILE=" #$cred)
+             (string-append "AGIXT_BASE_URI=" #$base)
+             (string-append "AGIXT_WEBUI_GIT_URL=" #$repo)
+             (string-append "AGIXT_WEBUI_PORT=" #$port))
+            #:log-file log-path)))
+      (stop  #~(make-kill-destructor))
+      (respawn? resp)))))
+
+(define (agixt-chatui-shepherd-services cfg)
+  (let* ((inst   (agixt-chatui-configuration-instance-name cfg))
+         (wd     (agixt-chatui-configuration-workdir cfg))
+         (prov   (string->symbol (string-append "agixt-chatui-" inst)))
+         (req    (list (string->symbol (string-append "agixt-backend-" inst))))
+         (dir-rel (string-append wd "/agixt-chatui-" inst))
+         (start-path (string-append "$HOME/" dir-rel "/start.sh"))
+         (base   (agixt-chatui-configuration-base-uri cfg))
+         (cred   (agixt-chatui-configuration-credentials-file cfg))
+         (port   (number->string (agixt-chatui-configuration-port cfg)))
+         (repo   (agixt-chatui-configuration-chatui-git-url cfg))
+         (entry  (agixt-chatui-configuration-chat-entry cfg))
+         (resp   (agixt-chatui-configuration-respawn? cfg)))
+    (list
+     (shepherd-service
+      (provision (list prov))
+      (requirement req)
+      (documentation (string-append "AGiXT Chat UI for " inst))
+      (start
+       #~(let* ((home (or (getenv "HOME") "."))
+                (log-path (string-append home "/" #$dir-rel "/chatui.log"))
+                (path (string-append home "/.guix-home/profile/bin:"
+                                     home "/.guix-home/profile/sbin:"
+                                     home "/.guix-profile/bin:"
+                                     home "/.guix-profile/sbin:"
+                                     "/run/current-system/profile/bin:"
+                                     "/run/current-system/profile/sbin"))
+                (ca-home (string-append home "/.guix-home/profile/etc/ssl/certs/ca-certificates.crt"))
+                (ca-user (string-append home "/.guix-profile/etc/ssl/certs/ca-certificates.crt"))
+                (ca-sys "/etc/ssl/certs/ca-certificates.crt")
+                (caf (cond ((access? ca-home R_OK) ca-home)
+                           ((access? ca-user R_OK) ca-user)
+                           (else ca-sys))))
+           (make-forkexec-constructor
+            (list #$(file-append bash "/bin/sh") "-lc" #$start-path)
+            #:environment-variables
+            (list
+             (string-append "HOME=" home)
+             (string-append "PATH=" path)
+             (string-append "SSL_CERT_FILE=" caf)
+             (string-append "GIT_SSL_CAINFO=" caf)
+             (string-append "CURL_CA_BUNDLE=" caf)
+             (string-append "PIP_CERT=" caf)
+             (string-append "AGIXT_DIR_REL=" #$dir-rel)
+             (string-append "AGIXT_CREDENTIALS_FILE=" #$cred)
+             (string-append "AGIXT_BASE_URI=" #$base)
+             (string-append "AGIXT_CHATUI_GIT_URL=" #$repo)
+             (string-append "AGIXT_CHATUI_PORT=" #$port)
+             (string-append "AGIXT_CHAT_ENTRY=" #$entry))
+            #:log-file log-path)))
+      (stop  #~(make-kill-destructor))
+      (respawn? resp)))))
+
+(define home-agixt-webui-service-type
+  (service-type
+   (name 'home-agixt-webui)
+   (extensions
+    (list (service-extension home-profile-service-type agixt-webui-packages)
+          (service-extension home-files-service-type   agixt-webui-home-files)
+          (service-extension home-shepherd-service-type agixt-webui-shepherd-services)))
+   (default-value (agixt-webui-configuration))
+   (description "Run the AGiXT Streamlit Web UI (management UI).")))
+
+(define home-agixt-chatui-service-type
+  (service-type
+   (name 'home-agixt-chatui)
+   (extensions
+    (list (service-extension home-profile-service-type agixt-chatui-packages)
+          (service-extension home-files-service-type   agixt-chatui-home-files)
+          (service-extension home-shepherd-service-type agixt-chatui-shepherd-services)))
+   (default-value (agixt-chatui-configuration))
+   (description "Run the AGiXT chat UI (defaults to Streamlit on a separate port; configurable repo/entry).")))
+
 
 (define home-agixt-telegram-bots-service-type
   (service-type

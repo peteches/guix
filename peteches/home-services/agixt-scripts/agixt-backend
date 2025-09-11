@@ -6,6 +6,13 @@
 
 set -eu
 
+# Ensure a sane PATH even if Shepherd replaced env
+: "${PATH:=$HOME/.guix-home/profile/bin:$HOME/.guix-home/profile/sbin:$HOME/.guix-profile/bin:$HOME/.guix-profile/sbin:/run/current-system/profile/bin:/run/current-system/profile/sbin}"
+export PATH
+
+# Prefer wheels; avoid building native extensions
+export PIP_PREFER_BINARY=1
+
 resolve_path() {
   case "${1:-}" in
     /*) printf '%s\n' "$1" ;;
@@ -24,6 +31,16 @@ DIR="$(resolve_path "$AGIXT_DIR_REL")"
 CRED="$(resolve_path "$AGIXT_CREDENTIALS_FILE")"
 VENV="$DIR/.venv"
 
+
+# Recreate venv if it looks broken
+if [ ! -x "$VENV/bin/python3" ]; then
+  umask 022
+  python -m venv "$VENV" 2>/dev/null || python3 -m venv "$VENV"
+fi
+
+PY="$VENV/bin/python"
+PIP="$PY -m pip"
+
 mkdir -p "$DIR"
 
 # Clone or update
@@ -31,26 +48,72 @@ if [ ! -d "$DIR/.git" ]; then
   echo "[agixt] cloning $AGIXT_GIT_URL into $DIR"
   rm -rf "$DIR"
   git clone "$AGIXT_GIT_URL" "$DIR"
-else
-  echo "[agixt] updating repo in $DIR"
-  (cd "$DIR" && git pull --ff-only || true)
 fi
+cd "$DIR"
+
+echo "[agixt] updating repo in $DIR"
+  
+git pull --ff-only || true
 
 # Optional explicit branch
 if [ -n "$AGIXT_GIT_BRANCH" ]; then
-  (cd "$DIR" && git checkout --quiet "$AGIXT_GIT_BRANCH")
+  git checkout --quiet "$AGIXT_GIT_BRANCH"
 fi
 
-# Python venv
-cd "$DIR"
-python -m venv "$VENV" 2>/dev/null || python3 -m venv "$VENV"
-# shellcheck disable=SC1090
-. "$VENV/bin/activate"
-python -m pip install --upgrade pip wheel
+# --- BEGIN: patch outdated pins in requirements.txt ---
+if [ -f requirements.txt ]; then
+  # bump docx2txt pin: 0.8 -> 0.9 (0.8 is gone from PyPI)
+  if grep -qE '^docx2txt==0\.8(\s|$)' requirements.txt; then
+    echo "[agixt] patching requirements: docx2txt 0.8 -> 0.9"
+    sed -i 's/^docx2txt==0\.8/docx2txt==0.9/' requirements.txt
+  fi
+fi
+# --- END: patch ---
+
+${PIP} install --upgrade pip wheel
 
 # Install requirements (repo-provided)
 if [ -f requirements.txt ]; then
-  pip install -r requirements.txt
+  ${PIP} install -r requirements.txt
+fi
+
+# --- Ensure spaCy + model (AGiXT Memories depends on it) ---
+# Prefer wheels; we already set PIP_PREFER_BINARY=1 earlier.
+# Do NOT set PIP_ONLY_BINARY=:all: here, spaCy deps may need sdists occasionally.
+if ! "$PY" - <<'PYEOF'
+import importlib
+raise SystemExit(0 if importlib.util.find_spec("spacy") else 1)
+PYEOF
+then
+  echo "[agixt] installing spaCy"
+  $PIP install "spacy<3.8"
+fi
+
+# Make sure an English model is present
+if ! "$PY" - <<'PYEOF'
+import importlib
+raise SystemExit(0 if (importlib.util.find_spec("en_core_web_sm") or
+                       importlib.util.find_spec("en_core_web_md") or
+                       importlib.util.find_spec("en_core_web_lg")) else 1)
+PYEOF
+then
+  echo "[agixt] downloading spaCy English model (sm)"
+  "$PY" -m spacy download en_core_web_sm || {
+    echo "[agixt] model download failed; trying explicit wheel for 3.7.1"
+    "$VENV/bin/pip" install \
+      https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.7.1/en_core_web_sm-3.7.1-py3-none-any.whl
+  }
+fi
+
+# --- Ensure textacy (required by Memories) ---
+if ! "$PY" - <<'PYEOF'
+import importlib
+raise SystemExit(0 if importlib.util.find_spec("textacy") else 1)
+PYEOF
+then
+  echo "[agixt] installing textacy"
+  # textacy<0.14 supports spaCy 3.x and Python 3.11
+  $PIP install "textacy<0.14"
 fi
 
 # Load secrets (NOT managed by Guix)
@@ -74,4 +137,4 @@ if [ -d agixt ]; then
 fi
 
 echo "[agixt] starting backend at ${AGIXT_BASE_URI}"
-exec python -u run-local.py
+exec ${PY} -u run-local.py
