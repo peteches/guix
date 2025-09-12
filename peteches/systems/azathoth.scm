@@ -11,6 +11,7 @@
 ;; Indicate which modules to import to access the variables
 ;; used in this configuration.
 (use-modules (gnu) (nongnu packages linux)
+             (gnu packages glib)         ; provides 'dbus' (dbus-run-session)
 	     (gnu packages admin))
 
 (use-service-modules networking ssh desktop xorg)
@@ -23,19 +24,31 @@
  (keyboard-layout (keyboard-layout "us" "altgr-intl"))
  (host-name "azathoth")
 
- (packages (append (map specification->package
-			'("wpa-supplicant" "hyprland"))
-		   %base-packages))
- 
- (services (modify-services %desktop-services
-			    (wpa-supplicant-service-type config =>
-							 (wpa-supplicant-configuration
-							  (inherit config)
-							  (extra-options '("-f" "/var/log/wpa-supplicant.log"))))
-			    (gdm-service-type config =>
-					      (gdm-configuration
-					       (inherit config)
-					       (wayland? #t)))))
+ (services
+  (append
+   (list
+
+    ;; Your original extras
+    (service openssh-service-type)
+    (service tor-service-type)
+    (service gpm-service-type))
+   (modify-services %desktop-services
+		    (delete gdm-service-type))
+   (list
+    ;; requires: (use-modules (guix gexp))
+
+    (service greetd-service-type
+	     (greetd-configuration
+	      (greeter-supplementary-groups '("video" "input"))
+	      (terminals
+	       (list
+		(greetd-terminal-configuration
+		 (terminal-vt "7")
+		 (terminal-switch #t)
+		 (default-session-command
+ 		   (greetd-agreety-session
+                      (command (file-append dbus "/bin/dbus-run-session"))
+		      (command-args (list "Hyprland"))))))))))))
  
  ;; The list of user accounts ('root' is implicit).
  (users (cons* (user-account

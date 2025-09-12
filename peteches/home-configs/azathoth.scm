@@ -17,20 +17,27 @@
   #:use-module (nongnu packages mozilla)
   #:use-module (gnu packages aidc)
   #:use-module (gnu packages video)
+  #:use-module (gnu packages qt)
   #:use-module (gnu services)
   #:use-module (guix gexp)
   #:use-module (ice-9 popen)
   #:use-module (ice-9 textual-ports)
+  #:use-module (peteches home-services aws)
   #:use-module (peteches home-services desktop)
   #:use-module (peteches home-services emacs base)
   #:use-module (peteches home-services git)
+  #:use-module (peteches home-services firefox)
   #:use-module (peteches home-services hyprland)
   #:use-module (peteches home-services mako)
   #:use-module (peteches home-services nyxt)
   #:use-module (peteches home-services password-store)
   #:use-module (peteches home-services waybar)
   #:use-module (peteches home-services wofi)
-  #:use-module (peteches packages scripts))
+  #:use-module (peteches packages scripts)
+  #:use-module (peteches home-configs hyprland)
+  #:use-module (peteches home-configs mako)
+  #:use-module (peteches home-configs waybar)
+  #:use-module (peteches home-configs firefox))
 
 
 (define (get-ssh-host-key hosts)
@@ -47,12 +54,15 @@
    gnupg
    jq
    ripgrep
+   pinentry-qt
+   qtwayland
    ;; shell-scripts
-   wofi gawk grimblast clipman zbar pass-otp firefox wf-recorder ;; these should be deps of the shell-scripts package but doesn't work
+   wofi gawk grimblast clipman zbar pass-otp wf-recorder ;; these should be deps of the shell-scripts package but doesn't work
    btop))
  
  (services
   (append (list
+	   
 	   (service home-mako-service-type
 		    (mako-config))
 	   (service home-git-service-type
@@ -96,184 +106,68 @@
 	   
 	   (service home-gpg-agent-service-type
 		    (home-gpg-agent-configuration
+		     (pinentry-program (file-append pinentry-qt "/bin/pinentry-qt"))
 		     (extra-content "allow-emacs-pinentry")
 		     (ssh-support? #t)))
 	   
-	   (service waybar-service-type (waybar-configuration
-					 (config (waybar-config
-						  (modules-left #("hyprland/workspaces"))
-						  (modules-center #("hyprland/window"))
-						  (modules-right #("battery" "clock"))
-						  (modules-config '(("clock" ("tooltip-format" . "<big>{:%Y %B}</big>\n<tt><small>{calendar}</small></tt>"))))))))
+	   (service waybar-service-type
+		    (waybar-configuration
+		     (config
+		      (waybar-config
+		       ;; Bar geometry & layout (HiDPI-friendly without custom CSS)
+		       (position "top")
+		       (height 46)
+		       (spacing 10)
+		       (margin-top 6)
+		       (margin-bottom 6)
+		       (margin-left 10)
+		       (margin-right 10)
+		       (fixed-center #t)
+		       (exclusive #t)
+		       (reload_style_on_change #t)
+		       (output "")
+
+		       ;; Hyprland modules
+		       (modules-left  #("hyprland/workspaces" "hyprland/window"))
+		       (modules-center #("clock"))
+		       (modules-right #("backlight" "wireplumber#source" "wireplumber#sink" "cpu" "memory" "temperature" "network" "battery" "tray"))
+
+		       ;; Module configs
+		       (modules-config base-waybar-modules-config)))))
 	   
 	   (service wofi-service-type)
 	   (service home-desktop-service-type)
+	   (service home-aws-service-type)
 	   (service home-bash-service-type
 		    (home-bash-configuration
 		     (guix-defaults? #t)
 		     (environment-variables '(("CGO_ENABLED" . "1")))))
 
-	    (service home-emacs-base-service-type)
-	    (service home-hyprland-service-type (home-hyprland-configuration
-						 (monitors (list
-	     					    (monitor
-							     (scale 1.5))))
-						 (env-vars '(("XCURSOR_SIZE" . "36")
-							     ("QT_QPA_PLATFORMTHEME" . "qt6ct")
-							     ("NVD_BACKEND" . "direct+")
-							     ("XDG_CURRENT_DESKTOP" . "Hyprland")
-							     ("XDG_SESSION_TYPE" . "wayland")
-							     ("XDG_SESSION_DESKTOP" . "Hyprland")))
-						 (variables
-						  (home-hyprland-variable-configuration
-						   (general (general-category
-							     (gaps_in 5)
-							     (gaps_out 20)
-							     (border_size 2)
-							     (col.active_border "rgba(33ccffee) rgba(00ff99ee) 45deg")
-							     (col.inactive_border "rgba(595959aa)")
-							     (layout "dwindle")))
-						   (decoration (decoration-category
-								(rounding 10)
-								(blur (decoration-blur-category
-								       (enabled #t)
-								       (size 3)
-								       (passes 1)))))
-						   (input (input-category
-							   ;; (touchpad (input-touchpad-category
-							   ;; 	      natural_scroll true))
-							   (kb_layout "us")
-							   (kb_options "ctrl:nocaps")))))
-						 (binds (list
-							 (bind
-							  (mods "SUPER")
-							  (key "Return")
-							  (dispatcher "exec")
-							  (params "alacritty"))
-							 (bind
-							  (mods "SUPER")
-							  (key "d")
-							  (dispatcher "exec")
-							  (params "wofi --show-run drun"))
-							 (bind
-							  (mods "SUPER")
-							  (key "e")
-							  (dispatcher "exec")
-							  (params "emacsclient -c"))
+	     (service firefox-service-type
+		    (firefox-configuration
+		     ;; ----- two profiles
+		     (profiles base-firefox-profiles)
 
-							 (bind
-							  (mods "SUPER")
-							  (key "d")
-							  (dispatcher "exec")
-							  (params "wofi --show drun"))
+		     ;; ----- global prefs (merged into each profile; profile prefs override)
+		     (global-prefs base-firefox-global-prefs)
 
-							 (bind
-							  (mods "SUPER")
-							  (key "b")
-							  (dispatcher "exec")
-							  (params "wofi-firefox.sh"))
-
-							 (bind
-							  (mods "SUPER")
-							  (key "p")
-							  (dispatcher "exec")
-							  (params "wofi-password.sh"))
-							 
-							 (bind
-							  (mods "SUPER SHIFT")
-							  (key "q")
-							  (dispatcher "exit")
-							  (params ""))
-
-							 (bind
-							  (mods "SUPER")
-							  (key "q")
-							  (dispatcher "killactive")
-							  (params ""))
-
-							 (bind
-							  (mods "SUPER")
-							  (key "f")
-							  (dispatcher "fullscreen")
-							  (params ""))
-
-							 (bind
-							  (mods "SUPER")
-							  (key "t")
-							  (dispatcher "togglesplit")
-							  (params ""))
-							
-							 (bind
-							  (mods "SUPER SHIFT")
-							  (key "p")
-							  (dispatcher "exec")
-							  (params "wofi-screenshot.sh"))
-
-							 (bind
-							  (mods "SUPER")
-							  (key "left")
-							  (dispatcher "movefocus")
-							  (params "l"))
-
-							 (bind
-							  (mods "SUPER")
-							  (key "right")
-							  (dispatcher "movefocus")
-							  (params "r"))
-
-							 (bind
-							  (mods "SUPER")
-							  (key "up")
-							  (dispatcher "movefocus")
-							  (params "u"))
-
-							 (bind
-							  (mods "SUPER")
-							  (key "down")
-							  (dispatcher "movefocus")
-							  (params "d"))
-
-							 (bind
-							  (mods "SUPER")
-							  (key "1")
-							  (dispatcher "workspace")
-							  (params "1"))
-							 (bind
-							  (mods "SUPER SHIFT")
-							  (key "1")
-							  (dispatcher "movetoworkspace")
-							  (params "1"))
-							 (bind
-							  (mods "SUPER")
-							  (key "2")
-							  (dispatcher "workspace")
-							  (params "2"))
-							 (bind
-							  (mods "SUPER SHIFT")
-							  (key "2")
-							  (dispatcher "movetoworkspace")
-							  (params "2"))
-							 (bind
-							  (mods "SUPER")
-							  (key "3")
-							  (dispatcher "workspace")
-							  (params "3"))
-							 (bind
-							  (mods "SUPER SHIFT")
-							  (key "3")
-							  (dispatcher "movetoworkspace")
-							  (params "3"))
-							 (bind
-							  (mods "SUPER")
-							  (key "4")
-							  (dispatcher "workspace")
-							  (params "4"))
-							 (bind
-							  (mods "SUPER SHIFT")
-							  (key "4")
-							  (dispatcher "movetoworkspace")
-							  (params "4"))))
-						 (command-execution						 
-						  (hyprland-execs
-						   (exec-once '("waybar" "alacritty" "mako")))))))
+		     ;; ----- global extensions (same XPI used for all profiles)
+		     (global-extensions base-firefox-global-extensions)))
+	   
+	   (service home-emacs-base-service-type)
+	     (service home-hyprland-service-type (home-hyprland-configuration
+					       (monitors (list
+	     						  (monitor
+							   (scale 1.5))))
+					       (env-vars (append
+							  '(("XCURSOR_THEME" . "Bibata-Modern-Classic")
+							    ("XCURSOR_SIZE" . "64"))
+							  base-hyprland-env-vars))
+					       (variables base-hyprland-variables)
+					       (binds (append
+						       base-hyprland-default-application-launcher-binds
+						       (base-hyprland-window-workspace-binds 9)))
+					       (command-execution						 
+						(hyprland-execs
+						 (exec-once '("waybar" "alacritty" "mako")))))))
 	   %base-home-services)))
