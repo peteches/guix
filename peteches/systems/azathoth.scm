@@ -11,6 +11,8 @@
 ;; Indicate which modules to import to access the variables
 ;; used in this configuration.
 (use-modules (gnu) (nongnu packages linux)
+	     (peteches systems network-mounts)
+	     (gnu services authentication)
              (gnu packages glib)         ; provides 'dbus' (dbus-run-session)
 	     (gnu packages admin))
 
@@ -37,6 +39,9 @@
    (list
     ;; requires: (use-modules (guix gexp))
 
+    (service fprintd-service-type
+	     (fprintd-configuration))
+    
     (service greetd-service-type
 	     (greetd-configuration
 	      (greeter-supplementary-groups '("video" "input"))
@@ -47,8 +52,8 @@
 		 (terminal-switch #t)
 		 (default-session-command
  		   (greetd-agreety-session
-                      (command (file-append dbus "/bin/dbus-run-session"))
-		      (command-args (list "Hyprland"))))))))))))
+                    (command (file-append dbus "/bin/dbus-run-session"))
+		    (command-args (list "Hyprland"))))))))))))
  
  ;; The list of user accounts ('root' is implicit).
  (users (cons* (user-account
@@ -88,14 +93,16 @@
  ;; The list of file systems that get "mounted".  The unique
  ;; file system identifiers there ("UUIDs") can be obtained
  ;; by running 'blkid' in a terminal.
- (file-systems (cons* (file-system
-                       (mount-point "/boot/efi")
-                       (device (uuid "C4D7-28C3"
-                                     'fat32))
-                       (type "vfat"))
-                      (file-system
-                       (mount-point "/")
-                       (device (uuid "d7de5028-5ad1-497f-bb4e-ec3a2220a548"
-				     'ext4))
-                       (type "ext4")
-                       (dependencies mapped-devices)) %base-file-systems)))
+ (file-systems (cons*
+		scoreplay-cifs-mount
+		(file-system
+                 (mount-point "/boot/efi")
+                 (device (uuid "C4D7-28C3"
+                               'fat32))
+                 (type "vfat"))
+                (file-system
+                 (mount-point "/")
+                 (device (uuid "d7de5028-5ad1-497f-bb4e-ec3a2220a548"
+			       'ext4))
+                 (type "ext4")
+                 (dependencies mapped-devices)) %base-file-systems)))
