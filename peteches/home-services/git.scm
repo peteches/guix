@@ -134,7 +134,7 @@
 
 (define (home-git-profile-service-type config)
   ;; Keep original package set for back-compat.
-  (list git nss-certs))
+  (list git nss-certs pre-commit))
 
 (define (home-git-files-service-type config)
   (list
