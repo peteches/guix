@@ -39,6 +39,7 @@
   #:use-module (peteches home-services wofi)
   #:use-module (peteches packages scripts)
   #:use-module (peteches home-configs hyprland)
+  #:use-module (peteches home-configs git)
   #:use-module (peteches home-configs firefox)
   #:use-module (peteches home-configs mako)
   #:use-module (peteches home-configs waybar))
@@ -84,21 +85,7 @@
 		    (home-git-configuration
 		     (applypatch-msg-hook (list (plain-file "applypatch-msg-hook" "echo applying patch updated")))
 		     (pre-commit-hook (list (plain-file "pre-commit" "pre-commit run --hook-stage pre-commit \"$@\"")))
-		     (config 
-		      (list (git-section
-			     (name "user")
-			     (config '(("name" . "Pete 'Peteches' McCabe")
-				       ("email" . "pete@peteches.co.uk")
-				       ("signingkey" . "A6E8150FED0029D7"))))
-			    (git-section
-			     (name "core")
-			     (config '(("compression" . "6"))))
-			    (git-section
-			     (name "init")
-			     (config '(("defaultBranch" . "main"))))
-			    (git-section
-			     (name "commit")
-			     (config '(("gpgSign" . "true"))))))))
+		     (config git-config)))
 	   
 	   (service home-password-store-service-type
 		    (home-password-store-configuration

@@ -37,6 +37,7 @@
   #:use-module (peteches home-services wofi)
   #:use-module (peteches packages scripts)
   #:use-module (peteches home-configs hyprland)
+  #:use-module (peteches home-configs git)
   #:use-module (peteches home-configs mako)
   #:use-module (peteches home-configs waybar)
   #:use-module (peteches home-configs firefox))
@@ -78,34 +79,7 @@
 		     (applypatch-msg-hook (list (plain-file "applypatch-msg-hook" "echo applying patch")))
 		     (pre-commit-hook (list (local-file "./git-hooks/pre-commit")))
 		     (global-ignore (list (local-file "./git-ignore.txt")))
-		     (config 
-		      (list (git-section
-			     (name "user")
-			     (config '(("name" . "Pete 'Peteches' McCabe")
-				       ("email" . "pete@peteches.co.uk")
-				       ("signingkey" . "A6E8150FED0029D7"))))
-			    (git-section
-			     (name "core")
-			     (config '(("compression" . "6")
-				       ("editor" . "emacs-client --create-frame")
-				       ("hooksPath" . "~/.config/git/hooks"))))
-			    (git-section
-			     (name "url \"ssh://git@github.com:\"")
-			     (config '(("insteadOf" . "https://github.com/"))))
-			    (git-section
-			     (name "pull")
-			     (config '(("ff" . "true")
-				       ("rebase" . "true"))))
-			    (git-section
-			     (name "rerere")
-			     (config '(("autoUpdate" . "true")
-				       ("enabled" . "true"))))
-			    (git-section
-			     (name "init")
-			     (config '(("defaultBranch" . "main"))))
-			    (git-section
-			     (name "commit")
-			     (config '(("gpgSign" . "true"))))))))
+		     (config git-config)))
 	   
 	   (service home-password-store-service-type
 		    (home-password-store-configuration
