@@ -59,17 +59,20 @@
 
 (define (hook-file* label files)
   (if (null? files)
-      (plain-file label "")
+      ;; Empty hook is just an executable script that exits 0
+      (program-file label
+        #~(exit 0)
+        #:guile guile-3.0)
       (let ((payload
              (mixed-text-file (string-append label ".payload")
                (serialize-text-config label files))))
+        ;; program-file produces an executable wrapper
         (program-file label
           #~(begin
-              (use-modules (ice-9 popen))  ; provides system*
+              (use-modules (ice-9 popen)) ; provides system*
+              ;; run payload via sh
               (apply system* "sh" #$payload (cdr (command-line))))
-          ;; ensure a full-featured Guile at runtime
           #:guile guile-3.0))))
-
 
 ;; -----------------------------------------------------------------------------
 ;; Configuration
