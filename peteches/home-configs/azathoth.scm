@@ -9,6 +9,7 @@
   #:use-module (gnu packages rust-apps)
   #:use-module (gnu packages terminals)
   #:use-module (gnu packages version-control)
+  #:use-module (gnu packages gnome-xyz)
   #:use-module (gnu packages web)
   #:use-module (gnu packages xdisorg)
   #:use-module (gnu packages gawk)
@@ -55,6 +56,7 @@
    jq
    ripgrep
    pinentry-qt
+   bibata-cursor-theme
    qtwayland
    ;; shell-scripts
    wofi gawk grimblast clipman zbar pass-otp wf-recorder ;; these should be deps of the shell-scripts package but doesn't work
