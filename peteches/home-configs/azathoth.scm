@@ -96,7 +96,7 @@
 	   (service home-gpg-agent-service-type
 		    (home-gpg-agent-configuration
 		     (pinentry-program (file-append pinentry-qt "/bin/pinentry-qt"))
-		     (extra-content "allow-emacs-pinentry")
+		     (extra-content "allow-loopback-pinentry\n")
 		     (ssh-support? #t)))
 	   
 	   (service waybar-service-type
