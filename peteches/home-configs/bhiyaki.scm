@@ -29,6 +29,7 @@
   #:use-module (peteches home-services emacs base)
   #:use-module (peteches home-services firefox)
   #:use-module (peteches home-services git)
+  #:use-module (peteches home-services guix)
   #:use-module (peteches home-services hyprland)
   #:use-module (peteches home-services mako)
   #:use-module (peteches home-services nyxt)
@@ -70,9 +71,12 @@
  
  (services
   (append (list
+
+	   (service home-guix-service-type)
+	   
 	   ;; Example service usage with Modus Vivendi colors
 	   (service home-mako-service-type
-		   base-mako-config)
+		    base-mako-config)
 
 	   (service home-git-service-type
 		    (home-git-configuration

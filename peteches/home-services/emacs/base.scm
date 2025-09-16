@@ -3,13 +3,13 @@
   #:use-module (gnu home services)
   #:use-module (gnu packages databases)
   #:use-module (gnu packages emacs)
-  #:use-module (gnu packages emacs-build)
   #:use-module (gnu packages emacs-xyz)
   #:use-module (gnu packages fonts)
   #:use-module (gnu packages golang)
-  #:use-module (gnu packages golang-apps)
+  #:use-module (gnu packages golang-xyz)
   #:use-module (gnu packages guile-xyz)
   #:use-module (gnu packages rust-apps)
+  #:use-module (gnu packages certs)
   #:use-module (gnu packages)
   #:use-module (gnu packages commencement)
   #:use-module (gnu services shepherd)
@@ -21,6 +21,7 @@
 
 (define (home-emacs-base-profile-service config)
   (list emacs
+	emacs-modus-themes
 	emacs-gruvbox-theme
 	emacs-paredit
 	emacs-geiser

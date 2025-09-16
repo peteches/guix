@@ -2,6 +2,7 @@
 (define-module (peteches home-services git)
   #:use-module (guix gexp)
   #:use-module (gnu home services)
+  #:use-module (gnu packages certs)
   #:use-module (gnu packages nss)
   #:use-module (gnu packages version-control)
   #:use-module (gnu services configuration)
