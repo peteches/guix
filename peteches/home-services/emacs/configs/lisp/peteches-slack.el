@@ -12,7 +12,7 @@
   (and (boundp 'slack-teams)
        (seq-some (lambda (t) (string= name (oref t name))) slack-teams)))
 
-(defun peteches/slack-register-from-pass ()
+(defun peteches/slack-register-from-pass (frame)
   "Idempotently register the Slack team from pass/auth-source."
   (unless (peteches/slack--team-registered-p peteches/slack-name)
     (let* ((tok (auth-source-pass-get "api_token" peteches/slack-entry))
