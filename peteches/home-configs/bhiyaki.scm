@@ -1,4 +1,5 @@
 (define-module (peteches home-configs bhiyaki)
+  #:use-module (gnu home services desktop)
   #:use-module (gnu home services gnupg)
   #:use-module (gnu home services shells)
   #:use-module (gnu home services ssh)
@@ -71,7 +72,7 @@
  
  (services
   (append (list
-
+           (service home-dbus-service-type)
 	   (service home-guix-service-type)
 	   
 	   ;; Example service usage with Modus Vivendi colors

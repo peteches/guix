@@ -1,6 +1,9 @@
 (define-module (peteches home-services hyprland)
   #:use-module (gnu home services)
   #:use-module (gnu packages)
+  #:use-module (gnu packages base)
+  #:use-module (gnu packages glib)          ; dbus (dbus-update-activation-environment)
+  #:use-module (gnu packages bash)
   #:use-module (gnu packages linux)
   #:use-module (gnu packages wm)
   #:use-module (gnu packages freedesktop)
@@ -29,6 +32,8 @@
 (define (home-hyprland-profile-service config)
        (list hyprland
 	     hyprcursor
+	     xdg-desktop-portal
+	     xdg-desktop-portal-gtk
 	     xdg-desktop-portal-hyprland))
 
 (define-maybe integer)
@@ -1024,12 +1029,19 @@
   (list
    `("xdg-desktop-portal/portals.conf"
      ,(plain-file "portals.conf"
-		 "#[[portals]]
-[preferred]
-default=hyprland
+		  "[preferred]
+# GTK handles most generic portals (FileChooser/OpenURI/Settings).
+# Hyprland handles screenshot/screencast.
+default=gtk
+org.freedesktop.impl.portal.Screenshot=hyprland
+org.freedesktop.impl.portal.Screencast=hyprland
+
+[xdg-desktop-portal]
+version=1
 "))
    `("hypr/hyprland.conf" ,(mixed-text-file "hyprland.conf"
 					    (string-append
+					     "source = ~/.config/hypr/xdg-desktop-portals.conf\n"
 					     "source = ~/.config/hypr/submaps.conf\n"
 					     "source = ~/.config/hypr/binds.conf\n"
 					     "source = ~/.config/hypr/monitors.conf\n"
@@ -1039,12 +1051,26 @@ default=hyprland
 					     "source = ~/.config/hypr/sources.conf\n"
 					     "source = ~/.config/hypr/exec.conf\n"
 					     "source = ~/.config/hypr/variables.conf\n")))
+   `("hypr/xdg-desktop-portals.conf"  ,(let ((portal       #~(string-append #$xdg-desktop-portal "/libexec/xdg-desktop-portal"))
+					     (gtk-backend  #~(string-append #$xdg-desktop-portal-gtk "/libexec/xdg-desktop-portal-gtk"))
+					     (hypr-backend #~(string-append #$xdg-desktop-portal-hyprland "/libexec/xdg-desktop-portal-hyprland"))
+					     (dbus-update-bin  #~(string-append #$dbus "/bin/dbus-update-activation-environment"))
+					     (sh-bin       #~(string-append #$bash "/bin/sh"))
+					     (pkill-bin    #~(string-append #$procps "/bin/pkill"))
+					     (sleep-bin    #~(string-append #$coreutils "/bin/sleep")))
+					 (mixed-text-file
+					  "xdg-desktop-portals.conf"
+					  "# --- XDG portal startup (Guix absolute paths) ---\n"
+					  "exec-once = " dbus-update-bin " DISPLAY WAYLAND_DISPLAY HYPRLAND_INSTANCE_SIGNATURE XDG_CURRENT_DESKTOP XDG_SESSION_DESKTOP XDG_SESSION_TYPE\n"
+					  "exec-once = " sh-bin " -c '" pkill-bin " -f xdg-desktop-portal-hyprland; " pkill-bin " -f xdg-desktop-portal-gtk; " sleep-bin " 0.5'\n"
+					  "exec-once = " hypr-backend " &\n"
+					  "exec-once = " gtk-backend " &\n")))
    `("hypr/submaps.conf" ,(mixed-text-file "submaps.conf"
-					 (serialize-list-of-submaps
-					  (home-hyprland-configuration-submaps config))))
+					   (serialize-list-of-submaps
+					    (home-hyprland-configuration-submaps config))))
    `("hypr/binds.conf" ,(mixed-text-file "binds.conf"
 					 (serialize-list-of-binds "binds"
-					  (home-hyprland-configuration-binds config))))
+								  (home-hyprland-configuration-binds config))))
    `("hypr/monitors.conf" ,(mixed-text-file "monitors.conf"
 					    (serialize-list-of-monitors
 					     (home-hyprland-configuration-monitors config))))

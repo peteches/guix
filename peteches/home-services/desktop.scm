@@ -5,6 +5,7 @@
   #:use-module (peteches home-services wofi)
   ;; guix home/service modules
   #:use-module (gnu home services)
+  #:use-module (gnu home services desktop)
   #:use-module (gnu home services shepherd)
   #:use-module (gnu home services sound)      ; home-pipewire-service-type
   ;; packages
@@ -27,34 +28,18 @@
         pipewire wireplumber
         alsa-utils pulseaudio))  
 
-;; 2) User D-Bus session bus as a Shepherd service.
-;;    We provision it as 'dbus' because home-pipewire requires that.
-(define (home-desktop-shepherd-services _config)
-  (list
-   (shepherd-service
-     (provision '(dbus))
-     (documentation "Virtual: mark dbus ready when dbus-run-session is up.")
-     (requirement '())
-     (start #~(lambda _ #t))
-     (one-shot? #t))))
-
-
-;; 3) PipeWire (with Pulse shim) through Home’s sound service.
+;; 2) PipeWire (with Pulse shim) through Home’s sound service.
 (define (home-desktop-pipewire-service _config)
   (home-pipewire-configuration
     (enable-pulseaudio? #t)))
 
-;; 4) The desktop meta-service ties it all together.
+;; 3) The desktop meta-service ties it all together.
 (define home-desktop-service-type
   (service-type
    (name 'home-desktop)
    (description "My desktop environment service.")
    (extensions
     (list
-     ;; Shepherd: supply dbus session bus
-     (service-extension
-      home-shepherd-service-type
-      home-desktop-shepherd-services)
      ;; Profile packages
      (service-extension
       home-profile-service-type

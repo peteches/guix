@@ -130,21 +130,24 @@
 				      (copy-recursively ff-in out)
 				      
 				      ;; Ensure our /bin/firefox runs from this output's libdir, not the input.
+				      ;; KEEP the copy-recursively and your distribution/policies/exts writes.
+				      ;; Then install a /bin/firefox shim that *chains to the base wrapper*,
+				      ;; but forces this output's libdir as the app dir.
 				      (let* ((bindir (string-append out "/bin"))
 					     (exe    (string-append bindir "/firefox"))
 					     (ffdir  (string-append out "/lib/firefox"))
-					     ;; Prefer the real ELF if present; fall back to the wrapper.
-					     (real   (let ((cand (string-append ffdir "/.firefox-real")))
-						       (if (file-exists? cand)
-							   cand
-							   (string-append ffdir "/firefox")))))
+					     (base-wrapper (string-append (assoc-ref %build-inputs "firefox") "/bin/firefox")))
 					(when (file-exists? exe) (delete-file exe))
 					(mkdir-p bindir)
 					(call-with-output-file exe
 					  (lambda (p)
-					    ;; -a "$0" preserves process name; ~s safely quotes the path.
-					    (format p "#! /bin/sh\nexec -a \"$0\" ~s \"$@\"\n" real)))
+					    ;; ~s safely quotes the absolute paths.
+					    (format p "#! /bin/sh
+export MOZ_APP_DIR=~s
+exec -a \"$0\" ~s \"$@\"
+" ffdir base-wrapper)))
 					(chmod exe #o555))
+
 
 				      (mkdir-p dist)
 				      (mkdir-p extd)
