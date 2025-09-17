@@ -8,6 +8,7 @@
              (gnu services desktop)
              (gnu services sound)
              (gnu packages xdisorg)
+	     (gnu packages display-managers)
 	     (gnu packages admin)
              (gnu packages wm)
              (gnu packages glib)         ; provides 'dbus' (dbus-run-session)
@@ -15,6 +16,15 @@
 	     (peteches systems network-mounts))
 
 (use-service-modules base linux cups desktop networking ssh xorg)
+
+(define gtkgreet-launcher
+  (program-file "gtkgreet-launch"
+		#~(execl #$(file-append cage "/bin/cage")
+			 "cage" "-s" "--"
+			 #$(file-append gtkgreet "/bin/gtkgreet")
+			 "--command" "env XDG_SESSION_TYPE=wayland XDG_CURRENT_DESKTOP=Hyprland Hyprland")))
+
+
 
 (operating-system
  (kernel linux)
@@ -36,38 +46,29 @@
   (append
    (list glibc-locales)         ; <- important
    %base-packages))
- 
  (services
   (append
    (list
-    ;; Your original extras
+    ;; Your original extra
+    
     (service openssh-service-type)
     (service tor-service-type)
     (service gpm-service-type)
-    ;; add near your other services; requires (guix gexp) and (use-service-modules base)
+    (service greetd-service-type
+             (greetd-configuration
+              (greeter-supplementary-groups '("input" "video"))
+              (terminals
+               (list (greetd-terminal-configuration
+                      (terminal-vt "7")
+                      (terminal-switch #t)
+                      (default-session-command gtkgreet-launcher))))))
     (simple-service 'system-locale
                     etc-service-type
                     (list
                      `("profile.d/00-locale.sh"
                        ,(plain-file "00-locale.sh"
                                     "export GUIX_LOCPATH=/run/current-system/profile/lib/locale\n")))))
-   (modify-services %desktop-services
-		    (delete gdm-service-type))
-   (list
-    ;; requires: (use-modules (guix gexp))
-
-    (service greetd-service-type
-	     (greetd-configuration
-	      (greeter-supplementary-groups '("video" "input"))
-	      (terminals
-	       (list
-		(greetd-terminal-configuration
-		 (terminal-vt "7")
-		 (terminal-switch #t)
-		 (default-session-command
- 		   (greetd-agreety-session
-                    (command (file-append dbus "/bin/dbus-run-session"))
-		    (command-args (list "Hyprland"))))))))))))
+   %desktop-services))
 
  (bootloader (bootloader-configuration
 	      (bootloader grub-efi-bootloader)
@@ -93,3 +94,4 @@
     (type "ext4")
     (dependencies mapped-devices))
    %base-file-systems)))
+
