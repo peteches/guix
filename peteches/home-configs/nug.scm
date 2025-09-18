@@ -30,6 +30,7 @@
   #:use-module (peteches home-services emacs base)
   #:use-module (peteches home-services ezlocalai)
   #:use-module (peteches home-services git)
+  #:use-module (peteches home-services guix)
   #:use-module (peteches home-services firefox)
   #:use-module (peteches home-services hyprland)
   #:use-module (peteches home-services mako)
@@ -67,6 +68,7 @@
 
  (services
   (append (list
+	   (service home-guix-service-type)
 	   (service firefox-service-type
 		    (firefox-configuration
 		     ;; ----- two profiles

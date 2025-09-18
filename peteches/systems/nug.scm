@@ -74,7 +74,7 @@
                 (keyboard-layout keyboard-layout)))
   (mapped-devices (list (mapped-device
                           (source (uuid
-                                   "a4d076fc-c760-433d-93de-b78535bd69ec"))
+                                   "820e9368-484a-4bc0-af58-f3f0c29fe0fa"))
                           (target "cryptroot")
                           (type luks-device-mapping))))
 
@@ -82,8 +82,13 @@
   ;; file system identifiers there ("UUIDs") can be obtained
   ;; by running 'blkid' in a terminal.
   (file-systems (cons* (file-system
+			(mount-point "/boot")
+			(device (uuid "2c8fb9c4-f41d-4415-9540-86b588e91bac"
+				      'ext4))
+			(type "ext4"))
+		       (file-system
                          (mount-point "/boot/efi")
-                         (device (uuid "9814-19E0"
+                         (device (uuid "7222-0EC9"
                                        'fat32))
                          (type "vfat"))
                        (file-system
