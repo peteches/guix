@@ -12,7 +12,7 @@
 (require 'mcp-hub)
 (require 'subr-x)
 (require 'projectile nil t)   ;; optional
-(require 'auth-source-pass nil t)
+(require 'peteches-first-frame)
 
 ;;;; ------------------------------------------------------------------
 ;;;; Utilities
@@ -166,7 +166,7 @@ Never throws: errors are caught and logged."
 (add-hook 'find-file-hook #'peteches-mcp-start-filesystem-for-current-project)
 
 ;; Optionally start global servers after init; harmless if none found
-(add-hook 'after-init-hook #'peteches-mcp-start-global)
+(add-hook 'first-frame-ready-hook (lambda (_) (peteches-mcp-start-global)))
 
 (provide 'peteches-mcp)
 ;;; peteches-mcp.el ends here
