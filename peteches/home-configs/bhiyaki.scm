@@ -109,7 +109,9 @@
 	   (service home-gpg-agent-service-type
 		    (home-gpg-agent-configuration
 		     (pinentry-program (file-append pinentry-qt "/bin/pinentry-qt"))
-		     (extra-content "allow-emacs-pinentry")
+		     (extra-content (string-append
+				     "disable-scdaemon\n"
+				     "allow-loopback-pinentry\n"))
 		     (ssh-support? #t)))
 	   
 	   (service waybar-service-type
@@ -141,6 +143,8 @@
 	   (service home-desktop-service-type)
 	   (service home-bash-service-type
 		    (home-bash-configuration
+		     (aliases `(("grhome" . "guix home -L ~/area_51/guix reconfigure ~/area_51/guix/peteches/home-configs/$(hostname).scm")
+				("grsys" . "sudo guix system -L ~/area_51/guix reconfigure ~/area_51/guix/peteches/systems/$(hostname).scm")))
 		     (guix-defaults? #t)
 		     (environment-variables '(("CGO_ENABLED" . "1")))))
 

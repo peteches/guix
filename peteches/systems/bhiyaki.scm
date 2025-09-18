@@ -24,15 +24,13 @@
 			 #$(file-append gtkgreet "/bin/gtkgreet")
 			 "--command" "env XDG_SESSION_TYPE=wayland XDG_CURRENT_DESKTOP=Hyprland Hyprland")))
 
-
-
 (operating-system
  (kernel linux)
  (firmware (list linux-firmware))
  (locale "en_GB.utf8")
  (timezone "Europe/London")
  (keyboard-layout (keyboard-layout "us"))
- (host-name "bhiyaki.peteches.co.uk")
+ (host-name "bhiyaki")
 
  (users (cons* (user-account
                 (name "peteches")
@@ -46,11 +44,14 @@
   (append
    (list glibc-locales)         ; <- important
    %base-packages))
+
  (services
   (append
    (list
-    ;; Your original extra
-    
+    (simple-service 'extra-hosts
+		    hosts-service-type
+		    (list (host "127.0.1.1" "bhiyaki.peteches.co.uk" '("bhiyaki"))))
+
     (service openssh-service-type)
     (service tor-service-type)
     (service gpm-service-type)
