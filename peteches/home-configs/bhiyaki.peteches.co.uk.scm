@@ -1,4 +1,4 @@
-(define-module (peteches home-configs bhiyaki)
+(define-module (peteches home-configs bhiyaki.peteches.co.uk)
   #:use-module (gnu home services desktop)
   #:use-module (gnu home services gnupg)
   #:use-module (gnu home services shells)
