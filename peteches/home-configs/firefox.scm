@@ -82,6 +82,10 @@
 
 (define-public base-firefox-global-extensions
   `(
+    ;; Dark Reader
+    ("addon@darkreader.org"
+     . ,(local-file "./firefox-extensions/darkreader-4.9.110.xpi"))
+    
     ;; uBlock Origin
     ("uBlock0@raymondhill.net"
      . ,(local-file "./firefox-extensions/uBlock0_1.65.0.firefox.signed.xpi"))

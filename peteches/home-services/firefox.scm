@@ -135,17 +135,17 @@
 				      ;; but forces this output's libdir as the app dir.
 				      (let* ((bindir (string-append out "/bin"))
 					     (exe    (string-append bindir "/firefox"))
-					     (ffdir  (string-append out "/lib/firefox"))
-					     (base-wrapper (string-append (assoc-ref %build-inputs "firefox") "/bin/firefox")))
+					     (ffdir  (string-append out "/lib/firefox")))
 					(when (file-exists? exe) (delete-file exe))
 					(mkdir-p bindir)
 					(call-with-output-file exe
 					  (lambda (p)
 					    ;; ~s safely quotes the absolute paths.
 					    (format p "#! /bin/sh
-export MOZ_APP_DIR=~s
-exec -a \"$0\" ~s \"$@\"
-" ffdir base-wrapper)))
+export MOZ_APP_DIR=\"~s\"
+export MOZ_ALLOW_DOWNGRADES=1
+exec -a \"$0\" \"${MOZ_APP_DIR}/firefox-bin\" \"$@\"
+" ffdir)))
 					(chmod exe #o555))
 
 
@@ -269,7 +269,7 @@ exec -a \"$0\" ~s \"$@\"
 ;; Desktop & MIME
 ;; ------------------------------------------------------------------
 
-(define (firefox-desktop-service _config)
+(define (firefox-desktop-service config)
   (let* ((desktop-id "firefox-profile-launcher.desktop")
          (desktop-file
           (plain-file desktop-id
@@ -283,12 +283,14 @@ exec -a \"$0\" ~s \"$@\"
 		       "Categories=Network;WebBrowser;\n"))))
     (list (list (string-append "applications/" desktop-id) desktop-file))))
 
-(define (firefox-mime-service _config)
+(define (firefox-mime-service config)
   (home-xdg-mime-applications-configuration
    (default
      '(("x-scheme-handler/http"  . "firefox-profile-launcher.desktop")
        ("x-scheme-handler/https" . "firefox-profile-launcher.desktop")
        ("text/html"              . "firefox-profile-launcher.desktop")))))
+
+
 
 ;; ------------------------------------------------------------------
 ;; Service type

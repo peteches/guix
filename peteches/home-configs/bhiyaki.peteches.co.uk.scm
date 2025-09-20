@@ -10,6 +10,7 @@
   #:use-module (gnu packages compression)
   #:use-module (gnu packages rust-apps)
   #:use-module (gnu packages gnupg)
+  #:use-module (gnu packages node)
   #:use-module (gnu packages gnome-xyz)
   #:use-module (gnu packages terminals)
   #:use-module (gnu packages version-control)
@@ -65,6 +66,7 @@
    bibata-cursor-theme
    glibc-locales
    v4l-utils
+   node
    pre-commit
    ;; shell-scripts
    wofi gawk grimblast clipman zbar pass-otp firefox wf-recorder ;; these should be deps of the shell-scripts package but doesn't work
