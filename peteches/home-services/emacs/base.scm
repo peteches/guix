@@ -109,7 +109,7 @@
     (respawn? #t)
     (stop #~(make-kill-destructor))
     (start #~(make-forkexec-constructor
-	      '("emacs" "--fg-daemon")
+	      (list #$(file-append emacs "/bin/emacs") "--fg-daemon")
 	      #:log-file (string-append
 			  (or (getenv "XDG_LOG_HOME")
 			      (format #f "~a/.local/var/log"

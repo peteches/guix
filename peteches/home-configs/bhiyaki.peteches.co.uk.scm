@@ -39,6 +39,7 @@
   #:use-module (peteches home-services waybar)
   #:use-module (peteches home-services wofi)
   #:use-module (peteches packages scripts)
+  #:use-module (peteches packages gpg)
   #:use-module (peteches home-configs hyprland)
   #:use-module (peteches home-configs git)
   #:use-module (peteches home-configs mako)
@@ -56,6 +57,7 @@
   (list
    unzip
    alacritty
+   peteches-pinentry-switch
    eza
    git
    gnupg
@@ -110,10 +112,12 @@
 	   
 	   (service home-gpg-agent-service-type
 		    (home-gpg-agent-configuration
-		     (pinentry-program (file-append pinentry-qt "/bin/pinentry-qt"))
+		     (pinentry-program (file-append peteches-pinentry-switch "/bin/pinentry-switch"))
 		     (extra-content (string-append
+				     "log-file ${HOME}/.local/var/log/gpg-agent.log\n"
+				     "verbose\n"
 				     "disable-scdaemon\n"
-				     "allow-loopback-pinentry\n"))
+				     "allow-emacs-pinentry\n"))
 		     (ssh-support? #t)))
 	   
 	   (service waybar-service-type
