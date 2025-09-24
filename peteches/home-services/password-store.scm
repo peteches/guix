@@ -8,7 +8,8 @@
   #:use-module (gnu packages password-utils)
   #:use-module (gnu packages browser-extensions)
   #:use-module (guix gexp)
-  #:export (home-password-store-configuration))
+  #:export (home-password-store-configuration
+	    home-password-store-service-type))
 
 (define (serialize-string field val)
   (cond

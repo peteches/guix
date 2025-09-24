@@ -65,13 +65,14 @@
 		   "[General]\n"
 		   "theme=MateriaDark\n")))))
 
+
 ;; 3) The desktop meta-service ties it all together.
 (define home-desktop-service-type
   (service-type
    (name 'home-desktop)
    (description "My desktop environment service.")
    (extensions
-    (list
+    (list  
      (service-extension
       home-xdg-configuration-files-service-type
       home-desktop-xdg-files)
