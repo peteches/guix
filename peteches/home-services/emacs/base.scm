@@ -12,6 +12,7 @@
   #:use-module (gnu packages guile-xyz)
   #:use-module (gnu packages rust-apps)
   #:use-module (gnu packages certs)
+  #:use-module (gnu packages tree-sitter)
   #:use-module (gnu packages)
   #:use-module (gnu packages commencement)
   #:use-module (gnu services shepherd)
@@ -64,6 +65,33 @@
 	emacs-rainbow-delimiters
 
 	;; language support
+	tree-sitter
+	
+	tree-sitter-go
+	tree-sitter-gomod
+
+	tree-sitter-scheme
+
+	tree-sitter-python
+
+	tree-sitter-org
+
+	tree-sitter-markdown
+
+	tree-sitter-json
+
+	tree-sitter-html
+
+	tree-sitter-hcl
+
+	tree-sitter-dockerfile
+
+	tree-sitter-c
+
+	tree-sitter-bash
+	tree-sitter-awk
+	
+	
 	emacs-go-mode
 	
 	emacs-lsp-mode

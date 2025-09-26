@@ -117,21 +117,21 @@
 
 ;;;; Treesit / go-ts-mode ----------------------------------------------------
 
-(defun peteches-go-install-treesit-grammars ()
-  "Install Go-related tree-sitter grammars if Emacs supports treesit."
-  (interactive)
-  (unless (fboundp 'treesit-install-language-grammar)
-    (user-error "Your Emacs doesn't have built-in tree-sitter (treesit) support"))
-  (let* ((alist (or (bound-and-true-p treesit-language-source-alist) '()))
-         (sources '((go     . ("https://github.com/tree-sitter/tree-sitter-go"))
-                    (gomod  . ("https://github.com/camdencheek/tree-sitter-go-mod"))
-                    (gowork . ("https://github.com/omertuc/tree-sitter-go-work"))))
-         (merged (cl-loop for (lang . src) in sources
-                          do (setf (alist-get lang alist) src)
-                          finally return alist)))
-    (setq treesit-language-source-alist merged)
-    (dolist (lang '(go gomod gowork))
-      (treesit-install-language-grammar lang))))
+;; (defun peteches-go-install-treesit-grammars ()
+;;   "Install Go-related tree-sitter grammars if Emacs supports treesit."
+;;   (interactive)
+;;   (unless (fboundp 'treesit-install-language-grammar)
+;;     (user-error "Your Emacs doesn't have built-in tree-sitter (treesit) support"))
+;;   (let* ((alist (or (bound-and-true-p treesit-language-source-alist) '()))
+;;          (sources '((go     . ("https://github.com/tree-sitter/tree-sitter-go"))
+;;                     (gomod  . ("https://github.com/camdencheek/tree-sitter-go-mod"))
+;;                     (gowork . ("https://github.com/omertuc/tree-sitter-go-work"))))
+;;          (merged (cl-loop for (lang . src) in sources
+;;                           do (setf (alist-get lang alist) src)
+;;                           finally return alist)))
+;;     (setq treesit-language-source-alist merged)
+;;     (dolist (lang '(go gomod gowork))
+;;       (treesit-install-language-grammar lang))))
 
 ;;;; File associations (prefer -ts modes) --------------------------------
 ;; Ensure .go / go.mod / go.work open in a Go mode (ts if available).
