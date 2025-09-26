@@ -709,15 +709,25 @@
 (define (hyprland-sources? sources)
   (every string? sources))
 
+(define (serialize-rules ruletype rules)
+  #~(string-append "# Layer rules\n"
+		   #$@(map (lambda (x)
+			     (string-append
+			      ruletype " = " x "\n"))
+			   rules)))
+
 (define (layer-rules? rules)
   (every string? rules))
 
 (define (serialize-layer-rules rules)
-  #~(string-append "# Layer rules\n"
-		   #$@(map (lambda (x)
-			     (string-append
-			      "layerrule = " x "\n"))
-			   rules)))
+  (serialize-rules "layerrules" rules))
+
+
+(define (window-rules-v2? rules)
+  (every string? rules))
+
+(define (serialize-window-rules-v2 rules)
+  (serialize-rules "windowrulev2" rules))
 
 (define (env-vars? vars)
   (every (lambda (x) (and (pair? x) (string? (car x)) (string? (cdr x)))) vars))
@@ -1006,6 +1016,9 @@
   (layer-rules
    (layer-rules '())
    "List of layer rules")
+  (window-rules-v2
+   (window-rules-v2 '())
+   "List of window rules (v2)")
   (dbus-env-vars
    (dbus-env-vars '())
    "Environment variables to set in Hyprland and exported to D-Bus (systemd only), should be in format \"VARNAME,value\"")
@@ -1048,6 +1061,7 @@ version=1
 					     "source = ~/.config/hypr/environment.conf\n"
 					     "source = ~/.config/hypr/dbus-environment.conf\n"
 					     "source = ~/.config/hypr/layerrules.conf\n"
+					     "source = ~/.config/hypr/windowrulesv2.conf\n"
 					     "source = ~/.config/hypr/sources.conf\n"
 					     "source = ~/.config/hypr/exec.conf\n"
 					     "source = ~/.config/hypr/variables.conf\n")))
@@ -1083,6 +1097,9 @@ version=1
    `("hypr/layerrules.conf" ,(mixed-text-file "layerrules.conf"
 					      (serialize-layer-rules
 					       (home-hyprland-configuration-layer-rules config))))
+   `("hypr/windowrulesv2.conf" ,(mixed-text-file "windowrulesv2.conf"
+					      (serialize-window-rules-v2
+					       (home-hyprland-configuration-window-rules-v2 config))))
    `("hypr/sources.conf" ,(mixed-text-file "sources.conf"
 					   (serialize-hyprland-sources
 					    (home-hyprland-configuration-additional_source_files config))))
