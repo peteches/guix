@@ -1,6 +1,7 @@
 (define-module (peteches home-services emacs base)
   #:use-module (gnu home services shepherd)
   #:use-module (gnu home services)
+  #:use-module (gnu packages curl)
   #:use-module (gnu packages databases)
   #:use-module (gnu packages emacs)
   #:use-module (gnu packages emacs-xyz)
@@ -30,7 +31,7 @@
 	gcc-toolchain ; to compile vterm / treesitter grammers
 
 	yarn ; for mcp servers
-	
+	curl
 	emacs-compat
 
 					;	emacs-go-playground
