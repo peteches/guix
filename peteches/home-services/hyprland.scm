@@ -34,6 +34,7 @@
 	     hyprcursor
 	     xdg-desktop-portal
 	     xdg-desktop-portal-gtk
+	     xdg-desktop-portal-wlr
 	     xdg-desktop-portal-hyprland))
 
 (define-maybe integer)
@@ -1045,9 +1046,7 @@
 		  "[preferred]
 # GTK handles most generic portals (FileChooser/OpenURI/Settings).
 # Hyprland handles screenshot/screencast.
-default=gtk
-org.freedesktop.impl.portal.Screenshot=hyprland
-org.freedesktop.impl.portal.Screencast=hyprland
+default=hyprland,wlr,gtk
 
 [xdg-desktop-portal]
 version=1
@@ -1067,6 +1066,7 @@ version=1
 					     "source = ~/.config/hypr/variables.conf\n")))
    `("hypr/xdg-desktop-portals.conf"  ,(let ((portal       #~(string-append #$xdg-desktop-portal "/libexec/xdg-desktop-portal"))
 					     (gtk-backend  #~(string-append #$xdg-desktop-portal-gtk "/libexec/xdg-desktop-portal-gtk"))
+					     (wlr-backend  #~(string-append #$xdg-desktop-portal-wlr "/libexec/xdg-desktop-portal-wlr"))
 					     (hypr-backend #~(string-append #$xdg-desktop-portal-hyprland "/libexec/xdg-desktop-portal-hyprland"))
 					     (dbus-update-bin  #~(string-append #$dbus "/bin/dbus-update-activation-environment"))
 					     (sh-bin       #~(string-append #$bash "/bin/sh"))
@@ -1076,9 +1076,10 @@ version=1
 					  "xdg-desktop-portals.conf"
 					  "# --- XDG portal startup (Guix absolute paths) ---\n"
 					  "exec-once = " dbus-update-bin " DISPLAY WAYLAND_DISPLAY HYPRLAND_INSTANCE_SIGNATURE XDG_CURRENT_DESKTOP XDG_SESSION_DESKTOP XDG_SESSION_TYPE\n"
-					  "exec-once = " sh-bin " -c '" pkill-bin " -f xdg-desktop-portal-hyprland; " pkill-bin " -f xdg-desktop-portal-gtk; " sleep-bin " 0.5'\n"
-					  "exec-once = " hypr-backend " &\n"
-					  "exec-once = " gtk-backend " &\n")))
+					  "exec-once = " sh-bin " -c '" pkill-bin " -f xdg-desktop-portal;" pkill-bin " -f xdg-desktop-portal-wlr" pkill-bin " -f xdg-desktop-portal-gtk; " sleep-bin " 0.5'\n"
+					  "exec-once = " gtk-backend " &\n"
+					  "exec-once = " wlr-backend " &\n"
+					  "exec-once = sleep 1;" portal " &\n")))
    `("hypr/submaps.conf" ,(mixed-text-file "submaps.conf"
 					   (serialize-list-of-submaps
 					    (home-hyprland-configuration-submaps config))))

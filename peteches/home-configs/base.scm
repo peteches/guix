@@ -10,6 +10,7 @@
   #:use-module (guix gexp)
   ;; Packages
   #:use-module (gnu packages admin)
+  #:use-module (gnu packages databases)
   #:use-module (gnu packages gnupg)
   #:use-module (gnu packages rust-apps)
   #:use-module (gnu packages terminals)
@@ -55,6 +56,7 @@
 (define-public base-packages
   (list
    alacritty
+   recutils
    eza
    git
    gnupg
