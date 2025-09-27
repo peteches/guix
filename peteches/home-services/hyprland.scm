@@ -14,7 +14,9 @@
   #:use-module (ice-9 regex)
   #:use-module (srfi srfi-1)
   #:export (home-hyprland-service-type
-	    home-hyprland-configuration
+	    <home-hyprland-configuration>
+            home-hyprland-configuration
+            home-hyprland-configuration?
 	    colour-management
             general-category
 	    general-snap-category

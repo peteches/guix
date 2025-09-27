@@ -183,19 +183,3 @@
    ;; home-desktop-service; keep it as the place to set common env/aliases.
    (service home-desktop-service-type)))
 
-;; 3) Helper to compose a host home without repeating the base.
-(define* (make-host-home #:key
-                         (host-packages '())
-                         (host-services '())
-                         (extra-env '()))
-  ;; Let the desktop service carry extra env vars host-by-host without
-  ;; duplicating everything.
-  (home-environment
-   (packages (append base-packages host-packages))
-   (services
-    (append
-     base-services
-     (list
-      (simple-service 'base-vars home-environment-variables-service-type
-               extra-env))
-     host-services))))
