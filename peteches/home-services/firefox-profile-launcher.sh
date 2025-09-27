@@ -9,6 +9,9 @@
 # Optional config file (sourced if present): ../share/firefox-launcher.cfg
 #   can set: wofi_cmd='wofi --dmenu --prompt "Select Firefox Profile:"'
 
+# on guix need to set LD_LIBRARY_PATH explicitly for nonguix stuffs
+export LD_LIBRARY_PATH="${HOME}/.guix-profile/lib:${HOME}/.guix-home/profile/lib:${LD_LIBRARY_PATH}"
+
 set -eu
 
 selfdir="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
