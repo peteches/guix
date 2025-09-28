@@ -30,7 +30,6 @@
   #:use-module (peteches home-services desktop)
   #:use-module (peteches home-services emacs base)
   #:use-module (peteches home-services git)
-  #:use-module (peteches home-services guix)
   #:use-module (peteches home-services password-store)
   #:use-module (peteches home-services firefox)
   #:use-module (peteches home-services hyprland)
@@ -81,9 +80,6 @@
    ;; Dbus
    (service home-dbus-service-type)
 
-   ;; guix
-   (service home-guix-service-type)
-   
    ;; Notifications
    (service home-mako-service-type
             base-mako-config)

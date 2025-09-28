@@ -1,4 +1,10 @@
-(list (channel
+(define-module (peteches channels base)
+  #:use-module (gnu)
+  #:use-module (guix channels)
+  #:export (%base-channels))
+
+(define %base-channels
+  (list (channel
         (name 'nonguix)
         (url "https://gitlab.com/nonguix/nonguix")
         (commit "57c186c44fdec1461af63286cb9442424ca8a0b2")
@@ -15,4 +21,4 @@
           (make-channel-introduction
 	    "199fd26ab268d4f26cebcb39e844fe4ff9bea9bc"
             (openpgp-fingerprint
-              "BBB0 2DDF 2CEA F6A8 0D1D  E643 A2A0 6DF2 A33A 54FA")))))
+              "BBB0 2DDF 2CEA F6A8 0D1D  E643 A2A0 6DF2 A33A 54FA"))))))
