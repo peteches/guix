@@ -20,6 +20,7 @@
   #:use-module (gnu packages display-managers) ; gtkgreet
   #:use-module (gnu packages wm)               ; cage
   #:use-module (gnu packages linux)            ; linux-firmware, intel-microcode
+  #:use-module (gnu packages fonts)
   
   #:use-module (nongnu packages nvidia)        ; nvidia-firmware
   #:use-module (nongnu packages linux)
@@ -46,6 +47,9 @@
         (service tor-service-type)
         (service gpm-service-type)))
 
+(define %common-packages
+  (list font-terminus))
+
 (define (without-gdm)
   (modify-services %desktop-services (delete gdm-service-type)))
 
@@ -53,21 +57,36 @@
 ;; Preferred for up-to-date Guix: configure the greeter at top level.
 ;; Runs gtkgreet inside cage; *no* dbus-run-session — user sessions
 ;; are expected to have DBus via dbus-service-type.
-(define* (greetd-gtkgreet-service #:key (vt "7"))
-  (service greetd-service-type
-    (greetd-configuration
-      (greeter-supplementary-groups '("video" "input"))
-      (terminals
-       (list
-        (greetd-terminal-configuration
-          (terminal-vt vt)
-          (terminal-switch #t)
-	  (default-session-command
-	    (greetd-agreety-session
-	     (command (file-append cage "/bin/cage"))
-	     (command-args  (list "-s" "--"
-                (file-append gtkgreet "/bin/gtkgreet")
-                "--remember"))))))))))
+(define* greetd-gtkgreet-services
+  ;; in your operating-system's (services ...)
+
+  ;; In your operating-system's (services ...) field:
+  (list
+   ;; needs: (use-modules (gnu services base) (gnu packages fonts))
+   (service console-font-service-type
+    `(("tty7" . ,(file-append font-terminus "/share/consolefonts/ter-132n"))))
+
+
+   ;; In your operating-system's (services ...)
+   (service greetd-service-type
+	    (greetd-configuration
+	     ;; run greetd on tty1 with agreety (text greeter)
+	     (terminals
+	      (list
+	       (greetd-terminal-configuration
+		(terminal-vt "7")
+		(terminal-switch #t)
+		(default-session-command
+		  (greetd-agreety-session
+		   ;; Start Hyprland for the logged-in user
+		   (command
+		    (greetd-user-session
+		     (xdg-session-type "wayland")
+		     (extra-env '(("XDG_CURRENT_DESKTOP" . "Hyprland")
+				  ("XDG_SESSION_TYPE"    . "wayland")))
+		     ;; Command must be a gexp that yields an argv list
+		     (command #~(string-append #$(file-append hyprland "/bin/Hyprland")))
+		     (command-args '()))))))))))))
 
 (define (nonguix-substitute-service)
   (simple-service 'add-nonguix-substitutes
@@ -78,27 +97,27 @@
                             %default-substitute-urls))
                    (authorized-keys
                     (append (list (plain-file "non-guix.pub"
-					            "(public-key (ecc (curve Ed25519) (q #C1FD53E5D4CE971933EC50C9F307AE2171A2D3B52C804642A7A35F84F3A4EA98#)))"))
+					      "(public-key (ecc (curve Ed25519) (q #C1FD53E5D4CE971933EC50C9F307AE2171A2D3B52C804642A7A35F84F3A4EA98#)))"))
                             %default-authorized-guix-keys)))))
 
 ;; ---------- Main API with grouped flags ----------
 
 (define* (make-base-os
           #:key host-name bootloader file-systems
-               (mapped-devices '())
-               (kernel linux)
-               (firmware '())
-               (users-extra '())
-               (extra-services '())
-               (extra-packages '())
-               ;; flags
-               (laptop? #f)
-               (intel-cpu? #t)
-               (with-printing? #f)
-               (with-bluetooth? #f)
-               (with-nonguix? #f)
-               (with-nvidia? #f)
-               (with-intel-microcode? #f))
+          (mapped-devices '())
+          (kernel linux)
+          (firmware '())
+          (users-extra '())
+          (extra-services '())
+          (extra-packages '())
+          ;; flags
+          (laptop? #f)
+          (intel-cpu? #t)
+          (with-printing? #f)
+          (with-bluetooth? #f)
+          (with-nonguix? #f)
+          (with-nvidia? #f)
+          (with-intel-microcode? #f))
   (let* ((firmware*
           (append firmware
                   (if with-intel-microcode? (list intel-microcode) '())))
@@ -108,8 +127,8 @@
          (laptop-services
           (append (if laptop? (list (service tlp-service-type)) '())
                   (if (and laptop? intel-cpu?)
-                      (list (service thermald-service-type))
-                      '())))
+		      (list (service thermald-service-type))
+		      '())))
          (printing-services (if with-printing? (list (service cups-service-type)) '()))
          (bluetooth-services (if with-bluetooth? (list (service bluetooth-service-type)) '()))
          (nonguix-services (if with-nonguix? (list (nonguix-substitute-service)) '()))
@@ -117,25 +136,25 @@
          (final-services
           (append desktop*
                   %common-services
-                  (list (greetd-gtkgreet-service))
+                  greetd-gtkgreet-services
                   laptop-services
                   printing-services
                   bluetooth-services
                   nonguix-services
                   extra-services)))
     (operating-system
-      (kernel kernel)
-      (firmware firmware*)
-      (locale "en_GB.utf8")
-      (timezone "Europe/London")
-      (keyboard-layout (keyboard-layout "us"))
-      (host-name host-name)
-      (users (append (list %peteches-user)
-                     %base-user-accounts
-                     users-extra))
-      (packages (append packages* %base-packages))
-      (services final-services)
-      (mapped-devices mapped-devices)
-      (file-systems (append file-systems %base-file-systems))
-      (bootloader bootloader))))
+     (kernel kernel)
+     (firmware firmware*)
+     (locale "en_GB.utf8")
+     (timezone "Europe/London")
+     (keyboard-layout (keyboard-layout "us"))
+     (host-name host-name)
+     (users (append (list %peteches-user)
+                    %base-user-accounts
+                    users-extra))
+     (packages (append packages* %common-packages %base-packages))
+     (services final-services)
+     (mapped-devices mapped-devices)
+     (file-systems (append file-systems %base-file-systems))
+     (bootloader bootloader))))
 
