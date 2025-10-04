@@ -1,6 +1,7 @@
 (define-module (peteches home-services emacs base)
   #:use-module (gnu home services shepherd)
   #:use-module (gnu home services)
+  #:use-module (gnu packages bash)
   #:use-module (gnu packages curl)
   #:use-module (gnu packages databases)
   #:use-module (gnu packages emacs)
@@ -45,7 +46,8 @@
 	emacs-tramp
 
 	emacs-org
-
+	emacs-org-roam
+	
 	emacs-password-store
 	emacs-password-store-otp
 	emacs-auth-source-pass
@@ -121,6 +123,19 @@
   (service-type (name 'home-emacs-base-config)
 		(extensions
 		 (list
+		  (service-extension
+		   home-activation-service-type
+		   (const
+		    #~(when (zero? (system* #$(file-append emacs "/bin/emacsclient") "-e" "t"))
+			(system* #$(file-append emacs "/bin/emacsclient")
+				 "-e"
+				 "(progn
+                  (when (fboundp 'guix-refresh-emacs-load-path)
+                    (guix-refresh-emacs-load-path))
+                  (let* ((init (or user-init-file
+                                   (expand-file-name \"init.el\" user-emacs-directory))))
+                    (when (and init (file-readable-p init))
+                      (load init nil 'nomessage))))"))))
 		  (service-extension
 		   home-shepherd-service-type
 		   home-emacs-base-shepherd-service-type)
