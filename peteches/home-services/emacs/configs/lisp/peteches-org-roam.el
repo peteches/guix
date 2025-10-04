@@ -21,13 +21,6 @@
 
 (message "loading org-roam config")
 
-"Ensure `org-roam-directory' and its subfolders exist."
-(unless (file-directory-p peteches/org-roam-directory)
-  (make-directory peteches/org-roam-directory t))
-(let ((daily-dir (expand-file-name "daily" peteches/org-roam-directory)))
-  (unless (file-directory-p daily-dir)
-    (make-directory daily-dir t)))
-
 (defgroup peteches/org-roam nil
   "Org-roam configuration."
   :group 'peteches/org)
@@ -41,6 +34,13 @@
 
 (unless (file-directory-p peteches/org-roam-directory)
   (make-directory peteches/org-roam-directory t))
+
+; "Ensure `org-roam-directory' and its subfolders exist."
+(unless (file-directory-p peteches/org-roam-directory)
+  (make-directory peteches/org-roam-directory t))
+(let ((daily-dir (expand-file-name "daily" peteches/org-roam-directory)))
+  (unless (file-directory-p daily-dir)
+    (make-directory daily-dir t)))
 
 ;; Lightweight DB sync; no extra deps
 (org-roam-db-autosync-enable)
