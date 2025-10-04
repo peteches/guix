@@ -6,6 +6,7 @@
   #:use-module (gnu home services gnupg)
   #:use-module (gnu home services ssh)
   #:use-module (gnu home services shells)
+  #:use-module (gnu home services syncthing)
   #:use-module (gnu services)
   #:use-module (guix gexp)
   ;; Packages
@@ -80,9 +81,32 @@
    ;; Dbus
    (service home-dbus-service-type)
 
-   ;; Notifications
-   (service home-mako-service-type
-            base-mako-config)
+   (service home-syncthing-service-type
+	    (for-home
+	     (syncthing-configuration
+	      (config-file
+	       (syncthing-config-file
+		(gui-address "127.0.0.1:8384")
+		
+		;; Define the folder you want to sync.
+		;; Use a stable folder ID ("org") across your machines.
+		(folders
+		 (list (syncthing-folder
+			(id "org")
+			(label "Org")
+			(path (string-append (getenv "HOME") "/area_51/org"))
+			(type 'sendreceive) ;default; can be 'sendonly or 'receiveonly
+			;; Start paused until you share it with peers (optional):
+			(paused? #f)
+			(devices
+			 (list (syncthing-device
+				(name "bhiyaki")
+				(id "KPF5CNJ-CE2XGRC-VDDKARM-GIM47XB-UMS63Y7-JY3WX7V-I6PLMS5-GGQB2A7")
+				(auto-accept-folders? #t))))))))))))
+  
+  ;; Notifications
+  (service home-mako-service-type
+           base-mako-config)
 
    ;; Git config
    (service home-git-service-type
