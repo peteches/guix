@@ -99,10 +99,15 @@
 			;; Start paused until you share it with peers (optional):
 			(paused? #f)
 			(devices
-			 (list (syncthing-device
-				(name "bhiyaki")
-				(id "KPF5CNJ-CE2XGRC-VDDKARM-GIM47XB-UMS63Y7-JY3WX7V-I6PLMS5-GGQB2A7")
-				(auto-accept-folders? #t))))))))))))
+			 (list
+			  (syncthing-device
+			   (name "nug")
+			   (id "END7B5S-OJ73D3S-CCPWFE3-Q45OGLZ-BAGJ63I-CF4YBQ6-6QE2U36-YFLGZA2")
+			   (auto-accept-folders? #t))
+			  (syncthing-device
+			   (name "bhiyaki")
+			   (id "KPF5CNJ-CE2XGRC-VDDKARM-GIM47XB-UMS63Y7-JY3WX7V-I6PLMS5-GGQB2A7")
+			   (auto-accept-folders? #t))))))))))))
   
   ;; Notifications
   (service home-mako-service-type
