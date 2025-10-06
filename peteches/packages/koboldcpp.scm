@@ -65,35 +65,35 @@
 ;; CUDA package (inherits from CPU and enables cuBLAS)
 ;; -----------------------------------------------------------------------------
 
-;; Try to load cuda-toolkit from nonguix; fail clearly if missing.
-(define cuda-toolkit
-  (let ((mod (false-if-exception
-              (resolve-interface '(nonguix packages nvidia)))))
-    (if mod
-        (module-ref mod 'cuda-toolkit)
-        (error
-         "koboldcpp-cuda requires the 'nonguix' channel (module (nonguix packages nvidia)) providing cuda-toolkit."))))
+;; ;; Try to load cuda-toolkit from nonguix; fail clearly if missing.
+;; (define cuda-toolkit
+;;   (let ((mod (false-if-exception
+;;               (resolve-interface '(nonguix packages nvidia)))))
+;;     (if mod
+;;         (module-ref mod 'cuda-toolkit)
+;;         (error
+;;          "koboldcpp-cuda requires the 'nonguix' channel (module (nonguix packages nvidia)) providing cuda-toolkit."))))
 
-(define-public koboldcpp-cuda
-  (package
-    (inherit koboldcpp)
-    (name "koboldcpp-cuda")
-    (synopsis "KoboldCpp with CUDA/cuBLAS acceleration")
-    (arguments
-     (let ((base-args (package-arguments koboldcpp)))
-       (substitute-keyword-arguments base-args
-         ((#:configure-flags flags
-           #~(list
-              ;; Enable CUDA/cuBLAS backend in llama.cpp.
-              "-DLLAMA_CUBLAS=ON"
-              ;; Optional knobs (keep simple/portable; override via extra-args at runtime):
-              ;; "-DLLAMA_CUDA_F16=ON"
-              ;; You can set architectures via CMAKE_CUDA_ARCHITECTURES if you like.
-              )))
-         ;; phases remain identical; the upstream target name is the same.
-         )))
-    ;; Runtime needs CUDA libs; build needs nvcc. Put toolkit in both inputs.
-    (inputs (append (list cuda-toolkit) (package-inputs koboldcpp)))
-    (native-inputs (append (list cuda-toolkit) (package-native-inputs koboldcpp)))
-    (description
-     "KoboldCpp built with CUDA/cuBLAS support (via llama.cpp). Requires the non-free CUDA toolkit from the 'nonguix' channel at build and run time.")))
+;; (define-public koboldcpp-cuda
+;;   (package
+;;     (inherit koboldcpp)
+;;     (name "koboldcpp-cuda")
+;;     (synopsis "KoboldCpp with CUDA/cuBLAS acceleration")
+;;     (arguments
+;;      (let ((base-args (package-arguments koboldcpp)))
+;;        (substitute-keyword-arguments base-args
+;;          ((#:configure-flags flags
+;;            #~(list
+;;               ;; Enable CUDA/cuBLAS backend in llama.cpp.
+;;               "-DLLAMA_CUBLAS=ON"
+;;               ;; Optional knobs (keep simple/portable; override via extra-args at runtime):
+;;               ;; "-DLLAMA_CUDA_F16=ON"
+;;               ;; You can set architectures via CMAKE_CUDA_ARCHITECTURES if you like.
+;;               )))
+;;          ;; phases remain identical; the upstream target name is the same.
+;;          )))
+;;     ;; Runtime needs CUDA libs; build needs nvcc. Put toolkit in both inputs.
+;;     (inputs (append (list cuda-toolkit) (package-inputs koboldcpp)))
+;;     (native-inputs (append (list cuda-toolkit) (package-native-inputs koboldcpp)))
+;;     (description
+;;      "KoboldCpp built with CUDA/cuBLAS support (via llama.cpp). Requires the non-free CUDA toolkit from the 'nonguix' channel at build and run time.")))
