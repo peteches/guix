@@ -1,38 +1,56 @@
+;;; peteches-gptel-go-presets.el --- GPTel presets for Go -*- lexical-binding: t; -*-
+
 (require 'gptel)
 
-(gptel-make-preset 'go-add-err
-  :description "Go: add idiomatic error handling; code-only; minimal edits"
+;; Parent preset: general Go usage
+(gptel-make-preset 'go/general
+  :description "General Go assistant for clean, idiomatic code."
   :system
-"ROLE: You refactor Go code with surgical edits.
+  "You are a senior Go engineer.
+Follow Effective Go and Go 1.22+ idioms.
+Be concise, prefer code over prose.
+Use contexts, avoid goroutine leaks.
+Wrap errors with context and return them.
+Write table-driven tests.
+Provide minimal dependencies and clear documentation."
+  :temperature 0.2)
 
-TASK: Add idiomatic error handling to the selected call or statement block.
+;; Children
+(gptel-make-preset 'go/refactor
+  :description "Refactor Go code safely and idiomatically."
+  :parent 'go/general
+  :system "Refactor the code to improve clarity and maintainability. Preserve behavior unless told otherwise.")
 
-RULES:
-- Identify the last/primary function call in the selection; if it can return an error, bind and check it (`if err != nil { ... }`).
-- Prefer early returns. If the enclosing function returns `error`, propagate it; otherwise handle locally without changing the signature.
-- Keep changes minimal; do NOT alter function signatures, add panics, or reorder unrelated code.
-- Do NOT introduce new imports unless the import block is in the selection.
-- If wrapping is appropriate *and* `fmt` appears in the visible imports, use `fmt.Errorf(\"<context>: %w\", err)`; otherwise just return/propagate `err`.
-- Maintain existing variable names and styles (short re-use: `err`).
-- Output only the rewritten Go code for the selection — no commentary, no backticks."
-  :temperature 0
-  :rewrite-default-action 'merge)
+(gptel-make-preset 'go/tests
+  :description "Generate or extend table-driven Go tests."
+  :parent 'go/general
+  :system "Write concise, table-driven tests covering edge cases and errors. Use subtests and the standard library testing package.")
 
-(gptel-make-preset 'go-doc
-  :description "Go: add godoc-style comment above function/method"
-  :system
-"ROLE: You write precise Go doc comments.
+(gptel-make-preset 'go/concurrency
 
-TASK: Prepend a godoc-style comment for the selected function or method.
+  :description "Assist with safe, idiomatic concurrency patterns."
+  :parent 'go/general
+  :system "Design race-free concurrency. Use channels, sync primitives, and context for cancellation. Avoid goroutine leaks.")
 
-RULES:
-- Start with the function/method name: \"Name ...\" (third-person present).
-- One-sentence summary first; add 1–2 short sentences clarifying behavior, key params, return values, side effects, and concurrency/error semantics if relevant.
-- Keep it factual and specific; avoid filler. No parameter lists unless necessary for clarity.
-- If this implements an interface, mention it briefly.
-- Do NOT modify code other than inserting the comment immediately above the declaration.
-- Output only the revised code (comment + original declaration) — no commentary, no backticks."
-  :temperature 0
-  :rewrite-default-action 'merge)
+(gptel-make-preset 'go/errors
+  :description "Improve Go error handling and wrapping."
+  :parent 'go/general
+  :system "Return errors instead of panicking. Wrap errors with fmt.Errorf(\"...: %w\", err). Use typed errors sparingly.")
+
+(gptel-make-preset 'go/review
+  :description "Perform a Go-style code review."
+  :parent 'go/general
+  :system "Review for correctness, naming, readability, and performance. Provide concise comments and suggested diffs.")
+
+(gptel-make-preset 'go/perf
+  :description "Identify and fix Go performance issues."
+  :parent 'go/general
+  :system "Analyze allocation patterns, loops, and memory usage. Suggest concrete optimizations and benchmark examples.")
+
+(gptel-make-preset 'go/docs
+  :description "Generate Go documentation and examples."
+  :parent 'go/general
+  :system "Write package and function comments in Go doc style. Provide usage examples and maintain proper formatting.")
 
 (provide 'peteches-gptel-presets)
+;;; peteches-gptel-presets.el ends here

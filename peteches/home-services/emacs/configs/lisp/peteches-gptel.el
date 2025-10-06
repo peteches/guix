@@ -7,7 +7,8 @@
 
 ;; Use curl + streaming (works well with Copilot’s SSE responses)
 (setq gptel-use-curl t
-      gptel-stream   t)
+      gptel-stream   t
+      gptel-default-mode #'org-mode)
 
 ;; --- Copilot Enterprise backend --------------------------------------------
 (defvar my/gptel-copilot-enterprise
