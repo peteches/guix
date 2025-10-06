@@ -3,7 +3,7 @@
 
 (define-public scoreplay-cifs-mount
     (file-system
-     (device "//nas.peteches.co.uk/ScorePlayMedia")
+     (device "//nas.local.peteches.co.uk/ScorePlayMedia")
      (mount? #f)
      (check? #f)
      (mount-may-fail? #t)

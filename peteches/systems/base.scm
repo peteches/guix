@@ -4,11 +4,14 @@
   ;; Core Guix/Guile
   #:use-module (gnu)
   #:use-module (guix gexp)
+  #:use-module (guix transformations)
 
   ;; Services (service constructors + specific service types)
-  #:use-module (gnu services)            ; <-- provides 'service', 'simple-service', etc.
+  #:use-module (gnu services) ; <-- provides 'service', 'simple-service', etc.
   #:use-module (gnu services base)
   #:use-module (gnu services desktop)
+  #:use-module (gnu services docker)
+  #:use-module (gnu services linux)
   #:use-module (gnu services xorg)
   #:use-module (gnu services pm)
   #:use-module (gnu services networking) ; tor-service-type
@@ -19,10 +22,13 @@
   #:use-module (gnu packages admin)
   #:use-module (gnu packages display-managers) ; gtkgreet
   #:use-module (gnu packages wm)               ; cage
-  #:use-module (gnu packages linux)            ; linux-firmware, intel-microcode
+
   #:use-module (gnu packages fonts)
-  
-  #:use-module (nongnu packages nvidia)        ; nvidia-firmware
+  #:use-module (gnu packages linux)  ; linux-firmware, intel-microcode
+
+  #:use-module (nongnu services nvidia)
+  #:use-module (nongnu packages nvidia)	; nvidia-firmware
+
   #:use-module (nongnu packages linux)
   #:export (make-base-os
             %peteches-user
@@ -40,6 +46,10 @@
    (group "users")
    (home-directory "/home/peteches")
    (supplementary-groups '("wheel" "netdev" "audio" "video"))))
+
+(define transform
+  (options->transformation
+   '((with-graft . "mesa=nvda"))))
 
 ;; NOTE: Do NOT add elogind here; it already comes with %desktop-services.
 (define %common-services
@@ -104,31 +114,44 @@
 
 (define* (make-base-os
           #:key host-name bootloader file-systems
-          (mapped-devices '())
-          (kernel linux)
-          (firmware '())
-          (users-extra '())
-          (extra-services '())
-          (extra-packages '())
-          ;; flags
-          (laptop? #f)
-          (intel-cpu? #t)
-          (with-printing? #f)
-          (with-bluetooth? #f)
-          (with-nonguix? #f)
-          (with-nvidia? #f)
-          (with-intel-microcode? #f))
+               (mapped-devices '())
+               (kernel linux)
+               (firmware '())
+               (users-extra '())
+               (extra-services '())
+               (extra-packages '())
+               ;; flags
+               (laptop? #f)
+               (intel-cpu? #t)
+	       (with-docker? #f)
+               (with-printing? #f)
+               (with-bluetooth? #f)
+               (with-nonguix? #f)
+               (with-nvidia? #f)
+               (with-intel-microcode? #f))
   (let* ((firmware*
           (append firmware
                   (if with-intel-microcode? (list intel-microcode) '())))
          (packages*
           (append extra-packages
-                  (if with-nvidia? (list nvidia-firmware) '())))
+                  (if with-nvidia? (list nvidia-firmware nvidia-driver) '())))
          (laptop-services
           (append (if laptop? (list (service tlp-service-type)) '())
                   (if (and laptop? intel-cpu?)
-		      (list (service thermald-service-type))
-		      '())))
+                      (list (service thermald-service-type))
+                      '())))
+	 (nvidia-services (if with-nvidia?
+			      (list
+			       (service nvidia-service-type)
+			       (simple-service 'custom-udev-rules udev-service-type
+				(list nvidia-driver))
+			       (service kernel-module-loader-service-type
+					'("ipmi_devinf"
+					  "nvidia"
+					  "nvidia_modeset"
+					  "nvidia_uvm")))
+			      '()))
+	 (docker-services (if with-docker? (list (service containerd-service-type) (service docker-service-type)) '()))
          (printing-services (if with-printing? (list (service cups-service-type)) '()))
          (bluetooth-services (if with-bluetooth? (list (service bluetooth-service-type)) '()))
          (nonguix-services (if with-nonguix? (list (nonguix-substitute-service)) '()))
@@ -141,20 +164,34 @@
                   printing-services
                   bluetooth-services
                   nonguix-services
+		  docker-services
                   extra-services)))
     (operating-system
-     (kernel kernel)
-     (firmware firmware*)
-     (locale "en_GB.utf8")
-     (timezone "Europe/London")
-     (keyboard-layout (keyboard-layout "us"))
-     (host-name host-name)
-     (users (append (list %peteches-user)
-                    %base-user-accounts
-                    users-extra))
-     (packages (append packages* %common-packages %base-packages))
-     (services final-services)
-     (mapped-devices mapped-devices)
-     (file-systems (append file-systems %base-file-systems))
-     (bootloader bootloader))))
+      (kernel kernel)
+      (kernel-arguments (append (if with-nvidia?
+				     (list "modprobe.blacklist=nouveau" "nvidia_drm.modeset=1")
+				     '())
+				 %default-kernel-arguments))
+      (kernel-loadable-modules (if with-nvidia?
+				   (list nvidia-module)
+				   '()))
+      (firmware firmware*)
+      (locale "en_GB.utf8")
+      (timezone "Europe/London")
+      (keyboard-layout (keyboard-layout "us"))
+      (host-name host-name)
+      (users (append (list (if with-docker?
+			       (user-account
+				(inherit %peteches-user)
+				(supplementary-groups
+				 (append (user-account-supplementary-groups %peteches-user)
+					 '("docker"))))
+			       %peteches-user))
+                     %base-user-accounts
+                     users-extra))
+      (packages (append packages* %base-packages))
+      (services final-services)
+      (mapped-devices mapped-devices)
+      (file-systems (append file-systems %base-file-systems))
+      (bootloader bootloader))))
 
