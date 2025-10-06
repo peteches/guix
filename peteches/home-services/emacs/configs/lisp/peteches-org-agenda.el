@@ -8,15 +8,8 @@
   "Org Agenda configuration."
   :group 'peteches/org)
 
-(defcustom peteches/org-agenda-files
-  (list (expand-file-name "inbox.org" org-directory)
-        (expand-file-name "projects.org" org-directory)
-        (expand-file-name "calendar.org" org-directory)
-        (expand-file-name "notes.org" org-directory))
-  "Files included in the agenda. Keep this explicit & minimal for speed."
-  :type '(repeat file) :group 'peteches/org-agenda)
-
-(setq org-agenda-files peteches/org-agenda-files)
+(setq org-agenda-files
+      (directory-files-recursively (expand-file-name "agenda" org-directory) "\\.org$"))
 
 ;; Subtle UI tweaks
 (setq org-agenda-span 'week
@@ -51,8 +44,8 @@
 
 ;; Quick helper: refiling between common files
 (setq org-refile-targets
-      `(((,(expand-file-name "projects.org" org-directory)) :maxlevel . 3)
-        ((,(expand-file-name "notes.org"    org-directory)) :maxlevel . 2)
+      `(((,(expand-file-name "Tasks.org" org-directory)) :maxlevel . 3)
+        ((,(expand-file-name "Scoreplay.org"    org-directory)) :maxlevel . 2)
         ((,(expand-file-name "calendar.org" org-directory)) :maxlevel . 2)))
 
 (setq org-outline-path-complete-in-steps nil   ;; more natural minibuffer completion
