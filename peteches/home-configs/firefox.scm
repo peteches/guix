@@ -35,7 +35,7 @@
 
 (define-public base-firefox-global-prefs
   '(
-    ("privacy.resistFingerprinting"                         . #t)
+    ("privacy.resistFingerprinting"                         . #f)
     ("privacy.trackingprotection.enabled"                   . #t)
     ("privacy.trackingprotection.socialtracking.enabled"    . #t)
     ("dom.security.https_only_mode"                         . #t)
