@@ -13,6 +13,7 @@
   #:use-module (gnu packages rust-apps)
   #:use-module (gnu packages certs)
   #:use-module (gnu packages tree-sitter)
+  #:use-module (peteches packages tree-sitter)
   #:use-module (gnu packages)
   #:use-module (gnu packages commencement)
   #:use-module (gnu services shepherd)
@@ -20,6 +21,7 @@
   #:use-module (guix gexp)
   #:use-module (nongnu packages node)
   #:use-module (peteches packages emacs)
+  #:use-module (peteches packages mcp)
   #:export (home-emacs-base-service-type))
 
 (define (home-emacs-base-profile-service config)
@@ -66,6 +68,8 @@
 
 	;; language support
 	tree-sitter
+
+	tree-sitter-yaml
 	
 	tree-sitter-go
 	tree-sitter-gomod
@@ -114,6 +118,11 @@
 	gopls
 	sqls
 
+	emacs-yaml-mode
+
+	;; mcp stuff
+	mcp-server-filesystem-go
+        go-github-com-sonirico-mcp-shell
 	emacs-gptel
 	emacs-mcp
 	
