@@ -7,7 +7,7 @@
   (list (channel
         (name 'nonguix)
         (url "https://gitlab.com/nonguix/nonguix")
-        (commit "57c186c44fdec1461af63286cb9442424ca8a0b2")
+        (commit "150e5e5b63d70ed92783965b22617a8c7f4da369")
         (introduction
          (make-channel-introduction
           "897c1a470da759236cc11798f4e0a5f7d4d59fbc"
@@ -16,7 +16,7 @@
       (channel
         (name 'guix)
         (url "https://codeberg.org/guix/guix.git")
-        (commit "325058efde")
+        (commit "d10bda6b28ef3c246ccbf4e4addefc8f21225e91")
         (introduction
           (make-channel-introduction
 	    "199fd26ab268d4f26cebcb39e844fe4ff9bea9bc"

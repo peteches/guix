@@ -20,6 +20,7 @@
   #:use-module (gnu packages bash)
   #:use-module (gnu packages node)
   #:use-module (gnu packages certs)
+  #:use-module (gnu packages nss)
   #:use-module (gnu packages version-control)
   #:use-module (gnu packages python)
   #:use-module (gnu packages python-build)
