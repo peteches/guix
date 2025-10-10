@@ -15,6 +15,7 @@
   #:use-module (gnu services desktop)
   #:use-module (gnu packages base)           ; e.g. glibc-locales if you want it
   #:use-module (peteches systems base)
+  #:use-module (peteches system-services tailscale)
   #:use-module (peteches systems network-mounts)
 )
 
@@ -80,7 +81,7 @@
     ;; Host-only services (examples). Add or remove as you need.
     #:extra-services
     (list
-
+     (service tailscale-service-type)
      ;; Example: add your CIFS share if you want it on this box too
      ;; scoreplay-cifs-mount
      ))))
