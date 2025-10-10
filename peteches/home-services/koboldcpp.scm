@@ -1,30 +1,37 @@
+;; peteches/home-services/koboldcpp.scm  (HOME service)
 (define-module (peteches home-services koboldcpp)
+  ;; packages
   #:use-module (peteches packages koboldcpp)
-    ;; Services
-  #:use-module (gnu services)
-  #:use-module (gnu services shepherd)
-  #:use-module (gnu system shadow)
+  ;; HOME services (not system)
+  #:use-module (gnu home services)
+  #:use-module (gnu home services shepherd)
   ;; guix
   #:use-module (guix gexp)
   #:use-module (guix records)
-  #:export (koboldcpp
-            koboldcpp-cuda
-            koboldcpp-configuration
+  #:export (koboldcpp-configuration
             koboldcpp-service-type))
+
 ;; -----------------------------------------------------------------------------
-;; Service (add a 'package' field so you can switch CPU/CUDA)
+;; Configuration
 ;; -----------------------------------------------------------------------------
 
 (define-record-type* <koboldcpp-configuration>
   koboldcpp-configuration make-koboldcpp-configuration
   koboldcpp-configuration?
-  (package      koboldcpp-configuration-package (default koboldcpp)) ; choose koboldcpp-cuda here
-  (model-path   koboldcpp-configuration-model-path (default "/var/lib/koboldcpp/model.gguf"))
+  ;; choose koboldcpp-cuda in your home config if you want CUDA
+  (package      koboldcpp-configuration-package (default koboldcpp-bin))
+  (model-path   koboldcpp-configuration-model-path (default (string-append (or (getenv "HOME") "")
+                                                                           "/.local/share/koboldcpp/model.gguf")))
   (host         koboldcpp-configuration-host       (default "127.0.0.1"))
   (port         koboldcpp-configuration-port       (default 5001))
   (extra-args   koboldcpp-configuration-extra-args (default '()))
-  (user         koboldcpp-configuration-user       (default "koboldcpp"))
-  (work-dir     koboldcpp-configuration-work-dir   (default "/var/lib/koboldcpp")))
+  ;; Home services run as the current user; keep a work dir in $XDG_DATA_HOME
+  (work-dir     koboldcpp-configuration-work-dir   (default (string-append (or (getenv "HOME") "")
+                                                                           "/.local/share/koboldcpp"))))
+
+;; -----------------------------------------------------------------------------
+;; Home shepherd service
+;; -----------------------------------------------------------------------------
 
 (define (koboldcpp-shepherd-service cfg)
   (let* ((pkg        (koboldcpp-configuration-package cfg))
@@ -33,39 +40,46 @@
          (host       (koboldcpp-configuration-host cfg))
          (port       (koboldcpp-configuration-port cfg))
          (work       (koboldcpp-configuration-work-dir cfg))
-         (extra-args (koboldcpp-configuration-extra-args cfg))
-         (user       (koboldcpp-configuration-user cfg)))
+         (extra-args (koboldcpp-configuration-extra-args cfg)))
     (list
      (shepherd-service
-      (documentation "KoboldCpp text-generation server.")
+      (documentation "KoboldCpp text-generation server (user session).")
       (provision '(koboldcpp))
-      (requirement '())
+      (requirement '()) ; add '("pipewire") etc. if your user shepherd provides them
       (start #~(make-forkexec-constructor
                 (list #$bin
                       "--host" #$host
                       "--port" (number->string #$port)
                       "--model" #$model
                       #$@extra-args)
-                #:user #$user
-                #:group #$user
+                ;; Home shepherd: no #:user/#:group — runs as the current user
                 #:directory #$work
-                #:environment-variables
-                (list "LANG=C.UTF-8")))
+		#:log-file (string-append
+			    (or (getenv "XDG_LOG_HOME")
+				(format #f "~a/.local/var/log"
+					(getenv "HOME")))
+			    "/koboldcpp.log")))
       (stop #~(make-kill-destructor))
       (auto-start? #t)))))
+
+(define (create-dir config)
+  #~(begin
+	   (use-modules (guix build utils))
+	   (let* ((home   (getenv "HOME"))
+		  (work   (string-append home "/.local/share/koboldcpp"))
+		  (logdir (or (getenv "XDG_LOG_HOME")
+			      (string-append home "/.local/var/log"))))
+	     (mkdir-p work)
+	     (mkdir-p logdir))))
 
 (define koboldcpp-service-type
   (service-type
    (name 'koboldcpp)
    (extensions
-    (list (service-extension shepherd-root-service-type
-                             koboldcpp-shepherd-service)
-          (service-extension account-service-type
-                             (lambda (cfg)
-                               (let ((u (koboldcpp-configuration-user cfg)))
-                                 (list (user-account
-                                        (name u) (group u) (system? #t)
-                                        (home-directory (koboldcpp-configuration-work-dir cfg)))
-                                       (user-group (name u))))))))
+    (list
+     (service-extension home-activation-service-type
+			create-dir)
+     (service-extension home-shepherd-service-type
+                        koboldcpp-shepherd-service)))
    (default-value (koboldcpp-configuration))
-   (description "Run KoboldCpp as a simple system Shepherd service.")))
+   (description "Run KoboldCpp under the user's Home Shepherd.")))

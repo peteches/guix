@@ -44,11 +44,11 @@
    (service home-channels-service-type
 	%nug-channels)
 
-   ;; (service koboldcpp-service-type
-   ;; 	    (koboldcpp-configuration
-   ;; 	     (package koboldcpp)
-   ;; 	     (host "0.0.0.0")
-   ;; 	     (model-path (home-abs-path ".local/share/models/qwen2.5-coder-14b-instruct-q6_k.gguf"))))
+   (service koboldcpp-service-type
+	    (koboldcpp-configuration
+	     (package koboldcpp-bin)
+	     (host "0.0.0.0")
+	     (model-path (home-abs-path ".local/share/models/qwen2.5-coder-14b-instruct-q6_k.gguf"))))
 
    (service home-agixt-backend-service-type
 	    (agixt-backend-configuration
