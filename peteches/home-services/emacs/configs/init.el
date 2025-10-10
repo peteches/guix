@@ -81,6 +81,7 @@
 (require 'peteches-eshell)
 (require 'peteches-golang)
 (require 'peteches-guix)
+(require 'peteches-isearch)
 (require 'peteches-mcp)
 (require 'peteches-gptel)
 (require 'peteches-python)
