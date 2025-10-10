@@ -71,3 +71,13 @@
             (setenv "SSL_CERT_DIR" certs-dir)))))))
 ;; ---------------------------------------------------------------------------
 
+(set-language-environment "UTF-8")
+(prefer-coding-system 'utf-8-unix)
+(set-default-coding-systems 'utf-8-unix)
+
+(setenv "LANG" "en_GB.UTF-8")
+(setenv "LC_ALL" "en_GB.UTF-8")
+(setenv "LC_CTYPE" "en_GB.UTF-8")
+;; Common runtimes that otherwise guess poorly:
+(setenv "PYTHONIOENCODING" "UTF-8")
+(setenv "NODE_DISABLE_COLORS" "1")   ;; avoid ANSI junk on stdout

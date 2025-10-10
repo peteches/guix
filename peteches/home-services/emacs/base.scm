@@ -26,115 +26,115 @@
   #:export (home-emacs-base-service-type))
 
 (define (home-emacs-base-profile-service config)
-  (list emacs
-	emacs-modus-themes
-	emacs-gruvbox-theme
-	emacs-paredit
-	emacs-geiser
-	emacs-geiser-guile
-	emacs-combobulate
-	gcc-toolchain ; to compile vterm / treesitter grammers
+  (map specification->package '("emacs"
+				"emacs-modus-themes"
+				"emacs-gruvbox-theme"
+				"emacs-paredit"
+				"emacs-geiser"
+				"emacs-geiser-guile"
+				"emacs-combobulate"
+				"gcc-toolchain" ; to compile vterm / treesitter grammers
 
-	yarn ; for mcp servers
-	curl
-	emacs-compat
+				"yarn" ; for mcp servers
+				"curl"
+				"emacs-compat"
 
 					;	emacs-go-playground
 
-	emacs-orderless
+				"emacs-orderless"
 
-	emacs-show-font
-	emacs-projectile
-	ripgrep
-	
-	emacs-tramp
+				"emacs-show-font"
+				"emacs-projectile"
+				"ripgrep"
+				
+				"emacs-tramp"
 
-	emacs-org
-	emacs-org-roam
-	
-	emacs-password-store
-	emacs-password-store-otp
-	emacs-auth-source-pass
+				"emacs-org"
+				"emacs-org-roam"
+				
+				"emacs-password-store"
+				"emacs-password-store-otp"
+				"emacs-auth-source-pass"
 
-	emacs-marginalia
-	emacs-vertico
-	
-	emacs-slack
-	
-	emacs-which-key
+				"emacs-marginalia"
+				"emacs-vertico"
+				
+				"emacs-slack"
+				
+				"emacs-which-key"
 
-	emacs-magit
+				"emacs-magit"
 
-	emacs-rainbow-delimiters
+				"emacs-rainbow-delimiters"
 
-	;; language support
-	tree-sitter
+				;; language support
+				"tree-sitter"
 
-	tree-sitter-yaml
-	
-	tree-sitter-go
-	tree-sitter-gomod
+				"tree-sitter-yaml"
+				
+				"tree-sitter-go"
+				"tree-sitter-gomod"
 
-	tree-sitter-scheme
+				"tree-sitter-scheme"
 
-	tree-sitter-python
+				"tree-sitter-python"
 
-	tree-sitter-org
+				"tree-sitter-org"
 
-	tree-sitter-markdown
+				"tree-sitter-markdown"
 
-	tree-sitter-json
+				"tree-sitter-json"
 
-	tree-sitter-html
+				"tree-sitter-html"
 
-	tree-sitter-hcl
+				"tree-sitter-hcl"
 
-	tree-sitter-dockerfile
+				"tree-sitter-dockerfile"
 
-	tree-sitter-c
+				"tree-sitter-c"
 
-	tree-sitter-bash
-	tree-sitter-awk
-	
-	
-	emacs-go-mode
-	
-	emacs-lsp-mode
+				"tree-sitter-bash"
+				"tree-sitter-awk"
+				
+				
+				"emacs-go-mode"
+				
+				"emacs-lsp-mode"
 
-	emacs-pinentry
+				"emacs-pinentry"
 
-	emacs-atom-one-dark-theme
+				"emacs-atom-one-dark-theme"
 
-	emacs-yasnippet
-	emacs-yasnippet-snippets
-	emacs-company
-	emacs-company-quickhelp
-	emacs-company-org-block
-	emacs-company-emoji
-	
-	
-	;; language servers
-	guile-lsp-server
-	go
-	gopls
-	sqls
+				"emacs-yasnippet"
+				"emacs-yasnippet-snippets"
+				"emacs-company"
+				"emacs-company-quickhelp"
+				"emacs-company-org-block"
+				"emacs-company-emoji"
+				
+				
+				;; language servers
+				"guile-lsp-server"
+				"go"
+				"gopls"
+				"sqls"
 
-	emacs-yaml-mode
+				"emacs-yaml-mode"
 
-	;; mcp stuff
-	mcp-server-filesystem-go
-        go-github-com-sonirico-mcp-shell
-	emacs-gptel
-	emacs-mcp
-	
-	emacs-all-the-icons
-	emacs-all-the-icons-dired
-	emacs-all-the-icons-ibuffer
-	emacs-all-the-icons-completion
+				;; mcp stuff
+				"mcp-server-filesystem-go"
+				"go-github-com-sonirico-mcp-shell"
+				"emacs-gptel"
+				"emacs-mcp"
+				
+				"emacs-all-the-icons"
+				"emacs-all-the-icons-dired"
+				"emacs-all-the-icons-ibuffer"
+				"emacs-all-the-icons-completion"
 
-	font-google-noto
-	font-google-noto-emoji
-	font-iosevka))
+				"font-google-noto"
+				"font-google-noto-emoji"
+				"font-iosevka")))
 
 (define (home-emacs-base-files-service config)
   (list

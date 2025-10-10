@@ -19,12 +19,14 @@
 ;;;; Utilities
 
 (setq mcp-hub-servers
-      '(("filesystem-primary-work" . (:command "mcp-filesystem-server" :args ("/home/peteches/area_51/github.com/ScorePlay-Inc/backend-monorepo.git/checkouts/primaryWork" )))
+      '(("filesystem-main-work" . (:command "mcp-filesystem-server" :args ("/home/peteches/area_51/github.com/ScorePlay-Inc/backend-monorepo.git/checkouts/main" )))
+	("filesystem-primary-work" . (:command "mcp-filesystem-server" :args ("/home/peteches/area_51/github.com/ScorePlay-Inc/backend-monorepo.git/checkouts/primaryWork" )))
+	("filesystem-secondary-work" . (:command "mcp-filesystem-server" :args ("/home/peteches/area_51/github.com/ScorePlay-Inc/backend-monorepo.git/checkouts/secondaryWork" )))
 	("shell" . (:command "mcp-shell"))))
 
 ;; Start hub
 (add-hook 'after-init-hook
-	  #'mcp-hub-start-all-servers)
+	  #'mcp-hub-start-all-server)
 
 (provide 'peteches-mcp)
 ;;; peteches-mcp.el ends here

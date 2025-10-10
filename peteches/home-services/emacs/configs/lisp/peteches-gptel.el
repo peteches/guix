@@ -11,23 +11,36 @@
       gptel-default-mode #'org-mode)
 
 ;; --- Copilot Enterprise backend --------------------------------------------
-(defvar my/gptel-copilot-enterprise
+(defvar peteches/gptel-copilot-enterprise
   (gptel-make-gh-copilot "Copilot (Enterprise)"
     :host "api.githubcopilot.com"
     :endpoint "/chat/completions"))
 
+(defvar peteches/gptel-koboldcpp
+  (gptel-make-openai "KoboldCPP"
+    :protocol "http"	      ; change to "https" if you terminate TLS
+    :host "nug.peteches.co.uk"
+    :endpoint "/v1/chat/completions"
+    :stream t
+    ;; :curl-args '("--insecure")                      ; uncomment for self-signed TLS
+    ;; :key (lambda () (getenv "KOBOLDCPP_API_KEY"))   ; uncomment if you set up auth
+    :models (list 'ignored-by-gptel)))
+
 ;; Make it the default backend.
-(setq gptel-backend my/gptel-copilot-enterprise)
+(setq gptel-backend peteches/gptel-koboldcpp)
 
-;; Handy command to pop a chat buffer (pick model per-buffer via M-x gptel-menu).
-(defun peteches/copilot-chat ()
-  "Open a GPtel chat using Copilot Enterprise."
-  (interactive)
-  (let ((gptel-backend my/gptel-copilot-enterprise))
-    ;; Don’t pin a model globally; choose it per buffer with `gptel-menu`.
-    (kill-local-variable 'gptel-model)
-    (call-interactively #'gptel)))
+;; Define a keymap for gptel-mode
+(define-prefix-command 'gptel-mode-prefix-map)
 
+;; Bind gptel commands to specific keys in gptel-mode-prefix-map
+(define-key gptel-mode-prefix-map (kbd "m") 'gptel-menu)
+(define-key gptel-mode-prefix-map (kbd "s") 'gptel-send)
+(define-key gptel-mode-prefix-map (kbd "g") 'gptel)
+(define-key gptel-mode-prefix-map (kbd "r") 'gptel-rewrite)
+(define-key gptel-mode-prefix-map (kbd "a") 'gptel-abort)
+
+;; Bind C-c a g to the prefix map
+(define-key gptel-mode-map (kbd "C-c a g") 'gptel-mode-prefix-map)
 
 (provide 'peteches-gptel)
 ;;; gptel-min.el ends here
