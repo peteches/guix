@@ -35,46 +35,46 @@
 
 (define-public base-firefox-global-prefs
   '(
-    ("privacy.resistFingerprinting"                         . #f)
-    ("privacy.trackingprotection.enabled"                   . #t)
-    ("privacy.trackingprotection.socialtracking.enabled"    . #t)
-    ("dom.security.https_only_mode"                         . #t)
+    ;; ("privacy.resistFingerprinting"                         . #f)
+    ;; ("privacy.trackingprotection.enabled"                   . #t)
+    ;; ("privacy.trackingprotection.socialtracking.enabled"    . #t)
+    ;; ("dom.security.https_only_mode"                         . #t)
 
-    ;; Cookies: 5 = Total Cookie Protection / partitioned cookies
+    ;; ;; Cookies: 5 = Total Cookie Protection / partitioned cookies
 
-    ("network.cookie.cookieBehavior"                        . 5)
+    ;; ("network.cookie.cookieBehavior"                        . 5)
 
-    ;; Reduce passive leaks / speculation
-    ("network.http.referer.XOriginPolicy"                   . 2)
-    ("network.predictor.enabled"                            . #f)
-    ("network.prefetch-next"                                . #f)
-    ("network.dns.disablePrefetch"                          . #t)
+    ;; ;; Reduce passive leaks / speculation
+    ;; ("network.http.referer.XOriginPolicy"                   . 2)
+    ;; ("network.predictor.enabled"                            . #f)
+    ;; ("network.prefetch-next"                                . #f)
+    ;; ("network.dns.disablePrefetch"                          . #t)
 
-    ;; Disable all password saving & prompts
-    ("signon.rememberSignons"                               . #f)
-    ("signon.autofillForms"                                 . #f)
-    ("signon.formlessCapture.enabled"                       . #f)
-    ("signon.generation.enabled"                            . #f)
-    ("signon.management.page.breach-alerts.enabled"         . #f)
-    ("signon.autologin.proxy"                               . #f)
+    ;; ;; Disable all password saving & prompts
+    ;; ("signon.rememberSignons"                               . #f)
+    ;; ("signon.autofillForms"                                 . #f)
+    ;; ("signon.formlessCapture.enabled"                       . #f)
+    ;; ("signon.generation.enabled"                            . #f)
+    ;; ("signon.management.page.breach-alerts.enabled"         . #f)
+    ;; ("signon.autologin.proxy"                               . #f)
 
-    ;; Telemetry / studies / Pocket / suggestions
-    ("toolkit.telemetry.enabled"                            . #f)
-    ("toolkit.telemetry.unified"                            . #f)
-    ("datareporting.healthreport.uploadEnabled"             . #f)
-    ("app.shield.optoutstudies.enabled"                     . #f)
-    ("experiments.enabled"                                  . #f)
-    ("browser.ping-centre.telemetry"                        . #f)
-    ("extensions.pocket.enabled"                            . #f)
-    ("browser.newtabpage.activity-stream.feeds.section.topstories" . #f)
-    ("browser.urlbar.quicksuggest.enabled"                  . #f)
-    ("browser.urlbar.suggest.quicksuggest.sponsored"        . #f)
-    ("browser.urlbar.suggest.quicksuggest.nonsponsored"     . #f)
-    ("browser.urlbar.suggest.trending"                      . #f)
+    ;; ;; Telemetry / studies / Pocket / suggestions
+    ;; ("toolkit.telemetry.enabled"                            . #f)
+    ;; ("toolkit.telemetry.unified"                            . #f)
+    ;; ("datareporting.healthreport.uploadEnabled"             . #f)
+    ;; ("app.shield.optoutstudies.enabled"                     . #f)
+    ;; ("experiments.enabled"                                  . #f)
+    ;; ("browser.ping-centre.telemetry"                        . #f)
+    ;; ("extensions.pocket.enabled"                            . #f)
+    ;; ("browser.newtabpage.activity-stream.feeds.section.topstories" . #f)
+    ;; ("browser.urlbar.quicksuggest.enabled"                  . #f)
+    ;; ("browser.urlbar.suggest.quicksuggest.sponsored"        . #f)
+    ;; ("browser.urlbar.suggest.quicksuggest.nonsponsored"     . #f)
+    ;; ("browser.urlbar.suggest.trending"                      . #f)
 
-    ;; Default search engine (must match installed engine name)
-    ("browser.search.selectedEngine"                        . "DuckDuckGo")
-    ("browser.urlbar.placeholderName"                       . "DuckDuckGo")
+    ;; ;; Default search engine (must match installed engine name)
+    ;; ("browser.search.selectedEngine"                        . "DuckDuckGo")
+    ;; ("browser.urlbar.placeholderName"                       . "DuckDuckGo")
 
     ;; Safe browsing remote checks (set to #f if you prefer fewer pings)
     ;; ("browser.safebrowsing.downloads.remote.enabled"     . #f)
