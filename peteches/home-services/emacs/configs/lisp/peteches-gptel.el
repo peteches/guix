@@ -19,7 +19,7 @@
 (defvar peteches/gptel-koboldcpp
   (gptel-make-openai "KoboldCPP"
     :protocol "http"	      ; change to "https" if you terminate TLS
-    :host "nug.peteches.co.uk"
+    :host "nug.peteches.co.uk:5001"
     :endpoint "/v1/chat/completions"
     :stream t
     ;; :curl-args '("--insecure")                      ; uncomment for self-signed TLS
@@ -40,7 +40,7 @@
 (define-key gptel-mode-prefix-map (kbd "a") 'gptel-abort)
 
 ;; Bind C-c a g to the prefix map
-(define-key gptel-mode-map (kbd "C-c a g") 'gptel-mode-prefix-map)
+(global-set-key (kbd "C-c a") 'gptel-mode-prefix-map)
 
 (provide 'peteches-gptel)
 ;;; gptel-min.el ends here
