@@ -55,15 +55,5 @@
     #:intel-cpu? #t
     #:with-bluetooth? #t
     #:with-printing? #f
-    #:with-nonguix? #f
-    #:with-nvidia? #f
-    #:with-intel-microcode? #t
-
-    ;; Host-only service tweak (optional)
-    #:extra-services
-    (list
-      (simple-service 'extra-hosts
-        hosts-service-type
-        (list (host "192.168.50.244"
-                    "nas.peteches.co.uk"
-                    '("nas"))))))))
+    #:with-nonguix? #t
+    #:with-nvidia? #f)))

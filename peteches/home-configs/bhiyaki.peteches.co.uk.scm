@@ -11,7 +11,6 @@
  (services
   (append
    (list
-    (simple-service 'bhyaki-channels
-		    home-channels-service-type
-		    %bhiyaki-channels))
+    (service home-channels-service-type
+	     %bhiyaki-channels))
    base-services)))

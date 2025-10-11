@@ -127,11 +127,10 @@
                (with-printing? #f)
                (with-bluetooth? #f)
                (with-nonguix? #f)
-               (with-nvidia? #f)
-               (with-intel-microcode? #f))
+               (with-nvidia? #f))
   (let* ((firmware*
           (append firmware
-                  (if with-intel-microcode? (list intel-microcode) '())))
+                  (if intel-cpu? (list intel-microcode) '())))
          (packages*
           (append extra-packages
                   (if with-nvidia? (list nvidia-firmware nvidia-driver) '())))
