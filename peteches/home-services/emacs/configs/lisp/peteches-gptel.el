@@ -5,6 +5,9 @@
 (require 'gptel-gh)     ;; Copilot factory
 (require 'gptel-curl)   ;; robust streaming
 
+
+(push '(gptel) warning-suppress-types)
+
 ;; Use curl + streaming (works well with Copilot’s SSE responses)
 (setq gptel-use-curl t
       gptel-stream   t
@@ -21,10 +24,7 @@
     :protocol "http"	      ; change to "https" if you terminate TLS
     :host "nug.peteches.co.uk:5001"
     :endpoint "/v1/chat/completions"
-    :stream t
-    ;; :curl-args '("--insecure")                      ; uncomment for self-signed TLS
-    ;; :key (lambda () (getenv "KOBOLDCPP_API_KEY"))   ; uncomment if you set up auth
-    :models (list 'ignored-by-gptel)))
+    :stream t))
 
 ;; Make it the default backend.
 (setq gptel-backend peteches/gptel-koboldcpp)
