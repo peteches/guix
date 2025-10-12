@@ -69,23 +69,26 @@
 
 
 ;; Fast capture targets (lightweight, tweak to taste)
-(setq org-default-notes-file (expand-file-name "inbox.org" org-directory))
+(setq org-default-notes-file (expand-file-name "notes.org" org-directory))
 (setq org-capture-templates
-      `(("i" "Inbox" entry
-         (file ,(expand-file-name "inbox.org" org-directory))
-         "* TODO %?\n:PROPERTIES:\n:Created: %U\n:END:\n%a")
-        ("n" "Note" entry
-         (file+headline ,(expand-file-name "notes.org" org-directory) "Notes")
-         "* %? :note:\n%U\n")))
+      `(("e" "Emacs Task" entry
+	 (file+headline ,(expand-file-name "agenda/Tasks.org" org-directory) "Emacs Stuff")
+	 "* TODO %?  %^g\n")
+	("g" "Guix Task" entry
+	 (file+headline ,(expand-file-name "agenda/Tasks.org" org-directory) "Guix Stuff")
+	 "* TODO %?  %^g\n")))
 
 ;; Make file: links relative inside org-directory
+
 (setq org-link-file-path-type 'relative)
 
-;; --- Load the rest of the stack -------------------------------------------
+      ;; --- Load the rest of the stack -------------------------------------------
+
 
 (require 'peteches-org-agenda) ;; agenda and custom commands
 (require 'peteches-org-babel)  ;; babel languages & safety
 (require 'peteches-org-roam)   ;; roam (kept last; it hooks into capture, etc.)
 
+(require 'peteches-scoreplay)
 (provide 'peteches-org)
 ;;; peteches/org.el ends here
