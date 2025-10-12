@@ -349,10 +349,7 @@
 (define-configuration animations-category
   (enabled
    (boolean #t)
-   "enable animations")
-  (first_launch_animation
-   (boolean #t)
-   "enable first launch animation."))
+   "enable animations"))
 
 (define (serialize-input-touchpad-category field-name config)
   #~(string-append "\n\ttouchpad {\n"
@@ -560,15 +557,6 @@
 		   "}\n"))
 
 (define-configuration gestures-category
-  (workspace_swipe
-   (boolean #f)
-   "enable workspace swipe gesture on touchpad")
-  (workspace_swipe_fingers
-   (integer 3)
-   "how many fingers for the touchpad gesture")
-  (workspace_swipe_min_fingers
-   (boolean #f)
-   "if enabled, `workspace_swipe_fingers` is considered the minimum number of fingers to swipe")
   (workspace_swipe_distance
    (integer 300)
    "in px, the distance of the touchpd gesture")
