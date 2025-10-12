@@ -56,4 +56,5 @@
     #:with-bluetooth? #t
     #:with-printing? #f
     #:with-nonguix? #t
+    #:with-docker? #t
     #:with-nvidia? #f)))
