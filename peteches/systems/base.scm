@@ -114,20 +114,20 @@
 
 (define* (make-base-os
           #:key host-name bootloader file-systems
-               (mapped-devices '())
-               (kernel linux)
-               (firmware '())
-               (users-extra '())
-               (extra-services '())
-               (extra-packages '())
-               ;; flags
-               (laptop? #f)
-               (intel-cpu? #t)
-	       (with-docker? #f)
-               (with-printing? #f)
-               (with-bluetooth? #f)
-               (with-nonguix? #f)
-               (with-nvidia? #f))
+          (mapped-devices '())
+          (kernel linux)
+          (firmware '())
+          (users-extra '())
+          (extra-services '())
+          (extra-packages '())
+          ;; flags
+          (laptop? #f)
+          (intel-cpu? #t)
+	  (with-docker? #f)
+          (with-printing? #f)
+          (with-bluetooth? #f)
+          (with-nonguix? #f)
+          (with-nvidia? #f))
   (let* ((firmware*
           (append firmware
                   (if intel-cpu? (list intel-microcode) '())))
@@ -141,9 +141,17 @@
                       '())))
 	 (nvidia-services (if with-nvidia?
 			      (list
+			       (simple-service 'nvidia-ldpath session-environment-service-type
+					       ;; Prepend nvidia-driver’s lib dirs; keep any existing value.
+					       `(("LD_LIBRARY_PATH" .
+						  ,#~(string-append
+						      #$(file-append nvidia-driver "/lib") ":"
+						      #$(file-append nvidia-driver "/lib64")
+						      ":${LD_LIBRARY_PATH}"))))
+			       
 			       (service nvidia-service-type)
 			       (simple-service 'custom-udev-rules udev-service-type
-				(list nvidia-driver))
+					       (list nvidia-driver))
 			       (service kernel-module-loader-service-type
 					'("ipmi_devinf"
 					  "nvidia"
@@ -163,34 +171,35 @@
                   printing-services
                   bluetooth-services
                   nonguix-services
+		  nvidia-services
 		  docker-services
                   extra-services)))
     (operating-system
-      (kernel kernel)
-      (kernel-arguments (append (if with-nvidia?
-				     (list "modprobe.blacklist=nouveau" "nvidia_drm.modeset=1")
-				     '())
-				 %default-kernel-arguments))
-      (kernel-loadable-modules (if with-nvidia?
-				   (list nvidia-module)
-				   '()))
-      (firmware firmware*)
-      (locale "en_GB.utf8")
-      (timezone "Europe/London")
-      (keyboard-layout (keyboard-layout "us"))
-      (host-name host-name)
-      (users (append (list (if with-docker?
-			       (user-account
-				(inherit %peteches-user)
-				(supplementary-groups
-				 (append (user-account-supplementary-groups %peteches-user)
-					 '("docker"))))
-			       %peteches-user))
-                     %base-user-accounts
-                     users-extra))
-      (packages (append packages* %base-packages))
-      (services final-services)
-      (mapped-devices mapped-devices)
-      (file-systems (append file-systems %base-file-systems))
-      (bootloader bootloader))))
+     (kernel kernel)
+     (kernel-arguments (append (if with-nvidia?
+				   (list "modprobe.blacklist=nouveau" "nvidia_drm.modeset=1")
+				   '())
+			       %default-kernel-arguments))
+     (kernel-loadable-modules (if with-nvidia?
+				  (list nvidia-module)
+				  '()))
+     (firmware firmware*)
+     (locale "en_GB.utf8")
+     (timezone "Europe/London")
+     (keyboard-layout (keyboard-layout "us"))
+     (host-name host-name)
+     (users (append (list (if with-docker?
+			      (user-account
+			       (inherit %peteches-user)
+			       (supplementary-groups
+				(append (user-account-supplementary-groups %peteches-user)
+					'("docker"))))
+			      %peteches-user))
+                    %base-user-accounts
+                    users-extra))
+     (packages (append packages* %base-packages))
+     (services final-services)
+     (mapped-devices mapped-devices)
+     (file-systems (append file-systems %base-file-systems))
+     (bootloader bootloader))))
 

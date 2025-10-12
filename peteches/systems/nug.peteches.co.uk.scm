@@ -29,8 +29,6 @@
     #:kernel linux
     ;; Base will append %base-file-systems — you only give machine-specific mounts here.
     #:firmware (list linux-firmware)
-
-    
     #:mapped-devices
     (list
       (mapped-device
@@ -75,7 +73,6 @@
     #:with-bluetooth? #t
     #:with-nonguix? #t            ; flip to #t if you add the Nonguix pubkey in base.scm
     #:with-nvidia? #t             ; adds nvidia-firmware (4090)
-    #:with-intel-microcode? #t    ; microcode for the 13900KS
     #:with-docker? #t
 
     ;; Host-only services (examples). Add or remove as you need.
