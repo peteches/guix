@@ -48,6 +48,11 @@
 	    (koboldcpp-configuration
 	     (package koboldcpp-bin)
 	     (host "0.0.0.0")
+	     (extra-args '(
+			   "--usecuda"
+			   "--contextsize" "8196"
+			   "--gpulayers" "-1"
+			   "--websearch"))
 	     (model-path (home-abs-path ".local/share/models/qwen2.5-coder-14b-instruct-q6_k.gguf"))))
 
    (service home-agixt-backend-service-type
