@@ -61,7 +61,7 @@
 (scroll-bar-mode -1)
 
 (setq vc-follow-symlinks t)
-
+(global-visual-line-mode)
 (require 'paredit)
 (require 'rainbow-delimiters)
 (add-hook 'emacs-lisp-mode-hook 'paredit-mode)
