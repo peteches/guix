@@ -46,6 +46,8 @@
 				"emacs-show-font"
 				"emacs-projectile"
 				"ripgrep"
+
+				"emacs-gnus-desktop-notify"
 				
 				"emacs-tramp"
 

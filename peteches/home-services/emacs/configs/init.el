@@ -98,7 +98,10 @@
 (require 'peteches-vertico)
 (require 'peteches-which-key)
 
+(require 'peteches-gnus)
 (peteches-go-activate)
+
+(require 'peteches-scoreplay)
 
 (require 'server)
 (unless (server-running-p)
