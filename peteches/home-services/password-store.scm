@@ -2,6 +2,7 @@
   #:use-module (gnu home services)
   #:use-module (gnu home services mcron)
   #:use-module (gnu services configuration)
+  #:use-module (gnu packages)
   #:use-module (gnu packages guile)
   #:use-module (shepherd service)
   #:use-module (gnu packages version-control)
@@ -36,10 +37,13 @@
 	   #$cmd)))
 
 (define (home-password-store-profile-service-type config)
-  (list password-store
-	pass-otp
-	passff-host
-	git))
+  (map specification->package '("password-store"
+				"pass-otp"
+				"passff-host"
+				"grimblast"
+				"wl-clipboard"
+				"zbar"
+				"git")))
 
 (define (home-password-store-mcron-service-type config)
   (list (push-pull-password-store-job config)))
