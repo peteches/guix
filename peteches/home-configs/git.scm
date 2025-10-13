@@ -10,7 +10,7 @@
 	(git-section
 	 (name "core")
 	 (config '(("compression" . "6")
-		   ("editor" . "emacs-client --create-frame")
+		   ("editor" . "emacsclient --create-frame")
 		   ("hooksPath" . "~/.config/git/hooks"))))
 	(git-section
 	 (name "url \"git@github.com:\"")
