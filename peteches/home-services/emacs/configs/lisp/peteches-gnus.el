@@ -35,14 +35,14 @@
 ;; ---- Gnus IMAP (Fastmail) ----
 ;; We do NOT set or save any passwords; Gnus will fetch them via auth-source.
 (setq gnus-select-method '(nnnil ""))
-(setq gnus-secondary-select-methods
-      '((nnimap "peteches.co.uk"
-		(nnimap-address "imap.fastmail.com")
-		(nnimap-server-port 993)
-		(nnimap-stream ssl)
-		(nnimap-user "pete@peteches.co.uk")
-		(nnimap-authenticator login)
-		(nnir-search-engine imap))))
+(add-to-list 'gnus-secondary-select-methods
+      '(nnimap "peteches.co.uk"
+	       (nnimap-address "imap.fastmail.com")
+	       (nnimap-server-port 993)
+	       (nnimap-stream ssl)
+	       (nnimap-user "pete@peteches.co.uk")
+	       (nnimap-authenticator login)
+	       (nnir-search-engine imap)))
 
 ;; Optional quality-of-life (kept minimal)
 (setq gnus-use-cache t
@@ -57,7 +57,7 @@
       smtpmail-smtp-user "pete@peteches.co.uk"
       smtpmail-auth-supported '(login plain))
 
-(setq gnus-posting-styles
+(add-to-list 'gnus-posting-styles
       '((".*"
 	 (address "Pete McCabe <pete@peteches.co.uk"))))
 

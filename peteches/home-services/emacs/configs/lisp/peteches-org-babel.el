@@ -3,6 +3,21 @@
 ;;; Code:
 
 (require 'org)
+(require 'org-tempo)
+
+(add-to-list 'org-structure-template-alist '("el" . "src emacs-lisp"))
+(add-to-list 'org-structure-template-alist '("conf" . "src conf"))
+(add-to-list 'org-structure-template-alist '("sh" . "src bash"))
+(add-to-list 'org-structure-template-alist '("zsh" . "src zsh"))
+(add-to-list 'org-structure-template-alist '("py" . "src python"))
+(add-to-list 'org-structure-template-alist '("la" . "export latex"))
+(add-to-list 'org-structure-template-alist '("go" . "src go"))
+(add-to-list 'org-structure-template-alist '("sql" . "src sql"))
+(add-to-list 'org-structure-template-alist '("guile" . "src scheme"))
+(add-to-list 'org-structure-template-alist '("json" . "src json"))
+(add-to-list 'org-structure-template-alist '("yaml" . "src yaml"))
+(add-to-list 'org-structure-template-alist '("toml" . "src toml"))
+
 
 ;; Load languages conditionally (no hard deps; only activate if available).
 ;; Add/remove to taste. All guarded with (require ... nil t).
@@ -14,7 +29,7 @@
                 (sql        . ob-sql)
                 (sqlite     . ob-sqlite)
                 (js         . ob-js)
-                (go         . ob-go)     ;; requires ob-go installed
+                (go         . ob-go) ;; requires ob-go installed
                 (dot        . ob-dot)))
   (let* ((lang (car pair))
          (feat (cdr pair)))

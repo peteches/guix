@@ -24,6 +24,12 @@
 
 ;; Reasonable visual defaults
 (setq
+ org-startup-indented t
+ org-pretty-entities t
+ org-use-sub-superscripts "{}"
+ org-hide-emphasis-markers t
+ org-startup-with-inline-images t
+ org-image-actual-width '(300)
  org-log-done 'time
  org-log-into-draw t
  org-directory peteches/org-directory
@@ -35,7 +41,7 @@
  org-image-actual-width '(500)
  org-M-RET-may-split-line '((default . nil))
  org-insert-heading-respect-content t
- org-tags-column 0)   ;; keep tags aligned at right edge if you prefer: set to -80 or similar
+ org-tags-column 0)
 
 ;; Streamlined TODO flow
 (setq org-todo-keywords
