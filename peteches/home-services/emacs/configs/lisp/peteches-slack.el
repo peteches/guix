@@ -37,12 +37,7 @@
 (define-prefix-command 'peteches/slack-map)
 (global-set-key (kbd "C-c s") 'peteches/slack-map)
 
-(defun peteches/slack-start ()
-  (interactive)
-  (peteches/slack-register-from-pass) ; idempotent guard
-  (slack-start))
-
-(define-key peteches/slack-map (kbd "s") #'peteches/slack-start)
+(define-key peteches/slack-map (kbd "s") #'slack-start)
 (define-key peteches/slack-map (kbd "r") #'slack-reconnect)
 (define-key peteches/slack-map (kbd "q") #'slack-ws-close)
 (define-key peteches/slack-map (kbd "c") #'slack-channel-select)

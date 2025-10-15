@@ -82,6 +82,7 @@
 (require 'peteches-elisp)
 (require 'peteches-eshell)
 (require 'peteches-flymake)
+(require 'peteches-emojify)
 (require 'peteches-golang)
 (require 'peteches-gptel)
 (require 'peteches-guix)

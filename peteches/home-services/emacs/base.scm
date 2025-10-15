@@ -31,6 +31,7 @@
 				"emacs-gruvbox-theme"
 				"emacs-paredit"
 				"emacs-geiser"
+				"emacs-emojify"
 				"emacs-geiser-guile"
 				"emacs-combobulate"
 				"gcc-toolchain" ; to compile vterm / treesitter grammers
