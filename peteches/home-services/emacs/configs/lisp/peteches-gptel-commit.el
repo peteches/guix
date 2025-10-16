@@ -1,23 +1,18 @@
+;;; peteches-gptel-commit --- My gptel-commit configs
+;;; Commentary:
+;;;
+;;; Configurations for gptel-commit in Emacs.
+
+;;; Code:
 (use-package gptel-commit
   :ensure t
-  :straight (gptel-commit :host github :repo "lakkiy/gptel-commit"))
+  :after (gptel magit))
 
-;; Enable/disable streaming (default: t)
-(setq gptel-commit-stream t)
 
-;; Choose backend: use Claude Code instead of GPTel (default: nil)
-(setq gptel-commit-use-claude-code nil)
 
-;; Exclude files from diff analysis (default patterns shown)
-(setq gptel-commit-diff-excludes
-      '("pnpm-lock.yaml"
-        "*.lock"))
-
-;; Customize the prompt used for generating commit messages
-;; Example using Zed editor's commit message prompt style:
-;; https://github.com/zed-industries/zed/blob/main/crates/git_ui/src/commit_message_prompt.txt
-(setq gptel-commit-prompt
-      "You are an expert at writing Git commits. Your job is to write a short clear commit message that summarizes the changes.
+(setq gptel-commit-backend peteches/gptel-koboldcpp
+      gptel-commit-stream t
+      gptel-commit-prompt "You are an expert at writing Git commits. Your job is to write a short clear commit message that summarizes the changes.
 
 If you can accurately express the change in just the subject line, don't include anything in the message body. Only use the body when it is providing *useful* information.
 
@@ -25,21 +20,24 @@ Don't repeat information from the subject line in the message body.
 
 Only return the commit message in your response. Do not include any additional meta-commentary about the task. Do not include the raw diff output in the commit message.
 
-Commit Message Format
-
+Use conventional commit guidelines:
 The commit message should be structured as follows:
 
-<type>(<scope>): <description>
+<type>[scope]: <description>
 
-    type: The type of change being made (``feat, fix`,`build`, `chore`, `ci`, `docs`, `style`, `refactor`, `perf`, `test`).
-    scope: The scope of the change, which should ideally include the service name (e.g., agent, media-backend, media-search, etc.).
-    description: A short, imperative description of the change.
+[optional body]
 
-Examples
+[optional footer(s)]
 
-    fix(media-backend): add missing index on user table
-    feat(infra): add new ECS module for services
-    chore: update dependencies
+The commit contains the following structural elements, to communicate intent to the consumers of your library:
+
+    fix: a commit of the type fix patches a bug in your codebase (this correlates with PATCH in Semantic Versioning).
+    feat: a commit of the type feat introduces a new feature to the codebase (this correlates with MINOR in Semantic Versioning).
+    BREAKING CHANGE: a commit that has a footer BREAKING CHANGE:, or appends a ! after the type/scope, introduces a breaking API change (correlating with MAJOR in Semantic Versioning). A BREAKING CHANGE can be part of commits of any type.
+    types other than fix: and feat: are allowed, for example @commitlint/config-conventional (based on the Angular convention) recommends build:, chore:, ci:, docs:, style:, refactor:, perf:, test:, and others.
+    footers other than BREAKING CHANGE: <description> may be provided and follow a convention similar to git trailer format.
+
+Scope should be added where a clean service can be identified.
 
 Follow good Git style:
 
@@ -52,3 +50,4 @@ Follow good Git style:
 - Keep the body short and concise (omit it entirely if not useful)")
 
 (provide 'peteches-gptel-commit)
+;;; peteches-gptel-commit.el ends here
