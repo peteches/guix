@@ -1,5 +1,19 @@
-;;;; Minimal, unobtrusive Company UI polish (no use-package)
+;;; peteches-company.el --- Minimal Company configuration for Emacs -*- lexical-binding: t; -*-
 
+;;; Commentary:
+;; This Emacs Lisp file provides a minimal configuration for the Company mode,
+;; which is an auto-completion framework for Emacs.  The setup is designed to be
+;; unobtrusive and works well with various programming languages and text modes.
+;; The configuration includes basic settings and keybindings to enhance the
+;; auto-completion experience.
+
+;;; Code:
+
+(provide 'peteches-company)
+;;; peteches-company.el ends here
+
+
+;;; Code:
 (require 'company)
 
 ;; Core behavior: manual trigger, early prefix, slim UI
@@ -37,9 +51,10 @@
   "Backends for programming modes."
   (setq-local company-backends
               '((company-capf           ; LSP/Eglot/major-mode CAPFs
-                 :with company-files company-keywords company-dabbrev-code)
+                 :with company-yasnippet company-files company-keywords company-dabbrev-code)
                 company-emoji           ; if loaded (see below)
                 company-dabbrev)))
+
 
 (add-hook 'prog-mode-hook #'peteches/company-backends-prog)
 

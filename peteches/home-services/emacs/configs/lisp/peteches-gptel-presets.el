@@ -1,7 +1,6 @@
 ;;; peteches-gptel-go-presets.el --- GPTel presets for Go -*- lexical-binding: t; -*-
 ;;; Commentary:
 
-
 ;;; Code:
 (require 'gptel)
 
