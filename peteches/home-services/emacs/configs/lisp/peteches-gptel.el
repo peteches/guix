@@ -6,8 +6,6 @@
 (require 'gptel)
 (require 'gptel-gh)     ;; Copilot factory
 
-
-
 (push '(gptel) warning-suppress-types)
 
 ;; Use curl + streaming (works well with Copilot’s SSE responses)
@@ -29,7 +27,35 @@
     :stream t))
 
 ;; Make it the default backend.
-(setq gptel-backend peteches/gptel-koboldcpp)
+(setq gptel-backend peteches/gptel-koboldcpp
+      peteches/gptel-backends '(peteches/gptel-koboldcpp
+				peteches/gptel-copilot-enterprise))
+(defun peteches/switch-gptel-backend (backend-symbol prefix)
+  "Switch gptel BACKEND-SYMBOL.  With PREFIX, set it buffer-locally.
+
+Select one of \"peteches/gptel-backends\" (a list of symbols whose values are
+gptel backend objects)."
+  (interactive
+   (let* ((syms    peteches/gptel-backends)
+          (names   (mapcar #'symbol-name syms))
+          ;; Try to find which symbol currently corresponds to `gptel-backend`
+          (current (car (seq-filter
+                         (lambda (s) (and (boundp s) (eq (symbol-value s) gptel-backend)))
+                         syms)))
+          (picked  (completing-read "Select a backend: " names nil t
+                                    nil nil (and current (symbol-name current)))))
+     (list (intern picked) current-prefix-arg)))
+  (unless (and (symbolp backend-symbol) (memq backend-symbol peteches/gptel-backends))
+    (user-error "Not a configured backend: %S" backend-symbol))
+  (unless (boundp backend-symbol)
+    (user-error "Backend variable %S is not bound" backend-symbol))
+  (let ((backend (symbol-value backend-symbol)))
+    (if prefix
+        (setq-local gptel-backend backend)
+      (setq gptel-backend backend))
+    (message "gptel backend → %s%s"
+             (symbol-name backend-symbol)
+             (if (local-variable-p 'gptel-backend) " (buffer-local)" ""))))
 
 ;; Define a keymap for gptel-mode
 (define-prefix-command 'gptel-mode-prefix-map)
@@ -39,7 +65,10 @@
 (define-key gptel-mode-prefix-map (kbd "s") 'gptel-send)
 (define-key gptel-mode-prefix-map (kbd "g") 'gptel)
 (define-key gptel-mode-prefix-map (kbd "r") 'gptel-rewrite)
-(define-key gptel-mode-prefix-map (kbd "a") 'gptel-abort)
+(define-key gptel-mode-prefix-map (kbd "a") 'gptel-add)
+(define-key gptel-mode-prefix-map (kbd "A") 'gptel-abort)
+(define-key gptel-mode-prefix-map (kbd "S") 'peteches/switch-gptel-backend)
+(define-key gptel-mode-prefix-map (kbd "c") 'gptel-commit)
 
 ;; Bind C-c a g to the prefix map
 (global-set-key (kbd "C-c a") 'gptel-mode-prefix-map)
@@ -86,4 +115,4 @@ Follow good Git style:
 - Wrap the body at 72 characters
 - Keep the body short and concise (omit it entirely if not useful)")
 (provide 'peteches-gptel)
-;;; gptel-min.el ends here
+;;; peteches-gptel.el ends here
