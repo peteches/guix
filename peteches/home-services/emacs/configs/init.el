@@ -1,3 +1,9 @@
+;;; init --- Peteches emacs configs
+
+;;; Commentary:
+;;; top level initialisations
+
+;;; Code:
 (message "Loading base emacs config")
 (add-to-list 'load-path "~/.config/emacs/lisp")
 

@@ -20,7 +20,10 @@
   "Base directory for Org files."
   :type 'directory :group 'peteches/org)
 
-(setq )
+;; superstar
+(add-hook 'org-mode-hook (lambda () (org-superstar-mode 1)))
+(setq org-superstar-headline-bullets-list
+   '("∇" "⚶" "⋈" "␥" "⧋" "➝"))
 
 ;; Reasonable visual defaults
 (setq

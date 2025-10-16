@@ -53,6 +53,7 @@
 				"emacs-tramp"
 
 				"emacs-org"
+				"emacs-org-superstar"
 				"emacs-org-roam"
 				
 				"emacs-password-store"
