@@ -1,7 +1,9 @@
 ;;; peteches-flymake --- configuring flymake
 ;;; Commentary:
 
+
 ;;; Code:
+(require 'flymake)
 (setq
  flymake-show-diagnostics-at-end-of-line t)
 (flymake-mode)

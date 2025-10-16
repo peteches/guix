@@ -127,7 +127,7 @@
 				;; mcp stuff
 				"mcp-server-filesystem-go"
 				"go-github-com-sonirico-mcp-shell"
-				"emacs-gptel"
+
 				"emacs-mcp"
 				
 				"emacs-all-the-icons"

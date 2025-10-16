@@ -1,9 +1,11 @@
 ;;; gptel-min.el --- Minimal GPtel: Copilot Enterprise first -*- lexical-binding: t; -*-
 
+(straight-use-package 'gptel)
+
 ;; Requirements (Guix packages): emacs, emacs-gptel
 (require 'gptel)
 (require 'gptel-gh)     ;; Copilot factory
-(require 'gptel-curl)   ;; robust streaming
+
 
 
 (push '(gptel) warning-suppress-types)
