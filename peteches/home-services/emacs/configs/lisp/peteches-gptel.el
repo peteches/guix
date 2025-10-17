@@ -11,8 +11,6 @@
 ;; Requirements (Guix packages): emacs, emacs-gptel
 (require 'gptel)
 (require 'gptel-gh)     ;; Copilot factory
-(require 'peteches-gptel-commit)
-(require 'peteches-gptel-presets)
 
 (push '(gptel) warning-suppress-types)
 
@@ -63,7 +61,10 @@ gptel backend objects)."
       (setq gptel-backend backend))
     (message "gptel backend → %s%s"
              (symbol-name backend-symbol)
-             (if (local-variable-p 'gptel-backend) " (buffer-local)" ""))))
+	     (if (local-variable-p 'gptel-backend) " (buffer-local)" ""))))
+
+(require 'peteches-gptel-commit)
+(require 'peteches-gptel-presets)
 
 ;; Define a keymap for gptel-mode
 (define-prefix-command 'gptel-mode-prefix-map)
