@@ -1,4 +1,9 @@
-;;; peteches-slack.el -*- lexical-binding: t; -*-
+;;; peteches-slack.el --- my slack integration
+;;; -*- lexical-binding: t; -*-
+
+;;; Commentary:
+
+;;; Code:
 
 (require 'slack)   ;; not 'emacs-slack
 (require 'alert)
@@ -9,11 +14,15 @@
 (defconst peteches/slack-chans '("production-team" "internal-liverpool" "external-liverpool" "tech"))
 
 (defun peteches/slack--team-registered-p (name)
+  "Check if a Slack team with NAME is registered.
+Return non-nil if such a team exists in `slack-teams', otherwise nil."
   (and (boundp 'slack-teams)
        (seq-some (lambda (t) (string= name (oref t name))) slack-teams)))
 
+
 (defun peteches/slack-register-from-pass (frame)
-  "Idempotently register the Slack team from pass/auth-source."
+  "Idempotently register the Slack team from pass/auth-source.
+Intended to be called from \"first-frame-ready-hook\" which will pass in FRAME."
   (unless (peteches/slack--team-registered-p peteches/slack-name)
     (let* ((tok (auth-source-pass-get "api_token" peteches/slack-entry))
            (ck  (auth-source-pass-get "cookie"    peteches/slack-entry)))
@@ -25,6 +34,7 @@
                              :default t)
                        (when (and (stringp ck) (> (length ck) 0))
                          (list :cookie ck)))))
+      (slack-start)
       (message "[slack] %s"
                (if (peteches/slack--team-registered-p peteches/slack-name)
                    (format "Registered %s" peteches/slack-name)
@@ -37,7 +47,6 @@
 (define-prefix-command 'peteches/slack-map)
 (global-set-key (kbd "C-c s") 'peteches/slack-map)
 
-(define-key peteches/slack-map (kbd "s") #'slack-start)
 (define-key peteches/slack-map (kbd "r") #'slack-reconnect)
 (define-key peteches/slack-map (kbd "q") #'slack-ws-close)
 (define-key peteches/slack-map (kbd "c") #'slack-channel-select)
@@ -54,3 +63,4 @@
       slack-prefer-current-team t
       alert-default-style 'notifications)
 (provide 'peteches-slack)
+;;; peteches-slack.el ends here
