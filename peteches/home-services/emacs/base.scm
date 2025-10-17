@@ -27,6 +27,7 @@
 
 (define (home-emacs-base-profile-service config)
   (map specification->package '("emacs"
+				"emacs-ob-go"
 				"emacs-modus-themes"
 				"emacs-gruvbox-theme"
 				"emacs-paredit"
