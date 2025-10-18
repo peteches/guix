@@ -78,7 +78,10 @@
     ;; Host-only services (examples). Add or remove as you need.
     #:extra-services
     (list
-     (service tailscale-service-type)
-     ;; Example: add your CIFS share if you want it on this box too
-     ;; scoreplay-cifs-mount
-     ))))
+     (service guix-publish-service-type
+              (guix-publish-configuration
+               (port 3000)                     ; default
+               (compression 'zstd)
+               (signing-key "/etc/guix/signing-key.sec")
+               (advertise? #t)))
+     (service tailscale-service-type)))))
