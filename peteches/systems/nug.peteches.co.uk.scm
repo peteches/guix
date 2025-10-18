@@ -80,8 +80,8 @@
     (list
      (service guix-publish-service-type
               (guix-publish-configuration
+	       (host "0.0.0.0")
                (port 3000)                     ; default
-               (compression 'zstd)
-               (signing-key "/etc/guix/signing-key.sec")
+               (compression '(("zstd" 9)))
                (advertise? #t)))
      (service tailscale-service-type)))))
