@@ -61,7 +61,18 @@
   (list font-terminus))
 
 (define (without-gdm)
-  (modify-services %desktop-services (delete gdm-service-type)))
+  (modify-services
+   %desktop-services
+   (delete gdm-service-type)
+   (guix-service-type
+    config => (guix-configuration
+	       (inherit config)
+	       (substitute-urls
+		(append (list "http://nug.peteches.co.uk:3000")
+			%default-substitute-urls))
+	       (authorized-keys
+		(append (list (local-file "./nug-substitute-key.pub"))
+			%default-authorized-guix-keys))))))
 
 ;; ------ Greeter (new interface) ------
 ;; Preferred for up-to-date Guix: configure the greeter at top level.
