@@ -9,7 +9,7 @@
    (on-button-middle "none")
    (on-button-right "dismiss")
    (on-touch "dismiss")
-   (on-notify "none")
+   (on-notify "exec canberra-gtk-play -i message-new-instant")
    (font "JetBrains Mono 11")
    ;; Core colors from Modus Vivendi
    (background-color "#1e1e1eFF")   ; bg-dim

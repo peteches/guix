@@ -9,16 +9,7 @@
   #:use-module (gnu home services shepherd)
   #:use-module (gnu home services sound)      ; home-pipewire-service-type
   ;; packages
-  #:use-module (gnu packages glib)            ; provides 'dbus' package
-  #:use-module (gnu packages video)
-  #:use-module (gnu packages gnome-xyz)
-  #:use-module (gnu packages wm)
-  #:use-module (gnu packages qt)
-  #:use-module (gnu packages linux)
-  #:use-module (gnu packages pulseaudio)
-  #:use-module (gnu packages xdisorg)
-  #:use-module (gnu packages version-control)
-  #:use-module (gnu packages rust-apps)
+  #:use-module (gnu packages)            ; provides 'dbus' package
   #:use-module (gnu services)
   #:use-module (gnu services shepherd)
   #:use-module (guix gexp)
@@ -26,16 +17,22 @@
 
 ;; 1) Desktop packages as before
 (define (home-desktop-profile-service _config)
-  (list
-   materia-theme      ; GTK Materia (includes Materia-dark)
-   kvantum            ; Qt style engine (reads Kvantum configs)
-   papirus-icon-theme ; optional: nice low-contrast dark icons
-   shell-scripts helvum dbus
-   pipewire wireplumber
-   alsa-utils pulseaudio))
+  (map specification->package
+       (list
+	"libnotify"
+	"materia-theme"	     ; GTK Materia (includes Materia-dark)
+	"kvantum"		     ; Qt style engine (reads Kvantum configs)
+	"papirus-icon-theme"   ; optional: nice low-contrast dark icons
+	"helvum" "dbus"
+	"ocean-sound-theme"
+	"libcanberra"
+	"pipewire" "wireplumber"
+	"alsa-utils" "pulseaudio")))
 
 (define (home-desktop-environment-variables config)
   (list
+   `("XDG_SOUND_THEME_NAME" . "ocean")
+   `("GTK_MODULES" . "canberra-gtk-module")
    `("QT_STYLE_OVERRIDE" . "kvantum")))
 
 ;; 2) PipeWire (with Pulse shim) through Home’s sound service.
@@ -49,6 +46,9 @@
      ,(plain-file "gtk3-settings.ini"
 		  (string-append
 		   "[Settings]\n"
+		   "gtk-enable-event-sounds = 1\n"
+		   "gtk-enable-input-feedback-sounds = 1\n"
+		   "gtk-sound-theme-name = ocean\n"
 		   "gtk-theme-name=Materia-dark\n"
 		   "gtk-icon-theme-name=Papirus-Dark\n"
 		   "gtk-application-prefer-dark-theme=1\n")))
@@ -56,6 +56,9 @@
      ,(plain-file "gtk4-settings.ini"
 		  (string-append
 		   "[Settings]\n"
+		   "gtk-enable-event-sounds = 1\n"
+		   "gtk-enable-input-feedback-sounds = 1\n"
+		   "gtk-sound-theme-name = ocean\n"
 		   "gtk-theme-name=Materia-dark\n"
 		   "gtk-icon-theme-name=Papirus-Dark\n"
 		   "gtk-application-prefer-dark-theme=1\n")))
