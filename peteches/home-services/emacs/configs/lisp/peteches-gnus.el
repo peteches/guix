@@ -25,7 +25,11 @@
 ;;; Code:
 
 (require 'gnus)
+(require 'gnus-desktop-notify)
 (require 'smtpmail)
+
+(gnus-desktop-notify-mode)
+(gnus-demon-add-rescan)
 
 (defgroup peteches-gnus nil
   "Simple Fastmail configuration for Gnus using password-store."
