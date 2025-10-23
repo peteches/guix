@@ -5,6 +5,7 @@
   #:use-module (gnu packages python-web)
   #:use-module (gnu packages password-utils)
   #:use-module (peteches packages aws)
+  #:use-module (gnu packages)
   #:export (home-aws-configuration
             home-aws-service-type))
 

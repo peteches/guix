@@ -28,6 +28,7 @@
   #:use-module (nongnu packages mozilla)
   #:use-module (peteches packages gpg)
   ;; Your feature modules
+  #:use-module (peteches home-services aws)
   #:use-module (peteches home-services desktop)
   #:use-module (peteches home-services emacs base)
   #:use-module (peteches home-services git)
@@ -61,6 +62,7 @@
    git
    gnupg
    jq
+   pgcli
    ripgrep
    pinentry-qt
    pinentry-tty
@@ -81,6 +83,8 @@
    ;; Dbus
    (service home-dbus-service-type)
 
+   (service home-aws-service-type)
+   
    (service home-syncthing-service-type
 	    (for-home
 	     (syncthing-configuration
