@@ -19,6 +19,7 @@
 (define (home-desktop-profile-service _config)
   (map specification->package
        (list
+	"shell-scripts"
 	"libnotify"
 	"materia-theme"	     ; GTK Materia (includes Materia-dark)
 	"kvantum"		     ; Qt style engine (reads Kvantum configs)

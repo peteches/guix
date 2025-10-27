@@ -8,6 +8,7 @@
   #:use-module (gnu packages base)           ; glibc-locales
   #:use-module (nongnu packages linux)
   #:use-module (peteches systems base)
+  #:use-module (peteches system-services tailscale)
   #:use-module (peteches systems network-mounts))
 
 (use-service-modules base linux cups desktop networking ssh xorg)
@@ -32,6 +33,10 @@
         (target "cryptroot")
         (type luks-device-mapping)))
 
+    #:extra-services
+    (list
+     (service tailscale-service-type))
+    
     ;; Filesystems (root via mapper; EFI unencrypted)
     #:file-systems
     (append

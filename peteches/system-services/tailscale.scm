@@ -32,7 +32,7 @@
             (start #~(make-forkexec-constructor
                       (list #$(file-append package "/bin/tailscaled")
                             "--state=/var/lib/tailscale/tailscaled.state"
-                            "--socket=/run/tailscale/tailscaled.sock")
+                            "--socket=/var/run/tailscale/tailscaled.sock")
                       #:log-file #$log-file
                       #:environment-variables
                       (list "PATH=/run/setuid-programs:/run/current-system/profile/bin:/run/current-system/profile/sbin")))

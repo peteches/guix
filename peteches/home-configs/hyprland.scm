@@ -82,7 +82,13 @@
     (mods "SUPER")
     (key "p")
     (dispatcher "exec")
-    (params "wofi-password.sh"))))
+    (params "wofi-password.sh"))
+   
+   (bind
+    (mods "SUPER SHIFT")
+    (key "p")
+    (dispatcher "exec")
+    (params "wofi-screenshot.sh"))))
 
 (define-public (base-hyprland-window-workspace-binds workspaces)
   (append (list
