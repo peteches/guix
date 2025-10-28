@@ -198,7 +198,13 @@
 	       (modules-right #("wireplumber#source" "wireplumber#sink" "cpu" "memory" "temperature" "network" "battery" "tray"))
 
                (modules-config base-waybar-modules-config)))))
-   (service wofi-service-type)
+   (service wofi-service-type
+	    (wofi-config
+	     (matching "multi-contains")
+	     (insensitive "true")
+	     (close_on_focus_loss "true")
+	     (key_up "Ctrl-p")
+	     (key_down "Ctrl-n")))
    (service home-emacs-base-service-type)
 
    (service home-bash-service-type
