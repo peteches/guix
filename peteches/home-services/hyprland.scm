@@ -13,6 +13,10 @@
   #:use-module (guix gexp)
   #:use-module (ice-9 regex)
   #:use-module (srfi srfi-1)
+  #:use-module (ice-9 ftw)
+  #:use-module (ice-9 rdelim)
+  #:use-module (ice-9 iconv)
+  #:use-module (ice-9 binary-ports)
   #:export (home-hyprland-service-type
 	    <home-hyprland-configuration>
             home-hyprland-configuration
@@ -1101,8 +1105,50 @@ version=1
 					     (serialize-home-hyprland-variable-configuration
 					      (home-hyprland-configuration-variables config))))))
 
+;; Determine runtime dir (fallback to /tmp)
+(define xdg-runtime-dir
+  (or (getenv "XDG_RUNTIME_DIR")
+      (string-append "/run/user/" (number->string (getuid)))))
+
+(define hypr-root (string-append xdg-runtime-dir "/hypr"))
+
+(define (find-hypr-instance)
+  (and (file-exists? hypr-root)
+       (let ((entries (scandir hypr-root
+                               (lambda (name)
+                                 (and (not (member name '("." "..")))
+                                      (file-is-directory? (string-append hypr-root "/" name)))))))
+         (if (null? entries)
+             #f
+             ;; usually only one instance, pick the newest
+             (car (sort entries
+                        (lambda (a b)
+                          (> (stat:mtime (stat (string-append hypr-root "/" a)))
+                             (stat:mtime (stat (string-append hypr-root "/" b)))))))))))
+
+(define (hypr-socket-path)
+  (let ((sig (find-hypr-instance)))
+    (and sig
+         (string-append hypr-root "/" sig "/.socket.sock"))))
+
 (define (home-hyprland-activation-service-type config)
-  #~(system* #$(file-append hyprland "/bin/hyprctl") "reload"))
+  #~(begin
+      (use-modules (ice-9 iconv))
+      (define (hypr-send socket-path command)
+	;; Create a Unix domain stream socket, like (socket PF_INET SOCK_STREAM 0)
+	;; but AF_UNIX instead of PF_INET.
+	(let ((s (socket AF_UNIX SOCK_STREAM 0)))
+	  ;; Connect to Hyprland's control socket
+	  (connect s (make-socket-address AF_UNIX socket-path))
+
+	  ;; Send the command. The Hyprland IPC accepts "reload" with no newline.
+	  ;; Using `display` matches the Guile manual style, which just writes to `s`
+	  ;; directly because `s` is a port once connected. :contentReference[oaicite:2]{index=2}
+	  (send s (string->bytevector command "utf8"))
+	  (force-output s)))
+
+
+      (hypr-send #$(hypr-socket-path) "reload")))
 
 (define (home-hyprland-environment-variables-service-type config)
   `(("XDG_SESSION_TYPE" . "wayland")
