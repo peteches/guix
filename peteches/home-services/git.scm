@@ -8,12 +8,35 @@
   #:use-module (gnu services configuration)
   #:use-module (srfi srfi-1)
   #:use-module (srfi srfi-26)
+  #:use-module (ice-9 string-fun)
+  #:use-module (guix git-download)
+  #:use-module (guix packages)
   #:export (home-git-configuration
             git-section git-section-name git-section-config))
 
 ;; -----------------------------------------------------------------------------
 ;; Helpers
 ;; -----------------------------------------------------------------------------
+
+(define %gitignore-source
+  (origin
+    (method git-fetch)
+    (uri (git-reference
+          (url "https://github.com/github/gitignore")
+          (commit "fc6ce5da28a8c3480cc8a5acad050449f72a9261")))
+    (file-name "github-gitignore-checkout")
+    (sha256 "163yy5ajqmjncklhbbkcndskc78gr37vfc5950kvzh3hiszy2x5d")))
+
+(define-public (gitignore-file name)
+  "Reproducible file-like object for NAME.gitignore from the pinned checkout.
+Examples: \"Global/Linux\", \"CommonLisp\"."
+  (let ((sanitized    (string-append "gitignore-" (string-replace-substring name "/" "-"))))
+    (computed-file
+     (string-append "gitignore-" sanitized)
+     ;; Output should be a *file*, not a directory.
+     #~(copy-file
+        (string-append #$%gitignore-source "/" #$name ".gitignore")
+        #$output))))
 
 (define (serialize-string field-name value) value)
 
