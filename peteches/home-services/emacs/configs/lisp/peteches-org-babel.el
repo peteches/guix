@@ -62,4 +62,4 @@
       org-src-window-setup 'current-window)
 
 (provide 'peteches-org-babel)
-;;; peteches/org-babel.el ends here
+;;; peteches-org-babel.el ends here
