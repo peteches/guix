@@ -27,7 +27,7 @@
 
 (require 'cl-lib)
 (require 'compile)
-
+(require 'peteches-go-ts)
 ;;;; Customization -----------------------------------------------------------
 
 (defgroup peteches-go nil
@@ -138,7 +138,7 @@
 ;; Without this, remapping go-mode→go-ts-mode never triggers and buffers
 ;; can end up in Fundamental.
 (defun peteches-go--treesit-ready-p ()
-  "Return non-nil if go-ts-mode is available (grammar present if required)."
+  "Return non-nil if \"go-ts-mode\" is available (grammar present if required)."
   (and (fboundp 'go-ts-mode)
        (cond
         ((fboundp 'treesit-available-p) (treesit-available-p))
