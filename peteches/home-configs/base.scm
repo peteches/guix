@@ -119,7 +119,17 @@
 
    ;; Git config
    (service home-git-service-type
-            (home-git-configuration (config git-config)))
+            (home-git-configuration
+	     (config git-config)
+	     (global-ignore (map gitignore-file
+				 `("Global/Backup"
+				   "Global/Diff"
+				   "Global/Emacs"
+				   "Global/Linux"
+				   "Go"
+				   "CommonLisp"
+				   "Elisp"
+				   "Scheme")))))
 
    ;; Password store
    (service home-password-store-service-type
