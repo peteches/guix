@@ -205,7 +205,7 @@
 	       ;; Hyprland modules
 	       (modules-left  #("hyprland/workspaces" "hyprland/window"))
 	       (modules-center #("clock"))
-	       (modules-right #("wireplumber#source" "wireplumber#sink" "cpu" "memory" "temperature" "network" "battery" "tray"))
+	       (modules-right #("backlight" "wireplumber#source" "wireplumber#sink" "cpu" "memory" "temperature" "network" "battery" "tray"))
 
                (modules-config base-waybar-modules-config)))))
    (service wofi-service-type
