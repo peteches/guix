@@ -27,14 +27,15 @@
 ;; A focused dashboard and a couple of handy custom commands
 (setq org-agenda-custom-commands
       '(("d" "Dashboard"
-         ((agenda "" ((org-deadline-warning-days 7)))
-          (todo "NEXT"
-                ((org-agenda-overriding-header "Next actions")
+         ((todo "IN-PROGRESS"
+                ((org-agenda-overriding-header "✅ Current tasks")
                  (org-agenda-sorting-strategy '(priority-down todo-state-down))))
-          (todo "WAIT"
-                ((org-agenda-overriding-header "Waiting on")
+          (todo "BLOCKED"
+                ((org-agenda-overriding-header "⛔ Waiting on")
                  (org-agenda-skip-function
-                  '(org-agenda-skip-entry-if 'scheduled))))))
+                  '(org-agenda-skip-entry-if 'scheduled))))
+	  (todo "BACKLOG"
+		((org-agenda-overriding-header "👀 Backlog")))))
         ("n" "Next only" todo "NEXT")
         ("w" "Work focus"
          ((tags-todo "+work+TODO={TODO\\|NEXT}")))
@@ -52,4 +53,4 @@
       org-refile-use-outline-path 'file)
 
 (provide 'peteches-org-agenda)
-;;; peteches/org-agenda.el ends here
+;;; peteches-org-agenda.el ends here

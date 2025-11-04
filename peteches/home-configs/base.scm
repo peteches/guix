@@ -182,7 +182,7 @@
 						(base-hyprland-window-workspace-binds 9)))
 					(command-execution						 
 					 (hyprland-execs
-					  (exec-once '("waybar" "mako" "canberra-gtk-play -i desktop-login"))))))
+					  (exec-once '("emacs --daemon" "waybar" "mako" "canberra-gtk-play -i desktop-login"))))))
    
    ;; Waybar / Wofi
    (service waybar-service-type

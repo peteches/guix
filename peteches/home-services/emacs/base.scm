@@ -27,6 +27,7 @@
 
 (define (home-emacs-base-profile-service config)
   (map specification->package '("emacs"
+				"emacs-linear"
 				"emacs-forge"
 				"emacs-string-inflection"
 				"emacs-ob-go"
@@ -181,9 +182,9 @@
                                    (expand-file-name \"init.el\" user-emacs-directory))))
                     (when (and init (file-readable-p init))
                       (load init nil 'nomessage))))"))))
-		  (service-extension
-		   home-shepherd-service-type
-		   home-emacs-base-shepherd-service-type)
+		  ;; (service-extension
+		  ;;  home-shepherd-service-type
+		  ;;  home-emacs-base-shepherd-service-type)
 		  (service-extension
 		   home-profile-service-type
 		   home-emacs-base-profile-service)

@@ -101,7 +101,7 @@
 (require 'peteches-projectile)
 (require 'peteches-python)
 (require 'peteches-scheme)
-(require 'peteches-slack)
+; (require 'peteches-slack)
 (require 'peteches-tramp)
 (require 'peteches-vertico)
 (require 'peteches-which-key)
