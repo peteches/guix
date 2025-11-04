@@ -15,7 +15,7 @@
 				    linear-emacs-org-file-path (expand-file-name "agenda/linear.org" org-directory))))
 
 ;; Automatically enable two-way sync when linear.org is opened
-(defun my/enable-linear-org-sync ()
+(defun peteches/enable-linear-org-sync ()
   "Enable Linear-org synchronization when linear.org is opened."
   (when (and buffer-file-name
              (string-match-p "linear\\.org$" buffer-file-name))
@@ -24,7 +24,7 @@
       (message "Linear-org synchronization enabled for this buffer"))))
 
 ;; Add hook to auto-enable sync when linear.org is opened
-(add-hook 'find-file-hook #'my/enable-linear-org-sync)
+(add-hook 'find-file-hook #'peteches/enable-linear-org-sync)
 
 ;; Enable sync for org-after-todo-state-change-hook
 (add-hook 'org-after-todo-state-change-hook

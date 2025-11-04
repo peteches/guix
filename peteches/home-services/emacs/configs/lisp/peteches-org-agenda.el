@@ -52,5 +52,6 @@
 (setq org-outline-path-complete-in-steps nil   ;; more natural minibuffer completion
       org-refile-use-outline-path 'file)
 
+(require 'peteches-linear)
 (provide 'peteches-org-agenda)
 ;;; peteches-org-agenda.el ends here
