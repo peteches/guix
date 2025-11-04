@@ -1,5 +1,5 @@
 ;;; peteches/org-agenda.el --- Agenda setup -*- lexical-binding: t; -*-
-
+;;; Commentary:
 ;;; Code:
 
 (require 'org)
