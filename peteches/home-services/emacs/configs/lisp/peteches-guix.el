@@ -1,3 +1,11 @@
+;;; peteches-guix --- my guix configs
+;;;
+;;; Commentary:
+;;; 
+;;;
+;;; Code:
+
+
 ;;; Guix: refresh load-path from active profiles, on demand.
 (require 'seq)
 
@@ -33,4 +41,20 @@ If PROFILES is nil, use a sensible default set."
       (progn (require (intern library)) (message "Loaded %s" library))
     (error (user-error "Could not load %s: %s" library (error-message-string err)))))
 
+(defun peteches/guix-home-reconfigure ()
+  "Run guix home reconfigure."
+  (interactive)
+  (compile (format "NO_COLOR=true guix home -L %s reconfigure %s.scm "
+		   (expand-file-name "~/area_51/guix/")
+		   (expand-file-name (format "~/area_51/guix/peteches/home-configs/%s" (system-name))))))
+
+(defun peteches/guix-system-reconfigure ()
+  "Run guix system reconfigure."
+  (interactive)
+  (compile (format "NO_COLOR=true sudo guix system -L %s reconfigure %s.scm "
+		   (expand-file-name "~/area_51/guix/")
+		   (expand-file-name (format "~/area_51/guix/peteches/systems/%s" (system-name))))))
+
 (provide 'peteches-guix)
+;;; peteches-guix.el ends here
+

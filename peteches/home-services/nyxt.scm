@@ -2,11 +2,11 @@
   #:use-module (gnu home services)
   #:use-module (gnu packages gstreamer)
   #:use-module (guix gexp)
-  #:use-module (gnu packages web-browsers))
+  #:use-module (gnu packages))
 
 (define (nyxt-profile config)
-  (list nyxt gst-plugins-ugly gst-plugins-good-qt gst-plugins-good))
-
+  (map specification->package
+       (list "nyxt" "gst-plugins-ugly" "gst-plugins-good-qt" "gst-plugins-good")))
 
 (define (nyxt-files-service config)
   (list
