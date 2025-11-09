@@ -28,4 +28,7 @@
 	 (config '(("defaultBranch" . "main"))))
 	(git-section
 	 (name "commit")
-	 (config '(("gpgSign" . "true"))))))
+	 (config '(("gpgSign" . "true"))))
+	(git-section
+	 (name "github")
+	 (config '(("user" . "peteches"))))))

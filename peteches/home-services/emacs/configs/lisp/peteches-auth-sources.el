@@ -10,7 +10,7 @@
 (setq epg-gpg-program (expand-file-name "~/.guix-home/profile/bin/gpg"))
 (setq epg-gpgconf-program (expand-file-name "~/.guix-home/profile/bin/gpgconf"))
 
-(setq auth-sources '())
+(setq auth-sources '("~/.authinfo.gpg"))
 (setq auth-source-pass-dir (expand-file-name "~/.local/share/password-store"))
 (setenv "PASSWORD_STORE_DIR" auth-source-pass-dir)
 (setq auth-source-pass-filename auth-source-pass-dir)
