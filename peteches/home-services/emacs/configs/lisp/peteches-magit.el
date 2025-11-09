@@ -1,8 +1,17 @@
-(require 'magit)
-(message "loading Magit config")
-(defvar peteches/project-dir "~/area_51")
+;;; peteches-magit --- My Magit config
 
-(defun peteches/clone-repo (uri)
-  (interactive "PRepo URI:")
-  )
+;;; Commentary:
+;;;
+;;; This setups up magit and Forge
+;;;
+;;; Code:
+
+(require 'magit)
+(require 'forge)
+(message "loading Magit config")
+
+
+
+
 (provide 'peteches-magit)
+;;; peteches-magit.el ends here
