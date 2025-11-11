@@ -30,6 +30,8 @@
   #:use-module (nongnu packages nvidia)	; nvidia-firmware
 
   #:use-module (nongnu packages linux)
+
+  #:use-module (peteches system-services boltd)
   #:export (make-base-os
             %peteches-user
             %common-services
@@ -55,6 +57,7 @@
 (define %common-services
   (list (service openssh-service-type)
         (service tor-service-type)
+	(service boltd-service-type)
         (service gpm-service-type)))
 
 (define %common-packages
