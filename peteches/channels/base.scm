@@ -27,3 +27,4 @@
       "199fd26ab268d4f26cebcb39e844fe4ff9bea9bc"
       (openpgp-fingerprint
        "BBB0 2DDF 2CEA F6A8 0D1D  E643 A2A0 6DF2 A33A 54FA"))))))
+%base-channels
