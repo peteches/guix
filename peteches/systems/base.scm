@@ -8,6 +8,7 @@
 
   ;; Services (service constructors + specific service types)
   #:use-module (gnu services) ; <-- provides 'service', 'simple-service', etc.
+  #:use-module (gnu services authentication)
   #:use-module (gnu services base)
   #:use-module (gnu services desktop)
   #:use-module (gnu services docker)
@@ -15,19 +16,26 @@
   #:use-module (gnu services xorg)
   #:use-module (gnu services pm)
   #:use-module (gnu services networking) ; tor-service-type
+
   #:use-module (gnu services ssh)        ; openssh-service-type
+
   #:use-module (gnu services cups)       ; cups-service-type
 
   ;; Packages used in helpers
+
   #:use-module (gnu packages admin)
   #:use-module (gnu packages display-managers) ; gtkgreet
+
   #:use-module (gnu packages wm)               ; cage
+
 
   #:use-module (gnu packages fonts)
   #:use-module (gnu packages linux)  ; linux-firmware, intel-microcode
 
+
   #:use-module (nongnu services nvidia)
   #:use-module (nongnu packages nvidia)	; nvidia-firmware
+
 
   #:use-module (nongnu packages linux)
 
@@ -57,11 +65,27 @@
 (define %common-services
   (list (service openssh-service-type)
         (service tor-service-type)
+	(service fprintd-service-type)
+	(simple-service 'my-pam-service pam-root-service-type
+			(let ((my-pam-entry
+			       (pam-entry
+				(control "sufficient")
+				(module (file-append fprintd "/lib/security/pam_fprintd.so")))))
+			  (list (pam-extension
+				 (transformer
+				  (lambda (pam)
+				    (if (string=? "sudo" (pam-service-name pam))
+					(pam-service
+					 (inherit pam)
+					 (auth
+					  (append (pam-service-auth pam)
+						  (list my-pam-entry))))
+					pam)))))))
 	(service boltd-service-type)
         (service gpm-service-type)))
 
 (define %common-packages
-  (list font-terminus))
+  (map specification->package (list "bolt" "fprintd"  "font-terminus")))
 
 (define (without-gdm)
   (modify-services
@@ -88,7 +112,7 @@
   (list
    ;; needs: (use-modules (gnu services base) (gnu packages fonts))
    (service console-font-service-type
-    `(("tty7" . ,(file-append font-terminus "/share/consolefonts/ter-132n"))))
+	    `(("tty7" . ,(file-append font-terminus "/share/consolefonts/ter-132n"))))
 
 
    ;; In your operating-system's (services ...)

@@ -43,7 +43,7 @@
 				"yarn" ; for mcp servers
 				"curl"
 				"emacs-compat"
-
+				"postgresql"
 					;	emacs-go-playground
 
 				"emacs-orderless"

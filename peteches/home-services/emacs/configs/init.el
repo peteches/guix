@@ -98,6 +98,7 @@
 (require 'peteches-mcp)
 (require 'peteches-orderless)
 (require 'peteches-org)
+(require 'peteches-proced)
 (require 'peteches-projectile)
 (require 'peteches-python)
 (require 'peteches-scheme)
@@ -115,3 +116,6 @@
 (require 'server)
 (unless (server-running-p)
   (server-start))
+
+(provide 'init)
+;;; init.el ends here

@@ -8,12 +8,14 @@
   "Org Agenda configuration."
   :group 'peteches/org)
 
+(if (not (file-exists-p (expand-file-name "agenda" org-directory)))
+    (make-directory (expand-file-name "agenda" org-directory) t))
 (setq org-agenda-files
       (directory-files-recursively (expand-file-name "agenda" org-directory) "\\.org$"))
 
 ;; Subtle UI tweaks
 (setq org-agenda-span 'week
-      org-agenda-start-on-weekday 1  ;; Monday
+      org-agenda-start-on-weekday 1 ;; Monday
       org-agenda-start-with-log-mode t
       org-agenda-skip-deadline-prewarning-if-scheduled t
       org-agenda-use-time-grid t
