@@ -27,6 +27,7 @@
   #:use-module (gnu packages video)
   #:use-module (nongnu packages mozilla)
   #:use-module (peteches packages gpg)
+  #:use-module (peteches packages go-tools)
   ;; Your feature modules
   #:use-module (peteches home-services aws)
   #:use-module (peteches home-services desktop)
@@ -62,6 +63,7 @@
    git
    gnupg
    jq
+   go-golangci-lint
    pgcli
    ripgrep
    pinentry-qt
@@ -79,6 +81,13 @@
 ;; 2) Shared services (with your existing configs).
 (define-public base-services
   (list
+
+   (simple-service 'general-env  home-environment-variables-service-type
+		   `(("PATH" . "$HOME/.local/bin:$PATH")
+		     ("GOMODCACHE" . "$HOME/.cache/go/mod")
+		     ("GOCACHE" . "$HOME/.cache/go/build")
+		     ("GOPATH" . "$HOME/state/go")
+		     ("GOBIN" . "$HOME/.local/bin")))
 
    ;; Dbus
    (service home-dbus-service-type)
@@ -120,6 +129,7 @@
    ;; Git config
    (service home-git-service-type
             (home-git-configuration
+	     (pre-commit-hook (list (local-file "./git-hooks/pre-commit")))
 	     (config git-config)
 	     (global-ignore (map gitignore-file
 				 `("Global/Backup"
