@@ -35,9 +35,12 @@
 
   #:use-module (nongnu services nvidia)
   #:use-module (nongnu packages nvidia)	; nvidia-firmware
+  #:use-module (gnu packages freedesktop)
 
 
   #:use-module (nongnu packages linux)
+
+  #:use-module (gnu system nss)
 
   #:use-module (peteches system-services boltd)
   #:export (make-base-os
@@ -186,7 +189,7 @@
 						      #$(file-append nvidia-driver "/lib") ":"
 						      #$(file-append nvidia-driver "/lib64")
 						      ":${LD_LIBRARY_PATH}"))))
-			       
+
 			       (service nvidia-service-type)
 			       (simple-service 'custom-udev-rules udev-service-type
 					       (list nvidia-driver))
@@ -226,6 +229,7 @@
      (timezone "Europe/London")
      (keyboard-layout (keyboard-layout "us"))
      (host-name host-name)
+     (name-service-switch %mdns-host-lookup-nss)
      (users (append (list (if with-docker?
 			      (user-account
 			       (inherit %peteches-user)
@@ -240,4 +244,3 @@
      (mapped-devices mapped-devices)
      (file-systems (append file-systems %base-file-systems))
      (bootloader bootloader))))
-
