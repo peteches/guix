@@ -220,6 +220,9 @@
      (kernel-arguments (append (if with-nvidia?
 				   (list "modprobe.blacklist=nouveau" "nvidia_drm.modeset=1")
 				   '())
+			       (if intel-cpu?
+				   (list "intel_iommu=on" "iommu=pt")
+				   '())
 			       %default-kernel-arguments))
      (kernel-loadable-modules (if with-nvidia?
 				  (list nvidia-module)
