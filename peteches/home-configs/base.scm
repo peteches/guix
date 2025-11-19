@@ -73,11 +73,6 @@
    qtwayland
    btop))
 
-(define (get-ssh-host-key hosts)
-  (let* ((port (open-input-pipe (string-append "ssh-keyscan " (string-join hosts))))
-	 (str  (get-string-all port)))
-    (plain-file "known_hosts" str)))
-
 ;; 2) Shared services (with your existing configs).
 (define-public base-services
   (list
@@ -93,14 +88,14 @@
    (service home-dbus-service-type)
 
    (service home-aws-service-type)
-   
+
    (service home-syncthing-service-type
 	    (for-home
 	     (syncthing-configuration
 	      (config-file
 	       (syncthing-config-file
 		(gui-address "127.0.0.1:8384")
-		
+
 		;; Define the folder you want to sync.
 		;; Use a stable folder ID ("org") across your machines.
 		(folders
@@ -121,7 +116,7 @@
 			   (name "bhiyaki")
 			   (id "KPF5CNJ-CE2XGRC-VDDKARM-GIM47XB-UMS63Y7-JY3WX7V-I6PLMS5-GGQB2A7")
 			   (auto-accept-folders? #t))))))))))))
-  
+
   ;; Notifications
   (service home-mako-service-type
            base-mako-config)
@@ -155,11 +150,24 @@
    ;; SSH
    (service home-openssh-service-type
             (home-openssh-configuration
-	     (known-hosts `(,(get-ssh-host-key '("github.com" "nug.peteches.co.uk"))))
 	     (add-keys-to-agent "yes")
-             ;; Keep the permissive default host block; host-specific entries
-             ;; can be appended per-machine via extras.
-             (hosts '())))
+	     (authorized-keys (list (local-file "ssh-authorized-keys")))
+             (hosts (list
+		     (openssh-host
+		      (name "*")
+		      (extra-content (string-append
+				      "    ControlMaster auto\n"
+				      "    ControlPath ~/.ssh/ctrl-%C\n"
+				      "    ControlPersist 10m\n")))
+		     (openssh-host
+		      (name "nug")
+		      (host-name "nug.local"))
+		     (openssh-host
+		      (name "bhiyaki")
+		      (host-name "bhiyaki.local"))
+		     (openssh-host
+		      (name "nyarlothotep")
+		      (host-name "nyarlothotep.local"))))))
 
    ;; GPG Agent
    (service home-gpg-agent-service-type
@@ -190,10 +198,10 @@
 					(binds (append
 						base-hyprland-default-application-launcher-binds
 						(base-hyprland-window-workspace-binds 9)))
-					(command-execution						 
+					(command-execution
 					 (hyprland-execs
 					  (exec-once '("emacs --daemon" "waybar" "mako" "canberra-gtk-play -i desktop-login"))))))
-   
+
    ;; Waybar / Wofi
    (service waybar-service-type
             (waybar-configuration
@@ -211,7 +219,7 @@
 	       (reload_style_on_change #t)
 	       (output "")
 
-	       
+
 	       ;; Hyprland modules
 	       (modules-left  #("hyprland/workspaces" "hyprland/window"))
 	       (modules-center #("clock"))
@@ -233,8 +241,7 @@
 			("grsys" . "sudo guix system -L ~/area_51/guix reconfigure ~/area_51/guix/peteches/systems/$(hostname).scm")))
 	     (guix-defaults? #t)
 	     (environment-variables '(("CGO_ENABLED" . "1")))))
-   
+
    ;; Desktop conveniences (terminals/aliases/env, etc.).  You already have a
    ;; home-desktop-service; keep it as the place to set common env/aliases.
    (service home-desktop-service-type)))
-

@@ -98,7 +98,7 @@
     config => (guix-configuration
 	       (inherit config)
 	       (substitute-urls
-		(append (list "http://nug.peteches.co.uk:3000")
+		(append (list "http://nug.local:3000")
 			%default-substitute-urls))
 	       (authorized-keys
 		(append (list (local-file "./nug-substitute-key.pub"))
