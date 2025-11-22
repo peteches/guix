@@ -28,7 +28,7 @@
 (defvar peteches/gptel-koboldcpp
   (gptel-make-openai "KoboldCPP"
     :protocol "http"	      ; change to "https" if you terminate TLS
-    :host "nug.peteches.co.uk:5001"
+    :host "nug.local:5001"
     :endpoint "/v1/chat/completions"
     :stream t))
 

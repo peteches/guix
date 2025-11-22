@@ -113,6 +113,10 @@
 			   (id "END7B5S-OJ73D3S-CCPWFE3-Q45OGLZ-BAGJ63I-CF4YBQ6-6QE2U36-YFLGZA2")
 			   (auto-accept-folders? #t))
 			  (syncthing-device
+			   (name "nyarlothotep")
+			   (id "NONO6A6-UEOXJWK-JI5TWRF-5NDMD6H-N3BDTWI-JKRNQ5D-PHO4SSW-UDTHFAL")
+			   (auto-accept-folders? #t))
+			  (syncthing-device
 			   (name "bhiyaki")
 			   (id "KPF5CNJ-CE2XGRC-VDDKARM-GIM47XB-UMS63Y7-JY3WX7V-I6PLMS5-GGQB2A7")
 			   (auto-accept-folders? #t))))))))))))
