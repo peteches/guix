@@ -119,7 +119,7 @@
 (add-hook 'org-mode-hook #'peteches/org-writing-setup)
 
 ;; Optional: width of the writing column
-(setq olivetti-body-width 80)
+(setq olivetti-body-width 0.8)
 
 
 
