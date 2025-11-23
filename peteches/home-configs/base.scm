@@ -12,6 +12,7 @@
   ;; Packages
   #:use-module (gnu packages admin)
   #:use-module (gnu packages databases)
+  #:use-module (gnu packages compression)
   #:use-module (gnu packages gnupg)
   #:use-module (gnu packages rust-apps)
   #:use-module (gnu packages terminals)
@@ -71,6 +72,7 @@
    peteches-pinentry-switch
    bibata-cursor-theme
    qtwayland
+   unzip
    btop))
 
 ;; 2) Shared services (with your existing configs).

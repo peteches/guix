@@ -85,6 +85,7 @@
 (require 'peteches-bash)
 (require 'peteches-combobulate)
 (require 'peteches-company)
+(require 'peteches-dired)
 (require 'peteches-elisp)
 (require 'peteches-eshell)
 (require 'peteches-flymake)

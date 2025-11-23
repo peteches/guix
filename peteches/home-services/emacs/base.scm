@@ -29,6 +29,7 @@
   (map specification->package '("emacs"
 				"emacs-linear"
 				"emacs-forge"
+				"emacs-olivetti"
 				"emacs-string-inflection"
 				"emacs-ob-go"
 				"emacs-modus-themes"
@@ -53,22 +54,22 @@
 				"ripgrep"
 
 				"emacs-gnus-desktop-notify"
-				
+
 				"emacs-tramp"
 
 				"emacs-org"
 				"emacs-org-superstar"
 				"emacs-org-roam"
-				
+
 				"emacs-password-store"
 				"emacs-password-store-otp"
 				"emacs-auth-source-pass"
 
 				"emacs-marginalia"
 				"emacs-vertico"
-				
+
 				"emacs-slack"
-				
+
 				"emacs-which-key"
 
 				"emacs-magit"
@@ -79,7 +80,7 @@
 				"tree-sitter"
 
 				"tree-sitter-yaml"
-				
+
 				"tree-sitter-go"
 				"tree-sitter-gomod"
 
@@ -103,10 +104,10 @@
 
 				"tree-sitter-bash"
 				"tree-sitter-awk"
-				
-				
+
+
 				"emacs-go-mode"
-				
+
 				"emacs-lsp-mode"
 
 				"emacs-pinentry"
@@ -119,8 +120,8 @@
 				"emacs-company-quickhelp"
 				"emacs-company-org-block"
 				"emacs-company-emoji"
-				
-				
+
+
 				;; language servers
 				"guile-lsp-server"
 				"go"
@@ -134,7 +135,7 @@
 				"go-github-com-sonirico-mcp-shell"
 
 				"emacs-mcp"
-				
+
 				"emacs-all-the-icons"
 				"emacs-all-the-icons-dired"
 				"emacs-all-the-icons-ibuffer"

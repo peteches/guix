@@ -1,9 +1,6 @@
 ;;; peteches/org.el --- Core Org defaults, loads agenda/roam/babel -*- lexical-binding: t; -*-
 
-;; Place this file and the others in: ~/.config/emacs/peteches/
-;; Then in your init.el, add:
-;;   (add-to-list 'load-path (locate-user-emacs-file "peteches/"))
-;;   (require 'peteches-org)
+;;; Commentary:
 
 ;;; Code:
 
@@ -20,13 +17,17 @@
   "Base directory for Org files."
   :type 'directory :group 'peteches/org)
 
-;; superstar
-(add-hook 'org-mode-hook (lambda () (org-superstar-mode 1)))
-(setq org-superstar-headline-bullets-list
-   '("∇" "⚶" "⋈" "␥" "⧋" "➝"))
+;; --- Install org-modern via straight.el ---
+(straight-use-package
+ '(org-modern :type git :host github :repo "minad/org-modern"))
+
+;; --- Enable org-modern for Org buffers ---
+(add-hook 'org-mode-hook #'org-modern-mode)
+
 
 ;; Reasonable visual defaults
 (setq
+ org-attach-store-link-p 'file
  org-startup-indented t
  org-pretty-entities t
  org-use-sub-superscripts "{}"
@@ -44,7 +45,9 @@
  org-image-actual-width '(500)
  org-M-RET-may-split-line '((default . nil))
  org-insert-heading-respect-content t
- org-tags-column 0)
+ org-tags-column 0
+ org-table-allow-automatic-line-recalculation t
+ )
 
 ;; Streamlined TODO flow
 (setq org-todo-keywords
@@ -93,6 +96,32 @@
 
       ;; --- Load the rest of the stack -------------------------------------------
 
+;; --- Fonts ---
+;; Set these once to whatever fonts you use:
+(set-face-attribute 'variable-pitch nil :family "Cantarell" :height 120)
+(set-face-attribute 'fixed-pitch nil :family "Iosevka" :height 110)
+
+;; --- Main function ---
+(defun peteches/org-writing-setup ()
+  "Simple mixed-font writing environment for Org."
+  (olivetti-mode 1)
+  (variable-pitch-mode 1)
+
+  ;; Keep code/tables in fixed pitch.
+  (set-face-attribute 'org-table nil :inherit 'fixed-pitch)
+  (set-face-attribute 'org-block nil :inherit 'fixed-pitch)
+  (set-face-attribute 'org-code nil :inherit 'fixed-pitch)
+  (set-face-attribute 'org-verbatim nil :inherit 'fixed-pitch)
+
+  ;; Make tables stand out just a little.
+  (set-face-attribute 'org-table nil :inherit 'fixed-pitch :weight 'semibold))
+
+(add-hook 'org-mode-hook #'peteches/org-writing-setup)
+
+;; Optional: width of the writing column
+(setq olivetti-body-width 80)
+
+
 
 (require 'peteches-org-agenda) ;; agenda and custom commands
 (require 'peteches-org-babel)  ;; babel languages & safety
@@ -100,4 +129,4 @@
 
 (require 'peteches-scoreplay)
 (provide 'peteches-org)
-;;; peteches/org.el ends here
+;;; peteches-org.el ends here
