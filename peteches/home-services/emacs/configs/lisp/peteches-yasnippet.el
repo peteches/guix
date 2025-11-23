@@ -8,7 +8,7 @@
 
 (setq peteches/snippet-dir (expand-file-name "~/.config/emacs/snippets"))
 
-(if (not (f-directory? peteches/snippet-dir))
+(if (not (f-directory? (file-name-concat peteches/snippet-dir ".git")))
     (magit-git "clone" "git@github.com:peteches/yasnippets.git" peteches/snippet-dir))
 
 (defun peteches/snippit-git ()

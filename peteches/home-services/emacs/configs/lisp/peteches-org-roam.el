@@ -1,11 +1,11 @@
-;;; peteches/org-roam.el --- Org-roam basics -*- lexical-binding: t; -*-
-
+;;; peteches-org-roam.el --- Org-roam basics -*- lexical-binding: t; -*-
+;;; Commentary:
 ;;; Code:
 
 (defvar peteches-org-map)
 
 (defvar peteches-org-roam-map nil
-  "Prefix map for Org-roam")
+  "Prefix map for Org-roam.")
 (unless (keymapp peteches-org-roam-map)
   (setq peteches-org-roam-map (make-sparse-keymap)))
 
@@ -76,7 +76,7 @@
   (which-key-add-keymap-based-replacements
     peteches-org-roam-map
     "f" "find node" "i" "insert node" "t" "tag add"
-    "d" "dailies …"))  
+    "d" "dailies …"))
 
 ;; Dailies (optional but zero-cost to wire up)
 (setq org-roam-dailies-directory "daily/")
@@ -86,4 +86,4 @@
                             "#+title: %<%Y-%m-%d>\n\n"))))
 
 (provide 'peteches-org-roam)
-;;; peteches/org-roam.el ends here
+;;; peteches-org-roam.el ends here
