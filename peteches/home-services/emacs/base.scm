@@ -57,10 +57,6 @@
 
 				"emacs-tramp"
 
-				"emacs-org"
-				"emacs-org-superstar"
-				"emacs-org-roam"
-
 				"emacs-password-store"
 				"emacs-password-store-otp"
 				"emacs-auth-source-pass"

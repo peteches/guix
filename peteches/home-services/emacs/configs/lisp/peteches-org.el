@@ -1,13 +1,18 @@
+
 ;;; peteches/org.el --- Core Org defaults, loads agenda/roam/babel -*- lexical-binding: t; -*-
 
 ;;; Commentary:
 
 ;;; Code:
 
-;; Ensure this file's directory is on the load-path (useful if loaded directly)
-(add-to-list 'load-path (file-name-directory (or load-file-name buffer-file-name)))
+;; --- Install org-roam and org-modern via straight.el ---
+(straight-use-package
+ '(org-modern :type git :host github :repo "minad/org-modern"))
+(straight-use-package
+ '(org-roam :type git :host github :repo "org-roam/org-roam"))
 
 ;; --- Core Org preferences (no external deps) -------------------------------
+(require 'org)
 
 (defgroup peteches/org nil
   "Opinionated, minimal Org setup."
@@ -16,13 +21,6 @@
 (defcustom peteches/org-directory (expand-file-name "~/area_51/org")
   "Base directory for Org files."
   :type 'directory :group 'peteches/org)
-
-;; --- Install org-modern via straight.el ---
-(straight-use-package
- '(org-modern :type git :host github :repo "minad/org-modern"))
-
-;; --- Enable org-modern for Org buffers ---
-(add-hook 'org-mode-hook #'org-modern-mode)
 
 
 ;; Reasonable visual defaults
@@ -47,6 +45,7 @@
  org-insert-heading-respect-content t
  org-tags-column 0
  org-table-allow-automatic-line-recalculation t
+ olivetti-body-width 0.8
  )
 
 ;; Streamlined TODO flow
@@ -98,28 +97,16 @@
 
 ;; --- Fonts ---
 ;; Set these once to whatever fonts you use:
-(set-face-attribute 'variable-pitch nil :family "Cantarell" :height 120)
-(set-face-attribute 'fixed-pitch nil :family "Iosevka" :height 110)
+(set-face-attribute 'variable-pitch nil :family "Noto Sans")
+(set-face-attribute 'fixed-pitch nil :family "Noto Sans Mono-14")
+(set-face-attribute 'org-table nil :family "Noto Sans Mono-14")
 
-;; --- Main function ---
-(defun peteches/org-writing-setup ()
-  "Simple mixed-font writing environment for Org."
-  (olivetti-mode 1)
-  (variable-pitch-mode 1)
-
-  ;; Keep code/tables in fixed pitch.
-  (set-face-attribute 'org-table nil :inherit 'fixed-pitch)
-  (set-face-attribute 'org-block nil :inherit 'fixed-pitch)
-  (set-face-attribute 'org-code nil :inherit 'fixed-pitch)
-  (set-face-attribute 'org-verbatim nil :inherit 'fixed-pitch)
-
-  ;; Make tables stand out just a little.
-  (set-face-attribute 'org-table nil :inherit 'fixed-pitch :weight 'semibold))
-
-(add-hook 'org-mode-hook #'peteches/org-writing-setup)
+;; --- Enable org-modern, olivetti and variable pitch for Org buffers ---
+(add-hook 'org-mode-hook #'org-modern-mode)
+(add-hook 'org-mode-hook #'olivetti-mode)
+(add-hook 'org-mode-hook #'variable-pitch-mode)
 
 ;; Optional: width of the writing column
-(setq olivetti-body-width 0.8)
 
 
 
