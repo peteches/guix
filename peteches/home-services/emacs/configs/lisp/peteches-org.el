@@ -25,27 +25,24 @@
 
 ;; Reasonable visual defaults
 (setq
- org-attach-store-link-p 'file
- org-startup-indented t
- org-pretty-entities t
- org-use-sub-superscripts "{}"
- org-hide-emphasis-markers t
- org-startup-with-inline-images t
- org-image-actual-width '(300)
- org-log-done 'time
- org-log-into-draw t
- org-directory peteches/org-directory
+ olivetti-body-width 0.8
+ org-M-RET-may-split-line '((default . nil))
  org-agenda-files (list (concat org-directory "/agenda/"))
- org-startup-folded 'content
+ org-attach-store-link-p 'file
+ org-directory peteches/org-directory
  org-ellipsis "…"
  org-hide-emphasis-markers t
- org-pretty-entities t
  org-image-actual-width '(500)
- org-M-RET-may-split-line '((default . nil))
  org-insert-heading-respect-content t
- org-tags-column 0
+ org-log-done 'time
+ org-log-into-draw t
+ org-pretty-entities t
+ org-startup-folded 'content
+ org-startup-indented t
+ org-startup-with-inline-images t
  org-table-allow-automatic-line-recalculation t
- olivetti-body-width 0.8
+ org-tags-column 0
+ org-use-sub-superscripts "{}"
  )
 
 ;; Streamlined TODO flow
@@ -97,14 +94,18 @@
 
 ;; --- Fonts ---
 ;; Set these once to whatever fonts you use:
-(set-face-attribute 'variable-pitch nil :family "Noto Sans")
-(set-face-attribute 'fixed-pitch nil :family "Noto Sans Mono-14")
-(set-face-attribute 'org-table nil :family "Noto Sans Mono-14")
+(let ((variable-font  "Noto Sans")
+      (fixed-font "Noto Sans Mono"))
+  (set-face-attribute 'variable-pitch nil :family variable-font)
+  (set-face-attribute 'fixed-pitch nil :family fixed-font)
+  (set-face-attribute 'org-table nil :family fixed-font)
+  (set-face-attribute 'org-code nil :family fixed-font)
+  (set-face-attribute 'org-block nil :family fixed-font))
 
 ;; --- Enable org-modern, olivetti and variable pitch for Org buffers ---
 (add-hook 'org-mode-hook #'org-modern-mode)
-(add-hook 'org-mode-hook #'olivetti-mode)
 (add-hook 'org-mode-hook #'variable-pitch-mode)
+(add-hook 'org-mode-hook #'olivetti-mode)
 
 ;; Optional: width of the writing column
 
