@@ -1,4 +1,3 @@
-
 ;;; peteches/org.el --- Core Org defaults, loads agenda/roam/babel -*- lexical-binding: t; -*-
 
 ;;; Commentary:
@@ -84,7 +83,10 @@
 	 "* TODO %?  %^g\n")
 	("g" "Guix Task" entry
 	 (file+headline ,(expand-file-name "agenda/Tasks.org" org-directory) "Guix Stuff")
-	 "* TODO %?  %^g\n")))
+	 "* TODO %?  %^g\n")
+	("t" "Tasks" entry
+	 (file+headline ,(expand-file-name "agenda/Tasks.org" org-directory) "Tasks")
+	 "* TODO %? %^g\n")))
 
 ;; Make file: links relative inside org-directory
 

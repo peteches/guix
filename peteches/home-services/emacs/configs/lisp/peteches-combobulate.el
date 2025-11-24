@@ -1,5 +1,12 @@
+;;; peteches-combobulate --- my combobulate config
+;;;
+;;; Commentary:
+;;;
+;;;
+;;; Code:
+
 (require 'combobulate)
-(setq combobulate-key-prefix "C-c o")
+(setq combobulate-key-prefix "C-c Tab")
 
 (defun peteches/enable-combobulate-if-tree-sitter ()
   "Enable `combobulate-mode' if the major mode is tree-sitter based."
@@ -8,5 +15,5 @@
 
 (add-hook 'after-change-major-mode-hook #'peteches/enable-combobulate-if-tree-sitter)
 
-
 (provide 'peteches-combobulate)
+;;; peteches-combobulate.el ends here
