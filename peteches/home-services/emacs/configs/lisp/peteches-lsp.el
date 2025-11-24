@@ -1,4 +1,10 @@
-(provide 'peteches-lsp)
+;;; peteches-lsp --- My LSP configs
+;;;
+;;; Commentary:
+;;;
+;;;
+;;; Code:
+
 (message "Loading LSP Config")
 
 ;; Set prefix BEFORE loading lsp-mode
@@ -14,7 +20,7 @@
 (setq gc-cons-threshold (* 100 1024 1024))
 
 ;; File watching
-(setq lsp-file-watch-threshold 500)
+(setq lsp-file-watch-threshold 3000)
 (add-hook 'lsp-before-initialize-hook
           (lambda ()
             (when (file-remote-p default-directory)
@@ -46,9 +52,15 @@
 
 ;; ---- Format on save when supported (replace the old var) ----
 (defun peteches--lsp-format-on-save ()
+  "Ensure that buffers are formatted before saving."
   (when (and (bound-and-true-p lsp-mode)
              (lsp-feature? "textDocument/formatting"))
     (lsp-format-buffer)))
+
 (add-hook 'lsp-mode-hook
           (lambda ()
             (add-hook 'before-save-hook #'peteches--lsp-format-on-save nil t)))
+
+
+(provide 'peteches-lsp)
+;;; peteches-lsp.el ends here
