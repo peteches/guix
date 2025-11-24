@@ -51,18 +51,20 @@
                   (setenv "GOPATH" (string-append gopath ":" vendorg))
                   (with-directory-excursion proj
                     (invoke "go" "build" "-o" "session-manager-plugin"
-                            "./src/sessionmanagerplugin/session")))))
+                            "./src/sessionmanagerplugin-main")))))
             (replace 'install
               (lambda _
                 (use-modules (guix build utils))
                 (let* ((out   #$output)
                        (bin   (string-append out "/bin"))
+		       (binary (string-append bin "/session-manager-plugin"))
                        (share (string-append out "/share/sessionmanagerplugin")))
                   (mkdir-p bin)
                   (mkdir-p share)
                   (install-file
                    "gopath/src/github.com/aws/session-manager-plugin/session-manager-plugin"
                    bin)
+		  (chmod binary #o755)
                   (when (file-exists? "VERSION")
                     (install-file "VERSION" share))
                   (when (file-exists? "seelog_unix.xml")
@@ -73,4 +75,4 @@
       (synopsis "AWS Session Manager Plugin (built from source)")
       (description "Client plugin the AWS CLI invokes for Systems Manager sessions, including port forwarding.")
       (license asl2.0))))
-
+aws-session-manager-plugin
