@@ -117,6 +117,8 @@
 				"emacs-company-org-block"
 				"emacs-company-emoji"
 
+				"hashicorp-terraform"
+				"emacs-terraform-mode"
 
 				;; language servers
 				"guile-lsp-server"

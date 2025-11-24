@@ -29,6 +29,7 @@
   #:use-module (nongnu packages mozilla)
   #:use-module (peteches packages gpg)
   #:use-module (peteches packages go-tools)
+  #:use-module (peteches packages terraform)
   ;; Your feature modules
   #:use-module (peteches home-services aws)
   #:use-module (peteches home-services desktop)
@@ -42,6 +43,7 @@
   #:use-module (peteches home-services wofi)
   #:use-module (peteches home-services nyxt)
   ;; Your config fragments
+  #:use-module (peteches home-configs scoreplay)
   #:use-module (peteches home-configs git)
   #:use-module (peteches home-configs mako)
   #:use-module (peteches home-configs waybar)
@@ -64,6 +66,7 @@
    git
    gnupg
    jq
+   terragrunt
    go-golangci-lint
    pgcli
    ripgrep
@@ -158,22 +161,24 @@
             (home-openssh-configuration
 	     (add-keys-to-agent "yes")
 	     (authorized-keys (list (local-file "ssh-authorized-keys")))
-             (hosts (list
-		     (openssh-host
-		      (name "*")
-		      (extra-content (string-append
-				      "    ControlMaster auto\n"
-				      "    ControlPath ~/.ssh/ctrl-%C\n"
-				      "    ControlPersist 10m\n")))
-		     (openssh-host
-		      (name "nug")
-		      (host-name "nug.local"))
-		     (openssh-host
-		      (name "bhiyaki")
-		      (host-name "bhiyaki.local"))
-		     (openssh-host
-		      (name "nyarlothotep")
-		      (host-name "nyarlothotep.local"))))))
+             (hosts (append
+		     (list
+		      (openssh-host
+		       (name "*")
+		       (extra-content (string-append
+				       "    ControlMaster auto\n"
+				       "    ControlPath ~/.ssh/ctrl-%C\n"
+				       "    ControlPersist 10m\n")))
+		      (openssh-host
+		       (name "nug")
+		       (host-name "nug.local"))
+		      (openssh-host
+		       (name "bhiyaki")
+		       (host-name "bhiyaki.local"))
+		      (openssh-host
+		       (name "nyarlothotep")
+		       (host-name "nyarlothotep.local")))
+		     %scoreplay-ssh-hosts))))
 
    ;; GPG Agent
    (service home-gpg-agent-service-type
