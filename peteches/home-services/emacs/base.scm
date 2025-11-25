@@ -38,7 +38,6 @@
 				"emacs-geiser"
 				"emacs-emojify"
 				"emacs-geiser-guile"
-				"emacs-combobulate"
 				"gcc-toolchain" ; to compile vterm / treesitter grammers
 
 				"yarn" ; for mcp servers

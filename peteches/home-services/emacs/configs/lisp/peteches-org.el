@@ -52,7 +52,7 @@
 (defvar peteches-org-map nil "Top-level Org prefix map.")
 (unless (keymapp peteches-org-map)
   (setq peteches-org-map (make-sparse-keymap)))
-(define-key global-map (kbd "C-c o") peteches-org-map)
+(define-key global-map (kbd "C-c O") peteches-org-map)
 
 ;; Main Org actions under C-c o
 (define-key peteches-org-map (kbd "a") #'org-agenda)

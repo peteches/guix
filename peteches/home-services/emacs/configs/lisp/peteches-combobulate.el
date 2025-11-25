@@ -4,16 +4,12 @@
 ;;;
 ;;;
 ;;; Code:
-
-(require 'combobulate)
-(setq combobulate-key-prefix "C-c Tab")
-
-(defun peteches/enable-combobulate-if-tree-sitter ()
-  "Enable `combobulate-mode' if the major mode is tree-sitter based."
-  (when (string-suffix-p "-ts-mode" (symbol-name major-mode))
-    (combobulate-mode 1)))
-
-(add-hook 'after-change-major-mode-hook #'peteches/enable-combobulate-if-tree-sitter)
+(use-package combobulate
+   :custom
+   ;; You can customize Combobulate's key prefix here.
+   ;; Note that you may have to restart Emacs for this to take effect!
+   (combobulate-key-prefix "C-c <tab>")
+   :hook ((prog-mode . combobulate-mode)))
 
 (provide 'peteches-combobulate)
 ;;; peteches-combobulate.el ends here
