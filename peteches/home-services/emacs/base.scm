@@ -103,14 +103,10 @@
 
 				"emacs-go-mode"
 
-				"emacs-lsp-mode"
-
 				"emacs-pinentry"
 
 				"emacs-atom-one-dark-theme"
 
-				"emacs-yasnippet"
-				"emacs-yasnippet-snippets"
 				"emacs-company"
 				"emacs-company-quickhelp"
 				"emacs-company-org-block"

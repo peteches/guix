@@ -9,12 +9,13 @@
 
 (add-hook 'scheme-mode-hook #'lsp)
 
-(add-to-list 'lsp-language-id-configuration '(".*\\.scm$" . "scheme"))
+(with-eval-after-load 'lsp-mode
+  (add-to-list 'lsp-language-id-configuration '(".*\\.scm$" . "scheme"))
 
-(lsp-register-client (make-lsp-client
-                      :new-connection (lsp-stdio-connection "guile-lsp-server")
-                      :activation-fn (lsp-activate-on "scheme")
-                      :server-id 'guile-lsp-server))
+  (lsp-register-client (make-lsp-client
+			:new-connection (lsp-stdio-connection "guile-lsp-server")
+			:activation-fn (lsp-activate-on "scheme")
+			:server-id 'guile-lsp-server)))
 
 
 (defun peteches-guile-install-treesit-grammers ()
@@ -31,7 +32,7 @@
   (condition-case err
       (progn
         (treesit-install-language-grammar 'scheme)
-        (message "Scheme grammar installed. Use `scheme-ts-mode`.")) 
+        (message "Scheme grammar installed. Use `scheme-ts-mode`."))
     (error (user-error "Failed to install Scheme grammar: %s"
                        (error-message-string err)))))
 

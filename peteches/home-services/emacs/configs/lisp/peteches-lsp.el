@@ -7,60 +7,47 @@
 
 (message "Loading LSP Config")
 
-;; Set prefix BEFORE loading lsp-mode
-(setq lsp-keymap-prefix "C-c l")
+(use-package lsp-mode
+;  :straight '(lsp-mode :type git :host github :repo "emacs-lsp/lsp-mode")
 
-;; Load lsp-mode (use normal quote)
-(require 'lsp-mode)
+  ;; setup hooks
+  :hook '((before-save . peteches--lsp-format-on-save)
+	  (lsp-before-initialize .  (lambda ()
+				      (when (file-remote-p default-directory)
+					(setq-local lsp-enable-file-watchers nil))))
+	  (lsp-mode . (lsp-modeline-workspace-status-mode
+		       lsp-modeline-code-actions-mode
+		       lsp-modeline-diagnostics-mode)))
 
-;; Bigger pipes + longer init timeout (helps gopls)
-(setq read-process-output-max (* 1024 1024 16))  ;; 16 MB
-(setq lsp-response-timeout 180)
-(setq lsp-idle-delay 0.3)
-(setq gc-cons-threshold (* 100 1024 1024))
+  ;; autoload these commands
+  :commands lsp
 
-;; File watching
-(setq lsp-file-watch-threshold 3000)
-(add-hook 'lsp-before-initialize-hook
-          (lambda ()
-            (when (file-remote-p default-directory)
-              (setq-local lsp-enable-file-watchers nil))))
+  ;; evaluate before lsp-mode loaded
+  :init
+  (setq lsp-keymap-prefix "C-c l")
 
-;; ---- Don’t use company; use CAPF (built-in completion-at-point) ----
-(setq lsp-completion-provider :capf)  ;; no company needed
-(with-eval-after-load 'lsp-mode
-  ;; Some Guix builds try to autoconfigure company even when absent.
-  ;; Make that step a no-op if company isn't installed.
-  (unless (featurep 'company)
-    (defun lsp--auto-configure-company (&rest _args) nil)))
+  ;; evaluate after lsp-mode loaded
+  :config
+  ;; ---- Format on save when supported (replace the old var) ----
+  (defun peteches--lsp-format-on-save ()
+    "Ensure that buffers are formatted before saving."
+    (when (and (bound-and-true-p lsp-mode)
+               (lsp-feature? "textDocument/formatting"))
+      (lsp-format-buffer)))
 
-;; ---- Ensure UI bits are present but don’t error if missing ----
-(dolist (feat '(lsp-modeline lsp-lens lsp-headerline))
-  (require feat nil t))
+  ;; Bigger pipes + longer init timeout (helps gopls)
+  (setq read-process-output-max (* 1024 1024 16)  ;; 16 MB
+	lsp-response-timeout 180
+	lsp-idle-delay 0.3
+	gc-cons-threshold (* 100 1024 1024)
 
-(with-eval-after-load 'lsp-mode
-  ;; Make sure your prefix actually works
-  (define-key lsp-mode-map (kbd "C-c l") lsp-command-map)
+	;; File watching
+	lsp-file-watch-threshold 3000)
 
-  ;; Only enable these if the functions exist in your build
-  (when (fboundp 'lsp-modeline-workspace-status-mode)
-    (add-hook 'lsp-mode-hook #'lsp-modeline-workspace-status-mode))
-  (when (fboundp 'lsp-modeline-code-actions-mode)
-    (add-hook 'lsp-mode-hook #'lsp-modeline-code-actions-mode))
-  (when (fboundp 'lsp-modeline-diagnostics-mode)
-    (add-hook 'lsp-mode-hook #'lsp-modeline-diagnostics-mode)))
 
-;; ---- Format on save when supported (replace the old var) ----
-(defun peteches--lsp-format-on-save ()
-  "Ensure that buffers are formatted before saving."
-  (when (and (bound-and-true-p lsp-mode)
-             (lsp-feature? "textDocument/formatting"))
-    (lsp-format-buffer)))
-
-(add-hook 'lsp-mode-hook
-          (lambda ()
-            (add-hook 'before-save-hook #'peteches--lsp-format-on-save nil t)))
-
+  ;; ---- Ensure UI bits are present but don’t error if missing ----
+  (dolist (feat '(lsp-modeline lsp-lens lsp-headerline))
+    (require feat nil t)))
 
 (provide 'peteches-lsp)
 ;;; peteches-lsp.el ends here

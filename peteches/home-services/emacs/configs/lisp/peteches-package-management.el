@@ -1,5 +1,7 @@
-;; peteches-package-management.el -- straight-only bootstrap
+;;; peteches-package-management.el -- straight-only bootstrap
+;;; Commentary:
 
+;;; Code:
 (defvar bootstrap-version)
 (let* ((user-dir (or user-emacs-directory "~/.config/emacs/"))
        (bootstrap-file (expand-file-name "straight/repos/straight.el/bootstrap.el" user-dir))
@@ -17,4 +19,6 @@
 (setq straight-use-package-by-default t
       use-package-always-ensure nil)
 
+
 (provide 'peteches-package-management)
+;;; peteches-package-management.el ends here
