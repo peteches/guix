@@ -95,7 +95,9 @@ Examples: \"Global/Linux\", \"CommonLisp\"."
           #~(begin
               (use-modules (ice-9 popen)) ; provides system*
               ;; run payload via sh
-              (apply system* "sh" #$payload (cdr (command-line))))
+	      (exit (if (zero? (system* "sh" #$payload))
+			0
+			1)))
           #:guile guile-3.0))))
 
 ;; -----------------------------------------------------------------------------
