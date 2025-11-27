@@ -10,8 +10,14 @@
 (straight-use-package
  '(org-roam :type git :host github :repo "org-roam/org-roam"))
 
+(straight-use-package
+ '(verb :type git :host github :repo "federicotdn/verb"))
+
 ;; --- Core Org preferences (no external deps) -------------------------------
 (require 'org)
+
+(with-eval-after-load 'org
+  (define-key org-mode-map (kbd "C-c C-r") verb-command-map))
 
 (defgroup peteches/org nil
   "Opinionated, minimal Org setup."
