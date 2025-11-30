@@ -104,6 +104,7 @@
 (require 'peteches-python)
 (require 'peteches-scheme)
 ; (require 'peteches-slack)
+(require 'peteches-sql)
 (require 'peteches-tramp)
 (require 'peteches-vertico)
 (require 'peteches-which-key)
