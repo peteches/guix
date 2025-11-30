@@ -48,11 +48,29 @@
  org-table-allow-automatic-line-recalculation t
  org-tags-column 0
  org-use-sub-superscripts "{}"
- )
 
-;; Streamlined TODO flow
-(setq org-todo-keywords
-      '((sequence "TODO(t)" "NEXT(n)" "WAIT(w@/!)" "|" "DONE(d!)" "CANCELLED(c@)")))
+
+ ;; Streamlined TODO flow
+ org-todo-keywords
+ '((sequence "TODO(t)" "NEXT(n)" "WAIT(w@/!)" "|" "DONE(d!)" "CANCELLED(c@)"))
+
+ ;; Fast capture targets (lightweight, tweak to taste)
+ org-default-notes-file (expand-file-name "notes.org" org-directory)
+ org-capture-templates
+ `(("e" "Emacs Task" entry
+    (file+headline ,(expand-file-name "agenda/Tasks.org" org-directory) "Emacs Stuff")
+    "* TODO %?  %^g\n")
+   ("g" "Guix Task" entry
+    (file+headline ,(expand-file-name "agenda/Tasks.org" org-directory) "Guix Stuff")
+    "* TODO %?  %^g\n")
+   ("t" "Tasks" entry
+    (file+headline ,(expand-file-name "agenda/Tasks.org" org-directory) "Tasks")
+    "* TODO %? %^g\n"))
+
+ ;; Make file: links relative inside org-directory
+ org-link-file-path-type 'relative
+
+ )
 
 
 (defvar peteches-org-map nil "Top-level Org prefix map.")
@@ -79,24 +97,6 @@
     "s" "schedule"
     "d" "deadline"
     "r" "org-roam …"))  ;; "r" will be the embedded roam map
-
-
-;; Fast capture targets (lightweight, tweak to taste)
-(setq org-default-notes-file (expand-file-name "notes.org" org-directory))
-(setq org-capture-templates
-      `(("e" "Emacs Task" entry
-	 (file+headline ,(expand-file-name "agenda/Tasks.org" org-directory) "Emacs Stuff")
-	 "* TODO %?  %^g\n")
-	("g" "Guix Task" entry
-	 (file+headline ,(expand-file-name "agenda/Tasks.org" org-directory) "Guix Stuff")
-	 "* TODO %?  %^g\n")
-	("t" "Tasks" entry
-	 (file+headline ,(expand-file-name "agenda/Tasks.org" org-directory) "Tasks")
-	 "* TODO %? %^g\n")))
-
-;; Make file: links relative inside org-directory
-
-(setq org-link-file-path-type 'relative)
 
       ;; --- Load the rest of the stack -------------------------------------------
 

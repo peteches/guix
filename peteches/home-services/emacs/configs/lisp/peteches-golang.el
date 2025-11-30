@@ -85,6 +85,44 @@
   "System style used in GPTel helper buffers."
   :type 'string :group 'peteches-go)
 
+
+;;; Font locking
+;; This buffer is for text that is not saved, and for Lisp evaluation.
+;; To create a file, visit it with ‘C-x C-f’ and enter text in its buffer.
+
+(require 'font-lock)
+
+(defconst peteches/operator-display-keywords
+  (let ((mappings '(("||" . "OR")
+                    ("&&" . "AND")
+                    ("!=" . "≠")
+                    (">=" . "≥")
+		    (":=" . "⥱")
+		    ("<=" . "≤"))))
+    (mapcar
+     (lambda (pair)
+       (let ((pattern (car pair))
+             (display (cdr pair)))
+         `(,pattern
+           (0 (prog1 nil
+                ;; Use font-lock helper so it cooperates with jit-lock
+                (font-lock-prepend-text-property
+                 (match-beginning 0) (match-end 0)
+                 'display ,display))))))
+     mappings))
+  "Font-lock keywords to display operators as words.")
+
+(defun peteches/enable-operator-display ()
+  "Display operators as words in the current buffer using font-lock."
+  (interactive)
+  ;; Tell font-lock it’s allowed to remove/restore `display`.
+  (setq-local font-lock-extra-managed-props
+              (cons 'display font-lock-extra-managed-props))
+  (font-lock-add-keywords nil peteches/operator-display-keywords 'append)
+  (font-lock-flush))  ;; Force refontification
+
+(add-hook 'go-ts-mode-hook #'peteches/enable-operator-display)
+
 ;;;; Utilities ---------------------------------------------------------------
 
 (defun peteches-go--executable-p (name)
