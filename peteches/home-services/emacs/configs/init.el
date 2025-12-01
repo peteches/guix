@@ -115,6 +115,10 @@
 
 (require 'peteches-scoreplay)
 
+(setopt register-alist-save-flag t)
+(setopt register-separator-storage-file
+        (expand-file-name "registers.el" peteches/org-directory))
+
 (require 'server)
 (unless (server-running-p)
   (server-start))
