@@ -1,3 +1,10 @@
+;;; peteches-scheme --- my scheme configs
+;;;
+;;; Commentary:
+;;;
+;;;
+;;; Code:
+
 (require 'peteches-lsp)
 
 (message "loading scheme config")
@@ -36,9 +43,6 @@
     (error (user-error "Failed to install Scheme grammar: %s"
                        (error-message-string err)))))
 
-(defun peteches--ts-scheme-missing-p () (not (treesit-language-available-p 'scheme)))
-
-
 (add-hook 'after-init-hook
           (lambda ()
             (when (and (fboundp 'treesit-available-p)
@@ -46,5 +50,5 @@
                        (peteches--ts-scheme-missing-p))
               (run-with-idle-timer 2 nil #'peteches-guile-install-treesit-grammers))))
 
-
 (provide 'peteches-scheme)
+;;; peteches-scheme.el ends here
