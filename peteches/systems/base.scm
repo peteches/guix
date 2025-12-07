@@ -15,6 +15,8 @@
   #:use-module (gnu services linux)
   #:use-module (gnu services xorg)
   #:use-module (gnu services pm)
+  #:use-module (gnu services dns)
+  #:use-module (gnu services virtualization)
   #:use-module (gnu services networking) ; tor-service-type
 
   #:use-module (gnu services ssh)        ; openssh-service-type
@@ -58,7 +60,7 @@
    (comment "Pete McCabe")
    (group "users")
    (home-directory "/home/peteches")
-   (supplementary-groups '("wheel" "netdev" "audio" "video"))))
+   (supplementary-groups '("wheel" "kvm" "netdev" "audio" "libvirt" "video"))))
 
 (define transform
   (options->transformation
@@ -69,6 +71,82 @@
   (list (service openssh-service-type)
         (service tor-service-type)
 	(service fprintd-service-type)
+	(service virtlog-service-type)     ; virtlogd (recommended)
+        (service libvirt-service-type
+                 (libvirt-configuration
+		  (unix-sock-ro-perms "0770")   ; restrict RO socket to group
+		  (unix-sock-rw-perms "0770")   ; restrict RW socket to group
+		  (auth-unix-ro "none")         ; <-- disable polkit
+		  (auth-unix-rw "none")
+		  (unix-sock-group "libvirt")))
+	(service static-networking-service-type
+		 (list (static-networking
+			;; The default provision is 'networking; if you're using any
+			;; other service with this provision, such as
+			;; `network-manager-service-type`, then you need to change the
+			;; default.
+			(provision '(static-networking))
+			(links
+			 (list (network-link
+				(name "virbr0")
+				(type 'bridge)
+				(arguments '()))))
+			(addresses
+			 (list (network-address
+				(device "virbr0")
+				(value "192.168.10.1/24")))))))
+	(service dnsmasq-service-type
+		 (dnsmasq-configuration
+		  ;; You can have multiple instances of `dnsmasq-service-type` as long
+		  ;; as each one has a different shepherd-provision.
+		  (shepherd-provision '(dnsmasq-virbr0))
+		  (extra-options (list
+				  ;; Only bind to the virtual bridge. This
+				  ;; avoids conflicts with other running
+				  ;; dnsmasq instances.
+				  "--except-interface=lo"
+				  "--interface=virbr0"
+				  "--bind-dynamic"
+				  ;; IPv4 addresses to offer to VMs. This
+				  ;; should match the chosen subnet.
+				  "--dhcp-range=192.168.10.2,192.168.10.254"))))
+	(service nftables-service-type
+		 (nftables-configuration
+		  (ruleset
+		   (plain-file "nftables.conf"
+			       "\
+table inet filter {
+
+  chain input {
+    type filter hook input priority filter; policy drop;
+    # Add your existing packet filtering rules here...
+    iifname virbr0 udp dport 67 counter accept comment \"allow dhcp on virbr0\"
+    iifname virbr0 meta l4proto {tcp, udp} th dport 53 accept \\
+        comment \"allow dns on virbr0\"
+  }
+
+  chain forward {
+    type filter hook forward priority filter; policy drop;
+    # Add your existing forwarding rules here...
+    iifname virbr0 accept comment \"allow outbound traffic from virbr0\"
+    oifname virbr0 ct state {established, related } accept \\
+        comment \"allow established traffic to virbr0\"
+  }
+
+}
+
+table inet nat {
+  chain postrouting {
+    type nat hook postrouting priority srcnat; policy accept;
+    # Add your existing nat rules here...
+    iifname virbr0 ip daddr { 224.0.0.0/24, 255.255.255.255/32 } return \\
+        comment \"don't masquerade to reserved address blocks\"
+    iifname virbr0 oifname != virbr0 masquerade \\
+        comment \"masquerade all outgoing traffic from VMs\"
+  }
+}
+"))))
+
 	(simple-service 'my-pam-service pam-root-service-type
 			(let ((my-pam-entry
 			       (pam-entry
@@ -88,7 +166,7 @@
         (service gpm-service-type)))
 
 (define %common-packages
-  (map specification->package (list "bolt" "fprintd"  "font-terminus")))
+  (map specification->package (list "bolt" "fprintd"  "font-terminus" "virt-manager" "qemu")))
 
 (define (without-gdm)
   (modify-services
