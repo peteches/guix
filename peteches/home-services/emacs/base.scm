@@ -28,6 +28,7 @@
 (define (home-emacs-base-profile-service config)
   (map specification->package '("emacs"
 
+				"emacs-sops"
 				"emacs-guix"
 				"emacs-linear"
 				"emacs-forge"

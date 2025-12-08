@@ -7,7 +7,7 @@
   #:use-module (gnu packages golang))      ; for `go`
 
 (define-public aws-session-manager-plugin
-  (let* ((version "1.2.707.0")
+  (let* ((version "1.2.764.0")
          (tarball (string-append
                    "https://github.com/aws/session-manager-plugin/archive/refs/tags/"
                    version ".tar.gz")))
@@ -19,7 +19,7 @@
          (method url-fetch)
          (uri tarball)
          ;; Use your verified base32:
-         (sha256 (base32 "16rql1vc25a6m0bzrhj69hrwpywfn1i1wmdrpnx244wb5wax38gp"))))
+         (sha256 (base32 "080k5vj67w8ym29b702c8icc6xakzfsz5nwbi9hl29plkc904g6j"))))
       (build-system gnu-build-system)
       (arguments
        (list

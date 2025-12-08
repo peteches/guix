@@ -130,11 +130,15 @@ Trims trailing newlines/whitespace."
 
 (defun peteches/aws-sql-host-get (env service region)
   "Return aws db hostname for SERVICE in ENV and REGION."
-  (string-trim (shell-command-to-string (concat
-			     "aws-vault exec " env " -- aws rds describe-db-instances "
-			     "--region " region " "
-			     "--query \"DBInstances[?TagList[?Key=='service' && Value=='" service "']].Endpoint.Address | [0]\" "
-			     "--output text"))))
+  (string-trim (shell-command-to-string
+		(concat
+		 "aws-vault exec " env " -- "
+		 "aws rds describe-db-instances "
+		 "--region " region " "
+		 "--query \"DBInstances[?TagList[?(Key=='service' || Key=='Service') && Value=='"
+		 service
+		 "']].Endpoint.Address | [0]\" "
+		 "--output text"))))
 
 (defun peteches/aws-ssm-start-port-forward (localport remoteport host env region)
   "Start ssm session forwarding LOCALPORT to REMOTEPORT on HOST in ENV and REGION."
@@ -231,10 +235,7 @@ When needed passing ARGS if supplied."
             (user-error "SSM tunnel to %s:%s did not become ready in time"
                         "127.0.0.1" localport))
           ;; Temporarily ensure this connection exists for `sql-connect`.
-          (let ((sql-connection-alist
-                 (cons conn-entry
-                       (assoc-delete-all conn-name sql-connection-alist))))
-            (apply orig-fun conn-name args)))))))
+          (apply orig-fun conn-name args))))))
 
 (with-eval-after-load 'sql
   (peteches/sql-register-ssm-connections)

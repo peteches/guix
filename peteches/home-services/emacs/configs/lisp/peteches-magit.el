@@ -15,6 +15,7 @@
    :type git
    :host github
    :repo "phelrine/code-review"
+   :branch "fix/closql-update"
    :files ("*.el" "graphql" "LICENSE" "package.json" "npm-shrinkwrap.json")
    :build (:not compile)))
 
