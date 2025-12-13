@@ -29,6 +29,39 @@
   (setq code-review-db-database-file
         (expand-file-name "code-review-db.sqlite" user-emacs-directory)))
 
+(require 'cl-lib)
+(require 'magit)
+
+(require 'cl-lib)
+(require 'magit)
+
+(defun peteches/magit-init-bare-with-main-worktree (path)
+  "Create a bare repo at PATH, suffixing .git if needed.
+Add a main worktree at PATH/checkouts/main, make an initial empty commit,
+then open Magit in that worktree."
+  (interactive (list (read-directory-name "Bare repo location: ")))
+
+  (let* ((repo-path (directory-file-name (expand-file-name path)))
+         (bare-path (if (string-suffix-p ".git" repo-path)
+                        repo-path
+                      (concat repo-path ".git")))
+         (bare-dir  (file-name-as-directory bare-path))
+         (worktree  (expand-file-name "checkouts/main" bare-dir))
+         (parent    (file-name-directory (directory-file-name bare-dir))))
+
+    (when (file-exists-p bare-dir)
+      (user-error "Destination already exists: %s" bare-dir))
+
+    (let ((default-directory parent))
+      (magit-call-git "init" "--bare" bare-dir))
+
+    (let ((default-directory bare-path))
+      (magit-call-git "worktree" "add" "-b" "main" worktree))
+
+    (let ((default-directory worktree))
+      (magit-call-git "commit" "--allow-empty" "--no-verify" "-m" "Initial Commit"))
+
+    (magit-status worktree)))
 
 
 
