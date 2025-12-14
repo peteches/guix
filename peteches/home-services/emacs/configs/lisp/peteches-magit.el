@@ -34,12 +34,14 @@
 
 (require 'cl-lib)
 (require 'magit)
+(require 'projectile)
 
 (defun peteches/magit-init-bare-with-main-worktree (path)
   "Create a bare repo at PATH, suffixing .git if needed.
 Add a main worktree at PATH/checkouts/main, make an initial empty commit,
 then open Magit in that worktree."
-  (interactive (list (read-directory-name "Bare repo location: ")))
+  (interactive (list (read-directory-name "Bare repo location: "
+					  (expand-file-name "~/area_51/"))))
 
   (let* ((repo-path (directory-file-name (expand-file-name path)))
          (bare-path (if (string-suffix-p ".git" repo-path)
@@ -59,11 +61,11 @@ then open Magit in that worktree."
       (magit-call-git "worktree" "add" "-b" "main" worktree))
 
     (let ((default-directory worktree))
-      (magit-call-git "commit" "--allow-empty" "--no-verify" "-m" "Initial Commit"))
+      (magit-call-git "commit" "--allow-empty" "--no-gpg-sign" "--no-verify" "-m" "Initial Commit"))
+
+    (projectile-add-known-project worktree)
 
     (magit-status worktree)))
-
-
 
 (provide 'peteches-magit)
 ;;; peteches-magit.el ends here
