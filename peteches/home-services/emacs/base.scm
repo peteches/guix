@@ -23,123 +23,125 @@
   #:use-module (nongnu packages node)
   #:use-module (peteches packages emacs)
   #:use-module (peteches packages mcp)
+  #:use-module (peteches packages mermaid)
   #:export (home-emacs-base-service-type))
 
 (define (home-emacs-base-profile-service config)
-  (map specification->package '("emacs"
+  (append (list node-mermaid-js-mermaid-cli)
+	  (map specification->package '("emacs"
 
-				"emacs-sops"
-				"emacs-guix"
-				"emacs-linear"
-				"emacs-forge"
-				"emacs-olivetti"
-				"emacs-string-inflection"
-				"emacs-ob-go"
-				"emacs-modus-themes"
-				"emacs-gruvbox-theme"
-				"emacs-paredit"
-				"emacs-geiser"
-				"emacs-emojify"
-				"emacs-geiser-guile"
-				"gcc-toolchain" ; to compile vterm / treesitter grammers
+					"emacs-sops"
+					"emacs-guix"
+					"emacs-linear"
+					"emacs-forge"
+					"emacs-olivetti"
+					"emacs-string-inflection"
+					"emacs-ob-go"
+					"emacs-modus-themes"
+					"emacs-gruvbox-theme"
+					"emacs-paredit"
+					"emacs-geiser"
+					"emacs-emojify"
+					"emacs-geiser-guile"
+					"gcc-toolchain" ; to compile vterm / treesitter grammers
 
-				"yarn" ; for mcp servers
-				"curl"
-				"emacs-compat"
-				"postgresql"
+					"yarn" ; for mcp servers
+					"curl"
+					"emacs-compat"
+					"postgresql"
 					;	emacs-go-playground
 
-				"emacs-orderless"
+					"emacs-orderless"
 
-				"emacs-show-font"
-				"emacs-projectile"
-				"ripgrep"
+					"emacs-show-font"
+					"emacs-projectile"
+					"ripgrep"
 
-				"emacs-gnus-desktop-notify"
+					"emacs-gnus-desktop-notify"
 
-				"emacs-tramp"
+					"emacs-tramp"
 
-				"emacs-password-store"
-				"emacs-password-store-otp"
-				"emacs-auth-source-pass"
+					"emacs-password-store"
+					"emacs-password-store-otp"
+					"emacs-auth-source-pass"
 
-				"emacs-marginalia"
-				"emacs-vertico"
+					"emacs-marginalia"
+					"emacs-vertico"
 
-				"emacs-slack"
+					"emacs-slack"
 
-				"emacs-which-key"
+					"emacs-which-key"
 
-				"emacs-magit"
+					"emacs-magit"
 
-				"emacs-rainbow-delimiters"
+					"emacs-rainbow-delimiters"
 
-				;; language support
-				"tree-sitter"
+					;; language support
+					"tree-sitter"
 
-				"tree-sitter-yaml"
+					"tree-sitter-yaml"
 
-				"tree-sitter-go"
-				"tree-sitter-gomod"
+					"tree-sitter-go"
+					"tree-sitter-gomod"
 
-				"tree-sitter-scheme"
+					"tree-sitter-scheme"
 
-				"tree-sitter-python"
+					"tree-sitter-python"
 
-				"tree-sitter-org"
+					"tree-sitter-org"
 
-				"tree-sitter-markdown"
+					"tree-sitter-markdown"
 
-				"tree-sitter-json"
+					"tree-sitter-json"
 
-				"tree-sitter-html"
+					"tree-sitter-html"
 
-				"tree-sitter-hcl"
+					"tree-sitter-hcl"
 
-				"tree-sitter-dockerfile"
+					"tree-sitter-dockerfile"
 
-				"tree-sitter-c"
+					"tree-sitter-c"
 
-				"tree-sitter-bash"
-				"tree-sitter-awk"
+					"tree-sitter-bash"
+					"tree-sitter-awk"
 
 
-				"emacs-go-mode"
+					"emacs-go-mode"
 
-				"emacs-pinentry"
+					"emacs-pinentry"
 
-				"emacs-atom-one-dark-theme"
+					"emacs-atom-one-dark-theme"
 
-				"emacs-company"
-				"emacs-company-quickhelp"
-				"emacs-company-org-block"
-				"emacs-company-emoji"
+					"emacs-company"
+					"emacs-company-quickhelp"
+					"emacs-company-org-block"
+					"emacs-company-emoji"
 
-				"hashicorp-terraform"
-				"emacs-terraform-mode"
+					"hashicorp-terraform"
+					"emacs-terraform-mode"
 
-				;; language servers
-				"guile-lsp-server"
-				"go"
-				"gopls"
-				"sqls"
+					;; language servers
+					"guile-lsp-server"
+					"go"
+					"gopls"
+					"sqls"
 
-				"emacs-yaml-mode"
+					"emacs-yaml-mode"
 
-				;; mcp stuff
-				"mcp-server-filesystem-go"
-				"go-github-com-sonirico-mcp-shell"
+					;; mcp stuff
+					"mcp-server-filesystem-go"
+					"go-github-com-sonirico-mcp-shell"
 
-				"emacs-mcp"
+					"emacs-mcp"
 
-				"emacs-all-the-icons"
-				"emacs-all-the-icons-dired"
-				"emacs-all-the-icons-ibuffer"
-				"emacs-all-the-icons-completion"
+					"emacs-all-the-icons"
+					"emacs-all-the-icons-dired"
+					"emacs-all-the-icons-ibuffer"
+					"emacs-all-the-icons-completion"
 
-				"font-google-noto"
-				"font-google-noto-emoji"
-				"font-iosevka")))
+					"font-google-noto"
+					"font-google-noto-emoji"
+					"font-iosevka"))))
 
 (define (home-emacs-base-files-service config)
   (list
