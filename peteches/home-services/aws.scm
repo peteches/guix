@@ -34,7 +34,7 @@
    "Package providing the 'session-manager-plugin' binary."))
 
 (define (aws-profile config)
-  (let ((base (list awscli aws-vault)))
+  (let ((base (map specification->package '("awscli@2.28.0" "aws-vault"))))
     (if (home-aws-configuration-install-session-manager? config)
         (append base (list (home-aws-configuration-session-manager-package config)))
         base)))
