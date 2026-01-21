@@ -8,21 +8,19 @@
 
   ;; services
   #:use-module (gnu home)
-  #:use-module (gnu home services)  
+  #:use-module (gnu home services)
   #:use-module (gnu home services guix)
-  
+
   ;; base composer
   #:use-module (peteches home-configs base)
 
   ;; my packages
-  #:use-module (peteches packages koboldcpp)
+  #:use-module (peteches home-services koboldcpp)
 
   #:use-module (peteches channels nug)
-  
+
   ;; host-only services
   #:use-module (peteches home-services ai)
-  #:use-module (peteches home-services agixt)
-  #:use-module (peteches home-services koboldcpp)
   )
 
 (define (home-abs-path path)
@@ -41,71 +39,64 @@
 ;; Services unique to nug (AI stacks, AGiXT bots, etc.)
 (define nug-extra-services
   (list
-   (service home-channels-service-type
-	%nug-channels)
-
    (service koboldcpp-service-type
 	    (koboldcpp-configuration
-	     (package koboldcpp-bin)
-	     (host "0.0.0.0")
-	     (extra-args '(
-			   "--usecuda"
-			   "--contextsize" "8196"
-			   "--gpulayers" "-1"
-			   "--websearch"))
-	     (model-path (home-abs-path ".local/share/models/qwen2.5-coder-14b-instruct-q6_k.gguf"))))
+	     (service-name "koboldcpp-qwen")
+	     (model-name "qwen2.5-coder-14b-instruct-q6_k.gguf")
+	     (host "::")
+	     (whisper-model "whisper-small-q5_1.bin")
+	     (tts-model "Kokoro_no_espeak_Q4.gguf")
+	     (draft-model "qwen2.5-coder-1.5b-instruct-q4_k_m.gguf")
+	     (port 5001)
+	     (ssl-cert (home-abs-path ".local/share/certs/nug.peteches.co.uk.pem"))
+	     (ssl-key  (home-abs-path ".local/share/certs/nug.peteches.co.uk.pem"))
+	     (extra-args (list "--usecuda"
+			       "--websearch"
+			       "--draftamount" "16"
+			       "--gpulayers" "999"
+			       "--contextsize" "16384"
+			       "--flashattention"))))
+   (service koboldcpp-service-type
+	    (koboldcpp-configuration
+	     (service-name "koboldcpp-dolphin-sd")
+	     (model-name "Dolphin-Mistral-24B-Venice-Edition-Q4_K_S.gguf")
+	     (host "::")
+	     (port 5002)
+	     (whisper-model "whisper-small-q5_1.bin")
+	     (tts-model "Kokoro_no_espeak_Q4.gguf")
+	     (sd-model "pornworksRealPorn_v03.safetensors")
+	     (ssl-cert (home-abs-path ".local/share/certs/nug.peteches.co.uk.pem"))
+	     (ssl-key  (home-abs-path ".local/share/certs/nug.peteches.co.uk.pem"))
+	     (extra-args (list "--usecuda"
+			       "--websearch"
+			       "--ttsgpu"
+			       "--gpulayers" "999"
+			       "--contextsize" "8192"
+			       "--flashattention"
+			       "--quantkv" "1"))))
+   (service koboldcpp-service-type
+	    (koboldcpp-configuration
+	     (service-name "koboldcpp-dolphin")
+	     (model-name "Dolphin-Mistral-24B-Venice-Edition-Q5_K_S.gguf")
+	     (sd-model "cyberrealisticLCM_cyberrealistic42.safetensors")
+	     (whisper-model "whisper-small-q5_1.bin")
+	     (tts-model "Dia_Q5_DAC_F16.gguf")
+	     (host "::")
+	     (port 5003)
+	     (ssl-cert (home-abs-path ".local/share/certs/nug.peteches.co.uk.pem"))
+	     (ssl-key  (home-abs-path ".local/share/certs/nug.peteches.co.uk.pem"))
+	     (extra-args (list "--usecuda"
+			       "--websearch"
+       			       "--gpulayers" "999"
+			       "--contextsize" "16386"
+			       "--flashattention"
+			       "--quantkv" "1"))))
 
-   (service home-agixt-backend-service-type
-	    (agixt-backend-configuration
-	     (instance-name "default")
-	     (credentials-file ".config/agixt/cred-backend")
-	     (base-uri "http://localhost:7437")
-	     (workdir ".local/share")
-	     (respawn? #t)))
-
-   ;; web app (Streamlit)
-   (service home-agixt-webui-service-type
-	    (agixt-webui-configuration
-	     (instance-name "default") ; requires agixt-default
-	     (base-uri "http://localhost:7437")
-	     (credentials-file ".config/agixt/cred-backend")
-	     (port 8501)
-	     (respawn? #t)))
-
-   ;; chat client (separate port; same UI by default)
-   (service home-agixt-chatui-service-type
-	    (agixt-chatui-configuration
-	     (instance-name "default")
-	     (base-uri "http://localhost:7437")
-	     (credentials-file ".config/agixt/cred-backend")
-	     (port 3437)
-	     (respawn? #t)))
-   
-   (service home-agixt-telegram-bots-service-type
-	    (agixt-telegram-bots-configuration
-	     (bots
-	      (list
-	       (agixt-telegram-bot-configuration
-		(name "leah")
-		(backend-instance-name "default")
-		(credentials-file ".config/agixt/cred-bot-leah")
-		(base-uri "http://localhost:7437")
-		(agent "AGiXT")
-		(chain "")
-		(allowed-user-ids '("7642100300")))
-	       (agixt-telegram-bot-configuration
-		(name "kim")
-		(backend-instance-name "default")
-		(credentials-file ".config/agixt/cred-bot-kim")
-		(base-uri "http://localhost:7437")
-		(agent "Secretary")
-		(chain "morning-briefing")
-		(allowed-user-ids '("7642100300")))))
-	     (respawn? #t)))	   ))
+   (service home-channels-service-type
+	    %nug-channels)))
 
 (home-environment
   (packages
    (append nug-extra-packages base-packages))
   (services
     (append nug-extra-services base-services)))
-

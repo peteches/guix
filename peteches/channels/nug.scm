@@ -7,13 +7,13 @@
   (append
    %base-channels
    (list
-    
+
     ;; Guix-Science (free)
     (channel
      (name 'guix-science)
      (url "https://codeberg.org/guix-science/guix-science.git")
      (branch "master")
-     (commit "1573f7f57b4d1122844b2397fda5ad7a213068cc")
+     (commit "6cc008a008606a3048ee558bbd91fed4e205b657")
      (introduction
       (make-channel-introduction
        "b1fe5aaff3ab48e798a4cce02f0212bc91f423dc"
@@ -25,7 +25,7 @@
      (name 'guix-science-nonfree)
      (url "https://codeberg.org/guix-science/guix-science-nonfree.git")
      (branch "master")
-     (commit "c0aa6541b5c813d5520783b7e5b3956a753138cd")
+     (commit "b94a466109e546b01eada60804661bdcd18e6199")
      (introduction
       (make-channel-introduction
        "58661b110325fd5d9b40e6f0177cc486a615817e"
@@ -35,12 +35,12 @@
     (channel
      (name 'peteches)
      (url "file:///home/peteches/area_51/peteches-channel")
-     (branch "main"))  
-    
+     (branch "main"))
+
     ;; Guix-HPC Non-Free
     (channel
      (name 'guix-hpc-non-free)
      (url "https://gitlab.inria.fr/guix-hpc/guix-hpc.git")
      (branch "master")
-     (commit "652f5b762b751699175a98f665b646a886679974")
+     (commit "9ce7aba36c32c343dc32609f36e7d98672c93ca7")
      ))))

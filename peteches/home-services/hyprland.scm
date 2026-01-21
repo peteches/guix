@@ -36,7 +36,7 @@
             home-hyprland-variable-configuration))
 
 (define (home-hyprland-profile-service config)
-       (list hyprland
+       (list
 	     hyprcursor
 	     xdg-desktop-portal
 	     xdg-desktop-portal-gtk
@@ -75,7 +75,7 @@
 			 colour-regexp
 			 "( *"
 			 colour-regexp
-			 "( *[0-9]{,3}deg)?)?"))			 
+			 "( *[0-9]{,3}deg)?)?"))
 
 (define (hex-rgba? colour)
   (string-match (string-append "^" hex-rgba-regexp "$") colour))
@@ -289,7 +289,7 @@
   (scale
    (real 1.0)
    "shadows scale. [0.0 - 1.0]"))
-  
+
 (define (serialize-decoration-shadow-category field-name config)
   #~(string-append "\n\tshadow {\n"
 		   #$(serialize-configuration
@@ -1022,7 +1022,7 @@
    "Environment variables to set in Hyprland, should be in format \"VARNAME,value\"")
   (monitors
    (list-of-monitors (list (monitor)))
-   "List of monitor configurations") 
+   "List of monitor configurations")
   (binds
    (list-of-binds '())
    "All hyprland bindings")

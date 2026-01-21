@@ -80,7 +80,7 @@
    (license expat)))
 
 ;; === Pins (use v1.99.4 as requested) ===
-(define koboldcpp-version "1.99.4")
+(define koboldcpp-version "1.105.4")
 
 ;; CUDA-enabled (modern PCs, CUDA12+ AVX2)
 (define-public koboldcpp-bin
@@ -90,7 +90,7 @@
    (string-append "https://github.com/LostRuins/koboldcpp/releases/download/v"
                   koboldcpp-version "/koboldcpp-linux-x64")
    ;; TODO: run 'guix download' on the URL above and paste the base32 hash here:
-   "1hvlbcl9fdv9m0j1lk8584z9kk3qdz7vhjfz2car95hn150h0hig"
+   "1d7k939wc8zjzzl5kwxiyr2by54njpkg0cmk8d83pnd6wsjji9xp"
    #:cuda? #t))
 
 ;; CPU-only (nocuda)
@@ -103,5 +103,3 @@
    ;; TODO: run 'guix download' on the URL above and paste the base32 hash here:
    "0f2ffzjij6bpwbkfvfqnfdffddzsb9nhk2a1nwx149la67lkdm5b"
    #:cuda? #f))
-
-koboldcpp-bin

@@ -5,7 +5,7 @@
   #:use-module (gnu)
   #:use-module (guix gexp)
   #:use-module (guix transformations)
-
+  #:use-module (guix modules)
   ;; Services (service constructors + specific service types)
   #:use-module (gnu services) ; <-- provides 'service', 'simple-service', etc.
   #:use-module (gnu services authentication)
@@ -38,6 +38,7 @@
   #:use-module (nongnu services nvidia)
   #:use-module (nongnu packages nvidia)	; nvidia-firmware
   #:use-module (gnu packages freedesktop)
+  #:use-module (gnu packages virtualization)
 
 
   #:use-module (nongnu packages linux)
@@ -45,6 +46,8 @@
   #:use-module (gnu system nss)
 
   #:use-module (peteches system-services boltd)
+  #:use-module (peteches packages nvidia-container-runtime)
+  #:use-module (peteches packages hyprland-glvnd)
   #:export (make-base-os
             %peteches-user
             %common-services
@@ -113,36 +116,52 @@
 	(service nftables-service-type
 		 (nftables-configuration
 		  (ruleset
-		   (plain-file "nftables.conf"
-			       "\
+(plain-file "nftables.conf"
+            "\
 table inet filter {
 
   chain input {
     type filter hook input priority filter; policy drop;
-    # Add your existing packet filtering rules here...
-    iifname virbr0 udp dport 67 counter accept comment \"allow dhcp on virbr0\"
-    iifname virbr0 meta l4proto {tcp, udp} th dport 53 accept \\
-        comment \"allow dns on virbr0\"
+
+    iifname \"lo\" accept comment \"loopback\"
+    ct state { established, related } accept comment \"established/related\"
+
+    tcp dport 22 accept comment \"ssh\"
+    tcp dport 8188 accept comment \"comfyui\"
+    tcp dport { 5001, 5002, 5003 } accept comment \"KoboldCpp\"
+
+    tcp dport 80 accept comment \"required for certbot acme approvals\"
+
+    ip protocol icmp accept comment \"icmpv4\"
+    ip6 nexthdr icmpv6 accept comment \"icmpv6\"
+
+    iifname \"enp6s0\" udp sport 67 udp dport 68 accept comment \"dhcpv4 client\"
+    iifname \"enp6s0\" udp sport 547 udp dport 546 accept comment \"dhcpv6 client\"
+
+    iifname \"virbr0\" udp dport 67 accept comment \"allow dhcp on virbr0\"
+    iifname \"virbr0\" meta l4proto { tcp, udp } th dport 53 accept comment \"allow dns on virbr0\"
+
+    iifname \"tailscale0\" accept comment \"tailscale\"
   }
 
   chain forward {
     type filter hook forward priority filter; policy drop;
-    # Add your existing forwarding rules here...
-    iifname virbr0 accept comment \"allow outbound traffic from virbr0\"
-    oifname virbr0 ct state {established, related } accept \\
-        comment \"allow established traffic to virbr0\"
-  }
 
+    # Allow VM subnet to initiate outbound connections
+    iifname { \"virbr0\", \"vnet*\" } ip saddr 192.168.10.0/24 counter accept comment \"VMs out\"
+
+    # Allow return traffic (and related flows like ICMP errors)
+    ct state { established, related } counter accept comment \"forward established/related\"
+
+    counter log prefix \"nft fwd drop: \" flags all
+  }
 }
 
 table inet nat {
   chain postrouting {
     type nat hook postrouting priority srcnat; policy accept;
-    # Add your existing nat rules here...
-    iifname virbr0 ip daddr { 224.0.0.0/24, 255.255.255.255/32 } return \\
-        comment \"don't masquerade to reserved address blocks\"
-    iifname virbr0 oifname != virbr0 masquerade \\
-        comment \"masquerade all outgoing traffic from VMs\"
+
+    ip saddr 192.168.10.0/24 counter masquerade comment \"masquerade VMs out\"
   }
 }
 "))))
@@ -166,7 +185,7 @@ table inet nat {
         (service gpm-service-type)))
 
 (define %common-packages
-  (map specification->package (list "bolt" "fprintd"  "font-terminus" "virt-manager" "qemu")))
+  (map specification->package (list "hyprland-glvnd" "bolt" "fprintd"  "font-terminus" "virt-manager" "qemu")))
 
 (define (without-gdm)
   (modify-services
@@ -176,7 +195,7 @@ table inet nat {
     config => (guix-configuration
 	       (inherit config)
 	       (substitute-urls
-		(append (list "http://nug.local:3000")
+		(append (list "http://nug.peteches.co.uk:3000")
 			%default-substitute-urls))
 	       (authorized-keys
 		(append (list (local-file "./nug-substitute-key.pub"))
@@ -214,8 +233,7 @@ table inet nat {
 		     (extra-env '(("XDG_CURRENT_DESKTOP" . "Hyprland")
 				  ("XDG_SESSION_TYPE"    . "wayland")))
 		     ;; Command must be a gexp that yields an argv list
-		     (command #~(string-append #$(file-append hyprland "/bin/Hyprland")))
-		     (command-args '()))))))))))))
+		     (command #~(list #$(file-append hyprland-glvnd "/bin/Hyprland"))))))))))))))
 
 (define (nonguix-substitute-service)
   (simple-service 'add-nonguix-substitutes
@@ -228,6 +246,11 @@ table inet nat {
                     (append (list (plain-file "non-guix.pub"
 					      "(public-key (ecc (curve Ed25519) (q #C1FD53E5D4CE971933EC50C9F307AE2171A2D3B52C804642A7A35F84F3A4EA98#)))"))
                             %default-authorized-guix-keys)))))
+
+
+;; make sure this is available somewhere in your config:
+;; (use-modules (gnu packages base))  ; for `glibc`
+
 
 ;; ---------- Main API with grouped flags ----------
 
@@ -251,8 +274,9 @@ table inet nat {
           (append firmware
                   (if intel-cpu? (list intel-microcode) '())))
          (packages*
-          (append extra-packages
-                  (if with-nvidia? (list nvidia-firmware nvidia-driver) '())))
+          (append extra-packages %common-packages
+                  (if with-nvidia? (list nvidia-firmware nvidia-driver) '())
+		  (if (and with-nvidia? with-docker?) (list runc nvidia-container-toolkit) '())))
          (laptop-services
           (append (if laptop? (list (service tlp-service-type)) '())
                   (if (and laptop? intel-cpu?)
@@ -269,15 +293,23 @@ table inet nat {
 						      ":${LD_LIBRARY_PATH}"))))
 
 			       (service nvidia-service-type)
+			       (simple-service 'nvidia-runtime-state
+					       activation-service-type
+					       #~(begin
+						   (use-modules (guix build utils))
+						   (mkdir-p "/run/nvidia")))
+
 			       (simple-service 'custom-udev-rules udev-service-type
 					       (list nvidia-driver))
 			       (service kernel-module-loader-service-type
-					'("ipmi_devinf"
+					'("ipmi_devintf"
 					  "nvidia"
 					  "nvidia_modeset"
 					  "nvidia_uvm")))
 			      '()))
-	 (docker-services (if with-docker? (list (service containerd-service-type) (service docker-service-type)) '()))
+	 (docker-services (if with-docker? (list (service containerd-service-type)
+						 (service docker-service-type))
+			      '()))
          (printing-services (if with-printing? (list (service cups-service-type)) '()))
          (bluetooth-services (if with-bluetooth? (list (service bluetooth-service-type)) '()))
          (nonguix-services (if with-nonguix? (list (nonguix-substitute-service)) '()))
