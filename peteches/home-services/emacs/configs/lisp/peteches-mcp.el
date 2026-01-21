@@ -19,10 +19,18 @@
 ;;;; Utilities
 
 (setq mcp-hub-servers
-      `(("filesystem-main-work" . (:command "mcp-filesystem-server" :args ("/home/peteches/area_51/github.com/ScorePlay-Inc/backend-monorepo.git/checkouts/main" )))
+      `(("filesystem-guix" . (:command "mcp-filesystem-server" :args ("/home/peteches/area_51/guix")))
+	("filesystem-main-work" . (:command "mcp-filesystem-server" :args ("/home/peteches/area_51/github.com/ScorePlay-Inc/backend-monorepo.git/checkouts/main" )))
 	("filesystem-primary-work" . (:command "mcp-filesystem-server" :args ("/home/peteches/area_51/github.com/ScorePlay-Inc/backend-monorepo.git/checkouts/primaryWork" )))
 	("filesystem-secondary-work" . (:command "mcp-filesystem-server" :args ("/home/peteches/area_51/github.com/ScorePlay-Inc/backend-monorepo.git/checkouts/secondaryWork" )))
 	("shell" . (:command "mcp-shell"))
+	("git" . (:command "docker" :args (
+					   "run"
+					   "--rm"
+					   "-i"
+					   "--mount"
+					   "type=bind,src=q${workspaceFolder},dst=/workspace"
+					   "mcp/git")))
 ;; 	("linear" . (:command "docker" :args (
 ;; 					      "run"
 ;; ;					      "--rm"
