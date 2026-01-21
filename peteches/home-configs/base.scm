@@ -168,16 +168,7 @@
 		       (extra-content (string-append
 				       "    ControlMaster auto\n"
 				       "    ControlPath ~/.ssh/ctrl-%C\n"
-				       "    ControlPersist 10m\n")))
-		      (openssh-host
-		       (name "nug")
-		       (host-name "nug.local"))
-		      (openssh-host
-		       (name "bhiyaki")
-		       (host-name "bhiyaki.local"))
-		      (openssh-host
-		       (name "nyarlothotep")
-		       (host-name "nyarlothotep.local")))
+				       "    ControlPersist 10m\n"))))
 		     %scoreplay-ssh-hosts))))
 
    ;; GPG Agent
