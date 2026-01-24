@@ -47,7 +47,7 @@
 
   #:use-module (peteches system-services boltd)
   #:use-module (peteches packages nvidia-container-runtime)
-  #:use-module (peteches packages hyprland-glvnd)
+  #:use-module (peteches packages hyprland)
   #:export (make-base-os
             %peteches-user
             %common-services
@@ -185,7 +185,7 @@ table inet nat {
         (service gpm-service-type)))
 
 (define %common-packages
-  (map specification->package (list "hyprland-glvnd" "bolt" "fprintd"  "font-terminus" "virt-manager" "qemu")))
+  (map specification->package (list "hyprland" "bolt" "fprintd"  "font-terminus" "virt-manager" "qemu")))
 
 (define (without-gdm)
   (modify-services
@@ -233,7 +233,7 @@ table inet nat {
 		     (extra-env '(("XDG_CURRENT_DESKTOP" . "Hyprland")
 				  ("XDG_SESSION_TYPE"    . "wayland")))
 		     ;; Command must be a gexp that yields an argv list
-		     (command #~(list #$(file-append hyprland-glvnd "/bin/Hyprland"))))))))))))))
+		     (command #~(list #$(file-append hyprland "/bin/Hyprland"))))))))))))))
 
 (define (nonguix-substitute-service)
   (simple-service 'add-nonguix-substitutes
