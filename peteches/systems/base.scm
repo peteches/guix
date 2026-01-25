@@ -26,10 +26,12 @@
   ;; Packages used in helpers
 
   #:use-module (gnu packages admin)
+  #:use-module (gnu packages bash)
   #:use-module (gnu packages display-managers) ; gtkgreet
 
   #:use-module (gnu packages wm)               ; cage
 
+  #:use-module (gnu packages gl)  ; libglvnd
 
   #:use-module (gnu packages fonts)
   #:use-module (gnu packages linux)  ; linux-firmware, intel-microcode
@@ -201,39 +203,74 @@ table inet nat {
 		(append (list (local-file "./nug-substitute-key.pub"))
 			%default-authorized-guix-keys))))))
 
+(define (hyprland-launcher with-nvidia?)
+  (if with-nvidia?
+      (program-file "hyprland-session"
+        #~(begin
+            (use-modules (srfi srfi-13))
+
+            ;; agreety passes "-l" -> strip it
+            (let* ((args (cdr (command-line)))
+                   (args (if (and (pair? args) (string=? (car args) "-l"))
+                             (cdr args)
+                             args)))
+              (setenv "GBM_BACKEND" "nvidia-drm")
+              (setenv "__GLX_VENDOR_LIBRARY_NAME" "nvidia")
+              (setenv "__EGL_VENDOR_LIBRARY_DIRS"
+                      "/run/current-system/profile/share/glvnd/egl_vendor.d")
+              (setenv "WLR_NO_HARDWARE_CURSORS" "1")
+
+              (let* ((old (or (getenv "LD_LIBRARY_PATH") ""))
+                     (prefix (string-append
+                              #$(file-append libglvnd "/lib") ":"
+                              #$(file-append nvidia-driver "/lib") ":"
+                              #$(file-append nvidia-driver "/lib64")))
+                     (new (if (string-null? old)
+                              prefix
+                              (string-append prefix ":" old))))
+                (setenv "LD_LIBRARY_PATH" new))
+
+              (let ((prog #$(file-append hyprland "/bin/Hyprland")))
+                (apply execl prog (cons "Hyprland" args))))))
+
+      (program-file "hyprland-session"
+        #~(begin
+            ;; agreety passes "-l" -> strip it
+            (let* ((args (cdr (command-line)))
+                   (args (if (and (pair? args) (string=? (car args) "-l"))
+                             (cdr args)
+                             args)))
+              (setenv "__EGL_VENDOR_LIBRARY_DIRS"
+                      "/run/current-system/profile/share/glvnd/egl_vendor.d")
+              (setenv "WLR_NO_HARDWARE_CURSORS" "1")
+              (let ((prog #$(file-append hyprland "/bin/Hyprland")))
+                (apply execl prog (cons "Hyprland" args))))))))
+
+
 ;; ------ Greeter (new interface) ------
 ;; Preferred for up-to-date Guix: configure the greeter at top level.
 ;; Runs gtkgreet inside cage; *no* dbus-run-session — user sessions
 ;; are expected to have DBus via dbus-service-type.
-(define* greetd-gtkgreet-services
-  ;; in your operating-system's (services ...)
-
-  ;; In your operating-system's (services ...) field:
+(define* (greetd-gtkgreet-services #:key
+                                   (session-command #~#$(hyprland-launcher #f)))
   (list
-   ;; needs: (use-modules (gnu services base) (gnu packages fonts))
    (service console-font-service-type
-	    `(("tty7" . ,(file-append font-terminus "/share/consolefonts/ter-132n"))))
-
-
-   ;; In your operating-system's (services ...)
+            `(("tty7" . ,(file-append font-terminus "/share/consolefonts/ter-132n"))))
    (service greetd-service-type
-	    (greetd-configuration
-	     ;; run greetd on tty1 with agreety (text greeter)
-	     (terminals
-	      (list
-	       (greetd-terminal-configuration
-		(terminal-vt "7")
-		(terminal-switch #t)
-		(default-session-command
-		  (greetd-agreety-session
-		   ;; Start Hyprland for the logged-in user
-		   (command
-		    (greetd-user-session
-		     (xdg-session-type "wayland")
-		     (extra-env '(("XDG_CURRENT_DESKTOP" . "Hyprland")
-				  ("XDG_SESSION_TYPE"    . "wayland")))
-		     ;; Command must be a gexp that yields an argv list
-		     (command #~(list #$(file-append hyprland "/bin/Hyprland"))))))))))))))
+            (greetd-configuration
+             (terminals
+              (list
+               (greetd-terminal-configuration
+                (terminal-vt "7")
+                (terminal-switch #t)
+                (default-session-command
+                  (greetd-agreety-session
+                   (command
+                    (greetd-user-session
+                     (xdg-session-type "wayland")
+                     (extra-env '(("XDG_CURRENT_DESKTOP" . "Hyprland")
+                                  ("XDG_SESSION_TYPE"    . "wayland")))
+                     (command session-command))))))))))))
 
 (define (nonguix-substitute-service)
   (simple-service 'add-nonguix-substitutes
@@ -284,13 +321,20 @@ table inet nat {
                       '())))
 	 (nvidia-services (if with-nvidia?
 			      (list
-			       (simple-service 'nvidia-ldpath session-environment-service-type
-					       ;; Prepend nvidia-driver’s lib dirs; keep any existing value.
-					       `(("LD_LIBRARY_PATH" .
+			       (simple-service 'nvidia-wayland-env
+					       session-environment-service-type
+					       `(("GBM_BACKEND"               . "nvidia-drm")
+						 ("__GLX_VENDOR_LIBRARY_NAME" . "nvidia")
+						 ("__EGL_VENDOR_LIBRARY_DIRS" . "/run/current-system/profile/share/glvnd/egl_vendor.d")
+						 ("WLR_NO_HARDWARE_CURSORS"   . "1")
+						 ;; Critical bit: make GLVND win over Mesa at runtime.
+						("LD_LIBRARY_PATH" .
 						  ,#~(string-append
+						      #$(file-append libglvnd "/lib") ":"
 						      #$(file-append nvidia-driver "/lib") ":"
 						      #$(file-append nvidia-driver "/lib64")
 						      ":${LD_LIBRARY_PATH}"))))
+
 
 			       (service nvidia-service-type)
 			       (simple-service 'nvidia-runtime-state
@@ -314,17 +358,19 @@ table inet nat {
          (bluetooth-services (if with-bluetooth? (list (service bluetooth-service-type)) '()))
          (nonguix-services (if with-nonguix? (list (nonguix-substitute-service)) '()))
          (desktop* (without-gdm))
-         (final-services
-          (append desktop*
-                  %common-services
-                  greetd-gtkgreet-services
-                  laptop-services
-                  printing-services
-                  bluetooth-services
-                  nonguix-services
+	 (hyprland-session-command
+          #~#$(hyprland-launcher with-nvidia?))
+	 (final-services
+	  (append desktop*
+		  %common-services
+		  (greetd-gtkgreet-services #:session-command hyprland-session-command)
+		  laptop-services
+		  printing-services
+		  bluetooth-services
+		  nonguix-services
 		  nvidia-services
 		  docker-services
-                  extra-services)))
+		  extra-services)))
     (operating-system
      (kernel kernel)
      (kernel-arguments (append (if with-nvidia?
@@ -350,8 +396,8 @@ table inet nat {
 				(append (user-account-supplementary-groups %peteches-user)
 					'("docker"))))
 			      %peteches-user))
-                    %base-user-accounts
-                    users-extra))
+		    %base-user-accounts
+		    users-extra))
      (packages (append packages* %base-packages))
      (services final-services)
      (mapped-devices mapped-devices)
