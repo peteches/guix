@@ -43,6 +43,7 @@
 					"emacs-geiser"
 					"emacs-emojify"
 					"emacs-geiser-guile"
+					"emacs-org-present"
 					"gcc-toolchain" ; to compile vterm / treesitter grammers
 
 					"yarn" ; for mcp servers
