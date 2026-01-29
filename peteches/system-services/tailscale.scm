@@ -153,10 +153,11 @@
   (let ((cfg (instance->resolved cfg)))
     (match cfg
       (($ <tailscale-instance-configuration>
-          inst-name inst-package netns state-file socket-file tun port log-file extra-args)
-       (let* ((bash-path (file-append bash "/bin/bash"))
-              (ip-path   (file-append iproute "/sbin/ip"))
-              (pkg-name  (string-append "ts-" inst-name)))
+          inst-name inst-package ns-name state-file socket-file tun port log-file extra-args)
+       (let* ((bash-path    (file-append bash "/bin/bash"))
+              (ip-path      (file-append iproute "/sbin/ip"))
+              (ts-bin       (file-append inst-package "/bin/tailscale"))
+              (pkg-name     (string-append "tailscale-wrappers-" inst-name)))
          (package
            (name pkg-name)
            (version "0")
@@ -168,19 +169,40 @@
              #:builder
              #~(begin
                  (use-modules (guix build utils))
-                 (let* ((out (assoc-ref %outputs "out"))
-                        (bin (string-append out "/bin"))
-                        (p   (string-append bin "/ts-" #$inst-name)))
+                 (let* ((out        (assoc-ref %outputs "out"))
+                        (bin        (string-append out "/bin"))
+                        (ts-path    (string-append bin "/ts-"     #$inst-name))
+                        (netns-path (string-append bin "/netns-"  #$inst-name)))
                    (mkdir-p bin)
-                   (call-with-output-file p
+
+                   ;; ts-<name>: tailscale CLI pinned to per-instance socket, run in the netns
+                   (call-with-output-file ts-path
                      (lambda (port)
                        (format port "#!~a\n" #$bash-path)
                        (display "set -euo pipefail\n" port)
-                       ;; IMPORTANT: use format/display, not `write` (which adds Scheme quotes).
-                       (format port "NS=~a\n" #$netns)
-                       (format port "IP=~a\n" #$ip-path)
+                       (display "SOCK=" port) (write #$socket-file port) (newline port)
+                       (display "TS=" port)   (write #$ts-bin port) (newline port)
+                       (display "IP=" port)   (write #$ip-path port) (newline port)
+                       (display "NS=" port)   (write #$ns-name port) (newline port)
                        (display "if [ \"$#\" -lt 1 ]; then\n" port)
-                       (display "  echo \"Usage: ts-<name> <command...>\" >&2\n" port)
+                       (display "  echo \"Usage: ts-<name> <tailscale-subcommand> [args...]\" >&2\n" port)
+                       (display "  exit 2\n" port)
+                       (display "fi\n" port)
+                       (display "if [ \"$(id -u)\" -ne 0 ]; then\n" port)
+                       (display "  exec sudo -E \"$IP\" netns exec \"$NS\" \"$TS\" --socket=\"$SOCK\" \"$@\"\n" port)
+                       (display "else\n" port)
+                       (display "  exec \"$IP\" netns exec \"$NS\" \"$TS\" --socket=\"$SOCK\" \"$@\"\n" port)
+                       (display "fi\n" port)))
+
+                   ;; netns-<name>: generic netns exec wrapper
+                   (call-with-output-file netns-path
+                     (lambda (port)
+                       (format port "#!~a\n" #$bash-path)
+                       (display "set -euo pipefail\n" port)
+                       (display "IP=" port) (write #$ip-path port) (newline port)
+                       (display "NS=" port) (write #$ns-name port) (newline port)
+                       (display "if [ \"$#\" -lt 1 ]; then\n" port)
+                       (display "  echo \"Usage: netns-<name> <command> [args...]\" >&2\n" port)
                        (display "  exit 2\n" port)
                        (display "fi\n" port)
                        (display "if [ \"$(id -u)\" -ne 0 ]; then\n" port)
@@ -188,9 +210,12 @@
                        (display "else\n" port)
                        (display "  exec \"$IP\" netns exec \"$NS\" \"$@\"\n" port)
                        (display "fi\n" port)))
-                   (chmod p #o555)))))
-           (synopsis (string-append "Run commands inside Tailscale netns " netns))
-           (description "Convenience wrapper for ip netns exec for a specific Tailscale instance.")
+
+                   (chmod ts-path    #o555)
+                   (chmod netns-path #o555)))))
+           (synopsis (string-append "Wrappers for Tailscale instance " inst-name))
+           (description
+            "Installs ts-<name> (tailscale CLI pinned to the instance socket, run in the instance netns) and netns-<name> (generic ip netns exec wrapper).")
            (home-page "https://tailscale.com/")
            (license public-domain)))))))
 
