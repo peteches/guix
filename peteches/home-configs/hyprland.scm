@@ -47,13 +47,13 @@
     (key "e")
     (dispatcher "exec")
     (params "emacsclient -c"))
-   
+
    (bind
     (mods "SUPER SHIFT")
     (key "p")
     (dispatcher "exec")
     (params "wofi-screenshot.sh"))
-   
+
    (bind
     (mods "SUPER SHIFT")
     (key "d")
@@ -65,7 +65,7 @@
     (key "Return")
     (dispatcher "exec")
     (params "makoctl invoke"))
-   
+
    (bind
     (mods "SUPER")
     (key "d")
@@ -83,12 +83,17 @@
     (key "p")
     (dispatcher "exec")
     (params "wofi-password.sh"))
-   
+
    (bind
     (mods "SUPER SHIFT")
     (key "p")
     (dispatcher "exec")
-    (params "wofi-screenshot.sh"))))
+    (params "wofi-screenshot.sh"))
+   (bind
+    (mods "SUPER CONTROL")
+    (key "a")
+    (dispatcher "exec")
+    (params "ai-switcher.sh"))))
 
 (define-public (base-hyprland-window-workspace-binds workspaces)
   (append (list
@@ -103,25 +108,25 @@
 	    (key "t")
 	    (dispatcher "togglesplit")
 	    (params ""))
-	   
+
 	   (bind
 	    (mods "SUPER")
 	    (key "q")
 	    (dispatcher "killactive")
 	    (params ""))
-	   
+
 	   (bind
 	    (mods "SUPER SHIFT")
 	    (key "q")
 	    (dispatcher "exit")
 	    (params ""))
-	   
+
 	   (bind
 	    (mods "SUPER")
 	    (key "f")
 	    (dispatcher "fullscreen")
 	    (params ""))
-	   
+
 	   (bind
 	    (mods "SUPER")
 	    (key "right")

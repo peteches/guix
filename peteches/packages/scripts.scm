@@ -15,7 +15,7 @@
 (define-public shell-scripts
   (package
    (name "shell-scripts")
-   (version "0.0.1")
+   (version "0.0.2")
    (synopsis "My personal shell scripts")
    (description "I like to use wofi to manage certain tasks and this package will install them for firefox, pass and screenshotting")
    (license gpl2)
@@ -25,8 +25,10 @@
 	    (method git-fetch)
 	    (uri (git-reference
 		  (url "https://github.com/peteches/scripts.git")
-		  (commit "aad274384d4bdd25e8950e2dea2251d36fc8e4d3")))
-	    (sha256 (base32 "0n18q757ck9pjy0hbz9wyfpydahd7aq7kg7cw5dxcc9ymndqra9b"))))
+		  (commit "f56f7e737ae1301786eb5620d1115d103d149591")))
+;	    (sha256 (base32 "0000000000000000000000000000000000000000000000000000"))
+	    (sha256 (base32 "09apl28c4hkrc8lfa209j8sagk26wyx1vnb5njfv7cj8kr6bckg9"))
+	    ))
    (build-system copy-build-system)
 
    (arguments (list
