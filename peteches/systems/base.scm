@@ -48,6 +48,8 @@
   #:use-module (gnu system nss)
 
   #:use-module (peteches system-services boltd)
+  #:use-module (peteches system-services firewall)
+  #:use-module (peteches system-services tailscale)
   #:use-module (peteches packages nvidia-container-runtime)
   #:use-module (peteches packages hyprland)
   #:export (make-base-os
@@ -115,58 +117,47 @@
 				  ;; IPv4 addresses to offer to VMs. This
 				  ;; should match the chosen subnet.
 				  "--dhcp-range=192.168.10.2,192.168.10.254"))))
-	(service nftables-service-type
-		 (nftables-configuration
-		  (ruleset
-(plain-file "nftables.conf"
-            "\
-table inet filter {
 
-  chain input {
-    type filter hook input priority filter; policy drop;
+	(service firewall-service-type
+         (nftables-rules
+          (input (list
+                  "iifname \"lo\" accept comment \"loopback\""
+                  "ct state { established, related } accept comment \"established/related\""
 
-    iifname \"lo\" accept comment \"loopback\"
-    ct state { established, related } accept comment \"established/related\"
+                  "tcp dport 22 accept comment \"ssh\""
+                  "tcp dport 8188 accept comment \"comfyui\""
+                  "tcp dport { 5001, 5002, 5003 } accept comment \"KoboldCpp\""
+                  "tcp dport 80 accept comment \"required for certbot acme approvals\""
 
-    tcp dport 22 accept comment \"ssh\"
-    tcp dport 8188 accept comment \"comfyui\"
-    tcp dport { 5001, 5002, 5003 } accept comment \"KoboldCpp\"
+                  "ip protocol icmp accept comment \"icmpv4\""
+                  "ip6 nexthdr ipv6-icmp accept comment \"icmpv6\""
 
-    tcp dport 80 accept comment \"required for certbot acme approvals\"
+                  ;; Interface-agnostic DHCP client replies (avoids hard-coding WAN iface).
+                  "udp sport 67 udp dport 68 accept comment \"dhcpv4 client\""
+                  "udp sport 547 udp dport 546 accept comment \"dhcpv6 client\""
 
-    ip protocol icmp accept comment \"icmpv4\"
-    ip6 nexthdr icmpv6 accept comment \"icmpv6\"
+                  ;; Libvirt bridge helpers
+                  "iifname \"virbr0\" udp dport 67 accept comment \"allow dhcp on virbr0\""
+                  "iifname \"virbr0\" meta l4proto { tcp, udp } th dport 53 accept comment \"allow dns on virbr0\""
 
-    iifname \"enp6s0\" udp sport 67 udp dport 68 accept comment \"dhcpv4 client\"
-    iifname \"enp6s0\" udp sport 547 udp dport 546 accept comment \"dhcpv6 client\"
+                  ;; Native tailscale interface (if you keep it)
+                  "iifname \"tailscale0\" accept comment \"tailscale\""))
 
-    iifname \"virbr0\" udp dport 67 accept comment \"allow dhcp on virbr0\"
-    iifname \"virbr0\" meta l4proto { tcp, udp } th dport 53 accept comment \"allow dns on virbr0\"
+          (forward (list
+                    ;; Return traffic first
+                    "ct state { established, related } counter accept comment \"forward established/related\""
 
-    iifname \"tailscale0\" accept comment \"tailscale\"
-  }
+                    ;; Allow VM subnet to initiate outbound connections
+                    "iifname { \"virbr0\", \"vnet*\" } ip saddr 192.168.10.0/24 counter accept comment \"VMs out\""
 
-  chain forward {
-    type filter hook forward priority filter; policy drop;
+                    ;; Log what would be dropped by policy (does not terminate)
+                    "counter log prefix \"nft fwd drop: \" flags all"))
 
-    # Allow VM subnet to initiate outbound connections
-    iifname { \"virbr0\", \"vnet*\" } ip saddr 192.168.10.0/24 counter accept comment \"VMs out\"
+          (nat-postrouting (list
+                            ;; Interface-agnostic NAT for VMs: masquerade when leaving anywhere
+                            ;; except back out the VM bridge itself.
+                            "ip saddr 192.168.10.0/24 oifname != { \"virbr0\", \"vnet*\" } counter masquerade comment \"masquerade VMs out\""))))
 
-    # Allow return traffic (and related flows like ICMP errors)
-    ct state { established, related } counter accept comment \"forward established/related\"
-
-    counter log prefix \"nft fwd drop: \" flags all
-  }
-}
-
-table inet nat {
-  chain postrouting {
-    type nat hook postrouting priority srcnat; policy accept;
-
-    ip saddr 192.168.10.0/24 counter masquerade comment \"masquerade VMs out\"
-  }
-}
-"))))
 
 	(simple-service 'my-pam-service pam-root-service-type
 			(let ((my-pam-entry
@@ -284,6 +275,12 @@ table inet nat {
 					      "(public-key (ecc (curve Ed25519) (q #C1FD53E5D4CE971933EC50C9F307AE2171A2D3B52C804642A7A35F84F3A4EA98#)))"))
                             %default-authorized-guix-keys)))))
 
+(define peteches-tailscale-services
+  (list (service tailscale-service-type
+            (list (tailscale-instance-configuration
+              (name "peteches")
+              (port 41641))))))
+
 
 ;; make sure this is available somewhere in your config:
 ;; (use-modules (gnu packages base))  ; for `glibc`
@@ -328,7 +325,7 @@ table inet nat {
 						 ("__EGL_VENDOR_LIBRARY_DIRS" . "/run/current-system/profile/share/glvnd/egl_vendor.d")
 						 ("WLR_NO_HARDWARE_CURSORS"   . "1")
 						 ;; Critical bit: make GLVND win over Mesa at runtime.
-						("LD_LIBRARY_PATH" .
+						 ("LD_LIBRARY_PATH" .
 						  ,#~(string-append
 						      #$(file-append libglvnd "/lib") ":"
 						      #$(file-append nvidia-driver "/lib") ":"
@@ -370,6 +367,7 @@ table inet nat {
 		  nonguix-services
 		  nvidia-services
 		  docker-services
+		  peteches-tailscale-services
 		  extra-services)))
     (operating-system
      (kernel kernel)
