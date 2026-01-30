@@ -8,6 +8,7 @@
   #:use-module (guix modules)
   ;; Services (service constructors + specific service types)
   #:use-module (gnu services) ; <-- provides 'service', 'simple-service', etc.
+  #:use-module (gnu services admin)
   #:use-module (gnu services authentication)
   #:use-module (gnu services base)
   #:use-module (gnu services desktop)
@@ -22,6 +23,7 @@
   #:use-module (gnu services ssh)        ; openssh-service-type
 
   #:use-module (gnu services cups)       ; cups-service-type
+
 
   ;; Packages used in helpers
 
@@ -386,6 +388,11 @@
      (timezone "Europe/London")
      (keyboard-layout (keyboard-layout "us"))
      (host-name host-name)
+     (sudoers-file (plain-file "sudoers"
+			       (string-append
+				"root ALL=(ALL) ALL\n"
+				"%wheel ALL=(ALL) ALL\n"
+				"#includedir /run/sudoers.d\n")))
      (name-service-switch %mdns-host-lookup-nss)
      (users (append (list (if with-docker?
 			      (user-account

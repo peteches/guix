@@ -19,8 +19,10 @@
 (define-module (peteches system-services tailscale)
   #:use-module (gnu)
   #:use-module (gnu services)
+  #:use-module (gnu services base)   ; etc-service-type
   #:use-module (gnu services shepherd)
   #:use-module (gnu packages networking)
+  #:use-module (gnu packages guile)
   #:use-module (gnu packages linux)     ; iproute + nftables
   #:use-module (gnu packages bash)      ; bash for wrapper scripts
   #:use-module (gnu packages web)
@@ -79,6 +81,10 @@
   (netns      tailscale-instance-configuration-netns
               (default #f))
 
+  ;; if added will be used as the search option in resolv.conf
+  (magic-dns-suffix tailscale-instance-configuration-magic-dns-suffix
+		    (default ""))
+
   ;; optional overrides
   (state-file  tailscale-instance-configuration-state-file
                (default #f))
@@ -106,7 +112,7 @@
   ;; Fill in defaults derived from name if fields are #f.
   (match cfg
     (($ <tailscale-instance-configuration>
-        name package netns state-file socket-file tun port log-file extra-args)
+        name package netns magic-dns state-file socket-file tun port log-file extra-args)
      (let-values (((dstate dsock dlog dtun) (instance-default-paths name)))
        (tailscale-instance-configuration
         (name name)
@@ -123,7 +129,7 @@
   (let ((cfg (instance->resolved cfg)))
     (match cfg
       (($ <tailscale-instance-configuration>
-          name package netns state-file socket-file tun port log-file extra-args)
+          name package netns magic-dns state-file socket-file tun port log-file extra-args)
        (let* ((service-name (string->symbol (string-append "tailscaled-" name)))
               (setup-name   (string->symbol (string-append "tailscale-netns-setup-" name)))
               (ip (file-append iproute "/sbin/ip"))
@@ -154,7 +160,7 @@
   (let ((cfg (instance->resolved cfg)))
     (match cfg
       (($ <tailscale-instance-configuration>
-          name package netns state-file socket-file tun port log-file extra-args)
+          name package netns magic-dns state-file socket-file tun port log-file extra-args)
        (let* ((svc-name     (string->symbol (string-append "tailscale-prefs-" name)))
               (tsd-svc      (string->symbol (string-append "tailscaled-" name)))
               (tailscale    (file-append package "/bin/tailscale"))
@@ -185,7 +191,7 @@
   (let ((cfg (instance->resolved cfg)))
     (match cfg
       (($ <tailscale-instance-configuration>
-          inst-name inst-package ns-name state-file socket-file tun port log-file extra-args)
+          inst-name inst-package ns-name magic-dns state-file socket-file tun port log-file extra-args)
        (let* ((bash-path    (file-append bash "/bin/bash"))
               (ip-path      (file-append iproute "/sbin/ip"))
               (ts-bin       (file-append inst-package "/bin/tailscale"))
@@ -222,7 +228,7 @@
                       (display "  exit 2\n" port)
                       (display "fi\n" port)
                       (display "if [ \"$(id -u)\" -ne 0 ]; then\n" port)
-                      (display "  exec sudo -E \"$IP\" netns exec \"$NS\" \"$TS\" --socket=\"$SOCK\" \"$@\"\n" port)
+                      (display "  exec sudo \"$IP\" netns exec \"$NS\" \"$TS\" --socket=\"$SOCK\" \"$@\"\n" port)
                       (display "else\n" port)
                       (display "  exec \"$IP\" netns exec \"$NS\" \"$TS\" --socket=\"$SOCK\" \"$@\"\n" port)
                       (display "fi\n" port)))
@@ -239,7 +245,7 @@
                       (display "  exit 2\n" port)
                       (display "fi\n" port)
                       (display "if [ \"$(id -u)\" -ne 0 ]; then\n" port)
-                      (display "  exec sudo -E \"$IP\" netns exec \"$NS\" \"$@\"\n" port)
+                      (display "  exec sudo \"$IP\" netns exec \"$NS\" \"$@\"\n" port)
                       (display "else\n" port)
                       (display "  exec \"$IP\" netns exec \"$NS\" \"$@\"\n" port)
                       (display "fi\n" port)))
@@ -260,11 +266,42 @@
          (wrappers (map ts-wrapper-package instances)))
     (append (delete-duplicates pkgs eq?) wrappers)))
 
+;; Sudo is picky: sudoers.d files must be owned by root and typically 0440.
+;; etc-service-type doesn't let us directly set file modes, so we wrap the
+;; generated sudoers text in a computed-file that chmods the output.
+(define (file-like->0440 name file)
+  (computed-file name
+    (with-imported-modules '((guix build utils))
+      #~(begin
+          (use-modules (guix build utils))
+          (copy-file #$file #$output)
+          (chmod #$output #o440)))
+    ;; Crucial: avoid guile-minimal, which lacks (ice-9 posix) etc.
+    #:guile guile-3.0))
+
+(define (tailscale-sudoers-entries instances)
+  ;; etc-service-type expects an alist of (DESTINATION . FILE-LIKE)
+  (map (lambda (cfg)
+         (let ((cfg (instance->resolved cfg)))
+           (match cfg
+             (($ <tailscale-instance-configuration>
+                 name package netns magic-dns state-file socket-file tun port log-file extra-args)
+              (let* ((ip (file-append iproute "/sbin/ip"))
+                     (ts (file-append package "/bin/tailscale"))
+                     (rule
+                      (mixed-text-file (string-append "sudoers-tailscale-" name)
+                        "%wheel ALL=(root) NOPASSWD: "
+                        ip " netns exec " netns " "
+                        ts " --socket=" socket-file " *\n")))
+                (list (string-append "sudoers.d/tailscale-" name)
+                      (file-like->0440 (string-append "sudoers-0440-" name) rule)))))))
+       instances))
+
 (define (tailscale-instance->netns-setup-service cfg)
   (let ((cfg (instance->resolved cfg)))
     (match cfg
       (($ <tailscale-instance-configuration>
-          name package netns state-file socket-file tun port log-file extra-args)
+          name package netns magic-dns state-file socket-file tun port log-file extra-args)
        (let-values (((subnet hostip nsip gw) (subnet-for name)))
          (let* ((ip (file-append iproute "/sbin/ip"))
                 (veth-host (ifname "vts-" name))
@@ -330,114 +367,102 @@
             (stop #~(lambda _ #t)))))))))
 
 (define (tailscale-activation instances)
-  #~(begin
-      (use-modules (guix build utils)
-                   (srfi srfi-1)
-                   (ice-9 rdelim)
-                   (srfi srfi-13))
+  (let ((resolved (map instance->resolved instances)))
+    #~(begin
+        (use-modules (guix build utils)
+                     (srfi srfi-1)
+                     (srfi srfi-13)
+                     (ice-9 match))
 
-      (mkdir-p "/var/log")
-      (mkdir-p "/run/tailscale")
-      (mkdir-p "/var/lib/tailscale")
+        (mkdir-p "/var/log")
+        (mkdir-p "/run/tailscale")
+        (mkdir-p "/var/lib/tailscale")
+        (mkdir-p "/etc/netns")
 
-      ;; Ensure IPv4 forwarding is enabled (needed for netns -> WAN NAT routing).
-      (when (file-exists? "/proc/sys/net/ipv4/ip_forward")
-        (call-with-output-file "/proc/sys/net/ipv4/ip_forward"
-          (lambda (p) (display "1\n" p))))
+        (mkdir-p "/run/sudoers.d")
+        (chmod "/run/sudoers.d" #o750)
 
-      ;; Helper: create a netns-specific resolv.conf that uses MagicDNS first,
-      ;; then falls back to whatever the host currently uses.
-      (define (write-netns-resolv! path)
-        (let ((host-rc "/etc/resolv.conf"))
-          (call-with-output-file path
-            (lambda (out)
-              (display "nameserver 100.100.100.100\n" out)
-              (when (file-exists? host-rc)
-                (call-with-input-file host-rc
-                  (lambda (in)
-                    (let loop ((line (read-line in 'concat)))
-                      (unless (eof-object? line)
-                        ;; Avoid duplicating MagicDNS if it ever appears in host rc.
-                        (unless (string-contains line "100.100.100.100")
-                          (display line out)
-                          (newline out))
-                        (loop (read-line in 'concat)))))))))
-          (chmod path #o644)))
+        (when (file-exists? "/proc/sys/net/ipv4/ip_forward")
+          (call-with-output-file "/proc/sys/net/ipv4/ip_forward"
+            (lambda (p)
+              (display "1\n" p))))
 
-      ;; Per-instance dirs + per-netns resolv.conf
-      #$@(map
-          (lambda (cfg)
-            (let ((cfg (instance->resolved cfg)))
+        ;; Normalize magic-dns to either #f or a list of strings.
+        ;; Error out on anything else.
+        (define (magic-dns->list md)
+          (cond
+            ((not md) #f)
+            ((string? md) (list md))
+            ((list? md)
+             (if (every string? md)
+                 md
+                 (error "magic-dns list must contain only strings" md)))
+            (else
+             (error "magic-dns must be #f, a string, or a list of strings" md))))
+
+        ;; Write netns resolv.conf with fixed nameservers + optional search line.
+        (define (write-netns-resolv! path magic-dns)
+          (let ((md-list (magic-dns->list magic-dns)))
+            (call-with-output-file path
+              (lambda (out)
+                (display "nameserver 100.100.100.100\n" out)
+                (display "nameserver 1.1.1.1\n" out)
+                (display "nameserver 8.8.8.8\n" out)
+                (when (and md-list (not (null? md-list)))
+                  (display "search " out)
+                  (display (string-join md-list " ") out)
+                  (newline out))))
+            (chmod path #o644)))
+
+        ;; Helper: write sudoers include as a REAL file with strict perms.
+        (define (write-sudoers! dest ip netns ts socket)
+          (let ((tmp (string-append dest ".tmp")))
+            (when (file-exists? dest)
+              (delete-file dest))
+            (call-with-output-file tmp
+              (lambda (out)
+                (display "%wheel ALL=(root) NOPASSWD: " out)
+                (display ip out)
+                (display " netns exec " out)
+                (display netns out)
+                (display " " out)
+                (display ts out)
+                (display " --socket=" out)
+                (display socket out)
+                (display " *\n" out)))
+            (chmod tmp #o440)
+            (rename-file tmp dest)))
+
+        ;; Per-instance dirs + per-netns resolv.conf + per-instance sudoers.
+        #$@(map
+            (lambda (cfg)
               (match cfg
                 (($ <tailscale-instance-configuration>
-                    name package netns state-file socket-file tun port log-file extra-args)
-                 #~(begin
-                     (mkdir-p (dirname #$state-file))
-                     (mkdir-p (dirname #$socket-file))
-                     (let* ((d  (string-append "/etc/netns/" #$netns))
-                            (rc (string-append d "/resolv.conf")))
-                       (mkdir-p d)
-                       ;; If you want it to ALWAYS track host DNS changes, delete the unless.
-                       (unless (file-exists? rc)
-                         (write-netns-resolv! rc))))))))
-          instances)))
-
-(define (tailscale-instance->dns-sync-service cfg)
-  (let ((cfg (instance->resolved cfg)))
-    (match cfg
-      (($ <tailscale-instance-configuration>
-          name package netns state-file socket-file tun port log-file extra-args)
-       (let* ((svc-name  (string->symbol (string-append "tailscale-dns-rte-sync-" name)))
-              (tsd-svc   (string->symbol (string-append "tailscaled-" name)))
-              (tailscale (file-append package "/bin/tailscale"))
-              (jq-bin    (file-append jq "/bin/jq"))
-              (sh        (file-append bash "/bin/bash"))
-              (rc        (string-append "/etc/netns/" netns "/resolv.conf")))
-         (shepherd-service
-          (provision (list svc-name))
-          (documentation (string-append "Sync MagicDNS search domain into " rc " for " name))
-          (requirement (list 'user-processes 'networking tsd-svc))
-          (auto-start? #t)
-          (one-shot? #t)
-          (start
-           #~(make-forkexec-constructor
-              (list #$sh "-lc"
-                    (string-append
-                     "set -euo pipefail\n"
-                     "SOCK=" #$socket-file "\n"
-                     "RC=" #$rc "\n"
-                     "TS=" #$tailscale "\n"
-                     "JQ=" #$jq-bin "\n"
-                     "\n"
-                     "# Wait until this instance knows its MagicDNS suffix (login/auth may happen later).\n"
-                     "while true; do\n"
-                     "  suf=\"$($TS --socket=\"$SOCK\" status --json 2>/dev/null | $JQ -r '.MagicDNSSuffix // empty' || true)\"\n"
-                     "  if [ -n \"$suf\" ]; then\n"
-                     "    break\n"
-                     "  fi\n"
-                     "  sleep 2\n"
-                     "done\n"
-                     "\n"
-                     "# Preserve any existing host search domains already in RC.\n"
-                     "old=\"$(awk '/^search[[:space:]]/{ $1=\"\"; sub(/^[[:space:]]+/,\"\"); print; exit }' \"$RC\" 2>/dev/null || true)\"\n"
-                     "tmp=\"${RC}.tmp\"\n"
-                     "{\n"
-                     "  echo \"search $suf $old\";\n"
-                     "  grep -vE '^search[[:space:]]' \"$RC\" 2>/dev/null || true;\n"
-                     "} > \"$tmp\"\n"
-                     "chmod 0644 \"$tmp\"\n"
-                     "mv \"$tmp\" \"$RC\"\n"))
-              #:log-file #$log-file
-              #:environment-variables
-              (list "PATH=/run/setuid-programs:/run/current-system/profile/bin:/run/current-system/profile/sbin")))
-          (stop #~(lambda _ #t))))))))
+                    name package netns magic-dns state-file socket-file tun port log-file extra-args)
+                 (let ((ip (file-append iproute "/sbin/ip"))
+                       (ts (file-append package "/bin/tailscale")))
+                   #~(begin
+                       (mkdir-p (dirname #$state-file))
+                       (mkdir-p (dirname #$socket-file))
+                       (let* ((d  (string-append "/etc/netns/" #$netns))
+                              (rc (string-append d "/resolv.conf")))
+                         (mkdir-p d)
+                         ;; Always write it so it can't get stuck broken.
+                         (write-netns-resolv! rc #$magic-dns))
+                       (write-sudoers!
+                        (string-append "/run/sudoers.d/tailscale-" #$name)
+                        #$ip
+                        #$netns
+                        #$ts
+                        #$socket-file))))))
+            resolved))))
 
 (define (tailscale->firewall-rules instances)
   (let ((instances (map instance->resolved instances)))
     (define (one cfg)
       (match cfg
         (($ <tailscale-instance-configuration>
-            inst-name inst-package netns state-file socket-file tun port log-file extra-args)
+            inst-name inst-package netns magic-dns state-file socket-file tun port log-file extra-args)
          (let-values (((subnet hostip nsip gw) (subnet-for inst-name)))
            (let ((veth-host (ifname "vts-" inst-name)))
              (nftables-rules
@@ -462,13 +487,11 @@
   (append
    (map tailscale-instance->netns-setup-service instances)
    (map tailscale-instance->shepherd-service instances)
-   (map tailscale-instance->prefs-service instances)
-   (map tailscale-instance->dns-sync-service instances)))
+   (map tailscale-instance->prefs-service instances)))
 
 (define-public tailscale-service-type
   (service-type
    (name 'tailscale)
-   ;; Allow arbitrary number of instances by repeated services
    (compose append)
    (extend append)
    (extensions
@@ -479,6 +502,8 @@
           (service-extension firewall-service-type
                              tailscale->firewall-rules)
           (service-extension profile-service-type
-                             tailscale-profile-entries)))
+                             tailscale-profile-entries)
+          (service-extension etc-service-type
+                             tailscale-sudoers-entries)))
    (default-value '())
    (description "Run one or more Tailscale instances, each in its own network namespace, with nftables NAT and ts-<name> helpers.")))
