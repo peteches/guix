@@ -1,3 +1,10 @@
+;;; peteches-projectile --- projectile configs
+;;;
+;;; Commentary:
+;;;
+;;;
+;;; Code:
+
 (require 'projectile)
 
 (define-key projectile-mode-map (kbd "C-c C-p") 'projectile-command-map)
@@ -43,4 +50,28 @@
 
 (setq projectile-switch-project-action #'peteches/projectile-switch-project-menu)
 
+
+(defun peteches/projectile-copy-relative-file-name (&optional with-line)
+  "Copy this buffer's file name relative to the Projectile project root.
+
+With prefix argument WITH-LINE (\\[universal-argument]), also append \":LINE\".
+
+If the current buffer isn't visiting a file, fall back to `default-directory`."
+  (interactive "P")
+  (let* ((root (projectile-project-root))
+         (path (or buffer-file-name default-directory))
+         (rel  (file-relative-name path root))
+         (out  (if with-line
+                   (format "%s:%d" rel (line-number-at-pos))
+                 rel)))
+    (kill-new out)
+    (message "Copied: %s" out)))
+
+
+(with-eval-after-load 'projectile
+  (define-key projectile-command-map (kbd "w")
+    #'peteches/projectile-copy-relative-file-name))
+
+
 (provide 'peteches-projectile)
+;;; peteches-projectile.el ends here

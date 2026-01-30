@@ -5,6 +5,9 @@
 (require 'org)
 (require 'org-tempo)
 
+(use-package ob-mermaid
+  :straight (ob-mermaid :host github :repo "arnm/ob-mermaid"))
+
 (add-to-list 'org-structure-template-alist '("el" . "src emacs-lisp"))
 (add-to-list 'org-structure-template-alist '("conf" . "src conf"))
 (add-to-list 'org-structure-template-alist '("sh" . "src bash"))
@@ -17,6 +20,7 @@
 (add-to-list 'org-structure-template-alist '("json" . "src json"))
 (add-to-list 'org-structure-template-alist '("yaml" . "src yaml"))
 (add-to-list 'org-structure-template-alist '("toml" . "src toml"))
+(add-to-list 'org-structure-template-alist '("mmc" . "src mermaid"))
 
 
 ;; Load languages conditionally (no hard deps; only activate if available).
@@ -30,6 +34,7 @@
                 (sqlite     . ob-sqlite)
                 (js         . ob-js)
                 (go         . ob-go) ;; requires ob-go installed
+		(mermaid    . ob-mermaid)
                 (dot        . ob-dot)))
   (let* ((lang (car pair))
          (feat (cdr pair)))
@@ -39,9 +44,18 @@
 (org-babel-do-load-languages 'org-babel-load-languages org-babel-load-languages)
 
 ;; Only skip confirmation for a whitelist of "safe" langs
-(defcustom peteches/org-babel-no-confirm '(emacs-lisp shell)
+(defcustom peteches/org-babel-no-confirm '(emacs-lisp shell mermaid)
   "Languages that can execute without confirmation."
   :type '(repeat symbol))
+
+(defun my/org-refresh-inline-images-after-mermaid ()
+  "Refresh inline images after running a Mermaid src block."
+  (when (org-in-src-block-p)
+    (let ((info (org-babel-get-src-block-info 'light)))
+      (when (string= (car info) "mermaid")
+        (org-redisplay-inline-images)))))
+
+(add-hook 'org-babel-after-execute-hook #'my/org-refresh-inline-images-after-mermaid)
 
 (defun peteches/org-babel-confirm-evaluate (lang body)
   "Return nil to skip confirmation for LANG if whitelisted; t otherwise."

@@ -6,6 +6,7 @@
   #:use-module (gnu packages node-xyz)
   #:use-module (guix-science packages rstudio-node)
   #:use-module (guix build-system node)
+  #:use-module (gnu packages chromium)
   #:export (node-mermaid-js-mermaid-cli))
 
 (define-public node-typescript-5.9.3
@@ -44943,8 +44944,19 @@
 				     (when pupc
 				       (let ((dst (string-append nm "/puppeteer-core")))
 					 (when (file-exists? dst) (delete-file-recursively dst))
-					 (symlink pupc dst)))))))))
-   (inputs (list node-mermaid-11.12.2
+					 (symlink pupc dst))))))
+		      (add-after 'install 'wrap-mmdc-with-chromium
+				 (lambda* (#:key inputs outputs #:allow-other-keys)
+				   (let* ((out    (assoc-ref outputs "out"))
+					  (mmdc   (string-append out "/bin/mmdc"))
+					  (chrome (search-input-file inputs "/bin/chromium")))
+				     (when (file-exists? mmdc)
+				       (wrap-program mmdc
+						     `("PUPPETEER_EXECUTABLE_PATH" = (,chrome))
+						     `("PUPPETEER_SKIP_DOWNLOAD"   = ("1"))))
+				     #t))))))
+   (inputs (list ungoogled-chromium
+		 node-mermaid-11.12.2
                  node-import-meta-resolve-4.2.0
                  node-commander-14.0.2
                  node-chalk-5.6.2

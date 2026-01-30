@@ -122,7 +122,7 @@
 (require 'peteches-org-agenda) ;; agenda and custom commands
 (require 'peteches-org-babel)  ;; babel languages & safety
 (require 'peteches-org-roam)   ;; roam (kept last; it hooks into capture, etc.)
-
+(require 'peteches-org-present)
 (require 'peteches-scoreplay)
 (provide 'peteches-org)
 ;;; peteches-org.el ends here

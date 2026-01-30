@@ -1,7 +1,7 @@
 ;;; peteches-guix --- my guix configs
 ;;;
 ;;; Commentary:
-;;; 
+;;;
 ;;;
 ;;; Code:
 
@@ -44,7 +44,7 @@ If PROFILES is nil, use a sensible default set."
 (defun peteches/guix-home-reconfigure ()
   "Run guix home reconfigure."
   (interactive)
-  (compile (format "NO_COLOR=true guix home -L %s reconfigure %s.scm "
+  (compile (format "guix home -L %s reconfigure %s.scm "
 		   (expand-file-name "~/area_51/guix/")
 		   (expand-file-name (format "~/area_51/guix/peteches/home-configs/%s" (system-name))))))
 
@@ -57,4 +57,3 @@ If PROFILES is nil, use a sensible default set."
 
 (provide 'peteches-guix)
 ;;; peteches-guix.el ends here
-

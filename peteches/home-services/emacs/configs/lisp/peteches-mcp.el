@@ -1,5 +1,10 @@
 ;;; peteches-mcp.el --- Graceful MCP hub + per-project filesystem  -*- lexical-binding: t; -*-
 
+;;; Commentary:
+;;;
+;;;
+;;; Code:
+
 ;;; ------------------------------------------------------------
 ;;; Install packages ONLY (config is below)
 (use-package mcp
