@@ -119,7 +119,14 @@
               (port 3000)		; default
               (compression '(("zstd" 9)))
               (advertise? #t)))
-    (service tailscale-service-type)
+    (service tailscale-service-type
+            (list (tailscale-instance-configuration
+              (name "thumbwar")
+              (port 41642))))
+    (service tailscale-service-type
+            (list (tailscale-instance-configuration
+              (name "scoreplay")
+              (port 41643))))
     (service certbot-service-type
 	     (certbot-configuration
               (email "certbot@peteches.co.uk")

@@ -23,6 +23,7 @@
   #:use-module (gnu packages networking)
   #:use-module (gnu packages linux)     ; iproute + nftables
   #:use-module (gnu packages bash)      ; bash for wrapper scripts
+  #:use-module (gnu packages web)
   #:use-module (peteches packages tailscale)
   #:use-module (peteches system-services firewall)
   #:use-module (guix gexp)
@@ -149,6 +150,37 @@
                     (list "PATH=/run/setuid-programs:/run/current-system/profile/bin:/run/current-system/profile/sbin")))
           (stop #~(make-kill-destructor))))))))
 
+(define (tailscale-instance->prefs-service cfg)
+  (let ((cfg (instance->resolved cfg)))
+    (match cfg
+      (($ <tailscale-instance-configuration>
+          name package netns state-file socket-file tun port log-file extra-args)
+       (let* ((svc-name     (string->symbol (string-append "tailscale-prefs-" name)))
+              (tsd-svc      (string->symbol (string-append "tailscaled-" name)))
+              (tailscale    (file-append package "/bin/tailscale"))
+              (args         (append (list tailscale
+                                          (string-append "--socket=" socket-file)
+                                          "set"
+                                          (string-append "--accept-dns=false")
+                                          (string-append "--accept-routes=true"))
+                                    ;; Extra safety: keep this instance from trying to be an exit node by accident
+                                    ;; (uncomment if you want)
+                                    ;; (list "--advertise-exit-node=false")
+                                    )))
+         (shepherd-service
+          (provision (list svc-name))
+          (documentation (string-append "Apply persisted Tailscale prefs for instance " name))
+          (requirement (list 'user-processes 'networking tsd-svc))
+          (one-shot? #t)
+          (auto-start? #t)
+          (start #~(make-forkexec-constructor
+                    (list #$@args)
+                    #:log-file #$log-file
+                    #:environment-variables
+                    (list "PATH=/run/setuid-programs:/run/current-system/profile/bin:/run/current-system/profile/sbin")))
+          (stop #~(lambda _ #t))))))))
+
+
 (define (ts-wrapper-package cfg)
   (let ((cfg (instance->resolved cfg)))
     (match cfg
@@ -159,65 +191,66 @@
               (ts-bin       (file-append inst-package "/bin/tailscale"))
               (pkg-name     (string-append "tailscale-wrappers-" inst-name)))
          (package
-           (name pkg-name)
-           (version "0")
-           (source #f)
-           (build-system trivial-build-system)
-           (arguments
-            (list
-             #:modules '((guix build utils))
-             #:builder
-             #~(begin
-                 (use-modules (guix build utils))
-                 (let* ((out        (assoc-ref %outputs "out"))
-                        (bin        (string-append out "/bin"))
-                        (ts-path    (string-append bin "/ts-"     #$inst-name))
-                        (netns-path (string-append bin "/netns-"  #$inst-name)))
-                   (mkdir-p bin)
+          (name pkg-name)
+          (version "0")
+          (source #f)
+          (build-system trivial-build-system)
+          (arguments
+           (list
+            #:modules '((guix build utils))
+            #:builder
+            #~(begin
+                (use-modules (guix build utils))
+                (let* ((out        (assoc-ref %outputs "out"))
+                       (bin        (string-append out "/bin"))
+                       (ts-path    (string-append bin "/ts-"     #$inst-name))
+                       (netns-path (string-append bin "/netns-"  #$inst-name)))
+                  (mkdir-p bin)
 
-                   ;; ts-<name>: tailscale CLI pinned to per-instance socket, run in the netns
-                   (call-with-output-file ts-path
-                     (lambda (port)
-                       (format port "#!~a\n" #$bash-path)
-                       (display "set -euo pipefail\n" port)
-                       (display "SOCK=" port) (write #$socket-file port) (newline port)
-                       (display "TS=" port)   (write #$ts-bin port) (newline port)
-                       (display "IP=" port)   (write #$ip-path port) (newline port)
-                       (display "NS=" port)   (write #$ns-name port) (newline port)
-                       (display "if [ \"$#\" -lt 1 ]; then\n" port)
-                       (display "  echo \"Usage: ts-<name> <tailscale-subcommand> [args...]\" >&2\n" port)
-                       (display "  exit 2\n" port)
-                       (display "fi\n" port)
-                       (display "if [ \"$(id -u)\" -ne 0 ]; then\n" port)
-                       (display "  exec sudo -E \"$IP\" netns exec \"$NS\" \"$TS\" --socket=\"$SOCK\" \"$@\"\n" port)
-                       (display "else\n" port)
-                       (display "  exec \"$IP\" netns exec \"$NS\" \"$TS\" --socket=\"$SOCK\" \"$@\"\n" port)
-                       (display "fi\n" port)))
+                  ;; ts-<name>: tailscale CLI pinned to per-instance socket, run in the netns
+                  (call-with-output-file ts-path
+                    (lambda (port)
+                      (format port "#!~a\n" #$bash-path)
+                      (display "set -euo pipefail\n" port)
 
-                   ;; netns-<name>: generic netns exec wrapper
-                   (call-with-output-file netns-path
-                     (lambda (port)
-                       (format port "#!~a\n" #$bash-path)
-                       (display "set -euo pipefail\n" port)
-                       (display "IP=" port) (write #$ip-path port) (newline port)
-                       (display "NS=" port) (write #$ns-name port) (newline port)
-                       (display "if [ \"$#\" -lt 1 ]; then\n" port)
-                       (display "  echo \"Usage: netns-<name> <command> [args...]\" >&2\n" port)
-                       (display "  exit 2\n" port)
-                       (display "fi\n" port)
-                       (display "if [ \"$(id -u)\" -ne 0 ]; then\n" port)
-                       (display "  exec sudo -E \"$IP\" netns exec \"$NS\" \"$@\"\n" port)
-                       (display "else\n" port)
-                       (display "  exec \"$IP\" netns exec \"$NS\" \"$@\"\n" port)
-                       (display "fi\n" port)))
+                      (display "SOCK=" port) (write #$socket-file port) (newline port)
+                      (display "TS=" port)   (write #$ts-bin port) (newline port)
+                      (display "IP=" port)   (write #$ip-path port) (newline port)
+                      (display "NS=" port)   (write #$ns-name port) (newline port)
+                      (display "if [ \"$#\" -lt 1 ]; then\n" port)
+                      (display "  echo \"Usage: ts-<name> <tailscale-subcommand> [args...]\" >&2\n" port)
+                      (display "  exit 2\n" port)
+                      (display "fi\n" port)
+                      (display "if [ \"$(id -u)\" -ne 0 ]; then\n" port)
+                      (display "  exec sudo -E \"$IP\" netns exec \"$NS\" \"$TS\" --socket=\"$SOCK\" \"$@\"\n" port)
+                      (display "else\n" port)
+                      (display "  exec \"$IP\" netns exec \"$NS\" \"$TS\" --socket=\"$SOCK\" \"$@\"\n" port)
+                      (display "fi\n" port)))
 
-                   (chmod ts-path    #o555)
-                   (chmod netns-path #o555)))))
-           (synopsis (string-append "Wrappers for Tailscale instance " inst-name))
-           (description
-            "Installs ts-<name> (tailscale CLI pinned to the instance socket, run in the instance netns) and netns-<name> (generic ip netns exec wrapper).")
-           (home-page "https://tailscale.com/")
-           (license public-domain)))))))
+                  ;; netns-<name>: generic netns exec wrapper
+                  (call-with-output-file netns-path
+                    (lambda (port)
+                      (format port "#!~a\n" #$bash-path)
+                      (display "set -euo pipefail\n" port)
+                      (display "IP=" port) (write #$ip-path port) (newline port)
+                      (display "NS=" port) (write #$ns-name port) (newline port)
+                      (display "if [ \"$#\" -lt 1 ]; then\n" port)
+                      (display "  echo \"Usage: netns-<name> <command> [args...]\" >&2\n" port)
+                      (display "  exit 2\n" port)
+                      (display "fi\n" port)
+                      (display "if [ \"$(id -u)\" -ne 0 ]; then\n" port)
+                      (display "  exec sudo -E \"$IP\" netns exec \"$NS\" \"$@\"\n" port)
+                      (display "else\n" port)
+                      (display "  exec \"$IP\" netns exec \"$NS\" \"$@\"\n" port)
+                      (display "fi\n" port)))
+
+                  (chmod ts-path    #o555)
+                  (chmod netns-path #o555)))))
+          (synopsis (string-append "Wrappers for Tailscale instance " inst-name))
+          (description
+           "Installs ts-<name> (tailscale CLI pinned to the instance socket, run in the instance netns) and netns-<name> (generic ip netns exec wrapper).")
+          (home-page "https://tailscale.com/")
+          (license public-domain)))))))
 
 (define (tailscale-profile-entries instances)
   ;; Install tailscale + wrappers.
@@ -298,29 +331,106 @@
 
 (define (tailscale-activation instances)
   #~(begin
-      (use-modules (guix build utils) (srfi srfi-1))
+      (use-modules (guix build utils)
+                   (srfi srfi-1)
+                   (ice-9 rdelim)
+                   (srfi srfi-13))
 
       (mkdir-p "/var/log")
       (mkdir-p "/run/tailscale")
       (mkdir-p "/var/lib/tailscale")
 
       ;; Ensure IPv4 forwarding is enabled (needed for netns -> WAN NAT routing).
-      ;; Activation runs at boot, so this remains persistent across reboots.
       (when (file-exists? "/proc/sys/net/ipv4/ip_forward")
         (call-with-output-file "/proc/sys/net/ipv4/ip_forward"
           (lambda (p) (display "1\n" p))))
 
-      ;; Per-instance dirs
+      ;; Helper: create a netns-specific resolv.conf that uses MagicDNS first,
+      ;; then falls back to whatever the host currently uses.
+      (define (write-netns-resolv! path)
+        (let ((host-rc "/etc/resolv.conf"))
+          (call-with-output-file path
+            (lambda (out)
+              (display "nameserver 100.100.100.100\n" out)
+              (when (file-exists? host-rc)
+                (call-with-input-file host-rc
+                  (lambda (in)
+                    (let loop ((line (read-line in 'concat)))
+                      (unless (eof-object? line)
+                        ;; Avoid duplicating MagicDNS if it ever appears in host rc.
+                        (unless (string-contains line "100.100.100.100")
+                          (display line out)
+                          (newline out))
+                        (loop (read-line in 'concat)))))))))
+          (chmod path #o644)))
+
+      ;; Per-instance dirs + per-netns resolv.conf
       #$@(map
           (lambda (cfg)
             (let ((cfg (instance->resolved cfg)))
               (match cfg
-                (($ <tailscale-instance-configuration> name package netns state-file socket-file tun port log-file extra-args)
+                (($ <tailscale-instance-configuration>
+                    name package netns state-file socket-file tun port log-file extra-args)
                  #~(begin
                      (mkdir-p (dirname #$state-file))
                      (mkdir-p (dirname #$socket-file))
-                     (mkdir-p (string-append "/etc/netns/" #$netns)))))))
+                     (let* ((d  (string-append "/etc/netns/" #$netns))
+                            (rc (string-append d "/resolv.conf")))
+                       (mkdir-p d)
+                       ;; If you want it to ALWAYS track host DNS changes, delete the unless.
+                       (unless (file-exists? rc)
+                         (write-netns-resolv! rc))))))))
           instances)))
+
+(define (tailscale-instance->dns-sync-service cfg)
+  (let ((cfg (instance->resolved cfg)))
+    (match cfg
+      (($ <tailscale-instance-configuration>
+          name package netns state-file socket-file tun port log-file extra-args)
+       (let* ((svc-name  (string->symbol (string-append "tailscale-dns-rte-sync-" name)))
+              (tsd-svc   (string->symbol (string-append "tailscaled-" name)))
+              (tailscale (file-append package "/bin/tailscale"))
+              (jq-bin    (file-append jq "/bin/jq"))
+              (sh        (file-append bash "/bin/bash"))
+              (rc        (string-append "/etc/netns/" netns "/resolv.conf")))
+         (shepherd-service
+          (provision (list svc-name))
+          (documentation (string-append "Sync MagicDNS search domain into " rc " for " name))
+          (requirement (list 'user-processes 'networking tsd-svc))
+          (auto-start? #t)
+          (one-shot? #t)
+          (start
+           #~(make-forkexec-constructor
+              (list #$sh "-lc"
+                    (string-append
+                     "set -euo pipefail\n"
+                     "SOCK=" #$socket-file "\n"
+                     "RC=" #$rc "\n"
+                     "TS=" #$tailscale "\n"
+                     "JQ=" #$jq-bin "\n"
+                     "\n"
+                     "# Wait until this instance knows its MagicDNS suffix (login/auth may happen later).\n"
+                     "while true; do\n"
+                     "  suf=\"$($TS --socket=\"$SOCK\" status --json 2>/dev/null | $JQ -r '.MagicDNSSuffix // empty' || true)\"\n"
+                     "  if [ -n \"$suf\" ]; then\n"
+                     "    break\n"
+                     "  fi\n"
+                     "  sleep 2\n"
+                     "done\n"
+                     "\n"
+                     "# Preserve any existing host search domains already in RC.\n"
+                     "old=\"$(awk '/^search[[:space:]]/{ $1=\"\"; sub(/^[[:space:]]+/,\"\"); print; exit }' \"$RC\" 2>/dev/null || true)\"\n"
+                     "tmp=\"${RC}.tmp\"\n"
+                     "{\n"
+                     "  echo \"search $suf $old\";\n"
+                     "  grep -vE '^search[[:space:]]' \"$RC\" 2>/dev/null || true;\n"
+                     "} > \"$tmp\"\n"
+                     "chmod 0644 \"$tmp\"\n"
+                     "mv \"$tmp\" \"$RC\"\n"))
+              #:log-file #$log-file
+              #:environment-variables
+              (list "PATH=/run/setuid-programs:/run/current-system/profile/bin:/run/current-system/profile/sbin")))
+          (stop #~(lambda _ #t))))))))
 
 (define (tailscale->firewall-rules instances)
   (let ((instances (map instance->resolved instances)))
@@ -351,7 +461,9 @@
 (define (tailscale-shepherd-services instances)
   (append
    (map tailscale-instance->netns-setup-service instances)
-   (map tailscale-instance->shepherd-service instances)))
+   (map tailscale-instance->shepherd-service instances)
+   (map tailscale-instance->prefs-service instances)
+   (map tailscale-instance->dns-sync-service instances)))
 
 (define-public tailscale-service-type
   (service-type
