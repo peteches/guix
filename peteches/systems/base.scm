@@ -349,8 +349,6 @@
 						      #$(file-append nvidia-driver "/lib") ":"
 						      #$(file-append nvidia-driver "/lib64")
 						      ":${LD_LIBRARY_PATH}"))))
-
-
 			       (service nvidia-service-type)
 			       (simple-service 'nvidia-runtime-state
 					       activation-service-type
@@ -375,9 +373,16 @@
          (desktop* (without-gdm))
 	 (hyprland-session-command
           #~#$(hyprland-launcher with-nvidia?))
+	(hosts-entries
+	 (list (host "::1"
+		     host-name
+		     (list (string-append host-name ".peteches.co.uk")))
+	       (host "127.0.0.1" "localhost")))
+
 	 (final-services
 	  (append desktop*
 		  %common-services
+		;  (list (simple-service 'peteches-hosts hosts-service-type hosts-entries))
 		  (greetd-gtkgreet-services #:session-command hyprland-session-command)
 		  laptop-services
 		  printing-services
@@ -430,8 +435,8 @@
      (packages (append packages* %base-packages))
      (services
       (modify-services final-services
-        (nscd-service-type cfg =>
-          (nscd-without-hosts-cache cfg))))
+		       (nscd-service-type cfg =>
+					  (nscd-without-hosts-cache cfg))))
      (mapped-devices mapped-devices)
      (file-systems (append file-systems %base-file-systems))
      (bootloader bootloader))))

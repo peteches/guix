@@ -60,7 +60,7 @@
 (operating-system
  (inherit
   (make-base-os
-   #:host-name "nug.peteches.co.uk"
+   #:host-name "nug"
    #:kernel linux
    ;; Base will append %base-file-systems — you only give machine-specific mounts here.
    #:firmware (list linux-firmware)
