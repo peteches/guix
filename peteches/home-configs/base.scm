@@ -11,6 +11,7 @@
   #:use-module (guix gexp)
   ;; Packages
   #:use-module (gnu packages admin)
+  #:use-module (gnu packages dns)
   #:use-module (gnu packages databases)
   #:use-module (gnu packages compression)
   #:use-module (gnu packages gnupg)
@@ -63,6 +64,9 @@
    alacritty
    recutils
    eza
+   tcpdump
+   netcat
+   (list isc-bind "utils")
    git
    gnupg
    jq
@@ -126,9 +130,9 @@
 			   (id "KPF5CNJ-CE2XGRC-VDDKARM-GIM47XB-UMS63Y7-JY3WX7V-I6PLMS5-GGQB2A7")
 			   (auto-accept-folders? #t))))))))))))
 
-  ;; Notifications
-  (service home-mako-service-type
-           base-mako-config)
+   ;; Notifications
+   (service home-mako-service-type
+            base-mako-config)
 
    ;; Git config
    (service home-git-service-type
@@ -156,6 +160,13 @@
             (firefox-configuration (profiles base-firefox-profiles)))
    (service nyxt-service-type)
 
+   (simple-service 'ssh-proxy-fragment
+                   home-files-service-type
+                   `((".ssh/config.d/peteches-ts-proxy.conf"   ,(mixed-text-file "guix-proxy.conf"
+								      "Host *.tailb21dfe.ts.net\n"
+								      "  ProxyCommand netns-peteches "
+								      (file-append netcat "/bin/nc")
+								      " -w 10 %h %p\n"))))
    ;; SSH
    (service home-openssh-service-type
             (home-openssh-configuration
@@ -168,7 +179,13 @@
 		       (extra-content (string-append
 				       "    ControlMaster auto\n"
 				       "    ControlPath ~/.ssh/ctrl-%C\n"
-				       "    ControlPersist 10m\n"))))
+				       "    ControlPersist 10m\n"
+				       "    CanonicalizeHostname always\n"
+				       "    Include ~/.ssh/config.d/peteches-ts-proxy.conf\n")))
+		      (openssh-host
+		       (name "nug.ts")
+		       (host-name "nug.tailb21dfe.ts.net")
+		       ))
 		     %scoreplay-ssh-hosts))))
 
    ;; GPG Agent
