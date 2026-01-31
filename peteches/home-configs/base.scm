@@ -183,9 +183,11 @@
 				       "    CanonicalizeHostname always\n"
 				       "    Include ~/.ssh/config.d/peteches-ts-proxy.conf\n")))
 		      (openssh-host
+		       (name "nyarlothotep.ts")
+		       (host-name "nyarlothotep.tailb21dfe.ts.net"))
+		      (openssh-host
 		       (name "nug.ts")
-		       (host-name "nug.tailb21dfe.ts.net")
-		       ))
+		       (host-name "nug.tailb21dfe.ts.net")))
 		     %scoreplay-ssh-hosts))))
 
    ;; GPG Agent
