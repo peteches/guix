@@ -21,6 +21,7 @@
   #:use-module (gnu services)
   #:use-module (gnu services base)   ; etc-service-type
   #:use-module (gnu services shepherd)
+  #:use-module (gnu packages admin)
   #:use-module (gnu packages networking)
   #:use-module (gnu packages guile)
   #:use-module (gnu packages linux)     ; iproute + nftables
@@ -83,7 +84,7 @@
 
   ;; if added will be used as the search option in resolv.conf
   (magic-dns-suffix tailscale-instance-configuration-magic-dns-suffix
-		    (default ""))
+		    (default #f))
 
   ;; optional overrides
   (state-file  tailscale-instance-configuration-state-file
@@ -259,43 +260,31 @@
           (license public-domain)))))))
 
 (define (tailscale-profile-entries instances)
-  ;; Install tailscale + wrappers.
-  ;; (Guix will dedupe store paths anyway, but we keep the list tidy.)
-  (let* ((resolved (map instance->resolved instances))
-         (pkgs (map tailscale-instance-configuration-package resolved))
-         (wrappers (map ts-wrapper-package instances)))
-    (append (delete-duplicates pkgs eq?) wrappers)))
+  ;; Install tailscale + wrappers + netcat (for SSH ProxyCommand nc).
+  (let* ((resolved  (map instance->resolved instances))
+         (pkgs      (map tailscale-instance-configuration-package resolved))
+         (wrappers  (map ts-wrapper-package instances)))
+    (delete-duplicates
+     (append pkgs wrappers  (list netcat))
+     eq?)))
 
 ;; Sudo is picky: sudoers.d files must be owned by root and typically 0440.
 ;; etc-service-type doesn't let us directly set file modes, so we wrap the
 ;; generated sudoers text in a computed-file that chmods the output.
 (define (file-like->0440 name file)
   (computed-file name
-    (with-imported-modules '((guix build utils))
-      #~(begin
-          (use-modules (guix build utils))
-          (copy-file #$file #$output)
-          (chmod #$output #o440)))
-    ;; Crucial: avoid guile-minimal, which lacks (ice-9 posix) etc.
-    #:guile guile-3.0))
+		 (with-imported-modules '((guix build utils))
+					#~(begin
+					    (use-modules (guix build utils))
+					    (copy-file #$file #$output)
+					    (chmod #$output #o440)))
+		 ;; Crucial: avoid guile-minimal, which lacks (ice-9 posix) etc.
+		 #:guile guile-3.0))
 
-(define (tailscale-sudoers-entries instances)
-  ;; etc-service-type expects an alist of (DESTINATION . FILE-LIKE)
-  (map (lambda (cfg)
-         (let ((cfg (instance->resolved cfg)))
-           (match cfg
-             (($ <tailscale-instance-configuration>
-                 name package netns magic-dns state-file socket-file tun port log-file extra-args)
-              (let* ((ip (file-append iproute "/sbin/ip"))
-                     (ts (file-append package "/bin/tailscale"))
-                     (rule
-                      (mixed-text-file (string-append "sudoers-tailscale-" name)
-                        "%wheel ALL=(root) NOPASSWD: "
-                        ip " netns exec " netns " "
-                        ts " --socket=" socket-file " *\n")))
-                (list (string-append "sudoers.d/tailscale-" name)
-                      (file-like->0440 (string-append "sudoers-0440-" name) rule)))))))
-       instances))
+;; Ensure this is available in the file:
+;; (use-modules (gnu packages netcat))
+
+
 
 (define (tailscale-instance->netns-setup-service cfg)
   (let ((cfg (instance->resolved cfg)))
@@ -391,14 +380,14 @@
         ;; Error out on anything else.
         (define (magic-dns->list md)
           (cond
-            ((not md) #f)
-            ((string? md) (list md))
-            ((list? md)
-             (if (every string? md)
-                 md
-                 (error "magic-dns list must contain only strings" md)))
-            (else
-             (error "magic-dns must be #f, a string, or a list of strings" md))))
+           ((not md) #f)
+           ((string? md) (list md))
+           ((list? md)
+            (if (every string? md)
+                md
+                (error "magic-dns list must contain only strings" md)))
+           (else
+            (error "magic-dns must be #f, a string, or a list of strings" md))))
 
         ;; Write netns resolv.conf with fixed nameservers + optional search line.
         (define (write-netns-resolv! path magic-dns)
@@ -415,23 +404,39 @@
             (chmod path #o644)))
 
         ;; Helper: write sudoers include as a REAL file with strict perms.
-        (define (write-sudoers! dest ip netns ts socket)
-          (let ((tmp (string-append dest ".tmp")))
-            (when (file-exists? dest)
-              (delete-file dest))
-            (call-with-output-file tmp
-              (lambda (out)
-                (display "%wheel ALL=(root) NOPASSWD: " out)
-                (display ip out)
-                (display " netns exec " out)
-                (display netns out)
-                (display " " out)
-                (display ts out)
-                (display " --socket=" out)
-                (display socket out)
-                (display " *\n" out)))
-            (chmod tmp #o440)
-            (rename-file tmp dest)))
+	(define (write-sudoers! dest ip netns ts socket nc)
+	  (let ((tmp (string-append dest ".tmp")))
+	    ;; Clean up any prior leftovers
+	    (when (file-exists? tmp)
+	      (delete-file tmp))
+	    (when (file-exists? dest)
+	      (delete-file dest))
+
+	    (call-with-output-file tmp
+	      (lambda (out)
+		;; tailscale in netns
+		(display "%wheel ALL=(root) NOPASSWD: " out)
+		(display ip out)
+		(display " netns exec " out)
+		(display netns out)
+		(display " " out)
+		(display ts out)
+		(display " --socket=" out)
+		(display socket out)
+		(display " *\n" out)
+
+		;; nc in netns (for ProxyCommand)
+		(display "%wheel ALL=(root) NOPASSWD: " out)
+		(display ip out)
+		(display " netns exec " out)
+		(display netns out)
+		(display " " out)
+		(display nc out)
+		(display " *\n" out)))
+
+	    (chmod tmp #o440)
+	    (rename-file tmp dest)))
+
 
         ;; Per-instance dirs + per-netns resolv.conf + per-instance sudoers.
         #$@(map
@@ -440,7 +445,8 @@
                 (($ <tailscale-instance-configuration>
                     name package netns magic-dns state-file socket-file tun port log-file extra-args)
                  (let ((ip (file-append iproute "/sbin/ip"))
-                       (ts (file-append package "/bin/tailscale")))
+                       (ts (file-append package "/bin/tailscale"))
+		       (nc (file-append netcat "/bin/nc")))
                    #~(begin
                        (mkdir-p (dirname #$state-file))
                        (mkdir-p (dirname #$socket-file))
@@ -454,7 +460,8 @@
                         #$ip
                         #$netns
                         #$ts
-                        #$socket-file))))))
+                        #$socket-file
+			#$nc))))))
             resolved))))
 
 (define (tailscale->firewall-rules instances)
@@ -502,8 +509,6 @@
           (service-extension firewall-service-type
                              tailscale->firewall-rules)
           (service-extension profile-service-type
-                             tailscale-profile-entries)
-          (service-extension etc-service-type
-                             tailscale-sudoers-entries)))
+                             tailscale-profile-entries)))
    (default-value '())
    (description "Run one or more Tailscale instances, each in its own network namespace, with nftables NAT and ts-<name> helpers.")))

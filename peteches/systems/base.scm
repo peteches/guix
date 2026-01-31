@@ -4,6 +4,7 @@
   ;; Core Guix/Guile
   #:use-module (gnu)
   #:use-module (guix gexp)
+  #:use-module (srfi srfi-1)
   #:use-module (guix transformations)
   #:use-module (guix modules)
   ;; Services (service constructors + specific service types)
@@ -281,8 +282,22 @@
   (list (service tailscale-service-type
             (list (tailscale-instance-configuration
               (name "peteches")
-              (port 41641))))))
+              (port 41641)
+	      (magic-dns-suffix "tailb21dfe.ts.net"))))))
 
+;; Grab the *unexported* accessor from (gnu services base).
+(define nscd-cache-database*
+  (@@ (gnu services base) nscd-cache-database))
+
+(define (nscd-without-hosts-cache cfg)
+  (nscd-configuration
+    (inherit cfg)
+    (caches (filter (lambda (cache)
+                      (let ((db (nscd-cache-database* cache)))
+                        ;; db may be 'hosts or "hosts" depending on Guix revision.
+                        (not (or (eq? db 'hosts)
+                                 (equal? db "hosts")))))
+                    %nscd-default-caches))))
 
 ;; make sure this is available somewhere in your config:
 ;; (use-modules (gnu packages base))  ; for `glibc`
@@ -393,7 +408,6 @@
 				"root ALL=(ALL) ALL\n"
 				"%wheel ALL=(ALL) ALL\n"
 				"#includedir /run/sudoers.d\n")))
-     (name-service-switch %mdns-host-lookup-nss)
      (users (append (list (if with-docker?
 			      (user-account
 			       (inherit %peteches-user)
@@ -403,8 +417,20 @@
 			      %peteches-user))
 		    %base-user-accounts
 		    users-extra))
+     (name-service-switch
+      (name-service-switch
+       (inherit %mdns-host-lookup-nss)
+       ;; Key change: DO NOT attach (not-found return) to mdns_minimal.
+       ;; Also: put %dns before mdns so normal DNS names (like *.ts.net) resolve.
+       (hosts (list %files
+		    %dns
+		    (name-service (name "mdns_minimal"))
+		    (name-service (name "mdns"))))))
      (packages (append packages* %base-packages))
-     (services final-services)
+     (services
+      (modify-services final-services
+        (nscd-service-type cfg =>
+          (nscd-without-hosts-cache cfg))))
      (mapped-devices mapped-devices)
      (file-systems (append file-systems %base-file-systems))
      (bootloader bootloader))))
