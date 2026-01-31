@@ -98,7 +98,12 @@
   (log-file    tailscale-instance-configuration-log-file
                (default #f))
   (extra-args  tailscale-instance-configuration-extra-args
-               (default '())))
+               (default '()))
+
+  ;; Forward ports from inside the netns back to the host.
+  ;; Each element is either (SRC . DST) or (SRC DST), ports are integers.
+  (forward-ports tailscale-instance-configuration-forward-ports
+                 (default '())))
 
 (define (instance-default-paths name)
   (let ((base (string-append "/var/lib/tailscale/" name))
@@ -113,24 +118,26 @@
   ;; Fill in defaults derived from name if fields are #f.
   (match cfg
     (($ <tailscale-instance-configuration>
-        name package netns magic-dns state-file socket-file tun port log-file extra-args)
+        name package netns magic-dns state-file socket-file tun port log-file extra-args forward-ports)
      (let-values (((dstate dsock dlog dtun) (instance-default-paths name)))
        (tailscale-instance-configuration
         (name name)
         (package package)
         (netns (or netns (string-append "ts-" name)))
+        (magic-dns-suffix magic-dns)
         (state-file (or state-file dstate))
         (socket-file (or socket-file dsock))
         (tun (or tun dtun))
         (port port)
         (log-file (or log-file dlog))
-        (extra-args extra-args))))))
+        (extra-args extra-args)
+        (forward-ports forward-ports))))))
 
 (define (tailscale-instance->shepherd-service cfg)
   (let ((cfg (instance->resolved cfg)))
     (match cfg
       (($ <tailscale-instance-configuration>
-          name package netns magic-dns state-file socket-file tun port log-file extra-args)
+          name package netns magic-dns state-file socket-file tun port log-file extra-args forward-ports)
        (let* ((service-name (string->symbol (string-append "tailscaled-" name)))
               (setup-name   (string->symbol (string-append "tailscale-netns-setup-" name)))
               (ip (file-append iproute "/sbin/ip"))
@@ -161,7 +168,7 @@
   (let ((cfg (instance->resolved cfg)))
     (match cfg
       (($ <tailscale-instance-configuration>
-          name package netns magic-dns state-file socket-file tun port log-file extra-args)
+          name package netns magic-dns state-file socket-file tun port log-file extra-args forward-ports)
        (let* ((svc-name     (string->symbol (string-append "tailscale-prefs-" name)))
               (tsd-svc      (string->symbol (string-append "tailscaled-" name)))
               (tailscale    (file-append package "/bin/tailscale"))
@@ -192,7 +199,7 @@
   (let ((cfg (instance->resolved cfg)))
     (match cfg
       (($ <tailscale-instance-configuration>
-          inst-name inst-package ns-name magic-dns state-file socket-file tun port log-file extra-args)
+          inst-name inst-package ns-name magic-dns state-file socket-file tun port log-file extra-args forward-ports)
        (let* ((bash-path    (file-append bash "/bin/bash"))
               (ip-path      (file-append iproute "/sbin/ip"))
               (ts-bin       (file-append inst-package "/bin/tailscale"))
@@ -290,7 +297,7 @@
   (let ((cfg (instance->resolved cfg)))
     (match cfg
       (($ <tailscale-instance-configuration>
-          name package netns magic-dns state-file socket-file tun port log-file extra-args)
+          name package netns magic-dns state-file socket-file tun port log-file extra-args forward-ports)
        (let-values (((subnet hostip nsip gw) (subnet-for name)))
          (let* ((ip (file-append iproute "/sbin/ip"))
                 (veth-host (ifname "vts-" name))
@@ -354,6 +361,65 @@
 
                  #t))
             (stop #~(lambda _ #t)))))))))
+
+
+
+;; Port forward services: listen inside the netns and forward to the host via the veth.
+(define (forward-ports->alist forward-ports)
+  "Normalize FORWARD-PORTS into an alist of (SRC . DST) integer pairs.
+Accept elements like (SRC . DST) or (SRC DST)."
+  (define (->pair x)
+    (match x
+      ((src . dst)
+       (unless (and (integer? src) (integer? dst))
+         (error "forward-ports entries must be integer port pairs" x))
+       (cons src dst))
+      ((src dst)
+       (unless (and (integer? src) (integer? dst))
+         (error "forward-ports entries must be integer port pairs" x))
+       (cons src dst))
+      (_ (error "invalid forward-ports entry; expected (SRC . DST) or (SRC DST)" x))))
+  (map ->pair forward-ports))
+
+(define (tailscale-instance->forward-services cfg)
+  (let ((cfg (instance->resolved cfg)))
+    (match cfg
+      (($ <tailscale-instance-configuration>
+          name package netns magic-dns state-file socket-file tun port log-file extra-args forward-ports)
+       (let* ((setup-name (string->symbol (string-append "tailscale-netns-setup-" name)))
+              (ip         (file-append iproute "/sbin/ip"))
+              (socat      (file-append socat "/bin/socat")))
+         (let-values (((subnet hostip nsip gw) (subnet-for name)))
+           (map (lambda (p)
+                  (let* ((src (car p))
+                         (dst (cdr p))
+                         (svc-name (string->symbol
+                                    (format #f "tailscale-forward-~a-~a" name src)))
+                         (lf (format #f "/var/log/tailscale-forward-~a-~a.log" name src)))
+                    (shepherd-service
+                     (provision (list svc-name))
+                     (documentation
+                      (format #f "Forward TCP port ~a in netns ~a to host ~a:~a"
+                              src netns gw dst))
+                     (requirement (list 'user-processes 'networking setup-name))
+                     (auto-start? #t)
+                     (one-shot? #f)
+                     (start
+                      #~(make-forkexec-constructor
+                         (list #$ip "netns" "exec" #$netns
+                               #$socat
+                               (string-append "TCP-LISTEN:"
+                                              #$(number->string src)
+                                              ",fork,reuseaddr")
+                               (string-append "TCP:"
+                                              #$gw
+                                              ":"
+                                              #$(number->string dst)))
+                         #:log-file #$lf
+                         #:environment-variables
+                         (list "PATH=/run/setuid-programs:/run/current-system/profile/bin:/run/current-system/profile/sbin")))
+                     (stop #~(make-kill-destructor)))))
+                (forward-ports->alist forward-ports))))))))
 
 (define (tailscale-activation instances)
   (let ((resolved (map instance->resolved instances)))
@@ -443,7 +509,7 @@
             (lambda (cfg)
               (match cfg
                 (($ <tailscale-instance-configuration>
-                    name package netns magic-dns state-file socket-file tun port log-file extra-args)
+                    name package netns magic-dns state-file socket-file tun port log-file extra-args forward-ports)
                  (let ((ip (file-append iproute "/sbin/ip"))
                        (ts (file-append package "/bin/tailscale"))
 		       (nc (file-append netcat "/bin/nc")))
@@ -469,7 +535,7 @@
     (define (one cfg)
       (match cfg
         (($ <tailscale-instance-configuration>
-            inst-name inst-package netns magic-dns state-file socket-file tun port log-file extra-args)
+            inst-name inst-package netns magic-dns state-file socket-file tun port log-file extra-args forward-ports)
          (let-values (((subnet hostip nsip gw) (subnet-for inst-name)))
            (let ((veth-host (ifname "vts-" inst-name)))
              (nftables-rules
@@ -493,6 +559,7 @@
 (define (tailscale-shepherd-services instances)
   (append
    (map tailscale-instance->netns-setup-service instances)
+   (append-map tailscale-instance->forward-services instances)
    (map tailscale-instance->shepherd-service instances)
    (map tailscale-instance->prefs-service instances)))
 
