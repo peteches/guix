@@ -1,4 +1,4 @@
-(define-module (peteches home-configs nyarlothotep.peteches.co.uk)
+(define-module (peteches home-configs nyarlothotep)
   #:use-module (gnu services)
   #:use-module (gnu home)
   #:use-module (gnu home services)

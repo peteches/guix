@@ -50,6 +50,7 @@
   #:use-module (peteches home-configs waybar)
   #:use-module (peteches home-configs firefox)
   #:use-module (peteches home-configs hyprland)
+  #:use-module (peteches packages dank-material-shell)
   ;; utilities
   #:use-module (ice-9 popen)
   #:use-module (ice-9 textual-ports)
@@ -62,6 +63,7 @@
 (define-public base-packages
   (list
    alacritty
+   dank-material-shell
    recutils
    eza
    tcpdump
@@ -221,7 +223,7 @@
 						(base-hyprland-window-workspace-binds 9)))
 					(command-execution
 					 (hyprland-execs
-					  (exec-once '("emacs --daemon" "waybar" "mako" "canberra-gtk-play -i desktop-login"))))))
+					  (exec-once '("dms run"  "emacs --daemon" "mako" "canberra-gtk-play -i desktop-login"))))))
 
    ;; Waybar / Wofi
    (service waybar-service-type

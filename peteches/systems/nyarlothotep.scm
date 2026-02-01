@@ -1,5 +1,4 @@
-
-(define-module (peteches systems nyarlothotep.peteches.co.uk)
+(define-module (peteches systems nyarlothotep)
   #:use-module (gnu)
   #:use-module (guix gexp)
   #:use-module (gnu services)
@@ -27,7 +26,7 @@
 (operating-system
   (inherit
    (make-base-os
-    #:host-name "nyarlothotep.peteches.co.uk"
+    #:host-name "nyarlothotep"
     #:kernel linux
     #:firmware (list linux-firmware)
     #:bootloader
@@ -43,7 +42,7 @@
     #:extra-services
     (list
      (service tailscale-service-type))
-    
+
     ;; Filesystems (root via mapper; EFI unencrypted)
     #:file-systems
     (append
