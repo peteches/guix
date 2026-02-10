@@ -70,7 +70,7 @@
    (comment "Pete McCabe")
    (group "users")
    (home-directory "/home/peteches")
-   (supplementary-groups '("wheel" "kvm" "netdev" "audio" "libvirt" "video"))))
+   (supplementary-groups '("wheel" "kvm" "netdev" "audio" "libvirt" "video" "dialout"))))
 
 (define transform
   (options->transformation
