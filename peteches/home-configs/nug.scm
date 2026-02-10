@@ -1,4 +1,4 @@
-(define-module (peteches home-configs nug.peteches.co.uk)
+(define-module (peteches home-configs nug)
   #:use-module (guix gexp)
   #:use-module (guix channels)
   #:use-module (gnu packages base)

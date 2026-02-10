@@ -6,7 +6,7 @@
 ;; - If you want root-on-LUKS, uncomment the LUKS section and comment the non-LUKS one.
 ;; - make-base-os should append %base-file-systems internally.
 
-(define-module (peteches systems nug.peteches.co.uk)
+(define-module (peteches systems nug)
   #:use-module (nongnu packages linux)
   #:use-module (gnu)
   #:use-module (guix gexp)
