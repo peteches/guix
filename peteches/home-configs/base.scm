@@ -51,6 +51,7 @@
   #:use-module (peteches home-configs firefox)
   #:use-module (peteches home-configs hyprland)
   #:use-module (peteches packages dank-material-shell)
+  #:use-module (peteches packages gurps)
   ;; utilities
   #:use-module (ice-9 popen)
   #:use-module (ice-9 textual-ports)
@@ -70,6 +71,7 @@
    netcat
    (list isc-bind "utils")
    git
+   gurpscharactersheet
    gnupg
    jq
    terragrunt

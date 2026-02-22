@@ -12,78 +12,86 @@
   #:use-module (gnu packages gl)         ; mesa
   #:use-module (gnu packages xorg)       ; libx11
   #:use-module (gnu packages fontutils)  ; fontconfig, freetype
-  #:use-module (gnu packages elf))       ; patchelf
+  #:use-module (gnu packages elf)       ; patchelf
+  #:use-module (gnu packages bash))
+
 
 (define-public gurpscharactersheet
   (package
-    (name "gurpscharactersheet")
-    (version "5.42.0")
-    (source
-      (origin
-        (method url-fetch)
-        (uri (string-append
-              "https://github.com/richardwilkes/gcs/releases/download/v"
-              version "/gcs-" version "-linux-amd64.tgz"))
-        (sha256
-         (base32 "01zj123w68n4q6zmcvj12jcmzxsdmic3x28yx0ajzbrmmi1rafvp"))))
-    (build-system copy-build-system)
+   (name "gurpscharactersheet")
+   (version "5.42.0")
+   (source
+    (origin
+     (method url-fetch)
+     (uri (string-append
+           "https://github.com/richardwilkes/gcs/releases/download/v"
+           version "/gcs-" version "-linux-amd64.tgz"))
+     (sha256
+      (base32 "01zj123w68n4q6zmcvj12jcmzxsdmic3x28yx0ajzbrmmi1rafvp"))))
+   (build-system copy-build-system)
+   (inputs
+    (list glibc
+          mesa
+          libx11
+          fontconfig
+          freetype
+	  bash
+          (list gcc "lib")))
+   (arguments
+    (list
+     ;; Vendor ELF: don't strip, and runpath validation is irrelevant because
+     ;; the executable users run is a wrapper script.
+     #:strip-binaries? #f
+     #:validate-runpath? #f
 
-    ;; patchelf only needed at build time
-    (native-inputs
-      (list patchelf))
+     #:install-plan
+     #~'(("." "share/gcs/"))		; keep full tarball payload
 
-    ;; Runtime shared libs to satisfy the binary
-    (inputs
-      (list
-       glibc
-       mesa
-       libx11
-       fontconfig
-       freetype
-       (list gcc "lib")))         ; we’ll look this up as "gcc" below
+     #:phases
+     #~(modify-phases %standard-phases
+		      (add-after 'install 'make-launcher
+				 (lambda* (#:key outputs inputs #:allow-other-keys)
+				   (define (libdir so)
+				     (dirname (search-input-file inputs (string-append "/lib/" so))))
 
-    (arguments
-      (list
-       ;; Copy the single 'gcs' binary from the tarball into $out/bin/gcs
-       ;; This assumes the tarball unpacks a top-level file named "gcs".
-       #:install-plan
-       #~'(("gcs" "bin/"))
+				   (define (root-of-lib so)
+				     (dirname (libdir so))) ; parent of /lib
 
-       #:phases
-       #~(modify-phases %standard-phases
-           ;; After install, patch interpreter and RPATH on the binary.
-           (add-after 'install 'patch-elf
-             (lambda* (#:key outputs inputs #:allow-other-keys)
-               (let* ((out      (assoc-ref outputs "out"))
-                      (bin      (string-append out "/bin/gcs"))
-                      ;; Inputs we need for RPATH
-                      (glibc    (assoc-ref inputs "glibc"))
-                      (mesa     (assoc-ref inputs "mesa"))
-                      (libx11   (assoc-ref inputs "libx11"))
-                      (fontconf (assoc-ref inputs "fontconfig-minimal"))
-                      (freetype (assoc-ref inputs "freetype"))
-                      ;; (list gcc "lib") above => key "gcc" here
-                      (gcc-lib  (assoc-ref inputs "gcc"))
-                      ;; Dynamic linker for x86_64 glibc
-                      (interp   (string-append
-                                 glibc "/lib/ld-linux-x86-64.so.2"))
-                      ;; RPATH covering all needed libs
-                      (rpath    (string-append
-                                  glibc "/lib:"
-                                  mesa "/lib:"
-                                  libx11 "/lib:"
-                                  fontconf "/lib:"
-                                 freetype "/lib:"
-                                 gcc-lib "/lib")))
-		 (format #t "fontconfig = ~s~%" fontconf)
-                 (invoke "patchelf" "--set-interpreter" interp bin)
-                 (invoke "patchelf" "--set-rpath" rpath bin)
-                 #t))))))
+				   (let* ((out   (assoc-ref outputs "out"))
+					  (real  (string-append out "/share/gcs/gcs"))
+					  (bin   (string-append out "/bin/gcs"))
+					  (bash  (search-input-file inputs "/bin/bash"))
+					  (ldso  (search-input-file inputs "/lib/ld-linux-x86-64.so.2"))
 
-    (synopsis "GURPS Character Sheet (GCS)")
-    (description
-     "GURPS Character Sheet (GCS) is a standalone, interactive character
-editor for the GURPS Fourth Edition roleplaying game.  It provides tools
-for creating and maintaining detailed character sheets.")
-    (home-page "https://gurpscharactersheet.com/")
-    (license license:mpl2.0)))
+					  ;; Find actual lib directories by locating specific SONAME files.
+					  (glibc-lib  (libdir "libc.so.6"))
+					  (mesa-lib   (libdir "libGL.so.1"))
+					  (x11-lib    (libdir "libX11.so.6"))
+					  (fc-lib     (libdir "libfontconfig.so.1"))
+					  (ft-lib     (libdir "libfreetype.so.6"))
+					  (stdcxx-lib (libdir "libstdc++.so.6"))
+
+					  (fc-root (root-of-lib "libfontconfig.so.1"))
+					  (libpath (string-append
+						    glibc-lib ":"
+						    mesa-lib ":"
+						    x11-lib ":"
+						    fc-lib ":"
+						    ft-lib ":"
+						    stdcxx-lib)))
+
+				     (mkdir-p (string-append out "/bin"))
+				     (call-with-output-file bin
+				       (lambda (p)
+					 (format p "#!~a\n" bash)
+					 (format p "export FONTCONFIG_PATH=~a/etc/fonts\n" fc-root)
+					 (format p "export FONTCONFIG_FILE=~a/etc/fonts/fonts.conf\n" fc-root)
+					 (format p "exec ~s --library-path ~s ~s \"$@\"\n"
+						 ldso libpath real)))
+				     (chmod bin #o555)
+				     #t))))))
+   (synopsis "GURPS Character Sheet (GCS)")
+   (description "GURPS Character Sheet (GCS) is a standalone character editor for GURPS 4e.")
+   (home-page "https://gurpscharactersheet.com/")
+   (license license:mpl2.0)))
+gurpscharactersheet
