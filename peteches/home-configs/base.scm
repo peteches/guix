@@ -24,6 +24,7 @@
   #:use-module (gnu packages xdisorg)
   #:use-module (gnu packages gawk)
   #:use-module (gnu packages wm)
+  #:use-module (gnu packages linux)
   #:use-module (gnu packages password-utils)
   #:use-module (gnu packages qt)
   #:use-module (gnu packages aidc)
@@ -72,6 +73,7 @@
    netcat
    ncdu
    (list isc-bind "utils")
+   bluez
    git
    gurpscharactersheet
    gnupg
