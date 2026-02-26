@@ -722,7 +722,7 @@
   (every string? rules))
 
 (define (serialize-window-rules-v2 rules)
-  (serialize-rules "windowrulev2" rules))
+  (serialize-rules "windowrule" rules))
 
 (define (env-vars? vars)
   (every (lambda (x) (and (pair? x) (string? (car x)) (string? (cdr x)))) vars))
