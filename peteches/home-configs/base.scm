@@ -16,6 +16,7 @@
   #:use-module (gnu packages compression)
   #:use-module (gnu packages gnupg)
   #:use-module (gnu packages rust-apps)
+  #:use-module (gnu packages ncdu)
   #:use-module (gnu packages terminals)
   #:use-module (gnu packages version-control)
   #:use-module (gnu packages gnome-xyz)
@@ -69,6 +70,7 @@
    eza
    tcpdump
    netcat
+   ncdu
    (list isc-bind "utils")
    git
    gurpscharactersheet

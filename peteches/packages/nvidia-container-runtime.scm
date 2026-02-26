@@ -253,7 +253,7 @@ int nvidia_cap_get_device_file_attrs(const char *path, unsigned int *major, unsi
     (build-system go-build-system)
     (arguments
  (list
-  #:go (specification->package "go@1.25.5")
+  #:go (specification->package "go@1.25.7")
   #:import-path "github.com/NVIDIA/nvidia-container-toolkit"
   #:tests? #f
   #:install-source? #f

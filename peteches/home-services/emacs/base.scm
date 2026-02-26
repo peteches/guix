@@ -27,7 +27,7 @@
   #:export (home-emacs-base-service-type))
 
 (define (home-emacs-base-profile-service config)
-  (append (list node-mermaid-js-mermaid-cli)
+  (append '()			   ;(list node-mermaid-js-mermaid-cli)
 	  (map specification->package '("emacs"
 
 					"emacs-sops"
