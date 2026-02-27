@@ -148,9 +148,6 @@
   (border_size
    (integer 1)
    "size of the border around windows")
-  (no_border_on_floating
-   (boolean #f)
-   "disable borders for floating windows")
   (gaps_in
    (integer 5)
    "gaps betewen windows, also supports css style gaps (top, right, bottom, left -> 5,10,15,20)")

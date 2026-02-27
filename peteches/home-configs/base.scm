@@ -221,7 +221,7 @@
 						    (name "DP-2")
 						    (position "auto-up"))))
 					(window-rules-v2
-					 '("float=on, class:^(xdg-desktop-portal-.*)$, title:^(File Upload)$"))
+					 '("float on, match:class ^(xdg-desktop-portal-.*)$, match:title ^(File Upload)$"))
 					(env-vars base-hyprland-env-vars)
 					(variables base-hyprland-variables)
 					(binds (append
