@@ -10,7 +10,7 @@
 #   can set: wofi_cmd='wofi --dmenu --prompt "Select Firefox Profile:"'
 
 # on guix need to set LD_LIBRARY_PATH explicitly for nonguix stuffs
-export LD_LIBRARY_PATH="${HOME}/.guix-profile/lib:${HOME}/.guix-home/profile/lib:${LD_LIBRARY_PATH}"
+# export LD_LIBRARY_PATH="${HOME}/.guix-profile/lib:${HOME}/.guix-home/profile/lib:${LD_LIBRARY_PATH}"
 
 set -eu
 
@@ -38,5 +38,5 @@ bin="$(awk -v n="$profile" -F '\t' '$1==n{print $2}' "$mapf")"
 [ -n "$bin" ] || { echo "Unknown profile: $profile" >&2; exit 1; }
 
 # Launch Firefox with the profile; pass all original args verbatim.
-nohup "$bin" -P "$profile" "$@" > /dev/null 2>&1 &
+nohup "$bin" -P "$profile" "$@" > ~/.local/var/log/firefox-${profile}.log 2>&1 &
 exit 0

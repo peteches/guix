@@ -128,7 +128,7 @@
 					   (extd  (string-append dist "/extensions"))
 					   (ids '#$ids))
 				      (copy-recursively ff-in out)
-				      
+
 				      ;; Ensure our /bin/firefox runs from this output's libdir, not the input.
 				      ;; KEEP the copy-recursively and your distribution/policies/exts writes.
 				      ;; Then install a /bin/firefox shim that *chains to the base wrapper*,
@@ -144,7 +144,7 @@
 					    (format p "#! /bin/sh
 export MOZ_APP_DIR=\"~s\"
 export MOZ_ALLOW_DOWNGRADES=1
-exec -a \"$0\" \"${MOZ_APP_DIR}/firefox-bin\" \"$@\"
+exec -a \"$0\" \"${MOZ_APP_DIR}/firefox\" \"$@\"
 " ffdir)))
 					(chmod exe #o555))
 
@@ -165,7 +165,7 @@ exec -a \"$0\" \"${MOZ_APP_DIR}/firefox-bin\" \"$@\"
 						     (let* ((path (string-append extd "/" id ".xpi")))
 						       (string-append
 							"\"" id "\":{"
-							"\"installation_mode\":\"force_installed\"," 
+							"\"installation_mode\":\"force_installed\","
 							"\"install_file\":\"" path "\"}")))
 						   ids))
 					     (json (string-append
