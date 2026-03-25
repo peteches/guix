@@ -3,8 +3,11 @@
   #:use-module (guix channels)
   #:use-module (gnu packages base)
   #:use-module (gnu packages video)
+  #:use-module (gnu packages graphics)
   #:use-module (gnu packages node)
+  #:use-module (gnu packages xdisorg)
   #:use-module (gnu packages version-control)
+  #:use-module (gnu services)
 
   ;; services
   #:use-module (gnu home)
@@ -16,12 +19,13 @@
 
   ;; my packages
   #:use-module (peteches home-services koboldcpp)
+  #:use-module (peteches home-services hyprland)
 
   #:use-module (peteches channels nug)
 
   ;; host-only services
   #:use-module (peteches home-services ai)
-  )
+)
 
 (define (home-abs-path path)
   "Expand PATH relative to $HOME if it is not absolute."
@@ -34,7 +38,7 @@
 
 ;; Packages unique to nug (examples you had: locales, node, pre-commit, etc.)
 (define nug-extra-packages
-  (list glibc-locales v4l-utils node pre-commit))
+  (list blender libwacom glibc-locales v4l-utils node pre-commit))
 
 ;; Services unique to nug (AI stacks, AGiXT bots, etc.)
 (define nug-extra-services
@@ -79,8 +83,6 @@
 	     (service-name "koboldcpp-dolphin")
 	     (model-name "Dolphin-Mistral-24B-Venice-Edition-Q5_K_S.gguf")
 	     (sd-model "cyberrealisticLCM_cyberrealistic42.safetensors")
-	     (whisper-model "whisper-small-q5_1.bin")
-	     (tts-model "Dia_Q5_DAC_F16.gguf")
 	     (host "::")
 	     (port 5003)
 	     (ssl-cert (home-abs-path ".local/share/certs/nug.peteches.co.uk.pem"))
@@ -99,4 +101,20 @@
   (packages
    (append nug-extra-packages base-packages))
   (services
-    (append nug-extra-services base-services)))
+   (modify-services (append nug-extra-services base-services)
+     (home-hyprland-service-type
+      config =>
+      (let* ((vars  (home-hyprland-configuration-variables config))
+             (input (home-hyprland-variable-configuration-input vars)))
+        (home-hyprland-configuration
+         (inherit config)
+         (variables
+          (home-hyprland-variable-configuration
+           (inherit vars)
+           (input
+            (input-category
+             (inherit input)
+             (tablet
+              (input-tablet-category
+               (transform 2)
+               (output "DP-3")))))))))))))

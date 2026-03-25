@@ -69,7 +69,17 @@
     (mapped-device
      (source (uuid "820e9368-484a-4bc0-af58-f3f0c29fe0fa"))
      (target "cryptroot")
-     (type luks-device-mapping)))
+     (type luks-device-mapping))
+    (mapped-device
+     (source (uuid "3d049249-8d28-45a3-bd06-980429edf7b7"))
+     (target "ColdStorage")
+     (type luks-device-mapping)
+     (arguments '(#:key-file "/etc/keys/cold-storage.key")))
+    (mapped-device
+     (source (uuid "8e15e4a6-a1ac-4638-b9d2-814257363cab"))
+     (target "HotStorage")
+     (type luks-device-mapping)
+     (arguments '(#:key-file "/etc/keys/hot-storage.key"))))
 
    #:file-systems
    (list
@@ -85,6 +95,16 @@
      (mount-point "/boot/efi")
      (device (uuid "7222-0EC9" 'fat32)) ; ← EFI system partition
      (type "vfat"))
+    (file-system
+     (mount-point "/media/ColdStorage")
+     (device (uuid "0cd3cea0-2ffc-4bf7-9cd0-91b9bbfa716b" 'ext4))
+     (create-mount-point? #t)
+     (type "ext4"))
+    (file-system
+     (mount-point "/media/HotStorage")
+     (device (uuid "0b30a1c2-64d8-47ec-bfeb-d6ec47292886" 'ext4))
+     (create-mount-point? #t)
+     (type "ext4"))
     scoreplay-cifs-mount)
 
    ;; Bootloader (UEFI)

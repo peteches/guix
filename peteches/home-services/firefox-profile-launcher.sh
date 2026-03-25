@@ -18,7 +18,15 @@ selfdir="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
 mapf="${FIREFOX_WRAPPER_MAP:-"$selfdir/../share/firefox-wrappers.txt"}"
 cfg="${selfdir}/../share/firefox-launcher.cfg"
 
-wofi_cmd='wofi --dmenu --prompt "Select Firefox Profile:"'
+if [ -n "${WAYLAND_DISPLAY:-}" ] && [ -n "${XDG_RUNTIME_DIR:-}" ]; then
+    export GDK_BACKEND=wayland
+    wofi_cmd='wofi --dmenu --prompt "Select Firefox Profile:"'
+fi
+
+if command -v rofi >/dev/null 2>&1; then
+    wofi_cmd='rofi -dmenu -p "Select Firefox Profile:"'
+fi
+
 [ -f "$cfg" ] && . "$cfg" 2>/dev/null || true
 
 [ -r "$mapf" ] || { echo "Missing map file: $mapf" >&2; exit 1; }

@@ -13,6 +13,7 @@
   #:use-module (gnu packages admin)
   #:use-module (gnu packages dns)
   #:use-module (gnu packages databases)
+  #:use-module (gnu packages image)
   #:use-module (gnu packages compression)
   #:use-module (gnu packages gnupg)
   #:use-module (gnu packages rust-apps)
@@ -78,6 +79,9 @@
    gurpscharactersheet
    gnupg
    jq
+   slurp
+   mpv
+   wf-recorder
    terragrunt
    go-golangci-lint
    pgcli
@@ -166,15 +170,15 @@
    ;; Browsers (Firefox profiles + Nyxt)
    (service firefox-service-type
             (firefox-configuration (profiles base-firefox-profiles)))
-   (service nyxt-service-type)
+;   (service nyxt-service-type)
 
    (simple-service 'ssh-proxy-fragment
                    home-files-service-type
                    `((".ssh/config.d/peteches-ts-proxy.conf"   ,(mixed-text-file "guix-proxy.conf"
-								      "Host *.tailb21dfe.ts.net\n"
-								      "  ProxyCommand netns-peteches "
-								      (file-append netcat "/bin/nc")
-								      " -w 10 %h %p\n"))))
+										 "Host *.tailb21dfe.ts.net\n"
+										 "  ProxyCommand netns-peteches "
+										 (file-append netcat "/bin/nc")
+										 " -w 10 %h %p\n"))))
    ;; SSH
    (service home-openssh-service-type
             (home-openssh-configuration

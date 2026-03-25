@@ -21,12 +21,15 @@
 	    <home-hyprland-configuration>
             home-hyprland-configuration
             home-hyprland-configuration?
+	    home-hyprland-configuration-variables
+	    home-hyprland-variable-configuration-input
 	    colour-management
             general-category
 	    general-snap-category
 	    decoration-category
 	    decoration-blur-category
 	    input-category
+	    input-tablet-category
 	    input-touchpad-category
 	    hyprland-execs
 	    monitor
@@ -36,12 +39,12 @@
             home-hyprland-variable-configuration))
 
 (define (home-hyprland-profile-service config)
-       (list
-	     hyprcursor
-	     xdg-desktop-portal
-	     xdg-desktop-portal-gtk
-	     xdg-desktop-portal-wlr
-	     xdg-desktop-portal-hyprland))
+  (list
+   hyprcursor
+   xdg-desktop-portal
+   xdg-desktop-portal-gtk
+   xdg-desktop-portal-wlr
+   xdg-desktop-portal-hyprland))
 
 (define-maybe integer)
 
@@ -343,8 +346,8 @@
 (define (serialize-animations-category field-name config)
   #~(string-append "animations {\n"
 		   #$(serialize-configuration
-		       config
-		       animations-category-fields)
+		      config
+		      animations-category-fields)
 		   "}\n"))
 
 (define-configuration animations-category
@@ -423,30 +426,30 @@
   (transform
    (integer -1)
    "Transform the input from tablets. The possible transformations are the same as those of the monitors. -1 means it's unset")
-   (output
+  (output
    (string "Auto")
    "The monitor to bind tablets. The default is auto-detection. To stop auto-detection, use an empty string or the [[Empty]] value")
-   (region_position
-    (vec2 '(0 0))
-    "Position of the mapped region in monitor layout relative to the top left corner of the bound monitor or all monitors")
-   (absolute_region_position
-    (boolean #f)
-    "whether to treat the `region_position` as an absolute position in monitor layout. Only applies when `output` is empty.")
-   (region_size
-    (vec2 '(0 0))
-    "size of hte mapped region. When this variable is set, tablet input will be mapped to the region. [0, 0] or invalid size means unset.")
-   (relative_input
-    (boolean #f)
-    "Whether the input should be relative")
-   (left_handed
-    (boolean #f)
-    "if enabled, the tablet will be rotated 180 degrees")
-   (active_area_size
-    (vec2 '(0 0))
-    "size of tablet's active area in mm")
-   (active_area_position
-    (vec2 '(0 0))
-    "position of the active area in mm"))
+  (region_position
+   (vec2 '(0 0))
+   "Position of the mapped region in monitor layout relative to the top left corner of the bound monitor or all monitors")
+  (absolute_region_position
+   (boolean #f)
+   "whether to treat the `region_position` as an absolute position in monitor layout. Only applies when `output` is empty.")
+  (region_size
+   (vec2 '(0 0))
+   "size of hte mapped region. When this variable is set, tablet input will be mapped to the region. [0, 0] or invalid size means unset.")
+  (relative_input
+   (boolean #f)
+   "Whether the input should be relative")
+  (left_handed
+   (boolean #f)
+   "if enabled, the tablet will be rotated 180 degrees")
+  (active_area_size
+   (vec2 '(0 0))
+   "size of tablet's active area in mm")
+  (active_area_position
+   (vec2 '(0 0))
+   "position of the active area in mm"))
 
 (define (serialize-input-category field-name config)
   #~(string-append "input {\n"
@@ -800,7 +803,7 @@
 
 (define (serialize-kv-inline field-name value)
   (let ((k (stringify field-name)) (v (stringify value)))
-      #~(string-append ", " #$k ", " #$v)))
+    #~(string-append ", " #$k ", " #$v)))
 
 (define (serialize-kv-if-not-default field-name value default)
   (if (not (equal? value default))
@@ -1018,7 +1021,7 @@
    (env-vars '())
    "Environment variables to set in Hyprland, should be in format \"VARNAME,value\"")
   (monitors
-   (list-of-monitors (list (monitor)))
+   (list-of-monitors '())
    "List of monitor configurations")
   (binds
    (list-of-binds '())
@@ -1037,7 +1040,7 @@
 		  "[preferred]
 # GTK handles most generic portals (FileChooser/OpenURI/Settings).
 # Hyprland handles screenshot/screencast.
-default=hyprland,wlr,gtk
+default=hyprland;gtk
 
 [xdg-desktop-portal]
 version=1
@@ -1069,7 +1072,7 @@ version=1
 					  "exec-once = " dbus-update-bin " DISPLAY WAYLAND_DISPLAY HYPRLAND_INSTANCE_SIGNATURE XDG_CURRENT_DESKTOP XDG_SESSION_DESKTOP XDG_SESSION_TYPE\n"
 					  "exec-once = " sh-bin " -c '" pkill-bin " -f xdg-desktop-portal;" pkill-bin " -f xdg-desktop-portal-wlr" pkill-bin " -f xdg-desktop-portal-gtk; " sleep-bin " 0.5'\n"
 					  "exec-once = " gtk-backend " &\n"
-					  "exec-once = " wlr-backend " &\n"
+
 					  "exec-once = sleep 1;" portal " &\n")))
    `("hypr/submaps.conf" ,(mixed-text-file "submaps.conf"
 					   (serialize-list-of-submaps
@@ -1090,8 +1093,8 @@ version=1
 					      (serialize-layer-rules
 					       (home-hyprland-configuration-layer-rules config))))
    `("hypr/windowrulesv2.conf" ,(mixed-text-file "windowrulesv2.conf"
-					      (serialize-window-rules-v2
-					       (home-hyprland-configuration-window-rules-v2 config))))
+						 (serialize-window-rules-v2
+						  (home-hyprland-configuration-window-rules-v2 config))))
    `("hypr/sources.conf" ,(mixed-text-file "sources.conf"
 					   (serialize-hyprland-sources
 					    (home-hyprland-configuration-additional_source_files config))))
@@ -1112,21 +1115,21 @@ version=1
 (define (find-hypr-instance)
   (and (file-exists? hypr-root)
        (let ((entries (scandir hypr-root
-                               (lambda (name)
-                                 (and (not (member name '("." "..")))
-                                      (file-is-directory? (string-append hypr-root "/" name)))))))
-         (if (null? entries)
-             #f
-             ;; usually only one instance, pick the newest
-             (car (sort entries
-                        (lambda (a b)
-                          (> (stat:mtime (stat (string-append hypr-root "/" a)))
-                             (stat:mtime (stat (string-append hypr-root "/" b)))))))))))
+			       (lambda (name)
+				 (and (not (member name '("." "..")))
+				      (file-is-directory? (string-append hypr-root "/" name)))))))
+	 (if (null? entries)
+	     #f
+	     ;; usually only one instance, pick the newest
+	     (car (sort entries
+			(lambda (a b)
+			  (> (stat:mtime (stat (string-append hypr-root "/" a)))
+			     (stat:mtime (stat (string-append hypr-root "/" b)))))))))))
 
 (define (hypr-socket-path)
   (let ((sig (find-hypr-instance)))
     (and sig
-         (string-append hypr-root "/" sig "/.socket.sock"))))
+	 (string-append hypr-root "/" sig "/.socket.sock"))))
 
 (define (home-hyprland-activation-service-type config)
   #~(begin
@@ -1143,9 +1146,8 @@ version=1
 	  ;; directly because `s` is a port once connected. :contentReference[oaicite:2]{index=2}
 	  (send s (string->bytevector command "utf8"))
 	  (force-output s)))
-
-
-      (hypr-send #$(hypr-socket-path) "reload")))
+      (hypr-send #$(hypr-socket-path) "reload")
+      (hypr-send #$(hypr-socket-path) "dispatch exec dms restart" )))
 
 (define (home-hyprland-environment-variables-service-type config)
   `(("XDG_SESSION_TYPE" . "wayland")

@@ -10,11 +10,14 @@
 (straight-use-package
  '(org-roam :type git :host github :repo "org-roam/org-roam"))
 
+(straight-use-package '(org :type built-in))
+(straight-use-package 'org-contrib)
 (straight-use-package
  '(verb :type git :host github :repo "federicotdn/verb"))
 
 ;; --- Core Org preferences (no external deps) -------------------------------
 (require 'org)
+(require 'ox-extra)
 
 (with-eval-after-load 'org
   (define-key org-mode-map (kbd "C-c C-r") verb-command-map))
@@ -26,6 +29,12 @@
 (defcustom peteches/org-directory (expand-file-name "~/area_51/org")
   "Base directory for Org files."
   :type 'directory :group 'peteches/org)
+
+
+(require 'org)
+(require 'ox)
+(require 'ox-extra)
+(ox-extras-activate '(latex-header-blocks ignore-headlines))
 
 
 ;; Reasonable visual defaults

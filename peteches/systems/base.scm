@@ -21,6 +21,8 @@
   #:use-module (gnu services virtualization)
   #:use-module (gnu services networking) ; tor-service-type
 
+  #:use-module (guix-science-nonfree packages cuda)
+
   #:use-module (gnu services ssh)        ; openssh-service-type
 
   #:use-module (gnu services cups)       ; cups-service-type
@@ -104,22 +106,33 @@
 			(addresses
 			 (list (network-address
 				(device "virbr0")
-				(value "192.168.10.1/24")))))))
+				(value "192.168.10.1/24"))
+			        (network-address
+				 (device "virbr0")
+				 (value "fd42:10:10::1/64")))))))
 	(service dnsmasq-service-type
 		 (dnsmasq-configuration
 		  ;; You can have multiple instances of `dnsmasq-service-type` as long
 		  ;; as each one has a different shepherd-provision.
 		  (shepherd-provision '(dnsmasq-virbr0))
-		  (extra-options (list
-				  ;; Only bind to the virtual bridge. This
-				  ;; avoids conflicts with other running
-				  ;; dnsmasq instances.
-				  "--except-interface=lo"
-				  "--interface=virbr0"
-				  "--bind-dynamic"
-				  ;; IPv4 addresses to offer to VMs. This
-				  ;; should match the chosen subnet.
-				  "--dhcp-range=192.168.10.2,192.168.10.254"))))
+		  (extra-options
+		   (list
+		    "--except-interface=lo"
+		    "--interface=virbr0"
+		    "--bind-dynamic"
+
+		    ;; IPv4 DHCP
+		    "--dhcp-range=192.168.10.2,192.168.10.254"
+
+		    ;; IPv6: Router Advertisements + DHCPv6
+		    "--enable-ra"
+		    ;; Offer IPv6 leases from the ULA /64 (adjust lease time as you like)
+		    "--dhcp-range=fd42:10:10::10,fd42:10:10::ffff,64,12h"
+		    ;; Tell guests to use the host bridge address as DNS
+		    "--dhcp-option=option6:dns-server,[fd42:10:10::1]"
+		    ;; Optional: be explicit about the router
+		    "--dhcp-option=option6:router,[fd42:10:10::1]"
+		    ))))
 
 	(service firewall-service-type
          (nftables-rules
@@ -141,6 +154,7 @@
 
                   ;; Libvirt bridge helpers
                   "iifname \"virbr0\" udp dport 67 accept comment \"allow dhcp on virbr0\""
+		  "iifname \"virbr0\" udp dport 547 accept comment \"allow dhcpv6 on virbr0\""
                   "iifname \"virbr0\" meta l4proto { tcp, udp } th dport 53 accept comment \"allow dns on virbr0\""
 
                   ;; Native tailscale interface (if you keep it)
@@ -153,12 +167,15 @@
                     ;; Allow VM subnet to initiate outbound connections
                     "iifname { \"virbr0\", \"vnet*\" } ip saddr 192.168.10.0/24 counter accept comment \"VMs out\""
 
+		    "iifname { \"virbr0\", \"vnet*\" } ip6 saddr fd42:10:10::/64 counter accept comment \"VMs v6 out\""
+
                     ;; Log what would be dropped by policy (does not terminate)
                     "counter log prefix \"nft fwd drop: \" flags all"))
 
           (nat-postrouting (list
                             ;; Interface-agnostic NAT for VMs: masquerade when leaving anywhere
                             ;; except back out the VM bridge itself.
+
                             "ip saddr 192.168.10.0/24 oifname != { \"virbr0\", \"vnet*\" } counter masquerade comment \"masquerade VMs out\""))))
 
 
@@ -224,8 +241,8 @@
                               (string-append prefix ":" old))))
                 (setenv "LD_LIBRARY_PATH" new))
 
-              (let ((prog #$(file-append hyprland "/bin/Hyprland")))
-                (apply execl prog (cons "Hyprland" args))))))
+              (let ((prog #$(file-append hyprland "/bin/start-hyprland")))
+                (apply execl prog (cons "start-hyprland" args))))))
 
       (program-file "hyprland-session"
         #~(begin
@@ -237,7 +254,7 @@
               (setenv "__EGL_VENDOR_LIBRARY_DIRS"
                       "/run/current-system/profile/share/glvnd/egl_vendor.d")
               (setenv "WLR_NO_HARDWARE_CURSORS" "1")
-              (let ((prog #$(file-append hyprland "/bin/Hyprland")))
+              (let ((prog #$(file-append hyprland "/bin/start-hyprland")))
                 (apply execl prog (cons "Hyprland" args))))))))
 
 
@@ -327,7 +344,7 @@
                   (if intel-cpu? (list intel-microcode) '())))
          (packages*
           (append extra-packages %common-packages
-                  (if with-nvidia? (list nvidia-firmware nvidia-driver) '())
+                  (if with-nvidia? (list nvidia-firmware nvidia-driver cuda-nvcc) '())
 		  (if (and with-nvidia? with-docker?) (list runc nvidia-container-toolkit) '())))
          (laptop-services
           (append (if laptop? (list (service tlp-service-type)) '())

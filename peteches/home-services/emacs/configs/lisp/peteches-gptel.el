@@ -25,6 +25,14 @@
     :host "api.githubcopilot.com"
     :endpoint "/chat/completions"))
 
+(defvar peteches/gptel-anthropic
+  (gptel-make-anthropic "Claude-thinking"
+  :stream t
+  :models '(claude-sonnet-4-6 claude-opus-4-6)
+  :request-params '(:thinking (:type "enabled"
+                                :budget_tokens 8000)
+                    :max_tokens 16000)))
+
 (defvar peteches/gptel-koboldcpp
   (gptel-make-openai "KoboldCPP"
     :protocol "https"
@@ -35,7 +43,8 @@
 ;; Make it the default backend.
 (setq gptel-backend peteches/gptel-koboldcpp
       peteches/gptel-backends '(peteches/gptel-koboldcpp
-				peteches/gptel-copilot-enterprise))
+				peteches/gptel-copilot-enterprise
+				peteches/gptel-anthropic))
 (defun peteches/switch-gptel-backend (backend-symbol prefix)
   "Switch gptel BACKEND-SYMBOL.  With PREFIX, set it buffer-locally.
 
