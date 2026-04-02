@@ -20,6 +20,7 @@
   #:use-module (gnu services dns)
   #:use-module (gnu services virtualization)
   #:use-module (gnu services networking) ; tor-service-type
+  #:use-module (gnu services sysctl)
 
   #:use-module (guix-science-nonfree packages cuda)
 
@@ -91,6 +92,10 @@
 		  (auth-unix-ro "none")         ; <-- disable polkit
 		  (auth-unix-rw "none")
 		  (unix-sock-group "libvirt")))
+	(simple-service
+         'stable-ipv6 sysctl-service-type
+	 '(("net.ipv6.conf.default.addr_gen_mode" . "2")
+	   ("net.ipv6.conf.default.stable_secret" . "fd42:6c3b:91e7:2a10::1234")))
 	(service static-networking-service-type
 		 (list (static-networking
 			;; The default provision is 'networking; if you're using any
@@ -107,9 +112,9 @@
 			 (list (network-address
 				(device "virbr0")
 				(value "192.168.10.1/24"))
-			        (network-address
-				 (device "virbr0")
-				 (value "fd42:10:10::1/64")))))))
+			       (network-address
+				(device "virbr0")
+				(value "fd42:10:10::1/64")))))))
 	(service dnsmasq-service-type
 		 (dnsmasq-configuration
 		  ;; You can have multiple instances of `dnsmasq-service-type` as long

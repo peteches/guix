@@ -20,6 +20,7 @@
   ;; my packages
   #:use-module (peteches home-services koboldcpp)
   #:use-module (peteches home-services hyprland)
+    #:use-module (peteches packages lycheeslicer)
 
   #:use-module (peteches channels nug)
 
@@ -38,7 +39,7 @@
 
 ;; Packages unique to nug (examples you had: locales, node, pre-commit, etc.)
 (define nug-extra-packages
-  (list blender libwacom glibc-locales v4l-utils node pre-commit))
+  (list lycheeslicer-7.6.2 blender libwacom glibc-locales v4l-utils node pre-commit))
 
 ;; Services unique to nug (AI stacks, AGiXT bots, etc.)
 (define nug-extra-services
@@ -116,5 +117,4 @@
              (inherit input)
              (tablet
               (input-tablet-category
-               (transform 2)
                (output "DP-3")))))))))))))
