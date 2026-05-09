@@ -6,8 +6,9 @@
 
 (require 'claude-code)
 
-(setq claude-code-program "claude-emacs-wrapper")
-
+(setq claude-code-program "claude-emacs-wrapper"
+      ;; Use vterm:
+      claude-code-terminal-backend 'vterm)
 (defun peteches/claude-code ()
   "Open Claude Code in a vterm, rooted at the Projectile project root."
   (interactive)
@@ -18,7 +19,7 @@
              default-directory)))
     (claude-code)))
 
-(global-set-key (kbd "C-c a C") #'peteches/claude-code)
+(define-key claude-code-command-map (kbd "c") #'peteches/claude-code)
 
 (provide 'peteches-claude-code)
 ;;; peteches-claude-code.el ends here
