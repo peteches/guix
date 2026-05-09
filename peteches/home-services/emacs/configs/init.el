@@ -101,6 +101,7 @@
 (require 'peteches-org)
 (require 'peteches-proced)
 (require 'peteches-projectile)
+(require 'peteches-claude-code)
 (require 'peteches-python)
 (require 'peteches-scheme)
 ; (require 'peteches-slack)

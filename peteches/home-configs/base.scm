@@ -42,6 +42,7 @@
   #:use-module (peteches home-services password-store)
   #:use-module (peteches home-services firefox)
   #:use-module (peteches home-services hyprland)
+  #:use-moduel (peteches home-services haskell)
   #:use-module (peteches home-services mako)
   #:use-module (peteches home-services waybar)
   #:use-module (peteches home-services wofi)
@@ -234,6 +235,8 @@
 					(command-execution
 					 (hyprland-execs
 					  (exec-once '("dms run"  "emacs --daemon" "mako" "canberra-gtk-play -i desktop-login"))))))
+
+   (service home-haskell-service-type)
 
    ;; Waybar / Wofi
    (service waybar-service-type

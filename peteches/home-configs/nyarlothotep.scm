@@ -4,11 +4,12 @@
   #:use-module (gnu home services)
   #:use-module (gnu home services guix)
   #:use-module (peteches channels base)
+  #:use-module (peteches packages lycheeslicer)
   #:use-module (peteches home-services hyprland)
   #:use-module (peteches home-configs base))
 
 (home-environment
- (packages base-packages)
+ (packages (append (list lycheeslicer-7.6.2) base-packages))
  (services
   (modify-services
    (append

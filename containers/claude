@@ -1,0 +1,125 @@
+#!/usr/bin/env bash
+# claude-container — run Claude Code CLI inside a Guix container
+# Usage: claude-container [MOUNT...] [-- CLAUDE_ARGS...]
+#
+# On first run, Claude Code is installed into $CLAUDE_INSTALL_DIR via
+# Anthropic's official installer (curl https://claude.ai/install.sh | bash),
+# run inside a minimal --emulate-fhs Guix container. The result is reused on
+# all subsequent runs.
+#
+# Each MOUNT argument is bind-mounted read-write into the container.
+# Arguments after -- are passed through to the claude CLI.
+#
+# Examples:
+#   claude-container ~/projects/myapp
+#   claude-container ~/projects/myapp -- --model opus
+#   claude-container ~/src/foo ~/data/bar -- chat
+
+set -euo pipefail
+
+# --- Configuration -----------------------------------------------------------
+
+CLAUDE_INSTALL_DIR="${CLAUDE_INSTALL_DIR:-$HOME/.local}"
+CLAUDE_BIN="$CLAUDE_INSTALL_DIR/bin/claude"
+CLAUDE_CACHE_DIR="${XDG_CACHE_HOME:-$HOME/.cache}/claude"
+CLAUDE_CONFIG_DIR="$HOME/.claude"
+
+# -----------------------------------------------------------------------------
+
+install_claude() {
+    echo "Installing Claude Code into $CLAUDE_INSTALL_DIR ..."
+    mkdir -p "$CLAUDE_INSTALL_DIR" "$CLAUDE_CACHE_DIR" "$CLAUDE_CONFIG_DIR"
+
+    # --emulate-fhs is required: the installer downloads a prebuilt binary that
+    # expects a standard FHS layout (/lib64/ld-linux-x86-64.so.2 etc.)
+    guix shell \
+        --container \
+        --emulate-fhs \
+        --network \
+        --share="$CLAUDE_INSTALL_DIR" \
+        --share="$CLAUDE_CACHE_DIR" \
+        --share="$CLAUDE_CONFIG_DIR" \
+        curl grep sed bash openssl nss-certs coreutils \
+        -- \
+        env HOME="$HOME" \
+        bash -c 'curl -fsSL https://claude.ai/install.sh | bash'
+
+    echo "Done. Claude installed at $CLAUDE_BIN"
+}
+
+if [[ ! -x "$CLAUDE_BIN" ]]; then
+    install_claude
+fi
+
+# --- Argument parsing --------------------------------------------------------
+
+MOUNT_PATHS=()
+CLAUDE_ARGS=()
+parsing_mounts=true
+
+for arg in "$@"; do
+    if [[ "$arg" == "--" ]]; then
+        parsing_mounts=false
+        continue
+    fi
+    if $parsing_mounts; then
+        MOUNT_PATHS+=("$arg")
+    else
+        CLAUDE_ARGS+=("$arg")
+    fi
+done
+
+# --- Build share/expose flags ------------------------------------------------
+
+SHARE_FLAGS=()
+
+# User-supplied mount paths (read-write so Claude can edit code)
+for path in "${MOUNT_PATHS[@]}"; do
+    real="$(realpath "$path")"
+    if [[ ! -e "$real" ]]; then
+        echo "error: mount path does not exist: $real" >&2
+        exit 1
+    fi
+    SHARE_FLAGS+=(--share="$real")
+done
+
+# Guix profiles — read-only (--expose)
+GUIX_PROFILES=()
+[[ -d "$HOME/.guix-profile" ]]        && GUIX_PROFILES+=("$(realpath "$HOME/.guix-profile")")
+[[ -d "$HOME/.config/guix/current" ]] && GUIX_PROFILES+=("$(realpath "$HOME/.config/guix/current")")
+[[ -d "/run/current-system" ]]        && GUIX_PROFILES+=("/run/current-system")
+
+if [[ -d "$HOME/.guix-extra-profiles" ]]; then
+    while IFS= read -r -d '' profile; do
+        GUIX_PROFILES+=("$(realpath "$profile")")
+    done < <(find "$HOME/.guix-extra-profiles" -mindepth 2 -maxdepth 2 -type d -print0)
+fi
+
+for profile in "${GUIX_PROFILES[@]}"; do
+    SHARE_FLAGS+=(--expose="$profile")
+done
+
+# Claude installation (read-only)
+SHARE_FLAGS+=(--expose="$CLAUDE_INSTALL_DIR")
+
+# Claude auth/config/cache dirs (read-write so tokens and state persist)
+mkdir -p "$CLAUDE_CACHE_DIR" "$CLAUDE_CONFIG_DIR"
+SHARE_FLAGS+=(--share="$CLAUDE_CACHE_DIR")
+SHARE_FLAGS+=(--share="$CLAUDE_CONFIG_DIR")
+
+# ~/.claude.json auth token
+touch "$HOME/.claude.json"
+SHARE_FLAGS+=(--share="$HOME/.claude.json")
+
+# --- Run --------------------------------------------------------------------
+
+exec guix shell \
+    --container \
+    --emulate-fhs \
+    --network \
+    --expose=/gnu/store \
+    "${SHARE_FLAGS[@]}" \
+    bash coreutils nss-certs openssl \
+    -- \
+    env HOME="$HOME" TERM="${TERM:-xterm}" \
+    "$CLAUDE_BIN" "${CLAUDE_ARGS[@]}"
