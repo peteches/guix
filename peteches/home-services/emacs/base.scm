@@ -21,13 +21,14 @@
   #:use-module (gnu services)
   #:use-module (guix gexp)
   #:use-module (nongnu packages node)
+  #:use-module (peteches packages claude-code)
   #:use-module (peteches packages emacs)
   #:use-module (peteches packages mcp)
   #:use-module (peteches packages mermaid)
   #:export (home-emacs-base-service-type))
 
 (define (home-emacs-base-profile-service config)
-  (append '()			   ;(list node-mermaid-js-mermaid-cli)
+  (append (list claude-code)
 	  (map specification->package '("emacs"
 
 					"emacs-sops"
@@ -46,6 +47,7 @@
 					"emacs-org-present"
 					"gcc-toolchain" ; to compile vterm / treesitter grammers
 					"emacs-vterm"
+					"emacs-eat"
 
 					"yarn" ; for mcp servers
 					"curl"
@@ -151,22 +153,6 @@
    `("emacs/early-init.el" ,(local-file "./configs/early-init.el"))
    `("emacs/init.el" ,(local-file "./configs/init.el"))))
 
-(define (home-emacs-base-bin-files-service config)
-  (let ((make-executable
-         (lambda (name source)
-           (computed-file name
-             (with-imported-modules '((guix build utils))
-               #~(begin
-                   (use-modules (guix build utils))
-                   (copy-file #$source #$output)
-                   (chmod #$output #o755)))))))
-    (list
-     `(".local/bin/claude-container"
-       ,(make-executable "claude-container"
-          (local-file "../../../containers/claude")))
-     `(".local/bin/claude-emacs-wrapper"
-       ,(make-executable "claude-emacs-wrapper"
-          (local-file "../../../containers/claude-emacs-wrapper"))))))
 
 (define (home-emacs-base-shepherd-service-type config)
   (list
@@ -208,9 +194,6 @@
 		   home-emacs-base-profile-service)
 		  (service-extension
 		   home-xdg-configuration-files-service-type
-		   home-emacs-base-files-service)
-		  (service-extension
-		   home-files-service-type
-		   home-emacs-base-bin-files-service)))
+		   home-emacs-base-files-service)))
 		(default-value 'nil)
 		(description "Applies my personal Emacs base configuration")))

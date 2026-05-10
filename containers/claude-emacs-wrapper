@@ -1,6 +1,0 @@
-#!/usr/bin/env bash
-# claude-emacs-wrapper — thin shim for claude-code.el
-# Installed alongside claude-container in ~/.local/bin/.  The vterm
-# subprocess started by claude-code.el inherits default-directory (set to
-# projectile-project-root) as $PWD, which is passed as the bind-mount.
-exec claude-container "$PWD" -- "$@"
