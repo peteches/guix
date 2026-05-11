@@ -35,7 +35,7 @@
                 (call-with-output-file bin
                   (lambda (port)
                     (format port "#!/bin/sh
-exec ~a/lib/ld-linux-x86-64.so.2 --library-path ~a/lib ~a \"$@\"\n"
+DISABLE_AUTOUPDATER=1 exec ~a/lib/ld-linux-x86-64.so.2 --library-path ~a/lib ~a \"$@\"\n"
                             #$(file-append glibc)
                             #$(file-append glibc)
                             real)))
