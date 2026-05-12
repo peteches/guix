@@ -63,8 +63,7 @@
   #:use-module (ice-9 textual-ports)
   ;; Export
   #:export (base-packages
-            base-services
-            make-host-home))
+            base-services))
 
 ;; 1) Shared package set for all machines.
 (define-public base-packages

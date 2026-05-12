@@ -8,13 +8,18 @@
    (channel
     (name 'simendsjo)
     (url "https://git.sr.ht/~simendsjo/dotfiles")
-    (commit "ddbbb26091c884d68c6870819e7a3f811cbe35a7"))
+    (commit "0caef8169d924a326f5edd8a164a4c6feed3a143")
+    (introduction
+     (make-channel-introduction
+      "c352f7331b1722b2ffb964572c7f7fbec585bd2f"
+      (openpgp-fingerprint
+       "B0F2 D6C5 2936 95FD 57B5  D255 77BC 6345 B65D 6CFB"))))
    ;; Guix-Science (free)
     (channel
      (name 'guix-science)
      (url "https://codeberg.org/guix-science/guix-science.git")
      (branch "master")
-     (commit "28e4880093f98b85489cb9f2d7602282eda84fbb")
+     (commit "2c1540bed878f2b8b923c3a33489eb41d1f534c3")
      (introduction
       (make-channel-introduction
        "b1fe5aaff3ab48e798a4cce02f0212bc91f423dc"
@@ -23,7 +28,7 @@
     (channel
      (name 'nonguix)
      (url "https://gitlab.com/nonguix/nonguix")
-     (commit "b8648bf188df213455983e7eaab9f6c6101ca0c2")
+     (commit "5f2630e69fbbe9e79c350a67545f0fef7e93e223")
      (introduction
       (make-channel-introduction
        "897c1a470da759236cc11798f4e0a5f7d4d59fbc"
@@ -32,7 +37,7 @@
    (channel
     (name 'guix)
     (url "https://codeberg.org/guix/guix.git")
-    (commit "2a2fe7705e9f881a8a76b4b74df96784f793af54")
+    (commit "9abc0a2288b9dee6c1dd6b6d7ed8f560614a2fc4")
     (introduction
      (make-channel-introduction
       "199fd26ab268d4f26cebcb39e844fe4ff9bea9bc"

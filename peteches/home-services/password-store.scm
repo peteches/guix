@@ -4,7 +4,6 @@
   #:use-module (gnu services configuration)
   #:use-module (gnu packages)
   #:use-module (gnu packages guile)
-  #:use-module (shepherd service)
   #:use-module (gnu packages version-control)
   #:use-module (gnu packages password-utils)
   #:use-module (gnu packages browser-extensions)

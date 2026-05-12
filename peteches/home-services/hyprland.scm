@@ -664,13 +664,16 @@
 		      hyprland-execs-fields)))
 
 (define (exec-cmds? cmd)
-  (every string? cmd))
+  (every (lambda (x) (or (string? x) (gexp? x))) cmd))
 
 (define (serialize-exec-cmds field-name cmds)
-  #~(string-append #$@(map (lambda (x)
-			     (string-append
-			      (symbol->string field-name) " = " x "\n"))
-			   cmds)))
+  (let ((field-str (symbol->string field-name)))
+    #~(string-append
+       #$@(map (lambda (x)
+                 (if (gexp? x)
+                     #~(string-append #$field-str " = " #$x "\n")
+                     (string-append field-str " = " x "\n")))
+               cmds))))
 
 (define-configuration hyprland-execs
   (exec-once
