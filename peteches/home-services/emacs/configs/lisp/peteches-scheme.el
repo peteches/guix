@@ -43,6 +43,10 @@
     (error (user-error "Failed to install Scheme grammar: %s"
                        (error-message-string err)))))
 
+(defun peteches--ts-scheme-missing-p ()
+  "Return t if the Scheme tree-sitter grammar is not available."
+  (not (treesit-language-available-p 'scheme)))
+
 (add-hook 'after-init-hook
           (lambda ()
             (when (and (fboundp 'treesit-available-p)

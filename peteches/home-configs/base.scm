@@ -23,6 +23,8 @@
   #:use-module (gnu packages gnome-xyz)
   #:use-module (gnu packages web)
   #:use-module (gnu packages xdisorg)
+  #:use-module (gnu packages bash)
+  #:use-module (gnu packages emacs)
   #:use-module (gnu packages gawk)
   #:use-module (gnu packages wm)
   #:use-module (gnu packages linux)
@@ -34,6 +36,7 @@
   #:use-module (peteches packages gpg)
   #:use-module (peteches packages go-tools)
   #:use-module (peteches packages terraform)
+  #:use-module (gnu packages libcanberra)
   ;; Your feature modules
   #:use-module (peteches home-services aws)
   #:use-module (peteches home-services desktop)
@@ -233,7 +236,13 @@
 						(base-hyprland-window-workspace-binds 9)))
 					(command-execution
 					 (hyprland-execs
-					  (exec-once '("dms run"  "emacs --daemon" "mako" "canberra-gtk-play -i desktop-login"))))))
+					  (exec-once (list #~(string-append #$(file-append dank-material-shell "/bin/dms") " run")
+							   #~(string-append #$(file-append bash "/bin/bash")
+								      " -c \"mkdir -p ${XDG_LOG_HOME:-$HOME/.local/var/log} && exec "
+								      #$(file-append emacs "/bin/emacs")
+								      " --fg-daemon >> ${XDG_LOG_HOME:-$HOME/.local/var/log}/emacs-daemon.log 2>&1\"")
+							   #~#$(file-append mako "/bin/mako")
+							   #~(string-append #$(file-append libcanberra "/bin/canberra-gtk-play") " -i desktop-login")))))))
 
    ;; Waybar / Wofi
    (service waybar-service-type
@@ -277,4 +286,45 @@
 
    ;; Desktop conveniences (terminals/aliases/env, etc.).  You already have a
    ;; home-desktop-service; keep it as the place to set common env/aliases.
-   (service home-desktop-service-type)))
+   (service home-desktop-service-type)
+
+   ;; Ensure ~/.claude/settings.json contains the anvil MCP server entry so
+   ;; Claude Code can connect to the running Emacs daemon via anvil.el.
+   ;; anvil-stdio.sh uses #!/bin/bash which doesn't exist on Guix systems.
+   ;; Use bash explicitly as the command and pass the script as the first arg.
+   (simple-service 'claude-anvil-mcp-config
+                   home-activation-service-type
+                   #~(let* ((home (getenv "HOME"))
+                            (settings-file (string-append home "/.claude/settings.json"))
+                            (tmp-file (string-append settings-file ".guix-tmp"))
+                            (bash-path        #$(file-append bash "/bin/bash"))
+                            (emacsclient-dir  #$(file-append emacs "/bin"))
+                            (script-path (string-append home
+                                           "/.config/emacs/straight/repos/anvil.el/anvil-stdio.sh"))
+                            (guix-profile-bin (string-append home "/.guix-home/profile/bin"))
+                            (path-val (string-append guix-profile-bin
+                                                     ":" emacsclient-dir
+                                                     ":/usr/bin:/bin"))
+                            (jq-filter
+                             (string-append
+                              ".mcpServers.anvil = {"
+                              "\"command\": \"" bash-path "\","
+                              "\"args\": [\"" script-path "\","
+                              "\"--server-id=anvil\","
+                              "\"--init-function=anvil-enable\","
+                              "\"--stop-function=anvil-disable\"],"
+                              "\"env\": {"
+                              "\"PATH\": \"" path-val "\","
+                              "\"ANVIL_EMACSCLIENT_RETRY_MAX\": \"300\""
+                              "}}")))
+                       (when (file-exists? settings-file)
+                         (use-modules (ice-9 popen) (ice-9 textual-ports))
+                         (let* ((pipe (open-pipe* OPEN_READ
+                                                  #$(file-append jq "/bin/jq")
+                                                  jq-filter
+                                                  settings-file))
+                                (output (get-string-all pipe)))
+                           (close-pipe pipe)
+                           (call-with-output-file tmp-file
+                             (lambda (port) (display output port)))
+                           (rename-file tmp-file settings-file)))))))
