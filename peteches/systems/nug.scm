@@ -17,6 +17,7 @@
   #:use-module (gnu services certbot)
   #:use-module (gnu packages base)           ; e.g. glibc-locales if you want it
   #:use-module (peteches systems base)
+  #:use-module (peteches system-services firewall)
   #:use-module (peteches system-services tailscale)
   #:use-module (peteches systems network-mounts))
 
@@ -133,6 +134,10 @@
    ;; Host-only services (examples). Add or remove as you need.
    #:extra-services
    (list
+    (simple-service 'nug-guix-publish-firewall
+                    firewall-service-type
+                    (nftables-rules
+                     (input (list "tcp dport 3000 accept comment \"guix-publish\""))))
     (service guix-publish-service-type
              (guix-publish-configuration
 	      (host "0.0.0.0")

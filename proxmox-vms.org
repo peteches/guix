@@ -1,0 +1,249 @@
+#+TITLE: Proxmox VM Management with Guix
+#+AUTHOR: Pete McCabe
+#+DATE: 2026-05-14
+
+* Overview
+
+This document describes how to create, bootstrap, and maintain headless
+GNU Guix VMs running on a Proxmox server. VM system configurations live in
+=peteches/systems/= and use the =make-vm-os= constructor from
+=peteches/systems/vm-base.scm=.
+
+Current VMs:
+
+| File                          | Hostname                    | Role              |
+|-------------------------------+-----------------------------+-------------------|
+| peteches/systems/prometheus.scm | prometheus.peteches.co.uk | Prometheus on :9090 |
+
+* Adding a New VM Config
+
+Create =peteches/systems/<name>.scm= following this template:
+
+#+begin_src scheme
+(define-module (peteches systems <name>)
+  #:use-module (peteches systems vm-base)
+  ;; ... other imports ...
+  #:export (<name>-os))
+
+(define-public <name>-os
+  (operating-system
+   (inherit
+    (make-vm-os
+     #:host-name "<name>.peteches.co.uk"
+     #:bootloader
+     (bootloader-configuration
+      (bootloader grub-bootloader)   ; BIOS/MBR — standard for Proxmox VMs
+      (targets '("/dev/vda"))
+      (keyboard-layout (keyboard-layout "us")))
+     #:file-systems
+     (list
+      (file-system
+        (mount-point "/")
+        (device "/dev/vda1")
+        (type "ext4")))
+     #:extra-services (list ...)
+     #:extra-packages (list ...)))))
+
+<name>-os  ; required: makes guix system build FILE work
+#+end_src
+
+Validate before deploying:
+
+#+begin_src shell
+guix system build -L . --dry-run peteches/systems/<name>.scm
+#+end_src
+
+* Bootstrap: First-Time Provisioning
+
+There are two approaches. The image approach is faster and fully
+declarative; the manual approach is useful if you prefer using the
+interactive installer.
+
+** Approach A: Build and Import a QCOW2 Image (Recommended)
+
+Proxmox uses QCOW2 images natively, so you can build one directly from
+the system config and import it.
+
+*** Step 1: Build the image
+
+Run from the reo root on a machine with Guix and the local channels:
+
+#+begin_src shell
+guix system image -L . -t qcow2 peteches/systems/prometheus.scm
+#+end_src
+
+This prints the path to the resulting =.img= file (a QCOW2 despite the
+extension). The build can take a while on a cold cache.
+
+*** Step 2: Import into Proxmox
+
+Copy the image to the Proxmox host and import it into a new VM. Create
+the VM in the Proxmox web UI first (note its VMID), then on the Proxmox
+host shell:
+
+#+begin_src shell
+# Copy from your workstation
+scp /gnu/store/...-disk-image root@proxmox:/tmp/prometheus.img
+
+# On the Proxmox host: Create a new VM
+qm create 100 --name <name> --memory 2048 --net0 virtio,bridge=vmbr0
+# On the Proxmox host: import as a new disk into VM 100
+qm importdisk 100 /tmp/prometheus.img local-lvm
+
+# Attach it as virtio0 and set it as the boot disk
+qm set 100 --virtio0 local-lvm:vm-100-disk-0 --boot order=virtio0
+#+end_src
+
+Start the VM. It will boot directly into the configured Guix system.
+
+*** Step 3: Authorize the deploy key (automatic)
+
+The coordinator's signing key (from =/etc/guix/signing-key.pub= on nug)
+is baked into =vm-base.scm= via =guix-service-type='s =authorized-keys=
+field. Any VM built with =make-vm-os= already trusts nug to push store
+items. No manual =guix archive --authorize= step is needed.
+
+If you ever rotate the coordinator key or add a second deploy machine,
+update the =plain-file= content in =%authorize-coordinator-key= in
+=peteches/systems/vm-base.scm= and redeploy.
+
+** Approach B: Installer ISO + guix system init
+
+Download the Guix System installer ISO, attach it to a Proxmox VM, and
+boot it. Once in the live environment:
+
+#+begin_src shell
+# Partition and format the disk
+parted /dev/vda mklabel msdos
+parted /dev/vda mkpart primary ext4 1MiB 100%
+mkfs.ext4 /dev/vda1
+
+# Mount
+mount /dev/vda1 /mnt
+
+# Clone the config repo onto the live system
+git clone <repo-url> /tmp/guix-config
+
+# Install the system
+guix system init -L /tmp/guix-config \
+  /tmp/guix-config/peteches/systems/prometheus.scm /mnt
+#+end_src
+
+Reboot. Then follow Step 3 above to authorize the deploy key.
+
+* Ongoing Maintenance with guix deploy=guix deploy= pushes a new system generation to running VMs over SSH
+without requiring manual login. It builds the system locally and sends
+the store paths over SSH to the target.
+
+** The deploy file
+
+Create =peteches/deploy.scm= in the repo root:
+
+#+begin_src scheme
+(use-modules (gnu machine)
+             (gnu machine ssh)
+             (peteches systems prometheus))
+
+(list
+ (machine
+  (operating-system prometheus-os)
+  (environment managed-host-environment-type)
+  (configuration
+   (machine-ssh-configuration
+    (host-name "prometheus.peteches.co.uk")
+    (system "x86_64-linux")
+    (user "peteches")       ; must have passwordless sudo in sudoers
+    (identity "/home/peteches/.ssh/id_ed25519")))))
+#+end_src
+
+For additional VMs, add more =machine= entries to the list. Each VM
+must export its OS from its module (the =prometheus-os= pattern above).
+
+** Prerequisites
+1. *SSH access* — your key must be in =~/.ssh/authorized_keys= on each VM.
+   If bootstrapped via the image approach, the peteches user has no
+   authorized keys by default; add one via the Proxmox console first.
+
+2. *Store key authorization* — already handled: the coordinator's signing
+   key is embedded in =vm-base.scm= and applied at system init time.
+
+3. *Passwordless sudo* — the =make-vm-os= sudoers config already grants
+   =%wheel ALL=(ALL) ALL= but without =NOPASSWD=. For non-interactive
+   deploy you need =NOPASSWD=. Override in =extra-services=:
+
+   #+begin_src scheme
+   (extra-services
+    (list
+     (simple-service 'deploy-sudo etc-service-type
+                     (list `("sudoers.d/deploy"
+                             ,(plain-file "deploy-sudoers"
+                                          "peteches ALL=(ALL) NOPASSWD: ALL\n"))))))
+   #+end_src
+
+** Running a deployment
+
+#+begin_src shell
+# Deploy all machines in the file
+guix deploy -L . peteches/deploy.scm
+
+# Dry-run (build only, no switch)
+guix deploy -L . --dry-run peteches/deploy.scm
+
+# Deploy a single machine by filtering (run from Scheme)
+# (not natively supported; edit deploy.scm to a single-entry list)
+#+end_src
+
+** Rolling back
+
+If a deployment breaks a VM, roll back on the VM itself:
+
+#+begin_src shell
+# Via guix deploy --roll-back
+guix deploy -L . --roll-back peteches/deploy.scm
+
+# Or directly on the VM
+ssh peteches@prometheus.peteches.co.uk sudo guix system roll-back
+#+end_src
+
+* Updating the Prometheus Config
+
+To change scrape targets or add recording rules, edit
+=peteches/systems/prometheus.scm=. The =prometheus.yml= is defined
+inline as a =plain-file=. After editing, deploy:
+
+#+begin_src shell
+guix deploy -L . peteches/deploy.scm
+#+end_src
+
+Prometheus is managed by Shepherd; the deploy reconfigures the system
+and restarts the service if the config changed.
+
+To reload Prometheus without a full reconfigure (on the VM):
+
+#+begin_src shell
+herd restart prometheus
+# or send SIGHUP for a config reload without restart:
+kill -HUP $(herd status prometheus | grep PID | awk '{print $2}')
+#+end_src
+
+* Upgrading Prometheus
+
+Update the version and hash in =peteches/packages/prometheus.scm=:
+
+#+begin_src shell
+# Get the new hash
+guix download https://github.com/prometheus/prometheus/releases/download/vX.Y.Z/prometheus-X.Y.Z.linux-amd64.tar.gz
+#+end_src
+
+Update =version= and the =base32= hash in the package definition, then
+redeploy.
+
+* Troubleshooting
+
+| Symptom | Check |
+|---------+-------|
+| VM not reachable after deploy | Boot via Proxmox console; check Shepherd status with =herd status= |
+| Prometheus not starting | =herd status prometheus=; logs at =/var/log/prometheus.log= |
+| Deploy fails at store transfer | Key mismatch — check =%authorize-coordinator-key= in =vm-base.scm= matches =/etc/guix/signing-key.pub= on the coordinator |
+| DHCP not getting an IP | Check Proxmox bridge/VLAN config; =ip addr= in Proxmox console |
+| Clock skew warnings | Check NTP: =herd status ntpd= |

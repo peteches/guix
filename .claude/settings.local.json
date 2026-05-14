@@ -2,7 +2,10 @@
   "permissions": {
     "allow": [
       "WebFetch(domain:github.com)",
-      "Bash(git ls-remote *)"
+      "Bash(git ls-remote *)",
+      "Bash(guix search *)",
+      "Bash(guix show *)",
+      "Bash(awk '/syslog/{print NR\": \"$0}')"
     ]
   }
 }
