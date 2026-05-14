@@ -46,9 +46,22 @@ scrape_configs:
       - targets:
           - \"localhost:9090\"
   - job_name: \"proxmox\"
+    metrics_path: /pve
+    params:
+      module:
+        - default
     static_configs:
       - targets:
-          - \"192.168.50.220:9221\"
+          - \"192.168.50.220\"
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: __param_target
+
+      - source_labels: [__param_target]
+        target_label: instance
+
+      - target_label: __address__
+        replacement: \"192.168.50.220:9221\"
 "))
 
 (define %prometheus-shepherd-service
