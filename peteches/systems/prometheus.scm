@@ -48,7 +48,7 @@ scrape_configs:
   - job_name: \"proxmox\"
     static_configs:
       - targets:
-          - \"192.168.1.20:9221\"
+          - \"192.168.50.187:9221\"
 "))
 
 (define %prometheus-shepherd-service
@@ -104,6 +104,11 @@ scrape_configs:
      ;; Shepherd service
      (simple-service 'prometheus-shepherd shepherd-root-service-type
                      (list %prometheus-shepherd-service))
+     ;; Restart prometheus after reconfigure
+     (simple-service 'prometheus-restart activation-service-type
+                     #~(when (file-exists? "/run/shepherd/socket")
+                         (system* #$(file-append shepherd "/bin/herd")
+                                  "restart" "prometheus")))
      ;; Open port 9090 in the firewall
      (simple-service 'prometheus-firewall firewall-service-type
                      (nftables-rules
