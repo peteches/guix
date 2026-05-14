@@ -48,7 +48,7 @@ scrape_configs:
   - job_name: \"proxmox\"
     static_configs:
       - targets:
-          - \"192.168.50.187:9221\"
+          - \"192.168.50.220:9221\"
 "))
 
 (define %prometheus-shepherd-service
