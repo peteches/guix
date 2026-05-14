@@ -80,10 +80,11 @@
             (service openssh-service-type
                      (openssh-configuration
                       (authorized-keys
-                       `(("peteches@nug" ,(plain-file "peteches-nug.pub"
-                                       "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIMddPKUs7sbjMj8GtmzytHhGx7JOoCikqPEBuwE50qa7 peteches@nug"))
-			 ("peteches@nyarlothotep" ,(plain-file "peteches-nyarlothotep.pub"
-						  "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIM28x2V8tgwfzjyhapMayamDFwviOTHfU4W9BMnmc70w peteches@nyarlothotep.peteches.co.uk"))))))
+                       `(("peteches"
+                          ,(plain-file "peteches-nug.pub"
+                                       "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIMddPKUs7sbjMj8GtmzytHhGx7JOoCikqPEBuwE50qa7 peteches@nug")
+                          ,(plain-file "peteches-nyarlothotep.pub"
+                                       "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIM28x2V8tgwfzjyhapMayamDFwviOTHfU4W9BMnmc70w peteches@nyarlothotep.peteches.co.uk"))))))
             (service dhcpcd-service-type)
             (service ntp-service-type)
             (service qemu-guest-agent-service-type)
