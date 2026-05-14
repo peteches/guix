@@ -43,7 +43,12 @@ global:
 scrape_configs:
   - job_name: \"prometheus\"
     static_configs:
-      - targets: [\"localhost:9090\"]
+      - targets:
+          - \"localhost:9090\"
+  - job_name: \"proxmox\"
+    static_configs:
+      - targets:
+          - \"192.168.1.20:9221\"
 "))
 
 (define %prometheus-shepherd-service
