@@ -20,6 +20,7 @@
   #:use-module (gnu services dns)
   #:use-module (gnu services virtualization)
   #:use-module (gnu services networking) ; tor-service-type
+  #:use-module (gnu services monitoring)
   #:use-module (gnu services sysctl)
 
   #:use-module (guix-science-nonfree packages cuda)
@@ -146,6 +147,7 @@
                   "ct state { established, related } accept comment \"established/related\""
 
                   "tcp dport 22 accept comment \"ssh\""
+                  "tcp dport 9100 accept comment \"prometheus node-exporter\""
                   "tcp dport 8188 accept comment \"comfyui\""
                   "tcp dport { 5001, 5002, 5003 } accept comment \"KoboldCpp\""
                   "tcp dport 80 accept comment \"required for certbot acme approvals\""
@@ -200,7 +202,8 @@
 						  (list my-pam-entry))))
 					pam)))))))
 	(service boltd-service-type)
-        (service gpm-service-type)))
+        (service gpm-service-type)
+        (service prometheus-node-exporter-service-type)))
 
 (define %common-packages
   (map specification->package (list "hyprland" "bolt" "fprintd"  "font-terminus" "virt-manager" "qemu")))

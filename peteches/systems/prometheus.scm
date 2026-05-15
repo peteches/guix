@@ -10,6 +10,7 @@
   #:use-module (gnu system keyboard)
   #:use-module (gnu services)
   #:use-module (peteches systems vm-base)
+  #:use-module (peteches systems monitored-hosts)
   #:use-module (peteches system-services prometheus)
   #:export (prometheus-os))
 
@@ -18,6 +19,8 @@
    (inherit
     (make-vm-os
      #:host-name "prometheus.peteches.co.uk"
+     #:ipv4-address "192.168.51.187/23"
+     #:ipv6-address "2a10:d582:ef59::100/64"
      #:bootloader
      (bootloader-configuration
       (bootloader grub-bootloader)
@@ -41,12 +44,20 @@
                     (list (prometheus-static-config
                            (targets '("localhost:9090"))))))
                   (prometheus-scrape-config
+                   (job-name "node")
+                   (static-configs
+                    (map (lambda (host)
+                           (prometheus-static-config
+                            (targets (list (cdr host)))
+                            (labels `(("instance" . ,(car host))))))
+                         %monitored-hosts)))
+                  (prometheus-scrape-config
                    (job-name "proxmox")
                    (metrics-path "/pve")
                    (params '(("module" . ("default"))))
                    (static-configs
                     (list (prometheus-static-config
-                           (targets '("192.168.50.220")))))
+                           (targets '("192.168.51.1")))))
                    (relabel-configs
                     (list
                      (prometheus-relabel-config
@@ -57,6 +68,6 @@
                       (target-label "instance"))
                      (prometheus-relabel-config
                       (target-label "__address__")
-                      (replacement "192.168.50.220:9221"))))))))))))))
+                      (replacement "192.168.51.1:9221"))))))))))))))
 
 prometheus-os

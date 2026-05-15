@@ -16,6 +16,7 @@
   #:use-module (gnu services base)
   #:use-module (gnu services networking)
   #:use-module (gnu services ssh)
+  #:use-module (gnu services monitoring)
   #:use-module (gnu services virtualization)
   #:use-module (gnu packages linux)
   #:use-module (peteches system-services firewall)
@@ -52,16 +53,20 @@
                     (list (plain-file "nug-coordinator.pub"
                                       "(public-key (ecc (curve Ed25519) (q #89306B461D55FBB9F6A60C75463BA2AEE181FB3E8FA5F46CB2E1C29157ACA88A#)))"))))))
 
+(define %vm-interface   "eth0")
+(define %vm-ipv4-gw    "192.168.50.1")
+(define %vm-ipv6-gw    "2a10:d582:ef59::1")
+(define %vm-nameservers '("192.168.50.1"))
+
 (define %vm-base-firewall
   (nftables-rules
    (input (list
            "iifname \"lo\" accept comment \"loopback\""
            "ct state { established, related } accept comment \"established/related\""
            "tcp dport 22 accept comment \"ssh\""
+           "tcp dport 9100 accept comment \"prometheus node-exporter\""
            "ip protocol icmp accept comment \"icmpv4\""
-           "ip6 nexthdr ipv6-icmp accept comment \"icmpv6\""
-           "udp sport 67 udp dport 68 accept comment \"dhcpv4 client\""
-           "udp sport 547 udp dport 546 accept comment \"dhcpv6 client\""))))
+           "ip6 nexthdr ipv6-icmp accept comment \"icmpv6\""))))
 
 (define* (make-vm-os
           #:key host-name bootloader file-systems
@@ -71,7 +76,9 @@
           (users-extra '())
           (extra-services '())
           (extra-packages '())
-          (with-nonguix? #f))
+          (with-nonguix? #f)
+          (ipv4-address #f)
+          (ipv6-address #f))
   (let* ((nonguix-services (if with-nonguix? (list (nonguix-substitute-service)) '()))
          (final-services
           (append
@@ -85,10 +92,32 @@
                                        "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIMddPKUs7sbjMj8GtmzytHhGx7JOoCikqPEBuwE50qa7 peteches@nug\n")
                           ,(plain-file "peteches-nyarlothotep.pub"
                                        "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIM28x2V8tgwfzjyhapMayamDFwviOTHfU4W9BMnmc70w peteches@nyarlothotep.peteches.co.uk\n"))))))
-            (service dhcpcd-service-type)
+            (if ipv4-address
+                (service static-networking-service-type
+                         (list (static-networking
+                                (addresses
+                                 (append
+                                  (list (network-address (device %vm-interface)
+                                                         (value ipv4-address)))
+                                  (if ipv6-address
+                                      (list (network-address (device %vm-interface)
+                                                             (value ipv6-address)))
+                                      '())))
+                                (routes
+                                 (append
+                                  (list (network-route (destination "default")
+                                                       (gateway %vm-ipv4-gw)))
+                                  (if ipv6-address
+                                      (list (network-route (destination "default")
+                                                           (gateway %vm-ipv6-gw)
+                                                           (ipv6? #t)))
+                                      '())))
+                                (name-servers %vm-nameservers))))
+                (service dhcpcd-service-type))
             (service ntp-service-type)
             (service qemu-guest-agent-service-type)
             (service firewall-service-type %vm-base-firewall)
+            (service prometheus-node-exporter-service-type)
             %authorize-coordinator-key)
            nonguix-services
            extra-services)))

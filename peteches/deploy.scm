@@ -8,8 +8,8 @@
   (environment managed-host-environment-type)
   (configuration
    (machine-ssh-configuration
-    (host-name "192.168.50.187")
-    (host-key "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFh/NM/YrG0YSdc9kdhkO9loE9eHSji8y0AVOI4krpKp")
+    (host-name "192.168.51.187")
+    (host-key "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIGsfnyYYTnWc9jkaaWEL7LwpBPtEtb/aaPJ+KcDc2KWu")
     (system "x86_64-linux")
     (user "peteches")       ; must have passwordless sudo in sudoers
     (identity "/home/peteches/.ssh/id_ed25519")))))
