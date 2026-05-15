@@ -7,9 +7,10 @@
 ;;  - FTL must start as root to bind port 53; it manages its own privilege
 ;;    handling internally.
 ;;  - Config files installed via etc-service-type are read-only (store-derived).
-;;    Activation copies pihole.toml to data-dir for FTL to read/write at runtime.
-;;  - Gravity (blocklist database) lives in data-dir; populate it via the web
-;;    interface or the API after first boot.
+;;    Activation copies pihole.toml to /etc/pihole/ for FTL to read/write.
+;;  - Gravity (blocklist database) lives in data-dir.  Adlist URLs are seeded
+;;    (INSERT OR IGNORE) on every reconfigure; pihole-FTL gravity downloads
+;;    the actual blocklists on every reconfigure and nightly via mcron.
 
 (define-module (peteches system-services pihole)
   #:use-module (guix gexp)
@@ -17,6 +18,8 @@
   #:use-module (gnu services)
   #:use-module (gnu services shepherd)
   #:use-module (gnu services base)
+  #:use-module (gnu services admin)
+  #:use-module (gnu services mcron)
   #:use-module (gnu system shadow)
   #:use-module (gnu packages admin)
   #:use-module (gnu packages dns)
@@ -25,6 +28,8 @@
   #:use-module (peteches system-services firewall)
   #:export (pihole-unbound-configuration
             pihole-unbound-configuration?
+            pihole-custom-host
+            pihole-custom-host?
             pihole-configuration
             pihole-configuration?
             %default-pihole-adlists
@@ -35,7 +40,221 @@
 (define %default-pihole-adlists
   '("https://raw.githubusercontent.com/StevenBlack/hosts/master/hosts"))
 
+;; Verbatim content of advanced/Templates/gravity.db.sql from the pi-hole/pi-hole
+;; repository (schema v20, Pi-hole v6).  Used by pihole-activation to seed an
+;; empty gravity.db on first boot via pihole-FTL's built-in sqlite3 subcommand.
+(define %gravity-db-sql
+  "PRAGMA foreign_keys=OFF;
+BEGIN TRANSACTION;
+
+CREATE TABLE \"group\"
+(
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    enabled BOOLEAN NOT NULL DEFAULT 1,
+    name TEXT UNIQUE NOT NULL,
+    date_added INTEGER NOT NULL DEFAULT (cast(strftime('%s', 'now') as int)),
+    date_modified INTEGER NOT NULL DEFAULT (cast(strftime('%s', 'now') as int)),
+    description TEXT
+);
+INSERT INTO \"group\" (id,enabled,name,description) VALUES (0,1,'Default','The default group');
+
+CREATE TABLE domainlist
+(
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    type INTEGER NOT NULL DEFAULT 0,
+    domain TEXT NOT NULL,
+    enabled BOOLEAN NOT NULL DEFAULT 1,
+    date_added INTEGER NOT NULL DEFAULT (cast(strftime('%s', 'now') as int)),
+    date_modified INTEGER NOT NULL DEFAULT (cast(strftime('%s', 'now') as int)),
+    comment TEXT,
+    UNIQUE(domain, type)
+);
+
+CREATE TABLE adlist
+(
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    address TEXT NOT NULL,
+    enabled BOOLEAN NOT NULL DEFAULT 1,
+    date_added INTEGER NOT NULL DEFAULT (cast(strftime('%s', 'now') as int)),
+    date_modified INTEGER NOT NULL DEFAULT (cast(strftime('%s', 'now') as int)),
+    comment TEXT,
+    date_updated INTEGER,
+    number INTEGER NOT NULL DEFAULT 0,
+    invalid_domains INTEGER NOT NULL DEFAULT 0,
+    status INTEGER NOT NULL DEFAULT 0,
+    abp_entries INTEGER NOT NULL DEFAULT 0,
+    type INTEGER NOT NULL DEFAULT 0,
+    UNIQUE(address, type)
+);
+
+CREATE TABLE adlist_by_group
+(
+    adlist_id INTEGER NOT NULL REFERENCES adlist (id) ON DELETE CASCADE,
+    group_id INTEGER NOT NULL REFERENCES \"group\" (id) ON DELETE CASCADE,
+    PRIMARY KEY (adlist_id, group_id)
+);
+
+CREATE TABLE gravity
+(
+    domain TEXT NOT NULL,
+    adlist_id INTEGER NOT NULL REFERENCES adlist (id)
+);
+
+CREATE TABLE antigravity
+(
+    domain TEXT NOT NULL,
+    adlist_id INTEGER NOT NULL REFERENCES adlist (id)
+);
+
+CREATE TABLE info
+(
+    property TEXT PRIMARY KEY,
+    value TEXT NOT NULL
+);
+
+INSERT INTO \"info\" VALUES('version','20');
+INSERT INTO \"info\" VALUES('gravity_restored','false');
+INSERT INTO \"info\" VALUES('updated','0');
+
+CREATE TABLE domainlist_by_group
+(
+    domainlist_id INTEGER NOT NULL REFERENCES domainlist (id) ON DELETE CASCADE,
+    group_id INTEGER NOT NULL REFERENCES \"group\" (id) ON DELETE CASCADE,
+    PRIMARY KEY (domainlist_id, group_id)
+);
+
+CREATE TABLE client
+(
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    ip TEXT NOT NULL UNIQUE,
+    date_added INTEGER NOT NULL DEFAULT (cast(strftime('%s', 'now') as int)),
+    date_modified INTEGER NOT NULL DEFAULT (cast(strftime('%s', 'now') as int)),
+    comment TEXT
+);
+
+CREATE TABLE client_by_group
+(
+    client_id INTEGER NOT NULL REFERENCES client (id) ON DELETE CASCADE,
+    group_id INTEGER NOT NULL REFERENCES \"group\" (id) ON DELETE CASCADE,
+    PRIMARY KEY (client_id, group_id)
+);
+
+CREATE TRIGGER tr_adlist_update AFTER UPDATE OF address,enabled,comment ON adlist
+    BEGIN
+      UPDATE adlist SET date_modified = (cast(strftime('%s', 'now') as int)) WHERE id = NEW.id;
+    END;
+
+CREATE TRIGGER tr_client_update AFTER UPDATE ON client
+    BEGIN
+      UPDATE client SET date_modified = (cast(strftime('%s', 'now') as int)) WHERE ip = NEW.ip;
+    END;
+
+CREATE TRIGGER tr_domainlist_update AFTER UPDATE ON domainlist
+    BEGIN
+      UPDATE domainlist SET date_modified = (cast(strftime('%s', 'now') as int)) WHERE domain = NEW.domain;
+    END;
+
+CREATE VIEW vw_allowlist AS SELECT domain, domainlist.id AS id, domainlist_by_group.group_id AS group_id
+    FROM domainlist
+    LEFT JOIN domainlist_by_group ON domainlist_by_group.domainlist_id = domainlist.id
+    LEFT JOIN \"group\" ON \"group\".id = domainlist_by_group.group_id
+    WHERE domainlist.enabled = 1 AND (domainlist_by_group.group_id IS NULL OR \"group\".enabled = 1)
+    AND domainlist.type = 0
+    ORDER BY domainlist.id;
+
+CREATE VIEW vw_denylist AS SELECT domain, domainlist.id AS id, domainlist_by_group.group_id AS group_id
+    FROM domainlist
+    LEFT JOIN domainlist_by_group ON domainlist_by_group.domainlist_id = domainlist.id
+    LEFT JOIN \"group\" ON \"group\".id = domainlist_by_group.group_id
+    WHERE domainlist.enabled = 1 AND (domainlist_by_group.group_id IS NULL OR \"group\".enabled = 1)
+    AND domainlist.type = 1
+    ORDER BY domainlist.id;
+
+CREATE VIEW vw_regex_allowlist AS SELECT domain, domainlist.id AS id, domainlist_by_group.group_id AS group_id
+    FROM domainlist
+    LEFT JOIN domainlist_by_group ON domainlist_by_group.domainlist_id = domainlist.id
+    LEFT JOIN \"group\" ON \"group\".id = domainlist_by_group.group_id
+    WHERE domainlist.enabled = 1 AND (domainlist_by_group.group_id IS NULL OR \"group\".enabled = 1)
+    AND domainlist.type = 2
+    ORDER BY domainlist.id;
+
+CREATE VIEW vw_regex_denylist AS SELECT domain, domainlist.id AS id, domainlist_by_group.group_id AS group_id
+    FROM domainlist
+    LEFT JOIN domainlist_by_group ON domainlist_by_group.domainlist_id = domainlist.id
+    LEFT JOIN \"group\" ON \"group\".id = domainlist_by_group.group_id
+    WHERE domainlist.enabled = 1 AND (domainlist_by_group.group_id IS NULL OR \"group\".enabled = 1)
+    AND domainlist.type = 3
+    ORDER BY domainlist.id;
+
+CREATE VIEW vw_gravity AS SELECT domain, adlist.id AS adlist_id, adlist_by_group.group_id AS group_id
+    FROM gravity
+    LEFT JOIN adlist_by_group ON adlist_by_group.adlist_id = gravity.adlist_id
+    LEFT JOIN adlist ON adlist.id = gravity.adlist_id
+    LEFT JOIN \"group\" ON \"group\".id = adlist_by_group.group_id
+    WHERE adlist.enabled = 1 AND (adlist_by_group.group_id IS NULL OR \"group\".enabled = 1);
+
+CREATE VIEW vw_antigravity AS SELECT domain, adlist.id AS adlist_id, adlist_by_group.group_id AS group_id
+    FROM antigravity
+    LEFT JOIN adlist_by_group ON adlist_by_group.adlist_id = antigravity.adlist_id
+    LEFT JOIN adlist ON adlist.id = antigravity.adlist_id
+    LEFT JOIN \"group\" ON \"group\".id = adlist_by_group.group_id
+    WHERE adlist.enabled = 1 AND (adlist_by_group.group_id IS NULL OR \"group\".enabled = 1) AND adlist.type = 1;
+
+CREATE VIEW vw_adlist AS SELECT DISTINCT address, id, type
+    FROM adlist
+    WHERE enabled = 1
+    ORDER BY id;
+
+CREATE TRIGGER tr_domainlist_add AFTER INSERT ON domainlist
+    BEGIN
+      INSERT INTO domainlist_by_group (domainlist_id, group_id) VALUES (NEW.id, 0);
+    END;
+
+CREATE TRIGGER tr_client_add AFTER INSERT ON client
+    BEGIN
+      INSERT INTO client_by_group (client_id, group_id) VALUES (NEW.id, 0);
+    END;
+
+CREATE TRIGGER tr_adlist_add AFTER INSERT ON adlist
+    BEGIN
+      INSERT INTO adlist_by_group (adlist_id, group_id) VALUES (NEW.id, 0);
+    END;
+
+CREATE TRIGGER tr_group_update AFTER UPDATE ON \"group\"
+    BEGIN
+      UPDATE \"group\" SET date_modified = (cast(strftime('%s', 'now') as int)) WHERE id = NEW.id;
+    END;
+
+CREATE TRIGGER tr_group_zero AFTER DELETE ON \"group\"
+    BEGIN
+      INSERT OR IGNORE INTO \"group\" (id,enabled,name) VALUES (0,1,'Default');
+    END;
+
+CREATE TRIGGER tr_domainlist_delete AFTER DELETE ON domainlist
+    BEGIN
+      DELETE FROM domainlist_by_group WHERE domainlist_id = OLD.id;
+    END;
+
+CREATE TRIGGER tr_adlist_delete AFTER DELETE ON adlist
+    BEGIN
+      DELETE FROM adlist_by_group WHERE adlist_id = OLD.id;
+    END;
+
+CREATE TRIGGER tr_client_delete AFTER DELETE ON client
+    BEGIN
+      DELETE FROM client_by_group WHERE client_id = OLD.id;
+    END;
+
+COMMIT;
+")
+
 ;;; ── Record types ─────────────────────────────────────────────────────────
+
+(define-record-type* <pihole-custom-host>
+  pihole-custom-host make-pihole-custom-host
+  pihole-custom-host?
+  (address  pihole-custom-host-address)
+  (hostname pihole-custom-host-hostname))
 
 (define-record-type* <pihole-unbound-configuration>
   pihole-unbound-configuration make-pihole-unbound-configuration
@@ -48,30 +267,39 @@
 (define-record-type* <pihole-configuration>
   pihole-configuration make-pihole-configuration
   pihole-configuration?
-  (package        pihole-configuration-package        (default pihole-ftl))
+  (package                 pihole-configuration-package                 (default pihole-ftl))
   ;; Network interface FTL binds to.
-  (interface      pihole-configuration-interface      (default "eth0"))
+  (interface               pihole-configuration-interface               (default "eth0"))
   ;; Upstream DNS servers.  When with-unbound? is #t this is overridden to
   ;; point at the local Unbound instance.
-  (dns-upstreams  pihole-configuration-dns-upstreams  (default '("8.8.8.8" "8.8.4.4")))
+  (dns-upstreams           pihole-configuration-dns-upstreams           (default '("8.8.8.8" "8.8.4.4")))
   ;; Blocking reply mode: "NULL" | "NXDOMAIN" | "NODATA" | "IP" | "IP_NODATA_AAAA"
-  (blocking-mode  pihole-configuration-blocking-mode  (default "NULL"))
+  (blocking-mode           pihole-configuration-blocking-mode           (default "NULL"))
   ;; Enable DNS query logging.
-  (query-logging? pihole-configuration-query-logging? (default #t))
+  (query-logging?          pihole-configuration-query-logging?          (default #t))
   ;; Writable directory for FTL databases (gravity.db, pihole-FTL.db, etc.)
-  (data-dir       pihole-configuration-data-dir       (default "/var/lib/pihole"))
+  (data-dir                pihole-configuration-data-dir                (default "/var/lib/pihole"))
   ;; Directory for FTL, dnsmasq and webserver log files.
-  (log-dir        pihole-configuration-log-dir        (default "/var/log/pihole"))
+  (log-dir                 pihole-configuration-log-dir                 (default "/var/log/pihole"))
   ;; HTTP port for the built-in web interface.  Set to #f to disable.
-  (web-port       pihole-configuration-web-port       (default 80))
+  (web-port                pihole-configuration-web-port                (default 80))
+  ;; Bcrypt hash for the web interface admin password.  Empty string = no
+  ;; password (open access).  Generate with: pihole setpassword
+  (webserver-password-hash pihole-configuration-webserver-password-hash (default ""))
   ;; When #t, also start an Unbound recursive resolver and point FTL at it.
-  (with-unbound?  pihole-configuration-with-unbound?  (default #f))
+  (with-unbound?           pihole-configuration-with-unbound?           (default #f))
   ;; Unbound configuration (used only when with-unbound? is #t).
-  (unbound        pihole-configuration-unbound        (default (pihole-unbound-configuration)))
+  (unbound                 pihole-configuration-unbound                 (default (pihole-unbound-configuration)))
+  ;; Blocklist URLs seeded into gravity.db (INSERT OR IGNORE on every reconfigure).
+  (adlists                 pihole-configuration-adlists                 (default %default-pihole-adlists))
+  ;; Custom local DNS records installed as /etc/pihole/hosts/custom.list.
+  (custom-hosts            pihole-configuration-custom-hosts            (default '()))
+  ;; mcron schedule for nightly gravity updates (crontab format).
+  (gravity-update-schedule pihole-configuration-gravity-update-schedule (default "15 3 * * *"))
   ;; Raw TOML appended verbatim after the generated sections.
-  (extra-toml     pihole-configuration-extra-toml     (default ""))
+  (extra-toml              pihole-configuration-extra-toml              (default ""))
   ;; Extra CLI arguments passed to pihole-FTL.
-  (extra-args     pihole-configuration-extra-args     (default '())))
+  (extra-args              pihole-configuration-extra-args              (default '())))
 
 ;;; ── TOML / config-file rendering ─────────────────────────────────────────
 ;;
@@ -91,19 +319,20 @@
 
 (define (render-pihole-toml config)
   "Produce a complete pihole.toml string for pihole-FTL v6."
-  (let* ((with-ub?      (pihole-configuration-with-unbound? config))
-         (ub            (pihole-configuration-unbound config))
-         (upstreams     (if with-ub?
-                            (list (string-append
-                                   (pihole-unbound-configuration-listen-address ub)
-                                   "#"
-                                   (number->string
-                                    (pihole-unbound-configuration-listen-port ub))))
-                            (pihole-configuration-dns-upstreams config)))
-         (data-dir      (pihole-configuration-data-dir config))
-         (log-dir       (pihole-configuration-log-dir config))
-         (web-port      (pihole-configuration-web-port config))
-         (extra         (pihole-configuration-extra-toml config)))
+  (let* ((with-ub?  (pihole-configuration-with-unbound? config))
+         (ub        (pihole-configuration-unbound config))
+         (upstreams (if with-ub?
+                        (list (string-append
+                               (pihole-unbound-configuration-listen-address ub)
+                               "#"
+                               (number->string
+                                (pihole-unbound-configuration-listen-port ub))))
+                        (pihole-configuration-dns-upstreams config)))
+         (data-dir  (pihole-configuration-data-dir config))
+         (log-dir   (pihole-configuration-log-dir config))
+         (web-port  (pihole-configuration-web-port config))
+         (pw-hash   (pihole-configuration-webserver-password-hash config))
+         (extra     (pihole-configuration-extra-toml config)))
     (string-append
      "[dns]\n"
      "  upstreams = " (toml-string-array upstreams) "\n"
@@ -126,6 +355,9 @@
      "  port = " (toml-string (if web-port
                                   (string-append (number->string web-port) "o")
                                   "")) "\n"
+     (if (string=? pw-hash "")
+         ""
+         (string-append "  api.password = " (toml-string pw-hash) "\n"))
      "\n"
      "[ntp]\n"
      "  sync.active = false\n"
@@ -163,6 +395,35 @@
      "    private-address: fe80::/10\n"
      xtra "\n")))
 
+(define (render-custom-hosts hosts)
+  "Render a list of <pihole-custom-host> records to custom.list format (ip hostname)."
+  (if (null? hosts)
+      ""
+      (string-append
+       (string-join
+        (map (lambda (h)
+               (string-append (pihole-custom-host-address h)
+                              " "
+                              (pihole-custom-host-hostname h)))
+             hosts)
+        "\n")
+       "\n")))
+
+(define (render-adlist-sql adlists)
+  "Generate SQL to INSERT OR IGNORE adlist URLs into gravity.db."
+  (if (null? adlists)
+      ""
+      (string-append
+       "BEGIN TRANSACTION;\n"
+       (string-join
+        (map (lambda (url)
+               (string-append
+                "INSERT OR IGNORE INTO adlist (address,enabled,comment)"
+                " VALUES ('" url "',1,'Added by Guix configuration');"))
+             adlists)
+        "\n")
+       "\nCOMMIT;\n")))
+
 ;;; ── Service extension helpers ─────────────────────────────────────────────
 
 (define (pihole-accounts config)
@@ -193,41 +454,90 @@
        '())))
 
 (define (pihole-activation config)
-  ;; Bind the generated TOML as a store file-like so the gexp can reference it
-  ;; directly — this avoids putting pihole.toml in /etc/ where FTL would try to
-  ;; chown it (a read-only store symlink).
-  (let* ((data-dir  (pihole-configuration-data-dir config))
-         (log-dir   (pihole-configuration-log-dir config))
-         (toml-file (plain-file "pihole.toml" (render-pihole-toml config))))
+  (let* ((pkg             (pihole-configuration-package config))
+         (data-dir        (pihole-configuration-data-dir config))
+         (log-dir         (pihole-configuration-log-dir config))
+         (adlists         (pihole-configuration-adlists config))
+         (toml-file       (plain-file "pihole.toml" (render-pihole-toml config)))
+         (custom-list     (plain-file "custom.list"
+                                      (render-custom-hosts
+                                       (pihole-configuration-custom-hosts config))))
+         (sql-file        (plain-file "gravity.db.sql" %gravity-db-sql))
+         (adlist-sql      (plain-file "adlist-seed.sql" (render-adlist-sql adlists))))
     #~(begin
         (use-modules (guix build utils))
         (mkdir-p #$data-dir)
         (mkdir-p #$log-dir)
         (mkdir-p "/run/pihole")
+        ;; /etc/pihole must be a real writable directory — not a store symlink —
+        ;; so FTL can chown its config file and write runtime state.
+        ;; etc-service-type must NOT install anything under pihole/ for the same reason.
+        (mkdir-p "/etc/pihole/hosts")
         ;; Ensure pihole user owns writable directories.
         (let* ((pw  (getpwnam "pihole"))
                (uid (passwd:uid pw))
                (gid (passwd:gid pw)))
           (chown #$data-dir uid gid)
           (chown #$log-dir  uid gid)
-          (chown "/run/pihole" uid gid))
-        ;; Copy the store-derived pihole.toml to the writable data-dir.
+          (chown "/run/pihole" uid gid)
+          (chown "/etc/pihole" uid gid)
+          (chown "/etc/pihole/hosts" uid gid))
+        ;; Copy store-derived pihole.toml to /etc/pihole/pihole.toml as a real file.
+        ;; Always replace a symlink (leftover from a previous etc-service deployment).
         ;; Overwrites when the store version is newer (i.e. after reconfiguration).
         (let ((src #$toml-file)
-              (dst (string-append #$data-dir "/pihole.toml")))
+              (dst "/etc/pihole/pihole.toml"))
           (when (or (not (file-exists? dst))
+                    (eq? 'symlink (stat:type (lstat dst)))
                     (> (stat:mtime (stat src))
                        (stat:mtime (stat dst))))
+            (when (file-exists? dst)
+              (delete-file dst))
             (copy-file src dst)
             (let* ((pw  (getpwnam "pihole"))
                    (uid (passwd:uid pw))
                    (gid (passwd:gid pw)))
-              (chown dst uid gid)))))))
+              (chown dst uid gid))))
+        ;; Install custom.list (always replace from store version on reconfigure).
+        (let ((src #$custom-list)
+              (dst "/etc/pihole/hosts/custom.list"))
+          (when (file-exists? dst) (delete-file dst))
+          (copy-file src dst)
+          (chmod dst #o660)
+          (let* ((pw  (getpwnam "pihole"))
+                 (uid (passwd:uid pw))
+                 (gid (passwd:gid pw)))
+            (chown dst uid gid)))
+        ;; Seed gravity.db with the Pi-hole v20 schema if it does not yet exist.
+        ;; FTL auto-creates pihole-FTL.db but not gravity.db; the official installer
+        ;; does this via gravity.sh using pihole-FTL's built-in sqlite3 subcommand.
+        (let ((gravity-db (string-append #$data-dir "/gravity.db")))
+          (unless (file-exists? gravity-db)
+            (invoke #$(file-append pkg "/bin/pihole-FTL")
+                    "sqlite3" gravity-db
+                    (string-append ".read " #$sql-file)
+                    ".quit")
+            (let* ((pw  (getpwnam "pihole"))
+                   (uid (passwd:uid pw))
+                   (gid (passwd:gid pw)))
+              (chown gravity-db uid gid))))
+        ;; Seed configured adlists on every reconfigure (INSERT OR IGNORE is
+        ;; idempotent; a no-op if the URL is already present).
+        (invoke #$(file-append pkg "/bin/pihole-FTL")
+                "sqlite3" (string-append #$data-dir "/gravity.db")
+                (string-append ".read " #$adlist-sql)
+                ".quit")
+        ;; Download blocklists as pihole user.  Runs on every reconfigure to
+        ;; keep lists current; the mcron job handles nightly updates between
+        ;; reconfigures.  Failure is non-fatal (e.g. no network yet).
+        (system* "su" "-s" "/bin/sh" "-c"
+                 (string-append #$(file-append pkg "/bin/pihole-FTL") " gravity")
+                 "pihole"))))
 
 (define (pihole-etc-files config)
-  ;; pihole.toml is NOT installed here — FTL tries to chown its config file at
-  ;; startup, which fails on a read-only store symlink.  It is instead copied to
-  ;; data-dir (writable) by the activation gexp.
+  ;; Neither pihole.toml nor custom.list are installed here — /etc/pihole must
+  ;; be a real writable directory (not a store symlink) for FTL to function.
+  ;; Both are copied into /etc/pihole/ by the activation gexp instead.
   (if (pihole-configuration-with-unbound? config)
       (list `("unbound/unbound.conf"
               ,(plain-file "unbound.conf" (render-unbound-conf config))))
@@ -262,9 +572,7 @@
                                 (if with-ub? '(unbound) '())))
            (start #~(make-forkexec-constructor
                      (append
-                      (list #$(file-append pkg "/bin/pihole-FTL")
-                            "--config"
-                            (string-append #$data-dir "/pihole.toml"))
+                      (list #$(file-append pkg "/bin/pihole-FTL"))
                       '#$(pihole-configuration-extra-args config))
                      #:log-file (string-append #$log-dir "/FTL.log")))
            (stop #~(make-kill-destructor)))))
@@ -292,6 +600,23 @@
        (list unbound)
        '())))
 
+(define (pihole-log-rotation config)
+  (let ((log-dir (pihole-configuration-log-dir config)))
+    (list (string-append log-dir "/FTL.log")
+          (string-append log-dir "/pihole.log")
+          (string-append log-dir "/webserver.log"))))
+
+(define (pihole-mcron-jobs config)
+  (let* ((pkg     (pihole-configuration-package config))
+         (ftl-bin (file-append pkg "/bin/pihole-FTL"))
+         (sched   (pihole-configuration-gravity-update-schedule config)))
+    (list
+     #~(job #$sched
+            (lambda ()
+              (system* "su" "-s" "/bin/sh" "-c"
+                       (string-append #$ftl-bin " gravity")
+                       "pihole"))))))
+
 ;;; ── Service type ─────────────────────────────────────────────────────────
 
 (define-public pihole-service-type
@@ -299,14 +624,19 @@
    (name 'pihole)
    (description
     "Pi-hole FTL DNS ad-blocking daemon.  Optionally starts Unbound as a
-recursive upstream resolver.  After first boot, seed the gravity database via
-the web interface at http://<host>/ or via the Pi-hole API.")
+recursive upstream resolver.  Adlist URLs are seeded into gravity.db on every
+reconfigure and blocklists are downloaded via pihole-FTL gravity.  A nightly
+mcron job keeps lists current between reconfigures.  Set webserver-password-hash
+to a bcrypt hash or run 'pihole setpassword' after first boot to protect the
+web interface.")
    (extensions
     (list
-     (service-extension account-service-type       pihole-accounts)
-     (service-extension activation-service-type    pihole-activation)
-     (service-extension etc-service-type           pihole-etc-files)
+     (service-extension account-service-type        pihole-accounts)
+     (service-extension activation-service-type     pihole-activation)
+     (service-extension etc-service-type            pihole-etc-files)
      (service-extension shepherd-root-service-type  pihole-shepherd-service)
-     (service-extension firewall-service-type      pihole-firewall-rules)
-     (service-extension profile-service-type       pihole-profile)))
+     (service-extension firewall-service-type       pihole-firewall-rules)
+     (service-extension profile-service-type        pihole-profile)
+     (service-extension log-rotation-service-type   pihole-log-rotation)
+     (service-extension mcron-service-type          pihole-mcron-jobs)))
    (default-value (pihole-configuration))))

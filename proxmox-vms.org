@@ -14,6 +14,7 @@ Current VMs:
 | File                          | Hostname                    | Role              |
 |-------------------------------+-----------------------------+-------------------|
 | peteches/systems/prometheus.scm | prometheus.peteches.co.uk | Prometheus on :9090 |
+| peteches/systems/pihole.scm   | pihole.peteches.co.uk       | Pi-hole DNS ad-blocker |
 
 * Adding a New VM Config
 
@@ -21,6 +22,9 @@ Create =peteches/systems/<name>.scm= following this template:
 
 #+begin_src scheme
 (define-module (peteches systems <name>)
+  #:use-module (gnu bootloader)
+  #:use-module (gnu bootloader grub)
+  #:use-module (gnu system file-systems)
   #:use-module (peteches systems vm-base)
   ;; ... other imports ...
   #:export (<name>-os))
@@ -32,14 +36,18 @@ Create =peteches/systems/<name>.scm= following this template:
      #:host-name "<name>.peteches.co.uk"
      #:bootloader
      (bootloader-configuration
-      (bootloader grub-bootloader)   ; BIOS/MBR — standard for Proxmox VMs
-      (targets '("/dev/vda"))
+      (bootloader grub-efi-bootloader)
+      (targets '("/boot/efi"))
       (keyboard-layout (keyboard-layout "us")))
      #:file-systems
      (list
       (file-system
+        (mount-point "/boot/efi")
+        (device (file-system-label "GNU-ESP"))
+        (type "vfat"))
+      (file-system
         (mount-point "/")
-        (device "/dev/vda1")
+        (device "/dev/vda2")
         (type "ext4")))
      #:extra-services (list ...)
      #:extra-packages (list ...)))))
@@ -61,15 +69,16 @@ interactive installer.
 
 ** Approach A: Build and Import a QCOW2 Image (Recommended)
 
-Proxmox uses QCOW2 images natively, so you can build one directly from
-the system config and import it.
+The EFI bootloader requires GPT partitioning. Use =-t qcow2-gpt= (QCOW2
+format with GPT + EFI); the plain =qcow2= type uses MBR and is
+incompatible with =grub-efi-bootloader=.
 
 *** Step 1: Build the image
 
-Run from the reo root on a machine with Guix and the local channels:
+Run from the repo root on a machine with Guix and the local channels:
 
 #+begin_src shell
-guix system image -L . -t qcow2 peteches/systems/prometheus.scm
+guix system image -L . -t qcow2-gpt peteches/systems/prometheus.scm
 #+end_src
 
 This prints the path to the resulting =.img= file (a QCOW2 despite the
@@ -85,9 +94,19 @@ host shell:
 # Copy from your workstation
 scp /gnu/store/...-disk-image root@proxmox:/tmp/prometheus.img
 
-# On the Proxmox host: Create a new VM
-qm create 100 --name <name> --memory 2048 --net0 virtio,bridge=vmbr0
-# On the Proxmox host: import as a new disk into VM 100
+# On the Proxmox host: create a new VM with OVMF (EFI) bios and guest agent enabled
+qm create 100 \
+  --name <name> \
+  --memory 2048 \
+  --net0 virtio,bridge=vmbr0 \
+  --machine q35 \
+  --bios ovmf \
+  --agent enabled=1
+
+# Add an EFI disk (required for OVMF)
+qm set 100 --efidisk0 local-lvm:0,efitype=4m,pre-enrolled-keys=0
+
+# Import the Guix disk image as a new disk into VM 100
 qm importdisk 100 /tmp/prometheus.img local-lvm
 
 # Attach it as virtio0 and set it as the boot disk
@@ -113,13 +132,20 @@ Download the Guix System installer ISO, attach it to a Proxmox VM, and
 boot it. Once in the live environment:
 
 #+begin_src shell
-# Partition and format the disk
-parted /dev/vda mklabel msdos
-parted /dev/vda mkpart primary ext4 1MiB 100%
-mkfs.ext4 /dev/vda1
+# Partition the disk as GPT with an ESP and a root partition
+parted /dev/vda mklabel gpt
+parted /dev/vda mkpart ESP fat32 1MiB 512MiB
+parted /dev/vda set 1 esp on
+parted /dev/vda mkpart primary ext4 512MiB 100%
+
+# Format both partitions (label the ESP so the config can find it)
+mkfs.fat -F32 -n GNU-ESP /dev/vda1
+mkfs.ext4 /dev/vda2
 
 # Mount
-mount /dev/vda1 /mnt
+mount /dev/vda2 /mnt
+mkdir -p /mnt/boot/efi
+mount /dev/vda1 /mnt/boot/efi
 
 # Clone the config repo onto the live system
 git clone <repo-url> /tmp/guix-config
@@ -247,3 +273,5 @@ redeploy.
 | Deploy fails at store transfer | Key mismatch — check =%authorize-coordinator-key= in =vm-base.scm= matches =/etc/guix/signing-key.pub= on the coordinator |
 | DHCP not getting an IP | Check Proxmox bridge/VLAN config; =ip addr= in Proxmox console |
 | Clock skew warnings | Check NTP: =herd status ntpd= |
+| =guix system image= fails: "EFI bootloader required with GPT partitioning" | Use =-t qcow2-gpt= instead of =-t qcow2=; the plain qcow2 type uses MBR and is incompatible with =grub-efi-bootloader= |
+| VM won't boot: =/dev/vda1 contains a vfat file system labelled 'GNU-ESP'= | Proxmox VM must use OVMF (not SeaBIOS); check Hardware → BIOS in Proxmox UI |

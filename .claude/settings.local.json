@@ -6,7 +6,9 @@
       "Bash(guix search *)",
       "Bash(guix show *)",
       "Bash(awk '/syslog/{print NR\": \"$0}')",
-      "WebFetch(domain:guix.gnu.org)"
+      "WebFetch(domain:guix.gnu.org)",
+      "WebFetch(domain:api.github.com)",
+      "WebFetch(domain:raw.githubusercontent.com)"
     ]
   }
 }

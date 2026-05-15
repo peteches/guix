@@ -31,7 +31,7 @@
   (configuration
    (machine-ssh-configuration
     (host-name "192.168.51.189")
-    (host-key "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJV9CdTbWhX3IDBS+3/clBsmHLFBLmE3rVriYakZsPw3")    ; fill in after first boot: ssh-keyscan 192.168.51.189
+    (host-key "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIGOq7Sq7GtYp3AD8/XiHjgfZlTxlIguLGrChunMAPKCB")    ; fill in after first boot: ssh-keyscan 192.168.51.189
     (system "x86_64-linux")
     (user "peteches")
     (identity "/home/peteches/.ssh/id_ed25519")))))

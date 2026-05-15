@@ -44,14 +44,16 @@
                                              "(public-key (ecc (curve Ed25519) (q #C1FD53E5D4CE971933EC50C9F307AE2171A2D3B52C804642A7A35F84F3A4EA98#)))"))
                             %default-authorized-guix-keys)))))
 
-;; Authorize nug (the deploy coordinator) to push store items to all VMs.
+;; Authorize deploy coordinators (nug and nyarlothotep) to push store items to all VMs.
 (define %authorize-coordinator-key
   (simple-service 'authorize-coordinator-key
                   guix-service-type
                   (guix-extension
                    (authorized-keys
                     (list (plain-file "nug-coordinator.pub"
-                                      "(public-key (ecc (curve Ed25519) (q #89306B461D55FBB9F6A60C75463BA2AEE181FB3E8FA5F46CB2E1C29157ACA88A#)))"))))))
+                                      "(public-key (ecc (curve Ed25519) (q #89306B461D55FBB9F6A60C75463BA2AEE181FB3E8FA5F46CB2E1C29157ACA88A#)))")
+                          (plain-file "nyarlothotep-coordinator.pub"
+                                      "(public-key (ecc (curve Ed25519) (q #C41C4703766F019CF43C8FBA3C7E284610799FBBF9875AB561AD7D8A74075AFE#)))"))))))
 
 (define %vm-interface   "eth0")
 (define %vm-ipv4-gw    "192.168.50.1")

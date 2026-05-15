@@ -1,5 +1,5 @@
 ;; prometheus.scm — Prometheus monitoring server on a Proxmox QEMU/KVM VM.
-;; BIOS bootloader, single virtio root partition, DHCP networking.
+;; EFI bootloader, virtio root on vda2 with ESP on vda1, static networking.
 
 (define-module (peteches systems prometheus)
   #:use-module (guix gexp)
@@ -23,14 +23,18 @@
      #:ipv6-address "2a10:d582:ef59::100/64"
      #:bootloader
      (bootloader-configuration
-      (bootloader grub-bootloader)
-      (targets '("/dev/vda"))
+      (bootloader grub-efi-removable-bootloader)
+      (targets '("/boot/efi"))
       (keyboard-layout (keyboard-layout "us")))
      #:file-systems
      (list
       (file-system
+        (mount-point "/boot/efi")
+        (device (file-system-label "GNU-ESP"))
+        (type "vfat"))
+      (file-system
         (mount-point "/")
-        (device "/dev/vda1")
+        (device "/dev/vda2")
         (type "ext4")))
      #:extra-services
      (list
