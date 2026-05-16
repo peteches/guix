@@ -9,12 +9,13 @@ GNU Guix VMs running on a Proxmox server. VM system configurations live in
 =peteches/systems/= and use the =make-vm-os= constructor from
 =peteches/systems/vm-base.scm=.
 
-Current VMs:
+Current VMs (all use OVMF/EFI and =qcow2-gpt= images):
 
-| File                          | Hostname                    | Role              |
-|-------------------------------+-----------------------------+-------------------|
-| peteches/systems/prometheus.scm | prometheus.peteches.co.uk | Prometheus on :9090 |
-| peteches/systems/pihole.scm   | pihole.peteches.co.uk       | Pi-hole DNS ad-blocker |
+| File                            | Hostname                  | Role                   |
+|---------------------------------+---------------------------+------------------------|
+| peteches/systems/prometheus.scm | prometheus.peteches.co.uk | Prometheus on :9090    |
+| peteches/systems/grafana.scm    | grafana.peteches.co.uk    | Grafana on :3000       |
+| peteches/systems/pihole.scm     | pihole.peteches.co.uk     | Pi-hole DNS ad-blocker |
 
 * Adding a New VM Config
 
@@ -69,20 +70,33 @@ interactive installer.
 
 ** Approach A: Build and Import a QCOW2 Image (Recommended)
 
-The EFI bootloader requires GPT partitioning. Use =-t qcow2-gpt= (QCOW2
-format with GPT + EFI); the plain =qcow2= type uses MBR and is
-incompatible with =grub-efi-bootloader=.
+All VMs use EFI bootloaders, so all images use =-t qcow2-gpt= (GPT
+partitioning with an EFI System Partition). Proxmox VMs must be configured
+with OVMF, not SeaBIOS.
 
 *** Step 1: Build the image
 
 Run from the repo root on a machine with Guix and the local channels:
 
 #+begin_src shell
-guix system image -L . -t qcow2-gpt peteches/systems/prometheus.scm
+guix system image -L . -t qcow2-gpt --image-size=25G peteches/systems/<name>.scm
 #+end_src
 
 This prints the path to the resulting =.img= file (a QCOW2 despite the
 extension). The build can take a while on a cold cache.
+
+The default image size is ~3 GB, which is too small for ongoing use once the
+Guix store accumulates packages and system generations. Use =--image-size= to
+set a larger disk. Recommended sizes:
+
+| VM role    | Suggested size | Notes                                      |
+|------------+----------------+--------------------------------------------|
+| Prometheus | 25G            | TSDB grows with scrape volume; 15d default |
+| Pi-hole    | 10G            | Modest storage needs                       |
+| General VM | 15G            | Safe default for most service VMs          |
+
+The QCOW2 format is sparse — the file on disk only grows as space is actually
+used, so allocating generously has no cost at rest.
 
 *** Step 2: Import into Proxmox
 
@@ -114,6 +128,21 @@ qm set 100 --virtio0 local-lvm:vm-100-disk-0 --boot order=virtio0
 #+end_src
 
 Start the VM. It will boot directly into the configured Guix system.
+
+**** Optional: resize the disk after import
+
+If you need to grow the disk after the VM is already running (e.g. the image
+was built without =--image-size=):
+
+#+begin_src shell
+# On the Proxmox host — grow the raw disk allocation
+qm resize <vmid> virtio0 +20G
+#+end_src
+
+The partition and filesystem inside the VM cannot be grown online without
+=cloud-utils= and =e2fsprogs=, which may not be installed. If the disk is
+already full and packages can't be installed, rebuild the image with a larger
+=--image-size= and re-import.
 
 *** Step 3: Authorize the deploy key (automatic)
 
@@ -275,3 +304,4 @@ redeploy.
 | Clock skew warnings | Check NTP: =herd status ntpd= |
 | =guix system image= fails: "EFI bootloader required with GPT partitioning" | Use =-t qcow2-gpt= instead of =-t qcow2=; the plain qcow2 type uses MBR and is incompatible with =grub-efi-bootloader= |
 | VM won't boot: =/dev/vda1 contains a vfat file system labelled 'GNU-ESP'= | Proxmox VM must use OVMF (not SeaBIOS); check Hardware → BIOS in Proxmox UI |
+| VM disk 100% full, can't install packages | Rebuild: =guix system image -L . -t qcow2-gpt --image-size=25G <system>.scm= and re-import. Back up data first: =ssh host 'sudo tar -czf - /var/lib/prometheus' > backup.tar.gz= |
