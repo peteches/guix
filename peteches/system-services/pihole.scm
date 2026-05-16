@@ -328,6 +328,11 @@ COMMIT;
                                (number->string
                                 (pihole-unbound-configuration-listen-port ub))))
                         (pihole-configuration-dns-upstreams config)))
+         (hosts     (map (lambda (h)
+                           (string-append (pihole-custom-host-address h)
+                                          " "
+                                          (pihole-custom-host-hostname h)))
+                         (pihole-configuration-custom-hosts config)))
          (data-dir  (pihole-configuration-data-dir config))
          (log-dir   (pihole-configuration-log-dir config))
          (web-port  (pihole-configuration-web-port config))
@@ -341,6 +346,7 @@ COMMIT;
      "  queryLogging = " (toml-bool (pihole-configuration-query-logging? config)) "\n"
      "  blocking.active = true\n"
      "  blocking.mode = " (toml-string (pihole-configuration-blocking-mode config)) "\n"
+     "  hosts = " (toml-string-array hosts) "\n"
      "\n"
      "[files]\n"
      "  database = " (toml-string (string-append data-dir "/pihole-FTL.db")) "\n"
@@ -353,7 +359,7 @@ COMMIT;
      "\n"
      "[webserver]\n"
      "  port = " (toml-string (if web-port
-                                  (string-append (number->string web-port) "o")
+                                  (number->string web-port)
                                   "")) "\n"
      (if (string=? pw-hash "")
          ""
@@ -361,6 +367,8 @@ COMMIT;
      "\n"
      "[ntp]\n"
      "  sync.active = false\n"
+     "  ipv4.active = false\n"
+     "  ipv6.active = false\n"
      "\n"
      extra)))
 
@@ -482,22 +490,26 @@ COMMIT;
           (chown "/run/pihole" uid gid)
           (chown "/etc/pihole" uid gid)
           (chown "/etc/pihole/hosts" uid gid))
-        ;; Copy store-derived pihole.toml to /etc/pihole/pihole.toml as a real file.
-        ;; Always replace a symlink (leftover from a previous etc-service deployment).
-        ;; Overwrites when the store version is newer (i.e. after reconfiguration).
+        ;; Create /var/www/html as a symlink into the pihole-web store package.
+        ;; FTL's built-in web server uses webroot + webhome = /var/www/html/admin/
+        ;; by default, so this makes the admin UI available without any TOML changes.
+        (mkdir-p "/var/www")
+        (false-if-exception (delete-file "/var/www/html"))
+        (symlink #$(file-append pihole-web "/share/pihole-web") "/var/www/html")
+        ;; Always replace /etc/pihole/pihole.toml with the store-derived version.
+        ;; FTL expands unset keys to their defaults on startup; keys we explicitly
+        ;; set here survive that expansion.  Always replacing ensures reconfigure
+        ;; propagates config changes (store files have mtime=1, so mtime comparison
+        ;; would never trigger a replace after FTL first modifies the file).
         (let ((src #$toml-file)
               (dst "/etc/pihole/pihole.toml"))
-          (when (or (not (file-exists? dst))
-                    (eq? 'symlink (stat:type (lstat dst)))
-                    (> (stat:mtime (stat src))
-                       (stat:mtime (stat dst))))
-            (when (file-exists? dst)
-              (delete-file dst))
-            (copy-file src dst)
-            (let* ((pw  (getpwnam "pihole"))
-                   (uid (passwd:uid pw))
-                   (gid (passwd:gid pw)))
-              (chown dst uid gid))))
+          (when (file-exists? dst)
+            (delete-file dst))
+          (copy-file src dst)
+          (let* ((pw  (getpwnam "pihole"))
+                 (uid (passwd:uid pw))
+                 (gid (passwd:gid pw)))
+            (chown dst uid gid)))
         ;; Install custom.list (always replace from store version on reconfigure).
         (let ((src #$custom-list)
               (dst "/etc/pihole/hosts/custom.list"))
@@ -570,12 +582,68 @@ COMMIT;
            (documentation "Pi-hole FTL DNS ad-blocking daemon.")
            (requirement (append '(networking file-systems)
                                 (if with-ub? '(unbound) '())))
-           (start #~(make-forkexec-constructor
-                     (append
-                      (list #$(file-append pkg "/bin/pihole-FTL"))
-                      '#$(pihole-configuration-extra-args config))
-                     #:log-file (string-append #$log-dir "/FTL.log")))
-           (stop #~(make-kill-destructor)))))
+           (start
+            ;; Wrap the forkexec constructor with prestart setup that mirrors
+            ;; the official pihole-FTL-prestart.sh script.  This ensures correct
+            ;; ownership and permissions on /etc/pihole/ and /var/log/pihole/
+            ;; before FTL tries to read its config and open log files.
+            #~(let ((make-it
+                     (make-forkexec-constructor
+                      (append
+                       (list #$(file-append pkg "/bin/pihole-FTL")
+                             "no-daemon")
+                       '#$(pihole-configuration-extra-args config))
+                      #:log-file #$(string-append log-dir "/FTL.log"))))
+                (lambda args
+                  ;; Ensure writable directories exist.
+                  (for-each (lambda (d)
+                              (unless (file-exists? d)
+                                (mkdir d)))
+                            (list #$log-dir "/run/pihole"))
+                  ;; Touch required files before recursive chown so they are
+                  ;; created with correct ownership in one pass.
+                  (for-each
+                   (lambda (path)
+                     (unless (file-exists? path)
+                       (call-with-output-file path (lambda (_) #f))))
+                   '("/etc/pihole/versions"
+                     "/etc/pihole/dhcp.leases"))
+                  ;; Recursive chown of config and log dirs to pihole:pihole.
+                  (system* "chown" "-R" "pihole:pihole"
+                           "/etc/pihole" #$log-dir)
+                  ;; Directories: 755 so FTL can traverse them.
+                  (system* "find" "/etc/pihole" #$log-dir
+                           "-type" "d" "-exec" "chmod" "755" "{}" "+")
+                  ;; Regular files: 640 (pihole rw, group r); TLS files 600.
+                  (system* "find" "/etc/pihole" #$log-dir
+                           "-type" "f"
+                           "!" "(" "-name" "*.pem" "-o" "-name" "*.crt" ")"
+                           "-exec" "chmod" "640" "{}" "+")
+                  (system* "find" "/etc/pihole"
+                           "-type" "f"
+                           "(" "-name" "*.pem" "-o" "-name" "*.crt" ")"
+                           "-exec" "chmod" "600" "{}" "+")
+                  ;; versions must be world-readable for 'pihole -v'.
+                  (when (file-exists? "/etc/pihole/versions")
+                    (chmod "/etc/pihole/versions" #o644))
+                  ;; PID placeholder is outside /etc/pihole so needs separate handling.
+                  (unless (file-exists? "/run/pihole-FTL.pid")
+                    (call-with-output-file "/run/pihole-FTL.pid"
+                      (lambda (_) #f)))
+                  (chmod "/run/pihole-FTL.pid" #o644)
+                  (system* "chown" "pihole:pihole" "/run/pihole-FTL.pid")
+                  ;; Fork FTL.
+                  (apply make-it args))))
+           (stop
+            ;; Kill FTL then clean up runtime files (mirrors pihole-FTL-poststop.sh).
+            #~(lambda (pid . args)
+                ((make-kill-destructor) pid)
+                (for-each (lambda (f)
+                            (when (file-exists? f) (delete-file f)))
+                          '("/run/pihole-FTL.pid"
+                            "/run/pihole/FTL.sock"))
+                (system* "sh" "-c" "rm -f /dev/shm/FTL-*")
+                #t)))))
     (if with-ub?
         (list (make-unbound-shepherd-service config) ftl-svc)
         (list ftl-svc))))
@@ -595,7 +663,8 @@ COMMIT;
 
 (define (pihole-profile config)
   (append
-   (list (pihole-configuration-package config))
+   (list (pihole-configuration-package config)
+         pihole-scripts)
    (if (pihole-configuration-with-unbound? config)
        (list unbound)
        '())))

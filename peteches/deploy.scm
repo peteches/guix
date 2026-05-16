@@ -11,7 +11,7 @@
   (configuration
    (machine-ssh-configuration
     (host-name "192.168.51.187")
-    (host-key "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFotMdW7oX/lF10PtIFjFvaIqAoDEOPLQR77a7XZpD5Q")
+    (host-key "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAINxQwnyL7Fm08s8UwzXXuSwbahwySM//Jv2jxpfmryHj")
     (system "x86_64-linux")
     (user "peteches")       ; must have passwordless sudo in sudoers
     (identity "/home/peteches/.ssh/id_ed25519"))))
@@ -21,7 +21,7 @@
   (configuration
    (machine-ssh-configuration
     (host-name "192.168.51.188")
-    (host-key "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAID5R1FfTSIFbe4S9LqVnmJnwwFxdKrgwrctrnnRUCjhD")               ; fill in after first boot: ssh-keyscan 192.168.51.188
+    (host-key "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIA3sVMg8QH+g6Xtj2NmIzV90gbkSPMiCnlaaAJx+a7tG")               ; fill in after first boot: ssh-keyscan 192.168.51.188
     (system "x86_64-linux")
     (user "peteches")
     (identity "/home/peteches/.ssh/id_ed25519"))))
@@ -31,7 +31,7 @@
   (configuration
    (machine-ssh-configuration
     (host-name "192.168.51.189")
-    (host-key "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIGOq7Sq7GtYp3AD8/XiHjgfZlTxlIguLGrChunMAPKCB")    ; fill in after first boot: ssh-keyscan 192.168.51.189
+    (host-key "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAII5+ZCQgM0b8HJjRmzN2bpDkbtwqdbgop+g4ZiB4ZqjH")    ; fill in after first boot: ssh-keyscan 192.168.51.189
     (system "x86_64-linux")
     (user "peteches")
     (identity "/home/peteches/.ssh/id_ed25519")))))
