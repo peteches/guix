@@ -56,6 +56,12 @@
                             (labels `(("instance" . ,(car host))))))
                          %monitored-hosts)))
                   (prometheus-scrape-config
+                   (job-name "pihole")
+                   (static-configs
+                    (list (prometheus-static-config
+                           (targets '("192.168.51.189:9617"))
+                           (labels '(("instance" . "pihole")))))))
+                  (prometheus-scrape-config
                    (job-name "proxmox")
                    (metrics-path "/pve")
                    (params '(("module" . ("default"))))

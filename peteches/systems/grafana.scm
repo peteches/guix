@@ -52,6 +52,10 @@
                   (grafana-dashboard
                    (name "node-exporter")
                    (json-file (local-file
-                               "../grafana-dashboards/node-exporter.json"))))))))))))
+                               "../grafana-dashboards/node-exporter.json")))
+                  (grafana-dashboard
+                   (name "pihole")
+                   (json-file (local-file
+                               "../grafana-dashboards/pihole.json"))))))))))))
 
 grafana-os

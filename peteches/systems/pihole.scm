@@ -41,6 +41,7 @@
                 (interface "eth0")
                 (dns-upstreams '("8.8.8.8" "8.8.4.4"))
                 (with-unbound? #t)
+                (with-exporter? #t)
                 (custom-hosts
                  (list
                   (pihole-custom-host (address "192.168.51.1")

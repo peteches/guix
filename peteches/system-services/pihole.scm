@@ -25,6 +25,7 @@
   #:use-module (gnu packages dns)
   #:use-module (srfi srfi-1)
   #:use-module (peteches packages pihole)
+  #:use-module (peteches packages pihole-exporter)
   #:use-module (peteches system-services firewall)
   #:export (pihole-unbound-configuration
             pihole-unbound-configuration?
@@ -299,7 +300,14 @@ COMMIT;
   ;; Raw TOML appended verbatim after the generated sections.
   (extra-toml              pihole-configuration-extra-toml              (default ""))
   ;; Extra CLI arguments passed to pihole-FTL.
-  (extra-args              pihole-configuration-extra-args              (default '())))
+  (extra-args              pihole-configuration-extra-args              (default '()))
+  ;; Prometheus metrics exporter (eko/pihole-exporter).
+  (with-exporter?          pihole-configuration-with-exporter?          (default #f))
+  (exporter-package        pihole-configuration-exporter-package        (default pihole-exporter))
+  ;; TCP port the exporter listens on.
+  (exporter-port           pihole-configuration-exporter-port           (default 9617))
+  ;; Plaintext Pi-hole web password for API access.  Empty = no auth required.
+  (exporter-password       pihole-configuration-exporter-password       (default "")))
 
 ;;; ── TOML / config-file rendering ─────────────────────────────────────────
 ;;
@@ -571,6 +579,28 @@ COMMIT;
                             "/unbound.log")))
    (stop #~(make-kill-destructor))))
 
+(define (make-pihole-exporter-shepherd-service config)
+  (let* ((pkg      (pihole-configuration-exporter-package config))
+         (port     (pihole-configuration-exporter-port config))
+         (password (pihole-configuration-exporter-password config))
+         (web-port (or (pihole-configuration-web-port config) 80)))
+    (shepherd-service
+     (provision '(pihole-exporter))
+     (documentation "Prometheus exporter for Pi-hole statistics.")
+     (requirement '(pihole networking))
+     (start #~(make-forkexec-constructor
+               (append
+                (list #$(file-append pkg "/bin/pihole-exporter")
+                      "-port" #$(number->string port)
+                      "-pihole_protocol" "http"
+                      "-pihole_hostname" "localhost"
+                      "-pihole_port" #$(number->string web-port))
+                (if (string=? #$password "")
+                    '()
+                    (list "-pihole_password" #$password)))
+               #:log-file "/var/log/pihole/exporter.log"))
+     (stop #~(make-kill-destructor)))))
+
 (define (pihole-shepherd-service config)
   (let* ((pkg      (pihole-configuration-package config))
          (data-dir (pihole-configuration-data-dir config))
@@ -644,9 +674,12 @@ COMMIT;
                             "/run/pihole/FTL.sock"))
                 (system* "sh" "-c" "rm -f /dev/shm/FTL-*")
                 #t)))))
-    (if with-ub?
-        (list (make-unbound-shepherd-service config) ftl-svc)
-        (list ftl-svc))))
+    (let ((services (if with-ub?
+                        (list (make-unbound-shepherd-service config) ftl-svc)
+                        (list ftl-svc))))
+      (if (pihole-configuration-with-exporter? config)
+          (append services (list (make-pihole-exporter-shepherd-service config)))
+          services))))
 
 (define (pihole-firewall-rules config)
   (let ((web-port (pihole-configuration-web-port config)))
@@ -659,6 +692,11 @@ COMMIT;
            (list (string-append "tcp dport "
                                 (number->string web-port)
                                 " accept comment \"pihole-web\""))
+           '())
+       (if (pihole-configuration-with-exporter? config)
+           (list (string-append "tcp dport "
+                                (number->string (pihole-configuration-exporter-port config))
+                                " accept comment \"pihole-exporter\""))
            '()))))))
 
 (define (pihole-profile config)
@@ -667,6 +705,9 @@ COMMIT;
          pihole-scripts)
    (if (pihole-configuration-with-unbound? config)
        (list unbound)
+       '())
+   (if (pihole-configuration-with-exporter? config)
+       (list (pihole-configuration-exporter-package config))
        '())))
 
 (define (pihole-log-rotation config)

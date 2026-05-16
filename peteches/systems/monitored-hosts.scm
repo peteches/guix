@@ -13,5 +13,6 @@
     ;; ("bhiyaki"      . "TODO:9100")
     ("nug"          . "nug.peteches.co.uk:9100")
     ;; ("nyarlothotep" . "TODO:9100")
+    ("pihole"       . "192.168.51.189:9100")
     ("prometheus"   . "192.168.51.187:9100")
     ("grafana"      . "192.168.51.188:9100")))
