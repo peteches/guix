@@ -22,6 +22,7 @@
   #:use-module (gnu services mcron)
   #:use-module (gnu system shadow)
   #:use-module (gnu packages admin)
+  #:use-module (gnu packages curl)
   #:use-module (gnu packages dns)
   #:use-module (srfi srfi-1)
   #:use-module (peteches packages pihole)
@@ -549,13 +550,16 @@ COMMIT;
                 "sqlite3" (string-append #$data-dir "/gravity.db")
                 (string-append ".read " #$adlist-sql)
                 ".quit")
-        ;; Kick off gravity in the background so the activation doesn't block
-        ;; the deploy.  Output goes to the pihole log dir.  The mcron job
-        ;; handles nightly updates between reconfigures.
+        ;; Download blocklists in the background.  PATH is set explicitly so
+        ;; gravity.sh can find curl and dig from the system profile.  FTL does
+        ;; not need to be running for the download/db-build phase.
         (system (string-append
-                 "su -s /bin/sh -c '"
+                 "su -s /bin/sh pihole -c '"
+                 "PATH=/run/current-system/profile/bin"
+                 ":/run/current-system/profile/sbin "
                  #$(file-append pihole-scripts "/bin/pihole")
-                 " -g >>/var/log/pihole/gravity.log 2>&1 &' pihole")))))
+                 " -g >>" #$log-dir "/gravity.log 2>&1' &"))
+        )))
 
 (define (pihole-etc-files config)
   ;; Neither pihole.toml nor custom.list are installed here — /etc/pihole must
@@ -603,6 +607,7 @@ COMMIT;
                     (list "-pihole_password" #$password)))
                #:log-file "/var/log/pihole/exporter.log"))
      (stop #~(make-kill-destructor)))))
+
 
 (define (pihole-shepherd-service config)
   (let* ((pkg      (pihole-configuration-package config))
@@ -705,7 +710,9 @@ COMMIT;
 (define (pihole-profile config)
   (append
    (list (pihole-configuration-package config)
-         pihole-scripts)
+         pihole-scripts
+         curl
+         `(,(@ (gnu packages dns) isc-bind) "utils"))
    (if (pihole-configuration-with-unbound? config)
        (list unbound)
        '())
@@ -725,7 +732,10 @@ COMMIT;
      #~(job #$sched
             (lambda ()
               (system* "su" "-s" "/bin/sh" "-c"
-                       (string-append #$(file-append pihole-scripts "/bin/pihole") " -g")
+                       (string-append
+                        "PATH=/run/current-system/profile/bin"
+                        ":/run/current-system/profile/sbin "
+                        #$(file-append pihole-scripts "/bin/pihole") " -g")
                        "pihole"))))))
 
 ;;; ── Service type ─────────────────────────────────────────────────────────
