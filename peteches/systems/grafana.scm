@@ -57,6 +57,10 @@
                   (grafana-dashboard
                    (name "pihole")
                    (json-file (local-file
-                               "../grafana-dashboards/pihole.json"))))))))))))
+                               "../grafana-dashboards/pihole.json")))
+		  (grafana-dashboard
+		   (name "proxmox")
+		   (json-file (local-file
+			       "../grafana-dashboards/proxmox.json"))))))))))))
 
 grafana-os

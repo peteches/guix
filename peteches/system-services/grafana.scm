@@ -6,6 +6,7 @@
   #:use-module (gnu services)
   #:use-module (gnu services shepherd)
   #:use-module (gnu services base)
+  #:use-module (gnu packages shepherd)
   #:use-module (gnu system shadow)
   #:use-module (gnu packages admin)
   #:use-module (srfi srfi-1)
@@ -149,7 +150,13 @@
           (mkdir-p #$data-path)
           (chown #$data-path uid gid)
           (mkdir-p #$log-path)
-          (chown #$log-path uid gid)))))
+          (chown #$log-path uid gid)
+          ;; Restart Grafana so dashboard symlinks are re-read. Skipped on
+          ;; first boot when shepherd has not yet started.
+          (when (file-exists? "/run/shepherd/socket")
+            (system* #$(file-append shepherd "/bin/herd")
+                     "restart" "grafana"))))))
+
 
 (define (grafana-etc-files config)
   (append
