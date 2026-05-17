@@ -27,6 +27,7 @@
   (name        grafana-datasource-name)
   (type        grafana-datasource-type)
   (url         grafana-datasource-url)
+  (uid         grafana-datasource-uid         (default ""))
   (access      grafana-datasource-access      (default "proxy"))
   (is-default? grafana-datasource-is-default? (default #f))
   (org-id      grafana-datasource-org-id      (default 1)))
@@ -98,6 +99,10 @@
                         (string-append
                          "  - name: "     (grafana-datasource-name d)   "\n"
                          "    type: "     (grafana-datasource-type d)   "\n"
+                         (let ((uid (grafana-datasource-uid d)))
+                           (if (string-null? uid)
+                               ""
+                               (string-append "    uid: " uid "\n")))
                          "    access: "   (grafana-datasource-access d) "\n"
                          "    url: "      (grafana-datasource-url d)    "\n"
                          "    orgId: "    (number->string (grafana-datasource-org-id d)) "\n"

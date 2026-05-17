@@ -45,6 +45,7 @@
                   (grafana-datasource
                    (name "Prometheus")
                    (type "prometheus")
+                   (uid "prometheus")
                    (url "http://192.168.51.187:9090")
                    (is-default? #t))))
                 (dashboards

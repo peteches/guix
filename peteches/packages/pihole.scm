@@ -64,6 +64,12 @@ web server for the admin interface, and a SQLite-based query database.")
                "share/pihole/Scripts/pihole-FTL-prestart.sh")
          (list "advanced/Templates/pihole-FTL-poststop.sh"
                "share/pihole/Scripts/pihole-FTL-poststop.sh")
+         ;; SQL templates used by gravity.sh at runtime; gravity.sh sources these
+         ;; relative to piholeGitDir which we patch below to point into the store.
+         (list "advanced/Templates/gravity.db.sql"
+               "share/pihole/advanced/Templates/gravity.db.sql")
+         (list "advanced/Templates/gravity_copy.sql"
+               "share/pihole/advanced/Templates/gravity_copy.sql")
          ;; Main pihole CLI sits one level above the Scripts/ dir.
          (list "pihole" "share/pihole/pihole"))
       #:phases
@@ -107,6 +113,30 @@ web server for the admin interface, and a SQLite-based query database.")
                    (if (string=? all "${FTL_PID_FILE}")
                        "${_ftl_pid_file}"
                        all)))
+                ;; Patch gravity.sh: fix the three hardcoded paths that the
+                ;; PI_HOLE_SCRIPT_DIR substitution above does not cover, and
+                ;; replace the `getent hosts` DNS check (not in Guix) with wget.
+                (let* ((gravity-sh  (string-append scripts-dir "/gravity.sh"))
+                       (pihole-dir  (string-append out "/share/pihole")))
+                  (substitute* gravity-sh
+                    ;; gravity.sh sources gravity-db.sh from /etc/.pihole which
+                    ;; doesn't exist on Guix; the file lives under Scripts/.
+                    (("\"/etc/.pihole/advanced/Scripts/database_migration/gravity-db.sh\"")
+                     (string-append "\"" scripts-dir "/database_migration/gravity-db.sh\""))
+                    ;; piholeGitDir drives gravityDBschema and gravityDBcopy paths;
+                    ;; point at our store location (advanced/Templates/ installed below).
+                    (("piholeGitDir=\"/etc/.pihole\"")
+                     (string-append "piholeGitDir=\"" pihole-dir "\""))
+                    ;; PIHOLE_COMMAND is used for `pihole status` inside gravity.sh;
+                    ;; honour PI_HOLE_BIN_DIR set by our wrapper.
+                    (("PIHOLE_COMMAND=\"/usr/local/bin/\\$\\{basename\\}\"")
+                     "PIHOLE_COMMAND=\"${PI_HOLE_BIN_DIR:-/run/current-system/profile/bin}/${basename}\"")
+                    ;; gravity_CheckDNSResolutionAvailable uses `getent hosts` which
+                    ;; is not available on a minimal Guix system; use wget instead.
+                    (("timeout 4 getent hosts \"\\$\\{lookupDomain\\}\" &>/dev/null")
+                     "wget -q --tries=1 --timeout=4 -O /dev/null \"https://${lookupDomain}/\" &>/dev/null")
+                    (("if getent hosts github\\.com &> /dev/null")
+                     "if wget -q --tries=1 --timeout=4 -O /dev/null https://github.com/ &> /dev/null")))
                 ;; Create bin/pihole wrapper that sets PI_HOLE_BIN_DIR
                 ;; dynamically and prepends ncurses to PATH so tput is found.
                 (mkdir-p bin-dir)

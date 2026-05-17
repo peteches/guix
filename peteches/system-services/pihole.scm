@@ -435,7 +435,9 @@ COMMIT;
         (map (lambda (url)
                (string-append
                 "INSERT OR IGNORE INTO adlist (address,enabled,comment)"
-                " VALUES ('" url "',1,'Added by Guix configuration');"))
+                " VALUES ('" url "',1,'Added by Guix configuration');\n"
+                "INSERT OR IGNORE INTO adlist_by_group (adlist_id, group_id)"
+                " SELECT id, 0 FROM adlist WHERE address='" url "';"))
              adlists)
         "\n")
        "\nCOMMIT;\n")))
@@ -547,12 +549,13 @@ COMMIT;
                 "sqlite3" (string-append #$data-dir "/gravity.db")
                 (string-append ".read " #$adlist-sql)
                 ".quit")
-        ;; Download blocklists as pihole user.  Runs on every reconfigure to
-        ;; keep lists current; the mcron job handles nightly updates between
-        ;; reconfigures.  Failure is non-fatal (e.g. no network yet).
-        (system* "su" "-s" "/bin/sh" "-c"
-                 (string-append #$(file-append pkg "/bin/pihole-FTL") " gravity")
-                 "pihole"))))
+        ;; Kick off gravity in the background so the activation doesn't block
+        ;; the deploy.  Output goes to the pihole log dir.  The mcron job
+        ;; handles nightly updates between reconfigures.
+        (system (string-append
+                 "su -s /bin/sh -c '"
+                 #$(file-append pihole-scripts "/bin/pihole")
+                 " -g >>/var/log/pihole/gravity.log 2>&1 &' pihole")))))
 
 (define (pihole-etc-files config)
   ;; Neither pihole.toml nor custom.list are installed here — /etc/pihole must
@@ -717,14 +720,12 @@ COMMIT;
           (string-append log-dir "/webserver.log"))))
 
 (define (pihole-mcron-jobs config)
-  (let* ((pkg     (pihole-configuration-package config))
-         (ftl-bin (file-append pkg "/bin/pihole-FTL"))
-         (sched   (pihole-configuration-gravity-update-schedule config)))
+  (let* ((sched (pihole-configuration-gravity-update-schedule config)))
     (list
      #~(job #$sched
             (lambda ()
               (system* "su" "-s" "/bin/sh" "-c"
-                       (string-append #$ftl-bin " gravity")
+                       (string-append #$(file-append pihole-scripts "/bin/pihole") " -g")
                        "pihole"))))))
 
 ;;; ── Service type ─────────────────────────────────────────────────────────
