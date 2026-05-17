@@ -39,8 +39,9 @@
       (service pihole-service-type
                (pihole-configuration
                 (interface "eth0")
-                (dns-upstreams '("8.8.8.8" "8.8.4.4"))
+                (dns-upstreams '()) ; using unbound
                 (with-unbound? #t)
+		(adlists '("https://raw.githubusercontent.com/r0xd4n3t/pihole-adblock-lists/main/pihole_adlists.txt"))
                 (with-exporter? #t)
                 (custom-hosts
                  (list
