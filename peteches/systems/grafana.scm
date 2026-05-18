@@ -11,6 +11,7 @@
   #:use-module (guix gexp)
   #:use-module (peteches systems vm-base)
   #:use-module (peteches system-services grafana)
+  #:use-module (peteches system-services restic)
   #:export (grafana-os))
 
 (define-public grafana-os
@@ -35,6 +36,12 @@
         (mount-point "/")
         (device "/dev/vda2")
         (type "ext4")))
+     #:restic-config
+     (restic-vm-backup-configuration
+      (vm-name "grafana")
+      (synology-host "nas.peteches.co.uk")
+      (schedule "20 2 * * *")
+      (backup-paths '("/var/lib/grafana")))
      #:extra-services
      (list
       (service grafana-service-type

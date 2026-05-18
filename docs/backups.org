@@ -1,0 +1,184 @@
+#+TITLE: VM Backup System
+#+AUTHOR: Pete McCabe
+#+DATE: 2026-05-17
+
+* Overview
+
+All VMs managed by this repository are backed up nightly to the Synology NAS
+using [[https://restic.net][restic]], a fast encrypted deduplicating backup tool. Backups run over SFTP
+as a dedicated low-privilege user on the NAS.
+
+The backup infrastructure is defined in =peteches/system-services/restic.scm=
+and composed into each VM via the =restic-config= parameter of =make-vm-os=.
+
+* Architecture
+
+#+BEGIN_SRC
+  VM (root)
+    └── /etc/restic/
+          ├── id_ed25519          (SSH private key, auto-generated on first deploy)
+          ├── id_ed25519.pub      (SSH public key, copy this to Synology)
+          └── password            (restic repo password, auto-generated on first deploy)
+
+  Synology NAS
+    └── /volume1/backups/restic/
+          ├── prometheus/         (restic repository)
+          ├── grafana/            (restic repository)
+          └── pihole/             (restic repository)
+#+END_SRC
+
+Each VM connects to the Synology via SFTP using its own Ed25519 keypair. The
+restic repository is encrypted with a strong random password generated at first
+deploy. No passwords or private keys are stored in the Guix store (which is
+world-readable).
+
+The SSH host key for the Synology is fetched automatically via =ssh-keyscan=
+on first deploy (Trust On First Use). Subsequent connections verify against the
+cached key in =/root/.ssh/known_hosts=.
+
+* What Is Backed Up
+
+| VM         | IP             | Path                  | Contents                          |
+|------------+----------------+-----------------------+-----------------------------------|
+| prometheus | 192.168.51.187 | =/var/lib/prometheus= | Prometheus TSDB time-series data  |
+| grafana    | 192.168.51.188 | =/var/lib/grafana=    | Grafana SQLite database, plugins  |
+| pihole     | 192.168.51.189 | =/var/lib/pihole=     | Pi-hole gravity DB, query history |
+
+=/etc= is intentionally excluded: it is rebuilt from the Guix store on every
+=guix deploy= and contains no persistent state.
+
+* Schedule and Retention
+
+Backups run daily at 02:00 (local time, Europe/London). A weekly prune job
+runs on Sundays at 03:00 and enforces the following retention policy:
+
+- Keep last 7 daily snapshots
+- Keep last 4 weekly snapshots
+- Keep last 3 monthly snapshots
+
+* One-Time Synology Setup (Manual)
+
+These steps are performed once when setting up a new NAS or after a factory
+reset. They cannot be automated from the VM side.
+
+** 1. Create the backup user on Synology
+
+In DSM → Control Panel → User & Group, create a user named =restic-backup=.
+Grant it SFTP access only (no DSM login, no Samba, etc.).
+
+Ensure the user's home directory exists and that the path
+=/volume1/backups/restic= is writable by this user.
+
+** 2. Collect public keys from each VM after first deploy
+
+After running =guix deploy -L . peteches/deploy.scm= for the first time, each
+VM generates its SSH keypair. Collect the public keys:
+
+#+BEGIN_SRC bash
+ssh peteches@192.168.51.187 sudo cat /etc/restic/id_ed25519.pub  # prometheus
+ssh peteches@192.168.51.188 sudo cat /etc/restic/id_ed25519.pub  # grafana
+ssh peteches@192.168.51.189 sudo cat /etc/restic/id_ed25519.pub  # pihole
+#+END_SRC
+
+Add each public key to =/volume1/homes/restic-backup/.ssh/authorized_keys= on
+the Synology (one key per line).
+
+** 3. Complete initialization with a second deploy
+
+#+BEGIN_SRC bash
+guix deploy -L . peteches/deploy.scm
+#+END_SRC
+
+The activation script on each VM will:
+1. Fetch the Synology SSH host key via =ssh-keyscan= and cache it in =/root/.ssh/known_hosts=
+2. Initialize the restic repository (=restic init=)
+3. Print a confirmation to the activation log
+
+From this point on, no manual intervention is needed.
+
+* Verifying Backups
+
+On any VM, as root:
+
+#+BEGIN_SRC bash
+# List snapshots
+restic -r sftp:restic-backup@<synology-host>:/volume1/backups/restic/<vm-name> \
+  --password-file /etc/restic/password \
+  -o sftp.args="-i /etc/restic/id_ed25519" \
+  snapshots
+
+# Trigger an immediate backup outside the scheduled window
+herd trigger <vm-name>-backup
+
+# Check the backup log
+tail -f /var/log/restic-backup/<vm-name>-backup.log
+#+END_SRC
+
+* Restoring Data
+
+** Restore to the original location
+
+Stop the service first to avoid data corruption, then restore and restart:
+
+#+BEGIN_SRC bash
+herd stop prometheus   # or grafana, pihole-ftl, etc.
+
+restic -r sftp:restic-backup@<synology-host>:/volume1/backups/restic/<vm-name> \
+  --password-file /etc/restic/password \
+  -o sftp.args="-i /etc/restic/id_ed25519" \
+  restore latest --target /
+
+herd start prometheus
+#+END_SRC
+
+To restore a specific snapshot rather than the latest, first list snapshots to
+find the ID, then replace =latest= with the snapshot ID:
+
+#+BEGIN_SRC bash
+restic -r sftp:restic-backup@<synology-host>:/volume1/backups/restic/<vm-name> \
+  --password-file /etc/restic/password \
+  -o sftp.args="-i /etc/restic/id_ed25519" \
+  snapshots
+
+restic -r ... restore <snapshot-id> --target /tmp/restore
+#+END_SRC
+
+** Restore to a fresh VM
+
+1. Deploy the VM with =guix deploy= to get the base system running.
+2. Stop the service whose data you are restoring.
+3. Copy =/etc/restic/= from another trusted source (or re-provision the key
+   and password — see [[*One-Time Synology Setup (Manual)][One-Time Synology Setup]]).
+4. Run =restic restore= as above.
+
+* Troubleshooting
+
+** Backup fails with "no route to host" or SSH errors
+
+The Synology is unreachable or the SSH handshake is failing. Check:
+
+- NAS is powered on and reachable from the VM's subnet
+- =/root/.ssh/known_hosts= contains the Synology host key; if missing, run:
+  #+BEGIN_SRC bash
+  ssh-keyscan <synology-host> >> /root/.ssh/known_hosts
+  #+END_SRC
+- The VM's public key (=/etc/restic/id_ed25519.pub=) is present in
+  Synology's =authorized_keys= for the =restic-backup= user
+
+** "repository does not exist" on first trigger
+
+The repo has not been initialized yet. Complete the Synology SSH key setup
+(step 2 above) then re-run =guix deploy= — the activation script calls
+=restic init= automatically once SSH access is working.
+
+** Prune job not reclaiming space
+
+Run it manually to surface any errors:
+
+#+BEGIN_SRC bash
+restic -r sftp:restic-backup@<synology-host>:/volume1/backups/restic/<vm-name> \
+  --password-file /etc/restic/password \
+  -o sftp.args="-i /etc/restic/id_ed25519" \
+  forget --prune \
+  --keep-daily 7 --keep-weekly 4 --keep-monthly 3
+#+END_SRC

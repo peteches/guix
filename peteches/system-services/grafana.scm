@@ -6,7 +6,6 @@
   #:use-module (gnu services)
   #:use-module (gnu services shepherd)
   #:use-module (gnu services base)
-  #:use-module (gnu packages shepherd)
   #:use-module (gnu system shadow)
   #:use-module (gnu packages admin)
   #:use-module (srfi srfi-1)

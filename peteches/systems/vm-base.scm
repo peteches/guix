@@ -20,6 +20,7 @@
   #:use-module (gnu services virtualization)
   #:use-module (gnu packages linux)
   #:use-module (peteches system-services firewall)
+  #:use-module (peteches system-services restic)
   #:export (make-vm-os
             %vm-peteches-user))
 
@@ -80,8 +81,13 @@
           (extra-packages '())
           (with-nonguix? #f)
           (ipv4-address #f)
-          (ipv6-address #f))
+          (ipv6-address #f)
+          (restic-config #f))
   (let* ((nonguix-services (if with-nonguix? (list (nonguix-substitute-service)) '()))
+         (restic-services
+          (if restic-config
+              (list (service restic-vm-backup-service-type restic-config))
+              '()))
          (final-services
           (append
            %base-services
@@ -122,6 +128,7 @@
             (service prometheus-node-exporter-service-type)
             %authorize-coordinator-key)
            nonguix-services
+           restic-services
            extra-services)))
     (operating-system
       (kernel kernel)

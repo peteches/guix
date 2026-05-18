@@ -10,6 +10,7 @@
   #:use-module (gnu system keyboard)
   #:use-module (peteches systems vm-base)
   #:use-module (peteches system-services pihole)
+  #:use-module (peteches system-services restic)
   #:export (pihole-os))
 
 (define-public pihole-os
@@ -34,6 +35,12 @@
         (mount-point "/")
         (device "/dev/vda2")
         (type "ext4")))
+     #:restic-config
+     (restic-vm-backup-configuration
+      (vm-name "pihole")
+      (synology-host "nas.peteches.co.uk")
+      (schedule "40 2 * * *")
+      (backup-paths '("/var/lib/pihole")))
      #:extra-services
      (list
       (service pihole-service-type
@@ -45,6 +52,8 @@
                 (with-exporter? #t)
                 (custom-hosts
                  (list
+		  (pihole-custom-host (address "192.168.50.244")
+				      (hostname "nas.peteches.co.uk"))
                   (pihole-custom-host (address "192.168.51.1")
                                       (hostname "proxmox.peteches.co.uk"))
                   (pihole-custom-host (address "192.168.51.187")

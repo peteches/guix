@@ -12,6 +12,7 @@
   #:use-module (peteches systems vm-base)
   #:use-module (peteches systems monitored-hosts)
   #:use-module (peteches system-services prometheus)
+  #:use-module (peteches system-services restic)
   #:export (prometheus-os))
 
 (define-public prometheus-os
@@ -36,6 +37,11 @@
         (mount-point "/")
         (device "/dev/vda2")
         (type "ext4")))
+     #:restic-config
+     (restic-vm-backup-configuration
+      (vm-name "prometheus")
+      (synology-host "nas.peteches.co.uk")
+      (backup-paths '("/var/lib/prometheus")))
      #:extra-services
      (list
       (service prometheus-service-type
