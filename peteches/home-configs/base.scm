@@ -201,7 +201,22 @@
 		       (host-name "nyarlothotep.tailb21dfe.ts.net"))
 		      (openssh-host
 		       (name "nug.ts")
-		       (host-name "nug.tailb21dfe.ts.net")))
+		       (host-name "nug.tailb21dfe.ts.net"))
+		      (openssh-host
+		       (name "prometheus")
+		       (host-name "192.168.51.187")
+		       (user "peteches")
+		       (identity-file "~/.ssh/id_ed25519"))
+		      (openssh-host
+		       (name "grafana")
+		       (host-name "192.168.51.188")
+		       (user "peteches")
+		       (identity-file "~/.ssh/id_ed25519"))
+		      (openssh-host
+		       (name "pihole")
+		       (host-name "192.168.51.189")
+		       (user "peteches")
+		       (identity-file "~/.ssh/id_ed25519")))
 		     %scoreplay-ssh-hosts))))
 
    ;; GPG Agent
