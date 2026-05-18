@@ -203,6 +203,12 @@
 		       (name "nug.ts")
 		       (host-name "nug.tailb21dfe.ts.net"))
 		      (openssh-host
+		       (name "prometheus.ts")
+		       (host-name "prometheus.tailb21dfe.ts.net"))
+		      (openssh-host
+		       (name "grafana.ts")
+		       (host-name "grafana.tailb21dfe.ts.net"))
+		      (openssh-host
 		       (name "prometheus")
 		       (host-name "192.168.51.187")
 		       (user "peteches")

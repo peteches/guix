@@ -12,6 +12,7 @@
   #:use-module (peteches systems vm-base)
   #:use-module (peteches system-services grafana)
   #:use-module (peteches system-services restic)
+  #:use-module (peteches system-services tailscale)
   #:export (grafana-os))
 
 (define-public grafana-os
@@ -68,6 +69,10 @@
 		  (grafana-dashboard
 		   (name "proxmox")
 		   (json-file (local-file
-			       "../grafana-dashboards/proxmox.json"))))))))))))
+			       "../grafana-dashboards/proxmox.json")))))))
+      (service tailscale-service-type
+               (list (tailscale-instance-configuration
+                      (name "peteches")
+                      (forward-ports '((3000 . 3000)))))))))))
 
 grafana-os

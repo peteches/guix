@@ -13,6 +13,7 @@
   #:use-module (peteches systems monitored-hosts)
   #:use-module (peteches system-services prometheus)
   #:use-module (peteches system-services restic)
+  #:use-module (peteches system-services tailscale)
   #:export (prometheus-os))
 
 (define-public prometheus-os
@@ -84,6 +85,10 @@
                       (target-label "instance"))
                      (prometheus-relabel-config
                       (target-label "__address__")
-                      (replacement "192.168.51.1:9221"))))))))))))))
+                      (replacement "192.168.51.1:9221")))))))))
+      (service tailscale-service-type
+               (list (tailscale-instance-configuration
+                      (name "peteches")
+                      (forward-ports '((9090 . 9090)))))))))))
 
 prometheus-os
