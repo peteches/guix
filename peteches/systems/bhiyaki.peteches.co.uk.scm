@@ -33,10 +33,6 @@
         (target "cryptroot")
         (type luks-device-mapping)))
 
-    #:extra-services
-    (list
-     (service tailscale-service-type))
-    
     ;; Filesystems (root via mapper; EFI unencrypted)
     #:file-systems
     (append

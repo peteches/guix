@@ -164,8 +164,7 @@
 		  "iifname \"virbr0\" udp dport 547 accept comment \"allow dhcpv6 on virbr0\""
                   "iifname \"virbr0\" meta l4proto { tcp, udp } th dport 53 accept comment \"allow dns on virbr0\""
 
-                  ;; Native tailscale interface (if you keep it)
-                  "iifname \"tailscale0\" accept comment \"tailscale\""))
+))
 
           (forward (list
                     ;; Return traffic first

@@ -189,7 +189,7 @@
           (auto-start? #t)
           (start #~(make-forkexec-constructor
                     (list #$@args)
-                    #:log-file #$log-file
+                    #:log-file #$(string-append "/var/log/tailscale-prefs-" name ".log")
                     #:environment-variables
                     (list "PATH=/run/setuid-programs:/run/current-system/profile/bin:/run/current-system/profile/sbin")))
           (stop #~(lambda _ #t))))))))
@@ -537,8 +537,14 @@ Accept elements like (SRC . DST) or (SRC DST)."
         (($ <tailscale-instance-configuration>
             inst-name inst-package netns magic-dns state-file socket-file tun port log-file extra-args forward-ports)
          (let-values (((subnet hostip nsip gw) (subnet-for inst-name)))
-           (let ((veth-host (ifname "vts-" inst-name)))
+           (let* ((veth-host (ifname "vts-" inst-name))
+                  (fwd-pairs (forward-ports->alist forward-ports)))
              (nftables-rules
+              (input (map (lambda (p)
+                            (string-append "ip saddr " subnet
+                                           " tcp dport " (number->string (cdr p))
+                                           " accept comment \"ts-fwd " inst-name ":" (number->string (cdr p)) "\""))
+                          fwd-pairs))
               (forward (list
                         ;; Allow NEW+EST+REL flows from the netns veth into the rest of the host.
                         (string-append "iifname \"" veth-host "\" ip saddr " subnet
