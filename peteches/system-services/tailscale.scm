@@ -447,8 +447,6 @@ socks-proxy-port is not configured."
                     (ms         (file-append microsocks "/bin/microsocks"))
                     (setup-name (string->symbol (string-append "tailscale-netns-setup-" name)))
                     (svc-name   (string->symbol (string-append "tailscale-socks-" name)))
-                    ;; strip /24 suffix from "10.250.X.1/24"
-                    (host-veth-ip (car (string-split hostip #\/)))
                     (lf         (format #f "/var/log/tailscale-socks-~a.log" name)))
                (shepherd-service
                 (provision (list svc-name))
@@ -463,8 +461,48 @@ socks-proxy-port is not configured."
                     (list #$ip "netns" "exec" #$netns
                           #$ms
                           "-i" "0.0.0.0"
-                          "-p" #$(number->string socks-proxy-port)
-                          "-w" #$host-veth-ip)
+                          "-p" #$(number->string socks-proxy-port))
+                    #:log-file #$lf
+                    #:environment-variables
+                    (list "PATH=/run/setuid-programs:/run/current-system/profile/bin:/run/current-system/profile/sbin")))
+                (stop #~(make-kill-destructor))))))))))
+
+(define (tailscale-instance->socks-expose-service cfg)
+  "Return a shepherd service running socat in the DEFAULT namespace that
+forwards connections on socks-proxy-port to the microsocks instance inside the
+netns.  Returns #f when socks-proxy-port is not configured."
+  (let ((cfg (instance->resolved cfg)))
+    (match cfg
+      (($ <tailscale-instance-configuration>
+          name package netns magic-dns state-file socket-file tun port log-file extra-args
+          forward-ports socks-proxy-port)
+       (if (not socks-proxy-port)
+           #f
+           (let-values (((subnet hostip nsip gw) (subnet-for name)))
+             (let* ((socat      (file-append socat "/bin/socat"))
+                    (socks-svc  (string->symbol (string-append "tailscale-socks-" name)))
+                    (svc-name   (string->symbol (string-append "tailscale-socks-expose-" name)))
+                    ;; strip /24 suffix from "10.250.X.2/24" to get bare netns IP
+                    (ns-ip      (car (string-split nsip #\/)))
+                    (lf         (format #f "/var/log/tailscale-socks-expose-~a.log" name)))
+               (shepherd-service
+                (provision (list svc-name))
+                (documentation
+                 (format #f "Expose SOCKS5 proxy for Tailscale instance ~a: default-ns 0.0.0.0:~a -> ~a:~a"
+                         name socks-proxy-port ns-ip socks-proxy-port))
+                (requirement (list 'user-processes 'networking socks-svc))
+                (auto-start? #t)
+                (one-shot? #f)
+                (start
+                 #~(make-forkexec-constructor
+                    (list #$socat
+                          (string-append "TCP-LISTEN:"
+                                         #$(number->string socks-proxy-port)
+                                         ",fork,reuseaddr")
+                          (string-append "TCP:"
+                                         #$ns-ip
+                                         ":"
+                                         #$(number->string socks-proxy-port)))
                     #:log-file #$lf
                     #:environment-variables
                     (list "PATH=/run/setuid-programs:/run/current-system/profile/bin:/run/current-system/profile/sbin")))
@@ -608,11 +646,17 @@ socks-proxy-port is not configured."
                                             " accept comment \"ts-fwd " inst-name ":" (number->string (cdr p)) "\""))
                            fwd-pairs)
                       (if socks-proxy-port
-                          (list (string-append
-                                 "ip saddr " subnet
-                                 " tcp sport " (number->string socks-proxy-port)
-                                 " ct state { established, related }"
-                                 " accept comment \"ts-socks return " inst-name ":" (number->string socks-proxy-port) "\""))
+                          (list
+                           ;; Allow host applications to connect to the SOCKS expose listener.
+                           (string-append
+                            "tcp dport " (number->string socks-proxy-port)
+                            " accept comment \"ts-socks expose " inst-name ":" (number->string socks-proxy-port) "\"")
+                           ;; Allow return traffic from microsocks inside the netns back to the host.
+                           (string-append
+                            "ip saddr " subnet
+                            " tcp sport " (number->string socks-proxy-port)
+                            " ct state { established, related }"
+                            " accept comment \"ts-socks return " inst-name ":" (number->string socks-proxy-port) "\""))
                           '())))
               (forward (list
                         ;; Allow NEW+EST+REL flows from the netns veth into the rest of the host.
@@ -636,6 +680,7 @@ socks-proxy-port is not configured."
    (map tailscale-instance->netns-setup-service instances)
    (append-map tailscale-instance->forward-services instances)
    (filter-map tailscale-instance->socks-service instances)
+   (filter-map tailscale-instance->socks-expose-service instances)
    (map tailscale-instance->shepherd-service instances)
    (map tailscale-instance->prefs-service instances)))
 
