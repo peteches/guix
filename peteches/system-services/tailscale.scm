@@ -528,6 +528,17 @@ Accept elements like (SRC . DST) or (SRC DST)."
                         #$ts
                         #$socket-file
 			#$nc))))))
+            resolved)
+
+        ;; Restart each tailscaled instance so resolv.conf and sudoers changes
+        ;; take effect immediately on reconfigure.
+        #$@(map
+            (lambda (cfg)
+              (let ((svc-name (string-append "tailscaled-"
+                                             (tailscale-instance-configuration-name cfg))))
+                #~(when (file-exists? "/run/shepherd/socket")
+                    (system* #$(file-append shepherd "/bin/herd")
+                             "restart" #$svc-name))))
             resolved))))
 
 (define (tailscale->firewall-rules instances)

@@ -16,6 +16,7 @@
 (define-module (peteches system-services firewall)
   #:use-module (gnu services)
   #:use-module (gnu services shepherd)
+  #:use-module (gnu packages admin)
   #:use-module (gnu packages linux)   ; nftables package
   #:use-module (guix gexp)
   #:use-module (guix records)
@@ -85,6 +86,11 @@
   ;; Install /etc/nftables.conf so it’s inspectable and can be reused by humans.
   (list `("nftables.conf" ,(firewall-ruleset-file rules))))
 
+(define (firewall-activation rules)
+  #~(when (file-exists? "/run/shepherd/socket")
+      (system* #$(file-append shepherd "/bin/herd")
+               "reload" "peteches-firewall")))
+
 (define (firewall-shepherd-service rules)
   (let ((ruleset (firewall-ruleset-file rules)))
     (list
@@ -123,7 +129,9 @@
    (extend rules-merge)
    (default-value (nftables-rules))
    (extensions
-    (list (service-extension etc-service-type
+    (list (service-extension activation-service-type
+                             firewall-activation)
+          (service-extension etc-service-type
                              firewall-etc-files)
 	  (service-extension profile-service-type
                    (lambda (_rules) (list nftables)))

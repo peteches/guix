@@ -27,6 +27,7 @@
   #:use-module (gnu services)
   #:use-module (gnu services shepherd)
   #:use-module (gnu services dbus)
+  #:use-module (gnu packages admin)
   #:use-module (gnu packages linux)
   #:export (boltd-configuration
             boltd-configuration?
@@ -51,10 +52,12 @@
              #:log-file "/var/log/boltd"))
    (stop #~(make-kill-destructor))))
 
-(define boltd-activation-service
+(define (boltd-activation config)
   #~(begin
       (use-modules (guix build utils))
-      (mkdir-p "/var/lib/boltd")))
+      (mkdir-p "/var/lib/boltd")
+      (when (file-exists? "/run/shepherd/socket")
+        (system* #$(file-append shepherd "/bin/herd") "restart" "boltd"))))
 
 (define (boltd-udev-rule config)
   (let ((package (boltd-configuration-package config)))
@@ -71,7 +74,7 @@
     (list (service-extension udev-service-type
                              (compose list boltd-udev-rule))
      (service-extension activation-service-type
-                             (const boltd-activation-service))
+                             boltd-activation)
           (service-extension dbus-root-service-type
                              (compose list boltd-configuration-package))
           (service-extension shepherd-root-service-type
