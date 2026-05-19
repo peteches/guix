@@ -127,9 +127,11 @@
      "compactor:\n"
      "  working_directory: " storage "/compactor\n"
      "  retention_enabled: true\n"
+     "  delete_request_store: filesystem\n"
      "\n"
      "limits_config:\n"
      "  retention_period: " retention "\n"
+     "  volume_enabled: true\n"
      (if lc
          (string-append
           "  ingestion_rate_mb: "

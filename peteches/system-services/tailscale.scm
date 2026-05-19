@@ -468,7 +468,7 @@ socks-proxy-port is not configured."
                     #:log-file #$lf
                     #:environment-variables
                     (list "PATH=/run/setuid-programs:/run/current-system/profile/bin:/run/current-system/profile/sbin")))
-                (stop #~(make-kill-destructor)))))))))
+                (stop #~(make-kill-destructor))))))))))
 
 (define (tailscale-activation instances)
   (let ((resolved (map instance->resolved instances)))
