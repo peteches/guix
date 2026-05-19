@@ -307,7 +307,8 @@
             (list (tailscale-instance-configuration
               (name "peteches")
               (port 41641)
-	      (forward-ports '((22 . 22)))
+	      (forward-ports '((22 . 22) (1080 . 1080)))
+	      (socks-proxy-port 1080)
 	      (magic-dns-suffix "tailb21dfe.ts.net"))))))
 
 ;; Grab the *unexported* accessor from (gnu services base).
