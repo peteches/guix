@@ -11,6 +11,7 @@
   #:use-module (gnu services)
   #:use-module (peteches systems vm-base)
   #:use-module (peteches systems monitored-hosts)
+  #:use-module (peteches system-services alloy)
   #:use-module (peteches system-services prometheus)
   #:use-module (peteches system-services restic)
   #:use-module (peteches system-services tailscale)
@@ -45,6 +46,14 @@
       (backup-paths '("/var/lib/prometheus")))
      #:extra-services
      (list
+      (service alloy-service-type
+               (alloy-configuration
+                (hostname "prometheus.peteches.co.uk")
+                (log-files '("/var/log/messages"
+                             "/var/log/prometheus-node-exporter.log"
+                             "/var/log/prometheus.log"
+                             "/var/log/ntpd.log"
+                             "/var/log/tailscaled-*.log"))))
       (service prometheus-service-type
                (prometheus-configuration
                 (scrape-configs
@@ -80,6 +89,22 @@
                     (list (prometheus-static-config
                            (targets '("192.168.51.190:3100"))
                            (labels '(("instance" . "loki")))))))
+                  (prometheus-scrape-config
+                   (job-name "alloy")
+                   (static-configs
+                    (list
+                     (prometheus-static-config
+                      (targets '("192.168.51.187:12345"))
+                      (labels '(("instance" . "prometheus"))))
+                     (prometheus-static-config
+                      (targets '("192.168.51.188:12345"))
+                      (labels '(("instance" . "grafana"))))
+                     (prometheus-static-config
+                      (targets '("192.168.51.190:12345"))
+                      (labels '(("instance" . "loki"))))
+                     (prometheus-static-config
+                      (targets '("192.168.51.189:12345"))
+                      (labels '(("instance" . "pihole")))))))
                   (prometheus-scrape-config
                    (job-name "proxmox")
                    (metrics-path "/pve")

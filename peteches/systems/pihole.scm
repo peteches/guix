@@ -9,6 +9,7 @@
   #:use-module (gnu system file-systems)
   #:use-module (gnu system keyboard)
   #:use-module (peteches systems vm-base)
+  #:use-module (peteches system-services alloy)
   #:use-module (peteches system-services pihole)
   #:use-module (peteches system-services restic)
   #:export (pihole-os))
@@ -43,6 +44,17 @@
       (backup-paths '("/var/lib/pihole")))
      #:extra-services
      (list
+      (service alloy-service-type
+               (alloy-configuration
+                (hostname "pihole.peteches.co.uk")
+                (log-files '("/var/log/messages"
+                             "/var/log/prometheus-node-exporter.log"
+                             "/var/log/ntpd.log"
+                             "/var/log/pihole/FTL.log"
+                             "/var/log/pihole/pihole.log"
+                             "/var/log/pihole/webserver.log"
+                             "/var/log/pihole/unbound.log"
+                             "/var/log/pihole/exporter.log"))))
       (service pihole-service-type
                (pihole-configuration
                 (interface "eth0")

@@ -171,9 +171,8 @@
                     (list #$storage-path
                           (string-append #$storage-path "/chunks")
                           (string-append #$storage-path "/rules"))))
-        (when (file-exists? "/run/shepherd/socket")
-          (system* #$(file-append shepherd "/bin/herd")
-                   "restart" "loki")))))
+        (system* #$(file-append shepherd "/bin/herd")
+                 "restart" "loki"))))
 
 (define (loki-etc-files config)
   (list `("loki/loki.yaml"

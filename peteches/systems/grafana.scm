@@ -10,6 +10,7 @@
   #:use-module (gnu services)
   #:use-module (guix gexp)
   #:use-module (peteches systems vm-base)
+  #:use-module (peteches system-services alloy)
   #:use-module (peteches system-services grafana)
   #:use-module (peteches system-services restic)
   #:use-module (peteches system-services tailscale)
@@ -45,6 +46,14 @@
       (backup-paths '("/var/lib/grafana")))
      #:extra-services
      (list
+      (service alloy-service-type
+               (alloy-configuration
+                (hostname "grafana.peteches.co.uk")
+                (log-files '("/var/log/messages"
+                             "/var/log/prometheus-node-exporter.log"
+                             "/var/log/grafana/grafana.log"
+                             "/var/log/ntpd.log"
+                             "/var/log/tailscaled-*.log"))))
       (service grafana-service-type
                (grafana-configuration
                 (admin-password "CHANGEME")

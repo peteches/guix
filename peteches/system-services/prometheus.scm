@@ -248,9 +248,8 @@ The first present field gets '      - ' prefix; subsequent get '        '."
                (gid (passwd:gid pw)))
           (mkdir-p #$storage-path)
           (chown #$storage-path uid gid))
-        (when (file-exists? "/run/shepherd/socket")
-          (system* #$(file-append shepherd "/bin/herd")
-                   "restart" "prometheus")))))
+        (system* #$(file-append shepherd "/bin/herd")
+                 "restart" "prometheus"))))
 
 (define (prometheus-etc-files config)
   (list `("prometheus/prometheus.yml"

@@ -559,11 +559,9 @@ COMMIT;
                  ":/run/current-system/profile/sbin "
                  #$(file-append pihole-scripts "/bin/pihole")
                  " -g >>" #$log-dir "/gravity.log 2>&1' &"))
-        (when (file-exists? "/run/shepherd/socket")
-          (system* #$(file-append shepherd "/bin/herd") "restart" "pihole"))
+        (system* #$(file-append shepherd "/bin/herd") "restart" "pihole")
         #$(if (pihole-configuration-with-unbound? config)
-              #~(when (file-exists? "/run/shepherd/socket")
-                  (system* #$(file-append shepherd "/bin/herd") "restart" "unbound"))
+              #~(system* #$(file-append shepherd "/bin/herd") "restart" "unbound")
               #~(begin)))))
 
 (define (pihole-etc-files config)
