@@ -247,7 +247,8 @@ The first present field gets '      - ' prefix; subsequent get '        '."
                (uid (passwd:uid pw))
                (gid (passwd:gid pw)))
           (mkdir-p #$storage-path)
-          (chown #$storage-path uid gid))
+          (chown #$storage-path uid gid)
+          (chmod #$storage-path #o755))
         (system* #$(file-append shepherd "/bin/herd")
                  "restart" "prometheus"))))
 
