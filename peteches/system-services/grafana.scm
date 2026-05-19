@@ -149,12 +149,9 @@
           (mkdir-p #$data-path)
           (chown #$data-path uid gid)
           (mkdir-p #$log-path)
-          (chown #$log-path uid gid)
-          ;; Restart Grafana so dashboard symlinks are re-read. Skipped on
-          ;; first boot when shepherd has not yet started.
-          (when (file-exists? "/run/shepherd/socket")
-            (system* #$(file-append shepherd "/bin/herd")
-                     "restart" "grafana"))))))
+          (chown #$log-path uid gid))
+        (system* #$(file-append shepherd "/bin/herd")
+                 "restart" "grafana"))))
 
 
 (define (grafana-etc-files config)
