@@ -62,6 +62,7 @@
   ;; Optional <loki-limits-config> record; #f uses Loki built-in defaults.
   (limits-config        loki-configuration-limits-config        (default #f))
   (analytics-reporting? loki-configuration-analytics-reporting? (default #f))
+  (retention-period     loki-configuration-retention-period     (default "720h"))
   (extra-args           loki-configuration-extra-args           (default '())))
 
 ;;; ── YAML rendering ───────────────────────────────────────────────────────
@@ -79,27 +80,12 @@
    "        prefix: "     (loki-schema-config-entry-index-prefix e) "\n"
    "        period: "     (loki-schema-config-entry-index-period e) "\n"))
 
-(define (render-limits-config lc)
-  (string-append
-   "limits_config:\n"
-   "  ingestion_rate_mb: "
-   (number->string (loki-limits-config-ingestion-rate-mb lc)) "\n"
-   "  ingestion_burst_size_mb: "
-   (number->string (loki-limits-config-ingestion-burst-size-mb lc)) "\n"
-   "  max_cache_freshness_per_query: "
-   (loki-limits-config-max-cache-freshness-per-query lc) "\n"
-   "  reject_old_samples: "
-   (if (loki-limits-config-reject-old-samples? lc) "true" "false") "\n"
-   "  reject_old_samples_max_age: "
-   (loki-limits-config-reject-old-samples-max-age lc) "\n"
-   "  split_queries_by_interval: "
-   (loki-limits-config-split-queries-by-interval lc) "\n"
-   "\n"))
 
 (define (render-loki-yaml config)
   "Render a complete loki.yaml string from a <loki-configuration> record."
-  (let* ((storage  (loki-configuration-storage-path config))
-         (lc       (loki-configuration-limits-config config)))
+  (let* ((storage   (loki-configuration-storage-path config))
+         (lc        (loki-configuration-limits-config config))
+         (retention (loki-configuration-retention-period config)))
     (string-append
      "auth_enabled: "
      (if (loki-configuration-auth-enabled? config) "true" "false") "\n"
@@ -138,7 +124,28 @@
             (map render-schema-config-entry
                  (loki-configuration-schema-configs config)))
      "\n"
-     (if lc (render-limits-config lc) "")
+     "compactor:\n"
+     "  working_directory: " storage "/compactor\n"
+     "  retention_enabled: true\n"
+     "\n"
+     "limits_config:\n"
+     "  retention_period: " retention "\n"
+     (if lc
+         (string-append
+          "  ingestion_rate_mb: "
+          (number->string (loki-limits-config-ingestion-rate-mb lc)) "\n"
+          "  ingestion_burst_size_mb: "
+          (number->string (loki-limits-config-ingestion-burst-size-mb lc)) "\n"
+          "  max_cache_freshness_per_query: "
+          (loki-limits-config-max-cache-freshness-per-query lc) "\n"
+          "  reject_old_samples: "
+          (if (loki-limits-config-reject-old-samples? lc) "true" "false") "\n"
+          "  reject_old_samples_max_age: "
+          (loki-limits-config-reject-old-samples-max-age lc) "\n"
+          "  split_queries_by_interval: "
+          (loki-limits-config-split-queries-by-interval lc) "\n")
+         "")
+     "\n"
      "analytics:\n"
      "  reporting_enabled: "
      (if (loki-configuration-analytics-reporting? config) "true" "false") "\n")))
@@ -170,7 +177,8 @@
                       (chown d uid gid))
                     (list #$storage-path
                           (string-append #$storage-path "/chunks")
-                          (string-append #$storage-path "/rules"))))
+                          (string-append #$storage-path "/rules")
+                          (string-append #$storage-path "/compactor"))))
         (system* #$(file-append shepherd "/bin/herd")
                  "restart" "loki"))))
 
