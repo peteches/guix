@@ -49,7 +49,138 @@ guile -L . -c '(use-modules (peteches packages fonts))'
 | `peteches/system-services/` | Custom OS-level service definitions |
 | `peteches/channels/` | Channel lock files |
 | `peteches/utils.scm` | Shared utilities |
+| `peteches/grafana-dashboards/` | Grafana dashboard JSON definitions |
 | `containers/` | Container definitions |
+| `deploy.scm` | Guix deploy target definitions (all managed VMs) |
+| `proxmox-vms.org` | VM inventory and IP reference table |
+| `docs/` | Architecture documentation |
+| `skills/` | Claude Code automation skills |
+
+### Complete File Map
+
+#### `peteches/systems/`
+
+| File | Purpose |
+|---|---|
+| `base.scm` | `make-base-os` — desktop/laptop base (Hyprland, greetd, libvirt) |
+| `vm-base.scm` | `make-vm-os` — headless Proxmox VM base (SSH, dhcpcd, nftables) |
+| `common.scm` | Shared OS-level services and environment |
+| `network-mounts.scm` | Network filesystem mount definitions |
+| `monitored-hosts.scm` | Registry of Prometheus node-exporter scrape targets |
+| `pihole.scm` | Pi-hole DNS/ad-blocking VM (192.168.51.189) |
+| `prometheus.scm` | Prometheus monitoring VM (192.168.51.187, port 9090) |
+| `grafana.scm` | Grafana dashboard VM (192.168.51.188, port 3000) |
+| `loki.scm` | Loki log aggregation VM (192.168.51.190, port 3100) |
+| `nug.scm` | nug desktop system |
+| `nyarlothotep.scm` | nyarlothotep desktop system |
+| `bhiyaki.peteches.co.uk.scm` | bhiyaki laptop system |
+| `azathoth.peteches.co.uk.scm` | azathoth laptop system |
+
+#### `peteches/home-configs/`
+
+| File | Purpose |
+|---|---|
+| `base.scm` | Main home environment — composes all feature home-services |
+| `nug.scm` | nug-specific home additions |
+| `nyarlothotep.scm` | nyarlothotep-specific home additions |
+| `bhiyaki.peteches.co.uk.scm` | bhiyaki-specific home additions |
+| `azathoth.peteches.co.uk.scm` | azathoth-specific home additions |
+| `scoreplay.scm` | scoreplay-specific home additions |
+| `firefox-extensions/` | Firefox .xpi extensions (uBlock, DarkReader, PassFF, AWS SSO) |
+| `git-hooks/` | Git hook scripts (pre-commit) |
+
+#### `peteches/home-services/`
+
+| File | Purpose |
+|---|---|
+| `git.scm` | Git config service (gitignore, git-section helpers) |
+| `firefox.scm` | Firefox home service with profile launcher |
+| `hyprland.scm` | Hyprland Wayland compositor home service |
+| `waybar.scm` | Waybar status bar home service |
+| `mako.scm` | Mako notification daemon home service |
+| `desktop.scm` | Desktop environment home service |
+| `agixt.scm` | AGiXT AI framework home service |
+| `ai.scm` | AI tools home service |
+| `aws.scm` | AWS CLI home service |
+| `ezlocalai.scm` | EZLocalAI LLM service |
+| `koboldcpp.scm` | KoboldCPP language model service |
+| `password-store.scm` | pass password manager home service |
+| `nyxt.scm` | Nyxt browser home service |
+| `emacs/` | Emacs module: `base.scm`, `exwm.scm`, `configs/` (init.el, early-init.el, etc.) |
+| `scripts/` | AI, comfyui, and other helper scripts |
+| `waybar-scripts/` | Waybar module scripts |
+| `agixt-scripts/` | AGiXT launcher scripts |
+
+#### `peteches/packages/`
+
+Pattern: use `copy-build-system` for pre-built binaries (see `go-tools.scm`).
+
+| File | Purpose |
+|---|---|
+| `prometheus.scm` | Prometheus pre-built binary |
+| `grafana.scm` | Grafana dashboard server |
+| `loki.scm` | Grafana Loki log aggregation |
+| `alloy.scm` | Grafana Alloy (CGO Go binary, glibc wrapper) |
+| `pihole.scm` | Pi-hole FTL DNS binary |
+| `pihole-exporter.scm` | Pi-hole Prometheus exporter |
+| `tailscale.scm` | Tailscale VPN |
+| `rclone.scm` | Rclone cloud storage tool |
+| `mermaid.scm` | Mermaid diagram generator |
+| `go-tools.scm` | Go tooling packages |
+| `go-deps.scm` | Go dependency packages |
+| `go-enum.scm` | Go enum code generation |
+| `aws.scm` | AWS CLI and tools |
+| `emacs.scm` | Emacs package variants |
+| `hyprland.scm` | Hyprland Wayland compositor |
+| `nvidia-container-runtime.scm` | NVIDIA container runtime |
+| `koboldcpp.scm` | KoboldCPP LLM runner |
+| `fonts.scm` | Font collection |
+| `gpg.scm` | GPG/GnuPG tools |
+| `aider.scm` | Aider AI pair programming tool |
+| `claude-code.scm` | Claude Code CLI |
+| `mcp.scm` | MCP-related packages |
+| `terraform.scm` | Terraform |
+| `dank-material-shell.scm` | Material Shell theme |
+| `gurps.scm` | GURPS game system tools |
+| `lycheeslicer.scm` | LycheeSlice 3D printing slicer |
+| `scripts.scm` | Helper scripts package |
+| `shims.scm` | Shell shim utilities |
+
+#### `peteches/system-services/`
+
+| File | Purpose |
+|---|---|
+| `prometheus.scm` | Prometheus service type (YAML config generation) |
+| `grafana.scm` | Grafana service type |
+| `loki.scm` | Loki service type (schema config generation) |
+| `pihole.scm` | Pi-hole service type (FTL process management) |
+| `alloy.scm` | Grafana Alloy service type |
+| `tailscale.scm` | Tailscale service type (multi-instance, per-instance Linux netns) |
+| `firewall.scm` | Modular nftables firewall service (authoritative ruleset, extension hooks) |
+| `restic.scm` | Restic VM backup service (SFTP to NAS) |
+| `boltd.scm` | Boltd (Thunderbolt secure enclave) service |
+
+#### `peteches/channels/`
+
+| File | Purpose |
+|---|---|
+| `base.scm` | `%base-channels` — pinned guix, nonguix, guix-science, simendsjo |
+| `nug.scm` | nug-specific channel overrides |
+| `azathoth.scm` | azathoth-specific channel overrides |
+| `bhiyaki.scm` | bhiyaki-specific channel overrides |
+
+#### Other notable files
+
+| File | Purpose |
+|---|---|
+| `deploy.scm` | Guix `deploy` machine entries for all managed VMs |
+| `proxmox-vms.org` | VM inventory: IPs, VMIDs, purpose — authoritative IP reference |
+| `containers/postgres.scm` | PostgreSQL container definition |
+| `peteches/grafana-dashboards/node-exporter.json` | Node Exporter Grafana dashboard |
+| `peteches/grafana-dashboards/pihole.json` | Pi-hole Grafana dashboard |
+| `peteches/grafana-dashboards/proxmox.json` | Proxmox Grafana dashboard |
+| `docs/backups.org` | Backup strategy documentation |
+| `skills/guix-update/` | Claude Code skill for channel/package updates |
 
 ### System Configurations (`peteches/systems/`)
 
@@ -77,7 +208,7 @@ Key `make-vm-os` parameters:
 
 VM system files should `(define-public <name>-os ...)` and end with `<name>-os` as the final expression so both `guix system build FILE` and `guix deploy` (via module import) work.
 
-Current VM configs: `prometheus.scm` — Prometheus monitoring server on `/dev/vda`, port 9090.
+Current VM configs: `prometheus.scm` (port 9090), `grafana.scm` (port 3000), `loki.scm` (port 3100), `pihole.scm` (DNS). All use `/dev/vda` as the root disk. See `proxmox-vms.org` for IPs and VMIDs.
 
 ### Home Configurations (`peteches/home-configs/`)
 
@@ -89,9 +220,18 @@ Current VM configs: `prometheus.scm` — Prometheus monitoring server on `/dev/v
 
 ### Custom Packages (`peteches/packages/`)
 
-Packages not in the upstream Guix channels. Most use `copy-build-system` for pre-built binaries (see `go-tools.scm` for the pattern). Notable entries:
+Packages not in the upstream Guix channels. Most use `copy-build-system` for pre-built binaries (see `go-tools.scm` for the pattern). See the Complete File Map above for the full per-file listing.
 
-- `prometheus.scm` — Prometheus 3.11.3, pre-built linux-amd64 binary; installs `prometheus`, `promtool`, and the `consoles/`/`console_libraries/` assets.
+Notable entry: `prometheus.scm` installs `prometheus`, `promtool`, and the `consoles/`/`console_libraries/` assets from a pre-built linux-amd64 binary.
+
+### Custom System Services (`peteches/system-services/`)
+
+Custom Guix service types for the VM fleet. Each pairs with a same-named package in `peteches/packages/`. See the Complete File Map above for the full listing.
+
+Key patterns:
+- Services generate YAML/JSON config files via `apply-template-file` or inline G-expressions.
+- `firewall.scm` is authoritative: it replaces the default `%base-services` nftables setup and accepts extension hooks from other services.
+- `tailscale.scm` supports multiple instances, each isolated in its own Linux network namespace.
 
 ### Adding a New VM
 
