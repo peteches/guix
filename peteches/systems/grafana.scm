@@ -73,6 +73,6 @@
       (service tailscale-service-type
                (list (tailscale-instance-configuration
                       (name "peteches")
-                      (forward-ports '((3000 . 3000)))))))))))
+                      (forward-ports '((22 . 22) (3000 . 3000)))))))))))
 
 grafana-os

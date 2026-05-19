@@ -89,6 +89,6 @@
       (service tailscale-service-type
                (list (tailscale-instance-configuration
                       (name "peteches")
-                      (forward-ports '((9090 . 9090)))))))))))
+                      (forward-ports '((22 . 22) (9090 . 9090)))))))))))
 
 prometheus-os
