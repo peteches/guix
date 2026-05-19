@@ -2,6 +2,7 @@
              (gnu machine ssh)
              (peteches systems prometheus)
              (peteches systems grafana)
+             (peteches systems loki)
              (peteches systems pihole))
 
 (list
@@ -22,6 +23,16 @@
    (machine-ssh-configuration
     (host-name "192.168.51.188")
     (host-key "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIA3sVMg8QH+g6Xtj2NmIzV90gbkSPMiCnlaaAJx+a7tG")               ; fill in after first boot: ssh-keyscan 192.168.51.188
+    (system "x86_64-linux")
+    (user "peteches")
+    (identity "/home/peteches/.ssh/id_ed25519"))))
+ (machine
+  (operating-system loki-os)
+  (environment managed-host-environment-type)
+  (configuration
+   (machine-ssh-configuration
+    (host-name "192.168.51.190")
+    (host-key "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAII2AxOh6ksCO2dnP+S92mNnOR76J/ewMW1QrhkSvN/Xx")            ; fill in after first boot: ssh-keyscan 192.168.51.190
     (system "x86_64-linux")
     (user "peteches")
     (identity "/home/peteches/.ssh/id_ed25519"))))

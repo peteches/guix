@@ -16,6 +16,7 @@ Current VMs (all use OVMF/EFI and =qcow2-gpt= images):
 | peteches/systems/prometheus.scm | prometheus.peteches.co.uk | Prometheus on :9090    |
 | peteches/systems/grafana.scm    | grafana.peteches.co.uk    | Grafana on :3000       |
 | peteches/systems/pihole.scm     | pihole.peteches.co.uk     | Pi-hole DNS ad-blocker |
+| peteches/systems/loki.scm       | loki.peteches.co.uk       | Loki log aggregation on :3100 |
 
 * Adding a New VM Config
 
@@ -115,7 +116,8 @@ qm create 100 \
   --net0 virtio,bridge=vmbr0 \
   --machine q35 \
   --bios ovmf \
-  --agent enabled=1
+  --agent enabled=1 \
+  --onboot 1
 
 # Add an EFI disk (required for OVMF)
 qm set 100 --efidisk0 local-lvm:0,efitype=4m,pre-enrolled-keys=0

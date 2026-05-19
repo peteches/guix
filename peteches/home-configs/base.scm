@@ -222,6 +222,14 @@
 		       (name "pihole")
 		       (host-name "192.168.51.189")
 		       (user "peteches")
+		       (identity-file "~/.ssh/id_ed25519"))
+		      (openssh-host
+		       (name "loki.ts")
+		       (host-name "loki.tailb21dfe.ts.net"))
+		      (openssh-host
+		       (name "loki")
+		       (host-name "192.168.51.190")
+		       (user "peteches")
 		       (identity-file "~/.ssh/id_ed25519")))
 		     %scoreplay-ssh-hosts))))
 

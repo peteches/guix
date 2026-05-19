@@ -93,6 +93,35 @@ Packages not in the upstream Guix channels. Most use `copy-build-system` for pre
 
 - `prometheus.scm` — Prometheus 3.11.3, pre-built linux-amd64 binary; installs `prometheus`, `promtool`, and the `consoles/`/`console_libraries/` assets.
 
+### Adding a New VM
+
+When creating a new VM system config (`peteches/systems/<name>.scm`), always update these files in the same change:
+
+1. **`peteches/systems/pihole.scm`** — add a `pihole-custom-host` entry to the `custom-hosts` list mapping the VM's IP to its hostname (`<name>.peteches.co.uk`).
+
+2. **`peteches/home-configs/base.scm`** — add an `openssh-host` entry inside the `home-openssh-service-type` hosts list. At minimum a direct LAN entry:
+   ```scheme
+   (openssh-host
+    (name "<name>")
+    (host-name "<ip-address>")
+    (user "peteches")
+    (identity-file "~/.ssh/id_ed25519"))
+   ```
+   If the VM runs Tailscale, also add a `.ts` alias entry:
+   ```scheme
+   (openssh-host
+    (name "<name>.ts")
+    (host-name "<name>.tailb21dfe.ts.net"))
+   ```
+
+3. **`peteches/deploy.scm`** — add a `machine` entry. The SSH `host-key` can only be filled in after the VM's first boot (`ssh-keyscan <ip>`); use a `TODO` placeholder until then.
+
+4. **`peteches/systems/monitored-hosts.scm`** — add the VM's node-exporter endpoint so Prometheus scrapes it automatically. The `node` scrape job in prometheus.scm reads this list dynamically; no change to prometheus.scm is needed for node-exporter coverage.
+
+5. **`peteches/systems/prometheus.scm`** — if the VM's service exposes Prometheus metrics on a service-specific port (beyond node-exporter's 9100), add a dedicated `prometheus-scrape-config` entry. Examples: Loki on `:3100`, Grafana on `:3000`. Node-exporter coverage is already automatic via `monitored-hosts.scm`.
+
+6. **`proxmox-vms.org`** — add a row to the VM table in the Overview section.
+
 ### Utilities (`peteches/utils.scm`)
 
 - `gather-manifest-packages` — reads manifest `.scm` files from `manifests/` directory and converts them to package+output pairs for inclusion in home/system package lists.

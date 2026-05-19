@@ -63,11 +63,23 @@
                             (labels `(("instance" . ,(car host))))))
                          %monitored-hosts)))
                   (prometheus-scrape-config
+                   (job-name "grafana")
+                   (static-configs
+                    (list (prometheus-static-config
+                           (targets '("192.168.51.188:3000"))
+                           (labels '(("instance" . "grafana")))))))
+                  (prometheus-scrape-config
                    (job-name "pihole")
                    (static-configs
                     (list (prometheus-static-config
                            (targets '("192.168.51.189:9617"))
                            (labels '(("instance" . "pihole")))))))
+                  (prometheus-scrape-config
+                   (job-name "loki")
+                   (static-configs
+                    (list (prometheus-static-config
+                           (targets '("192.168.51.190:3100"))
+                           (labels '(("instance" . "loki")))))))
                   (prometheus-scrape-config
                    (job-name "proxmox")
                    (metrics-path "/pve")

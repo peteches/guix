@@ -55,7 +55,12 @@
                    (type "prometheus")
                    (uid "prometheus")
                    (url "http://192.168.51.187:9090")
-                   (is-default? #t))))
+                   (is-default? #t))
+                  (grafana-datasource
+                   (name "Loki")
+                   (type "loki")
+                   (uid "loki")
+                   (url "http://192.168.51.190:3100"))))
                 (dashboards
                  (list
                   (grafana-dashboard
