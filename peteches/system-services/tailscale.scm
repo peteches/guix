@@ -103,7 +103,13 @@
   ;; Forward ports from inside the netns back to the host.
   ;; Each element is either (SRC . DST) or (SRC DST), ports are integers.
   (forward-ports tailscale-instance-configuration-forward-ports
-                 (default '())))
+                 (default '()))
+
+  ;; Optional SOCKS5 proxy port.  When set (integer), microsocks is started
+  ;; inside the netns bound to 0.0.0.0:<port>, whitelisting the host veth IP.
+  ;; Host applications connect via SOCKS5 at 10.250.X.2:<port>.
+  (socks-proxy-port tailscale-instance-configuration-socks-proxy-port
+                    (default #f)))
 
 (define (instance-default-paths name)
   (let ((base (string-append "/var/lib/tailscale/" name))
@@ -118,7 +124,8 @@
   ;; Fill in defaults derived from name if fields are #f.
   (match cfg
     (($ <tailscale-instance-configuration>
-        name package netns magic-dns state-file socket-file tun port log-file extra-args forward-ports)
+        name package netns magic-dns state-file socket-file tun port log-file extra-args forward-ports
+        socks-proxy-port)
      (let-values (((dstate dsock dlog dtun) (instance-default-paths name)))
        (tailscale-instance-configuration
         (name name)
@@ -131,13 +138,14 @@
         (port port)
         (log-file (or log-file dlog))
         (extra-args extra-args)
-        (forward-ports forward-ports))))))
+        (forward-ports forward-ports)
+        (socks-proxy-port socks-proxy-port))))))
 
 (define (tailscale-instance->shepherd-service cfg)
   (let ((cfg (instance->resolved cfg)))
     (match cfg
       (($ <tailscale-instance-configuration>
-          name package netns magic-dns state-file socket-file tun port log-file extra-args forward-ports)
+          name package netns magic-dns state-file socket-file tun port log-file extra-args forward-ports _)
        (let* ((service-name (string->symbol (string-append "tailscaled-" name)))
               (setup-name   (string->symbol (string-append "tailscale-netns-setup-" name)))
               (ip (file-append iproute "/sbin/ip"))
@@ -168,7 +176,7 @@
   (let ((cfg (instance->resolved cfg)))
     (match cfg
       (($ <tailscale-instance-configuration>
-          name package netns magic-dns state-file socket-file tun port log-file extra-args forward-ports)
+          name package netns magic-dns state-file socket-file tun port log-file extra-args forward-ports _)
        (let* ((svc-name     (string->symbol (string-append "tailscale-prefs-" name)))
               (tsd-svc      (string->symbol (string-append "tailscaled-" name)))
               (tailscale    (file-append package "/bin/tailscale"))
@@ -199,7 +207,7 @@
   (let ((cfg (instance->resolved cfg)))
     (match cfg
       (($ <tailscale-instance-configuration>
-          inst-name inst-package ns-name magic-dns state-file socket-file tun port log-file extra-args forward-ports)
+          inst-name inst-package ns-name magic-dns state-file socket-file tun port log-file extra-args forward-ports _)
        (let* ((bash-path    (file-append bash "/bin/bash"))
               (ip-path      (file-append iproute "/sbin/ip"))
               (ts-bin       (file-append inst-package "/bin/tailscale"))
@@ -268,11 +276,14 @@
 
 (define (tailscale-profile-entries instances)
   ;; Install tailscale + wrappers + netcat (for SSH ProxyCommand nc).
-  (let* ((resolved  (map instance->resolved instances))
-         (pkgs      (map tailscale-instance-configuration-package resolved))
-         (wrappers  (map ts-wrapper-package instances)))
+  ;; Include microsocks when any instance has socks-proxy-port set.
+  (let* ((resolved    (map instance->resolved instances))
+         (pkgs        (map tailscale-instance-configuration-package resolved))
+         (wrappers    (map ts-wrapper-package instances))
+         (need-socks? (any tailscale-instance-configuration-socks-proxy-port resolved)))
     (delete-duplicates
-     (append pkgs wrappers  (list netcat))
+     (append pkgs wrappers (list netcat)
+             (if need-socks? (list microsocks) '()))
      eq?)))
 
 ;; Sudo is picky: sudoers.d files must be owned by root and typically 0440.
@@ -297,7 +308,7 @@
   (let ((cfg (instance->resolved cfg)))
     (match cfg
       (($ <tailscale-instance-configuration>
-          name package netns magic-dns state-file socket-file tun port log-file extra-args forward-ports)
+          name package netns magic-dns state-file socket-file tun port log-file extra-args forward-ports _)
        (let-values (((subnet hostip nsip gw) (subnet-for name)))
          (let* ((ip (file-append iproute "/sbin/ip"))
                 (veth-host (ifname "vts-" name))
@@ -385,7 +396,7 @@ Accept elements like (SRC . DST) or (SRC DST)."
   (let ((cfg (instance->resolved cfg)))
     (match cfg
       (($ <tailscale-instance-configuration>
-          name package netns magic-dns state-file socket-file tun port log-file extra-args forward-ports)
+          name package netns magic-dns state-file socket-file tun port log-file extra-args forward-ports _)
        (let* ((setup-name (string->symbol (string-append "tailscale-netns-setup-" name)))
               (ip         (file-append iproute "/sbin/ip"))
               (socat      (file-append socat "/bin/socat")))
@@ -420,6 +431,44 @@ Accept elements like (SRC . DST) or (SRC DST)."
                          (list "PATH=/run/setuid-programs:/run/current-system/profile/bin:/run/current-system/profile/sbin")))
                      (stop #~(make-kill-destructor)))))
                 (forward-ports->alist forward-ports))))))))
+
+(define (tailscale-instance->socks-service cfg)
+  "Return a shepherd service running microsocks inside the netns, or #f when
+socks-proxy-port is not configured."
+  (let ((cfg (instance->resolved cfg)))
+    (match cfg
+      (($ <tailscale-instance-configuration>
+          name package netns magic-dns state-file socket-file tun port log-file extra-args
+          forward-ports socks-proxy-port)
+       (if (not socks-proxy-port)
+           #f
+           (let-values (((subnet hostip nsip gw) (subnet-for name)))
+             (let* ((ip         (file-append iproute "/sbin/ip"))
+                    (ms         (file-append microsocks "/bin/microsocks"))
+                    (setup-name (string->symbol (string-append "tailscale-netns-setup-" name)))
+                    (svc-name   (string->symbol (string-append "tailscale-socks-" name)))
+                    ;; strip /24 suffix from "10.250.X.1/24"
+                    (host-veth-ip (car (string-split hostip #\/)))
+                    (lf         (format #f "/var/log/tailscale-socks-~a.log" name)))
+               (shepherd-service
+                (provision (list svc-name))
+                (documentation
+                 (format #f "SOCKS5 proxy (microsocks) for Tailscale instance ~a on port ~a"
+                         name socks-proxy-port))
+                (requirement (list 'user-processes 'networking setup-name))
+                (auto-start? #t)
+                (one-shot? #f)
+                (start
+                 #~(make-forkexec-constructor
+                    (list #$ip "netns" "exec" #$netns
+                          #$ms
+                          "-i" "0.0.0.0"
+                          "-p" #$(number->string socks-proxy-port)
+                          "-w" #$host-veth-ip)
+                    #:log-file #$lf
+                    #:environment-variables
+                    (list "PATH=/run/setuid-programs:/run/current-system/profile/bin:/run/current-system/profile/sbin")))
+                (stop #~(make-kill-destructor)))))))))
 
 (define (tailscale-activation instances)
   (let ((resolved (map instance->resolved instances)))
@@ -509,7 +558,7 @@ Accept elements like (SRC . DST) or (SRC DST)."
             (lambda (cfg)
               (match cfg
                 (($ <tailscale-instance-configuration>
-                    name package netns magic-dns state-file socket-file tun port log-file extra-args forward-ports)
+                    name package netns magic-dns state-file socket-file tun port log-file extra-args forward-ports _)
                  (let ((ip (file-append iproute "/sbin/ip"))
                        (ts (file-append package "/bin/tailscale"))
 		       (nc (file-append netcat "/bin/nc")))
@@ -546,16 +595,25 @@ Accept elements like (SRC . DST) or (SRC DST)."
     (define (one cfg)
       (match cfg
         (($ <tailscale-instance-configuration>
-            inst-name inst-package netns magic-dns state-file socket-file tun port log-file extra-args forward-ports)
+            inst-name inst-package netns magic-dns state-file socket-file tun port log-file extra-args forward-ports
+            socks-proxy-port)
          (let-values (((subnet hostip nsip gw) (subnet-for inst-name)))
            (let* ((veth-host (ifname "vts-" inst-name))
                   (fwd-pairs (forward-ports->alist forward-ports)))
              (nftables-rules
-              (input (map (lambda (p)
-                            (string-append "ip saddr " subnet
-                                           " tcp dport " (number->string (cdr p))
-                                           " accept comment \"ts-fwd " inst-name ":" (number->string (cdr p)) "\""))
-                          fwd-pairs))
+              (input (append
+                      (map (lambda (p)
+                             (string-append "ip saddr " subnet
+                                            " tcp dport " (number->string (cdr p))
+                                            " accept comment \"ts-fwd " inst-name ":" (number->string (cdr p)) "\""))
+                           fwd-pairs)
+                      (if socks-proxy-port
+                          (list (string-append
+                                 "ip saddr " subnet
+                                 " tcp sport " (number->string socks-proxy-port)
+                                 " ct state { established, related }"
+                                 " accept comment \"ts-socks return " inst-name ":" (number->string socks-proxy-port) "\""))
+                          '())))
               (forward (list
                         ;; Allow NEW+EST+REL flows from the netns veth into the rest of the host.
                         (string-append "iifname \"" veth-host "\" ip saddr " subnet
@@ -577,6 +635,7 @@ Accept elements like (SRC . DST) or (SRC DST)."
   (append
    (map tailscale-instance->netns-setup-service instances)
    (append-map tailscale-instance->forward-services instances)
+   (filter-map tailscale-instance->socks-service instances)
    (map tailscale-instance->shepherd-service instances)
    (map tailscale-instance->prefs-service instances)))
 
