@@ -49,12 +49,12 @@
       (service alloy-service-type
                (alloy-configuration
                 (hostname "grafana.peteches.co.uk")
-                (log-files '("/var/log/messages"
-                             "/var/log/prometheus-node-exporter.log"
-                             "/var/log/grafana/grafana.log"
-                             "/var/log/ntpd.log"
-                             "/var/log/alloy.log"
-                             "/var/log/tailscaled-*.log"))))
+                (log-files (list (cons "/var/log/messages" "syslog")
+                                 (cons "/var/log/prometheus-node-exporter.log" "node-exporter")
+                                 (cons "/var/log/grafana/grafana.log" "grafana")
+                                 (cons "/var/log/ntpd.log" "ntpd")
+                                 (cons "/var/log/alloy.log" "alloy")
+                                 (cons "/var/log/tailscaled-*.log" "tailscale")))))
       (service grafana-service-type
                (grafana-configuration
                 (admin-password "CHANGEME")

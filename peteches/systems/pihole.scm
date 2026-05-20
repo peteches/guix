@@ -47,15 +47,15 @@
       (service alloy-service-type
                (alloy-configuration
                 (hostname "pihole.peteches.co.uk")
-                (log-files '("/var/log/messages"
-                             "/var/log/prometheus-node-exporter.log"
-                             "/var/log/ntpd.log"
-                             "/var/log/alloy.log"
-                             "/var/log/pihole/FTL.log"
-                             "/var/log/pihole/pihole.log"
-                             "/var/log/pihole/webserver.log"
-                             "/var/log/pihole/unbound.log"
-                             "/var/log/pihole/exporter.log"))))
+                (log-files (list (cons "/var/log/messages" "syslog")
+                                 (cons "/var/log/prometheus-node-exporter.log" "node-exporter")
+                                 (cons "/var/log/ntpd.log" "ntpd")
+                                 (cons "/var/log/alloy.log" "alloy")
+				 (cons "/var/log/pihole/unbound.log" "unbound")
+                                 (cons "/var/log/pihole/FTL.log" "pihole")
+                                 (cons "/var/log/pihole/pihole.log" "pihole")
+                                 (cons "/var/log/pihole/webserver.log" "pihole")
+                                 (cons "/var/log/pihole/exporter.log" "pihole")))))
       (service pihole-service-type
                (pihole-configuration
                 (interface "eth0")

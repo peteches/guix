@@ -49,12 +49,12 @@
                (alloy-configuration
                 (hostname "loki.peteches.co.uk")
                 (syslog-listen-port 514)
-                (log-files '("/var/log/messages"
-                             "/var/log/prometheus-node-exporter.log"
-                             "/var/log/loki.log"
-                             "/var/log/ntpd.log"
-                             "/var/log/alloy.log"
-                             "/var/log/tailscaled-*.log"))))
+                (log-files (list (cons "/var/log/messages" "syslog")
+                                 (cons "/var/log/prometheus-node-exporter.log" "node-exporter")
+                                 (cons "/var/log/loki.log" "loki")
+                                 (cons "/var/log/ntpd.log" "ntpd")
+                                 (cons "/var/log/alloy.log" "alloy")
+                                 (cons "/var/log/tailscaled-*.log" "tailscale")))))
       (service loki-service-type (loki-configuration))
       (service tailscale-service-type
                (list (tailscale-instance-configuration

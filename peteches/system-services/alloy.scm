@@ -28,10 +28,10 @@
   (http-listen-port alloy-configuration-http-listen-port (default 12345))
   ;; Log files to tail.  Globs are accepted (e.g. "tailscaled-*.log").
   (log-files        alloy-configuration-log-files
-                    (default (list "/var/log/messages"
-                                   "/var/log/prometheus-node-exporter.log"
-                                   "/var/log/ntpd.log"
-                                   "/var/log/alloy.log")))
+                    (default (list (cons "/var/log/messages" "syslog")
+                                   (cons "/var/log/prometheus-node-exporter.log" "node-exporter")
+                                   (cons "/var/log/ntpd.log" "ntpd")
+                                   (cons "/var/log/alloy.log" "alloy"))))
   (storage-path     alloy-configuration-storage-path     (default "/var/lib/alloy"))
   (log-file         alloy-configuration-log-file         (default "/var/log/alloy.log"))
   ;; Syslog listener.  #f disables it.
@@ -46,8 +46,9 @@
 ;;
 ;; Pure Scheme → string at Guix evaluation time.  No gexps here.
 
-(define (render-path-target path)
-  (string-append "    {\"__path__\" = \"" path "\"},\n"))
+(define (render-path-target path-job)
+  (string-append "    {\"__path__\" = \"" (car path-job)
+                 "\", \"job\" = \"" (cdr path-job) "\"},\n"))
 
 (define (render-syslog-listener address port protocol)
   (string-append
@@ -102,10 +103,6 @@
      "  rule {\n"
      "    target_label = \"hostname\"\n"
      "    replacement  = \"" hostname "\"\n"
-     "  }\n"
-     "  rule {\n"
-     "    target_label = \"job\"\n"
-     "    replacement  = \"alloy\"\n"
      "  }\n"
      "  rule {\n"
      "    source_labels = [\"__path__\"]\n"
