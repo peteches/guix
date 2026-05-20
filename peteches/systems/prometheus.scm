@@ -123,7 +123,25 @@
                       (target-label "instance"))
                      (prometheus-relabel-config
                       (target-label "__address__")
-                      (replacement "192.168.51.1:9221")))))))))
+                      (replacement "192.168.51.1:9221")))))
+                  (prometheus-scrape-config
+                   (job-name "snmp")
+                   (metrics-path "/snmp")
+                   (params '(("module" . ("synology" "ucd_la_table" "if_mib")) ("auth" . ("synology"))))
+                   (static-configs
+                    (list (prometheus-static-config
+                           (targets '("nas.peteches.co.uk")))))
+                   (relabel-configs
+                    (list
+                     (prometheus-relabel-config
+                      (source-labels '("__address__"))
+                      (target-label "__param_target"))
+                     (prometheus-relabel-config
+                      (source-labels '("__param_target"))
+                      (target-label "instance"))
+                     (prometheus-relabel-config
+                      (target-label "__address__")
+                      (replacement "192.168.50.244:9116")))))))))
       (service tailscale-service-type
                (list (tailscale-instance-configuration
                       (name "peteches")
