@@ -53,6 +53,7 @@
                              "/var/log/prometheus-node-exporter.log"
                              "/var/log/grafana/grafana.log"
                              "/var/log/ntpd.log"
+                             "/var/log/alloy.log"
                              "/var/log/tailscaled-*.log"))))
       (service grafana-service-type
                (grafana-configuration

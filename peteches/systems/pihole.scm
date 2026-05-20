@@ -50,6 +50,7 @@
                 (log-files '("/var/log/messages"
                              "/var/log/prometheus-node-exporter.log"
                              "/var/log/ntpd.log"
+                             "/var/log/alloy.log"
                              "/var/log/pihole/FTL.log"
                              "/var/log/pihole/pihole.log"
                              "/var/log/pihole/webserver.log"
