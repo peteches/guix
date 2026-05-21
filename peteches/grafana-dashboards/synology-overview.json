@@ -3621,21 +3621,32 @@
   "templating": {
     "list": [
       {
+        "current": {},
+        "includeAll": false,
+        "label": "Datasource",
+        "name": "DS_PROMETHEUS",
+        "options": [],
+        "query": "prometheus",
+        "refresh": 1,
+        "regex": "",
+        "type": "datasource"
+      },
+      {
         "description": "Total Number of NAS Systems manually entered.",
         "hide": 2,
         "name": "NASDevices",
-        "query": "${VAR_NASDEVICES}",
+        "query": "1",
         "skipUrlSync": true,
         "type": "constant",
         "current": {
-          "value": "${VAR_NASDEVICES}",
-          "text": "${VAR_NASDEVICES}",
+          "value": "1",
+          "text": "1",
           "selected": false
         },
         "options": [
           {
-            "value": "${VAR_NASDEVICES}",
-            "text": "${VAR_NASDEVICES}",
+            "value": "1",
+            "text": "1",
             "selected": false
           }
         ]
