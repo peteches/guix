@@ -73,6 +73,14 @@
                    (url "http://192.168.51.190:3100"))))
                 (dashboards
                  (list
+		  (grafana-dashboard
+		   (name "synology-overview")
+		   (json-file (local-file
+			       "../grafana-dashboards/synology-overview.json")))
+		  (grafana-dashboard
+		   (name "synology-details")
+		   (json-file (local-file
+			       "../grafana-dashboards/synology-details.json")))
                   (grafana-dashboard
                    (name "node-exporter")
                    (json-file (local-file
