@@ -3,7 +3,8 @@
              (peteches systems prometheus)
              (peteches systems grafana)
              (peteches systems loki)
-             (peteches systems pihole))
+             (peteches systems pihole)
+             (peteches systems git))
 
 (list
  (machine
@@ -43,6 +44,16 @@
    (machine-ssh-configuration
     (host-name "192.168.51.189")
     (host-key "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAII5+ZCQgM0b8HJjRmzN2bpDkbtwqdbgop+g4ZiB4ZqjH")    ; fill in after first boot: ssh-keyscan 192.168.51.189
+    (system "x86_64-linux")
+    (user "peteches")
+    (identity "/home/peteches/.ssh/id_ed25519"))))
+ (machine
+  (operating-system git-os)
+  (environment managed-host-environment-type)
+  (configuration
+   (machine-ssh-configuration
+    (host-name "192.168.51.191")
+    (host-key "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAII/nIMuSdo5NHolPHogjR+xrudcnpLFROLYc6fpL+fkp")                   ; fill in after first boot: ssh-keyscan 192.168.51.191
     (system "x86_64-linux")
     (user "peteches")
     (identity "/home/peteches/.ssh/id_ed25519")))))

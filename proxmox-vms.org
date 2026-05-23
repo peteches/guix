@@ -17,6 +17,7 @@ Current VMs (all use OVMF/EFI and =qcow2-gpt= images):
 | peteches/systems/grafana.scm    | grafana.peteches.co.uk    | Grafana on :3000       |
 | peteches/systems/pihole.scm     | pihole.peteches.co.uk     | Pi-hole DNS ad-blocker |
 | peteches/systems/loki.scm       | loki.peteches.co.uk       | Loki log aggregation on :3100 |
+| peteches/systems/git.scm                | git.peteches.co.uk  | Git server (gitolite SSH + cgit web on :80 via Tailscale) |
 
 * Adding a New VM Config
 

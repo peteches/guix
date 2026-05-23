@@ -1,28 +1,30 @@
-;; loki.scm — Grafana Loki log aggregation server on a Proxmox QEMU/KVM VM.
+;; git.scm — Personal git server on a Proxmox QEMU/KVM VM.
+;; gitolite for SSH access control, cgit for web UI (Tailscale only).
 ;; EFI bootloader, virtio root on vda2 with ESP on vda1, static networking.
 
-(define-module (peteches systems loki)
+(define-module (peteches systems git)
   #:use-module (guix gexp)
   #:use-module (gnu bootloader)
   #:use-module (gnu bootloader grub)
+  #:use-module (gnu services)
+  #:use-module (gnu services cgit)
+  #:use-module (gnu services version-control)
   #:use-module (gnu system)
   #:use-module (gnu system file-systems)
   #:use-module (gnu system keyboard)
-  #:use-module (gnu services)
   #:use-module (peteches systems vm-base)
   #:use-module (peteches system-services alloy)
-  #:use-module (peteches system-services loki)
   #:use-module (peteches system-services restic)
   #:use-module (peteches system-services tailscale)
-  #:export (loki-os))
+  #:export (git-os))
 
-(define-public loki-os
+(define-public git-os
   (operating-system
    (inherit
     (make-vm-os
-     #:host-name "loki.peteches.co.uk"
-     #:ipv4-address "192.168.51.190/23"
-     #:ipv6-address "2a10:d582:ef59::102/64"
+     #:host-name "git.peteches.co.uk"
+     #:ipv4-address "192.168.51.191/23"
+     #:ipv6-address "2a10:d582:ef59::103/64"
      #:bootloader
      (bootloader-configuration
       (bootloader grub-efi-removable-bootloader)
@@ -40,26 +42,33 @@
         (type "ext4")))
      #:restic-config
      (restic-vm-backup-configuration
-      (vm-name "loki")
+      (vm-name "git")
       (synology-host "nas.peteches.co.uk")
-      (backup-paths '("/var/lib/loki")))
+      (backup-paths '("/var/lib/gitolite")))
      #:extra-services
      (list
-      (service alloy-service-type
-               (alloy-configuration
-                (hostname "loki.peteches.co.uk")
-                (syslog-listen-port 514)
-                (syslog-format "rfc3164")
-                (log-files (list (cons "/var/log/messages" "syslog")
-                                 (cons "/var/log/prometheus-node-exporter.log" "node-exporter")
-                                 (cons "/var/log/loki.log" "loki")
-                                 (cons "/var/log/ntpd.log" "ntpd")
-                                 (cons "/var/log/alloy.log" "alloy")
-                                 (cons "/var/log/tailscaled-*.log" "tailscale")))))
-      (service loki-service-type (loki-configuration))
+      (service gitolite-service-type
+               (gitolite-configuration
+                (rc-file (gitolite-rc-file
+                          (umask #o0022)))
+                (admin-pubkey
+                 (plain-file "admin.pub"
+                             "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIM28x2V8tgwfzjyhapMayamDFwviOTHfU4W9BMnmc70w peteches@nyarlothotep.peteches.co.uk"))
+                (admin-name "peteches@nyarlothotep")))
+      (service cgit-service-type
+               (cgit-configuration
+                (repository-directory "/var/lib/gitolite/repositories")))
       (service tailscale-service-type
                (list (tailscale-instance-configuration
                       (name "peteches")
-                      (forward-ports '((22 . 22) (3100 . 3100)))))))))))
+                      (forward-ports '((22 . 22) (80 . 80))))))
+      (service alloy-service-type
+               (alloy-configuration
+                (hostname "git.peteches.co.uk")
+                (log-files (list (cons "/var/log/messages" "syslog")
+                                 (cons "/var/log/prometheus-node-exporter.log" "node-exporter")
+                                 (cons "/var/log/ntpd.log" "ntpd")
+                                 (cons "/var/log/alloy.log" "alloy")
+                                 (cons "/var/log/tailscaled-*.log" "tailscale"))))))))))
 
-loki-os
+git-os

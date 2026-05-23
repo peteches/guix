@@ -230,6 +230,14 @@
 		       (name "loki")
 		       (host-name "192.168.51.190")
 		       (user "peteches")
+		       (identity-file "~/.ssh/id_ed25519"))
+		      (openssh-host
+		       (name "git.ts")
+		       (host-name "git.tailb21dfe.ts.net"))
+		      (openssh-host
+		       (name "git")
+		       (host-name "192.168.51.191")
+		       (user "peteches")
 		       (identity-file "~/.ssh/id_ed25519")))
 		     %scoreplay-ssh-hosts))))
 

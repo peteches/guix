@@ -76,6 +76,8 @@
                   (pihole-custom-host (address "192.168.51.189")
                                       (hostname "pihole.peteches.co.uk"))
                   (pihole-custom-host (address "192.168.51.190")
-                                      (hostname "loki.peteches.co.uk")))))))))))
+                                      (hostname "loki.peteches.co.uk"))
+                  (pihole-custom-host (address "192.168.51.191")
+                                      (hostname "git.peteches.co.uk")))))))))))
 
 pihole-os
