@@ -48,7 +48,7 @@
   #:use-module (peteches home-services mako)
   #:use-module (peteches home-services waybar)
   #:use-module (peteches home-services wofi)
-  #:use-module (peteches home-services nyxt)
+  #:use-module (peteches home-services nyxt base)
   ;; Your config fragments
   #:use-module (peteches home-configs scoreplay)
   #:use-module (peteches home-configs git)
@@ -171,7 +171,7 @@
    ;; Browsers (Firefox profiles + Nyxt)
    (service firefox-service-type
             (firefox-configuration (profiles base-firefox-profiles)))
-;   (service nyxt-service-type)
+   (service nyxt-service-type)
 
    (simple-service 'ssh-proxy-fragment
                    home-files-service-type

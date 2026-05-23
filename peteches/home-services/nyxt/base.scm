@@ -1,4 +1,4 @@
-(define-module (peteches home-services nyxt)
+(define-module (peteches home-services nyxt base)
   #:use-module (gnu home services)
   #:use-module (gnu packages gstreamer)
   #:use-module (guix gexp)
@@ -10,7 +10,8 @@
 
 (define (nyxt-files-service config)
   (list
-   `("nyxt/config.lisp" ,(local-file "nyxt.lisp"))))
+   `("nyxt/config.lisp" ,(local-file "./main.lisp"))
+   `("nyxt/modules"     ,(local-file "./modules" "nyxt-modules" #:recursive? #t))))
 
 
 (define-public nyxt-service-type
@@ -21,7 +22,7 @@
 		 (list
 		  (service-extension
 		   home-xdg-configuration-files-service-type
-		   nyxt-files-service)  
+		   nyxt-files-service)
 		  (service-extension
 		   home-profile-service-type
 		   nyxt-profile)))))
