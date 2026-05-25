@@ -10,7 +10,8 @@
        "M-x" 'execute-command
        "C-Spc" 'nothing
        "C-o" 'follow-hint
-       "M-o" 'follow-hint-new-buffer-focus)))))
+       "M-o" 'follow-hint-new-buffer-focus
+       "C-c p" 'set-buffer-proxy)))))
 
 (define-configuration buffer
   ((default-modes (append '(peteches-mode) %slot-value%))))

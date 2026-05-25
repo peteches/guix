@@ -2,5 +2,6 @@
   (dolist (module '("modules/styling.lisp"
                     "modules/keybinds.lisp"
                     "modules/search-engines.lisp"
-                    "modules/password-store.lisp"))
+                    "modules/password-store.lisp"
+                    "modules/proxy.lisp"))
     (load (uiop:merge-pathnames* module config-dir))))

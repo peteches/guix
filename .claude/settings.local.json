@@ -9,7 +9,8 @@
       "WebFetch(domain:guix.gnu.org)",
       "WebFetch(domain:api.github.com)",
       "WebFetch(domain:raw.githubusercontent.com)",
-      "WebFetch(domain:grafana.com)"
+      "WebFetch(domain:grafana.com)",
+      "Bash(guix build *)"
     ]
   }
 }
