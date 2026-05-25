@@ -546,9 +546,7 @@ instance, or #f when taildrop-dir is not configured."
                                            "file" "get" #$taildrop-dir)))
                           (when (and (zero? rc) #$(if taildrop-user #t #f))
                             (system* #$chown-bin "-R"
-                                     #$(if taildrop-user
-                                           (string-append taildrop-user ":" taildrop-user)
-                                           "")
+                                     #$(if taildrop-user taildrop-user "")
                                      #$taildrop-dir))
                           (exit (if (zero? rc) 0 1)))))))
              (shepherd-service
