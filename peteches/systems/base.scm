@@ -306,6 +306,8 @@
   (list (service tailscale-service-type
             (list (tailscale-instance-configuration
               (name "peteches")
+	      (taildrop-dir "/home/peteches/Downloads/taildrop")
+	      (taildrop-user "peteches")
               (port 41641)
 	      (forward-ports '((22 . 22)))
 	      (socks-proxy-port 1080)
