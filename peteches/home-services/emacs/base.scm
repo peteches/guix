@@ -145,7 +145,7 @@
 
 					"font-google-noto"
 					"font-google-noto-emoji"
-					"font-iosevka"))))
+					"font-iosevka@33.3.0"))))
 
 (define (home-emacs-base-files-service config)
   (list

@@ -1,3 +1,5 @@
+(define-module (peteches deploy))
+
 (use-modules (gnu machine)
              (gnu machine ssh)
              (peteches systems prometheus)

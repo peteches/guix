@@ -73,8 +73,6 @@ guile -L . -c '(use-modules (peteches packages fonts))'
 | `loki.scm` | Loki log aggregation VM (192.168.51.190, port 3100) |
 | `nug.scm` | nug desktop system |
 | `nyarlothotep.scm` | nyarlothotep desktop system |
-| `bhiyaki.peteches.co.uk.scm` | bhiyaki laptop system |
-| `azathoth.peteches.co.uk.scm` | azathoth laptop system |
 
 #### `peteches/home-configs/`
 
@@ -83,8 +81,6 @@ guile -L . -c '(use-modules (peteches packages fonts))'
 | `base.scm` | Main home environment — composes all feature home-services |
 | `nug.scm` | nug-specific home additions |
 | `nyarlothotep.scm` | nyarlothotep-specific home additions |
-| `bhiyaki.peteches.co.uk.scm` | bhiyaki-specific home additions |
-| `azathoth.peteches.co.uk.scm` | azathoth-specific home additions |
 | `scoreplay.scm` | scoreplay-specific home additions |
 | `firefox-extensions/` | Firefox .xpi extensions (uBlock, DarkReader, PassFF, AWS SSO) |
 | `git-hooks/` | Git hook scripts (pre-commit) |
@@ -166,8 +162,6 @@ Pattern: use `copy-build-system` for pre-built binaries (see `go-tools.scm`).
 |---|---|
 | `base.scm` | `%base-channels` — pinned guix, nonguix, guix-science, simendsjo |
 | `nug.scm` | nug-specific channel overrides |
-| `azathoth.scm` | azathoth-specific channel overrides |
-| `bhiyaki.scm` | bhiyaki-specific channel overrides |
 
 #### Other notable files
 
@@ -186,7 +180,7 @@ Pattern: use `copy-build-system` for pre-built binaries (see `go-tools.scm`).
 
 Two base constructors exist for different machine classes:
 
-**`base.scm`** exports `make-base-os` — desktop/laptop systems with Hyprland, greetd, libvirt, virbr0, Tor, fingerprint, etc. Used by `azathoth.peteches.co.uk.scm`, `bhiyaki.peteches.co.uk.scm`, `nug.scm`, `nyarlothotep.scm`.
+**`base.scm`** exports `make-base-os` — desktop/laptop systems with Hyprland, greetd, libvirt, virbr0, Tor, fingerprint, etc. Used by `nug.scm`, `nyarlothotep.scm`.
 
 Key `make-base-os` flags:
 - `laptop?` — enables TLP and thermald

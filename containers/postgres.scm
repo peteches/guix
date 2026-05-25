@@ -1,3 +1,5 @@
+(define-module (containers postgres))
+
 (use-modules (gnu))
 (use-package-modules databases)
 (use-service-modules databases)

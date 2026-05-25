@@ -137,10 +137,6 @@
 			  (syncthing-device
 			   (name "nyarlothotep")
 			   (id "NONO6A6-UEOXJWK-JI5TWRF-5NDMD6H-N3BDTWI-JKRNQ5D-PHO4SSW-UDTHFAL")
-			   (auto-accept-folders? #t))
-			  (syncthing-device
-			   (name "bhiyaki")
-			   (id "KPF5CNJ-CE2XGRC-VDDKARM-GIM47XB-UMS63Y7-JY3WX7V-I6PLMS5-GGQB2A7")
 			   (auto-accept-folders? #t))))))))))))
 
    ;; Notifications
