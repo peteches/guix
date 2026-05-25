@@ -82,7 +82,6 @@
    gnupg
    jq
    slurp
-   mpv
    wf-recorder
    terragrunt
    go-golangci-lint

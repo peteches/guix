@@ -16,11 +16,14 @@
 
   ;; base composer
   #:use-module (peteches home-configs base)
+  #:use-module (peteches home-configs mpv)
 
   ;; my packages
   #:use-module (peteches home-services koboldcpp)
   #:use-module (peteches home-services hyprland)
-    #:use-module (peteches packages lycheeslicer)
+  #:use-module (peteches home-services mpv)
+
+  #:use-module (peteches packages lycheeslicer)
 
   #:use-module (peteches channels nug)
 
@@ -44,6 +47,16 @@
 ;; Services unique to nug (AI stacks, AGiXT bots, etc.)
 (define nug-extra-services
   (list
+(service home-mpv-service-type
+         (mpv-config
+          (hwdec "nvdec")
+          (demuxer-max-bytes "4096MiB")
+          (demuxer-max-back-bytes "1024MiB")
+          (demuxer-readahead-secs 1200)
+          (cache-secs 7200)
+
+          (profiles %mpv-profiles)))
+
    (service koboldcpp-service-type
 	    (koboldcpp-configuration
 	     (service-name "koboldcpp-qwen")
