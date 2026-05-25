@@ -11,7 +11,12 @@
     (list
      (make-instance 'ddg-search-engine)
      (make-instance 'wikipedia-search-engine)
+
      (make-instance 'search-engine
+		    :name "YouTube"
+		    :shortcut "yt"
+		    :control-url "https://youtube.com/search?q=~a")
+(make-instance 'search-engine
                     :name "GitHub"
                     :shortcut "gh"
                     :control-url "https://github.com/search?q=~a&type=repositories")

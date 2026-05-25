@@ -16,7 +16,6 @@
    (mpv-profile
     (name "youtube")
     (ytdl-format "bestvideo[height<=1440]+bestaudio/best")
-    (script-opts "ytdl_hook-ytdl_path=yt-dlp")
     (cache-secs 7200))
 
    (mpv-profile

@@ -11,7 +11,8 @@
        "C-Spc" 'nothing
        "C-o" 'follow-hint
        "M-o" 'follow-hint-new-buffer-focus
-       "C-c p" 'set-buffer-proxy)))))
+       "C-c p" 'set-buffer-proxy
+       "C-c v" 'open-hint-in-mpv)))))
 
 (define-configuration buffer
   ((default-modes (append '(peteches-mode) %slot-value%))))
