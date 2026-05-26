@@ -58,6 +58,7 @@
   #:use-module (peteches home-configs hyprland)
   #:use-module (peteches packages dank-material-shell)
   #:use-module (peteches packages gurps)
+  #:use-module (peteches packages proxmox-scripts)
   ;; utilities
   #:use-module (ice-9 popen)
   #:use-module (ice-9 textual-ports)
@@ -93,7 +94,8 @@
    bibata-cursor-theme
    qtwayland
    unzip
-   btop))
+   btop
+   proxmox-scripts))
 
 ;; 2) Shared services (with your existing configs).
 (define-public base-services

@@ -68,7 +68,7 @@
 		  (pihole-custom-host (address "192.168.50.244")
 				      (hostname "nas.peteches.co.uk"))
                   (pihole-custom-host (address "192.168.51.1")
-                                      (hostname "proxmox.peteches.co.uk"))
+                                      (hostname "proxmox1.peteches.co.uk"))
                   (pihole-custom-host (address "192.168.51.187")
                                       (hostname "prometheus.peteches.co.uk"))
                   (pihole-custom-host (address "192.168.51.188")

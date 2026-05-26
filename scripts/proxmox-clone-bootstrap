@@ -1,0 +1,162 @@
+#!/usr/bin/env bash
+# proxmox-clone-bootstrap — Clone Proxmox template 9000 into a new VM, configure it,
+# boot it, and retrieve the unique age public key generated on first boot.
+#
+# Usage: proxmox-clone-bootstrap <vmid> <name> [OPTIONS]
+#
+#   <vmid>           Proxmox VM ID for the new clone (e.g. 101)
+#   <name>           VM name / hostname label (e.g. myvm)
+#
+# Options:
+#   --cpus N         vCPU count (default: 2)
+#   --memory MB      RAM in MB (default: 2048)
+#   --disk SIZE      Resize virtio0 after clone, e.g. 20G or +15G (optional)
+#   --storage POOL   Proxmox storage pool (default: local-lvm)
+#   --proxmox HOST   Proxmox SSH host (default: proxmox.peteches.co.uk)
+#   --timeout SECS   Max seconds to wait for boot + key (default: 300)
+#   --repo PATH      Path to the guix config repo (default: ~/area_51/guix)
+#                    Also honoured via GUIX_REPO env var.
+#
+# The age public key is saved to peteches/age-keys/<name>.pub in the repo.
+# Dependencies: ssh, jq
+
+set -euo pipefail
+
+TEMPLATE_ID=9000
+PROXMOX_HOST="${PROXMOX_HOST:-proxmox1.peteches.co.uk}"
+PROXMOX_USER="root"
+STORAGE="local-lvm"
+CPUS=2
+MEMORY=2048
+DISK_SIZE=""
+TIMEOUT=300
+REPO_ROOT="${GUIX_REPO:-$HOME/area_51/guix}"
+
+usage() {
+  sed -n '2,/^$/p' "$0" | sed 's/^# \{0,1\}//'
+  exit 1
+}
+
+VMID="${1:-}"
+NAME="${2:-}"
+[[ -n "$VMID" && -n "$NAME" ]] || usage
+shift 2
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --cpus)    CPUS="$2";         shift 2 ;;
+    --memory)  MEMORY="$2";       shift 2 ;;
+    --disk)    DISK_SIZE="$2";    shift 2 ;;
+    --storage) STORAGE="$2";      shift 2 ;;
+    --proxmox-host) PROXMOX_HOST="$2"; shift 2 ;;
+    --proxmox-user) PROXMOX_USER="$2"; shift 2 ;;
+    --timeout) TIMEOUT="$2";      shift 2 ;;
+    --repo)    REPO_ROOT="$2";    shift 2 ;;
+    *) echo "Unknown option: $1" >&2; usage ;;
+  esac
+done
+
+KEYS_DIR="$REPO_ROOT/peteches/age-keys"
+
+pqm() { ssh -l "${PROXMOX_USER}" "$PROXMOX_HOST" qm "$@"; }
+
+echo "==> Discovering Proxmox node name..."
+NODE=$(ssh -l "${PROXMOX_USER}" "$PROXMOX_HOST" pvesh get /nodes --output-format json | jq -r '.[0].node')
+echo "    Node: $NODE"
+
+EXISTING_ID=$(ssh -l "${PROXMOX_USER}" "$PROXMOX_HOST" \
+  pvesh get "/nodes/$NODE/qemu" --output-format json 2>/dev/null \
+  | jq -r --arg name "$NAME" '.[] | select(.name==$name) | .vmid' 2>/dev/null || true)
+
+if [[ -n "$EXISTING_ID" && "$EXISTING_ID" != "$VMID" ]]; then
+  echo "ERROR: VM name '$NAME' is already used by VMID $EXISTING_ID" >&2
+  exit 1
+fi
+
+if pqm status "$VMID" &>/dev/null; then
+  echo "==> VM $VMID already exists, skipping clone"
+else
+  echo "==> Cloning template $TEMPLATE_ID -> VM $VMID ($NAME)"
+  pqm clone "$TEMPLATE_ID" "$VMID" --name "$NAME" --full 1 --storage "$STORAGE"
+fi
+
+echo "==> Configuring VM $VMID: $CPUS vCPUs, ${MEMORY}MB RAM"
+pqm set "$VMID" --cores "$CPUS" --memory "$MEMORY"
+
+if [[ -n "$DISK_SIZE" ]]; then
+  echo "==> Resizing virtio0 to $DISK_SIZE"
+  pqm resize "$VMID" virtio0 "$DISK_SIZE"
+fi
+
+KEY_FILE="$KEYS_DIR/${NAME}.pub"
+if [[ -f "$KEY_FILE" ]]; then
+  echo "==> Age key already imported: $KEY_FILE"
+  echo "Key:   $(cat "$KEY_FILE")"
+  exit 0
+fi
+
+VM_STATUS=$(pqm status "$VMID" | awk -F': ' '{print $2}')
+if [[ "$VM_STATUS" != "running" ]]; then
+  echo "==> Starting VM $VMID"
+  pqm start "$VMID"
+else
+  echo "==> VM $VMID already running"
+fi
+
+DEADLINE=$(( $(date +%s) + TIMEOUT ))
+check_deadline() {
+  if [[ $(date +%s) -ge $DEADLINE ]]; then
+    echo "ERROR: timed out waiting for $1" >&2
+    exit 1
+  fi
+}
+
+echo "==> Waiting for QEMU guest agent..."
+until pqm agent "$VMID" ping &>/dev/null; do
+  check_deadline "guest agent"
+  sleep 3
+done
+echo "    Guest agent ready."
+
+echo "==> Discovering VM IP address..."
+VM_IP=""
+until [[ -n "$VM_IP" ]]; do
+  check_deadline "IP address"
+  VM_IP=$(ssh -l "${PROXMOX_USER}" "$PROXMOX_HOST" \
+    pvesh get "/nodes/$NODE/qemu/$VMID/agent/network-get-interfaces" \
+    --output-format json 2>/dev/null \
+    | jq -r '.result[]? | select(.name=="eth0")
+             | ."ip-addresses"[]?
+             | select(."ip-address-type"=="ipv4")
+             | ."ip-address"' 2>/dev/null \
+    || true)
+  [[ -n "$VM_IP" ]] || sleep 3
+done
+echo "    IP: $VM_IP"
+
+SSH_OPTS=(
+  -o StrictHostKeyChecking=accept-new
+  -o ConnectTimeout=5
+  -o BatchMode=yes
+  -i ~/.ssh/id_ed25519
+)
+
+echo "==> Waiting for SSH on $VM_IP..."
+until ssh "${SSH_OPTS[@]}" "peteches@$VM_IP" true 2>/dev/null; do
+  check_deadline "SSH"
+  sleep 3
+done
+echo "    SSH ready."
+
+echo "==> Waiting for age key generation..."
+until ssh "${SSH_OPTS[@]}" "peteches@$VM_IP" sudo test -f /etc/age/keys.pub 2>/dev/null; do
+  check_deadline "age key"
+  sleep 3
+done
+
+echo "==> Retrieving age public key..."
+mkdir -p "$KEYS_DIR"
+ssh "${SSH_OPTS[@]}" "peteches@$VM_IP" sudo cat /etc/age/keys.pub > "$KEY_FILE"
+echo ""
+echo "Saved: $KEY_FILE"
+echo "Key:   $(cat "$KEY_FILE")"
