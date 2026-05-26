@@ -44,7 +44,8 @@
                   (if (and (file-exists? key-file) (file-exists? pub-file))
                       #t
                       (begin
-                        (system* "mkdir" "-p" key-dir)
+                        (unless (file-exists? key-dir)
+                          (mkdir key-dir))
                         (chmod key-dir #o700)
                         (unless (zero? (system* age-keygen "-o" key-file))
                           (error "sops-key-generator: age-keygen failed"))
