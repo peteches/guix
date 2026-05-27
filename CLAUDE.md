@@ -24,8 +24,11 @@ guix system build -L . --dry-run peteches/systems/<host>.scm
 # Build a QCOW2 disk image for a VM
 guix system image -L . -t qcow2 peteches/systems/<vm>.scm
 
-# Deploy to a running VM over SSH
-guix deploy -L . peteches/deploy.scm
+# Deploy to all VMs (or filter with --hosts)
+scripts/deploy.scm
+scripts/deploy.scm --hosts 192.168.51.187          # single VM by IP
+scripts/deploy.scm -h "host-name=prometheus"       # by hostname pattern
+scripts/deploy.scm -h "prometheus,loki" --dry-run  # multiple patterns
 
 # Check channels
 guix describe
@@ -49,9 +52,10 @@ guile -L . -c '(use-modules (peteches packages fonts))'
 | `peteches/system-services/` | Custom OS-level service definitions |
 | `peteches/channels/` | Channel lock files |
 | `peteches/utils.scm` | Shared utilities |
+| `peteches/machines.scm` | Named `machine` records + `%all-machines` list |
 | `peteches/grafana-dashboards/` | Grafana dashboard JSON definitions |
 | `containers/` | Container definitions |
-| `deploy.scm` | Guix deploy target definitions (all managed VMs) |
+| `scripts/deploy.scm` | `guix deploy` wrapper with `--hosts` filtering |
 | `proxmox-vms.org` | VM inventory and IP reference table |
 | `docs/` | Architecture documentation |
 | `skills/` | Claude Code automation skills |
@@ -167,7 +171,8 @@ Pattern: use `copy-build-system` for pre-built binaries (see `go-tools.scm`).
 
 | File | Purpose |
 |---|---|
-| `deploy.scm` | Guix `deploy` machine entries for all managed VMs |
+| `peteches/machines.scm` | Named `machine` records + `%all-machines` list |
+| `scripts/deploy.scm` | `guix deploy` wrapper — parses `--hosts` patterns, filters `%all-machines`, passes result via `-e` |
 | `proxmox-vms.org` | VM inventory: IPs, VMIDs, purpose — authoritative IP reference |
 | `containers/postgres.scm` | PostgreSQL container definition |
 | `peteches/grafana-dashboards/node-exporter.json` | Node Exporter Grafana dashboard |
@@ -248,7 +253,7 @@ When creating a new VM system config (`peteches/systems/<name>.scm`), always upd
     (host-name "<name>.tailb21dfe.ts.net"))
    ```
 
-3. **`peteches/deploy.scm`** — add a `machine` entry. The SSH `host-key` can only be filled in after the VM's first boot (`ssh-keyscan <ip>`); use a `TODO` placeholder until then.
+3. **`peteches/machines.scm`** — add a `define-public <name>-machine` entry and include it in `%all-machines`. The SSH `host-key` can only be filled in after the VM's first boot (`ssh-keyscan <ip>`); use a `TODO` placeholder until then.
 
 4. **`peteches/systems/monitored-hosts.scm`** — add the VM's node-exporter endpoint so Prometheus scrapes it automatically. The `node` scrape job in prometheus.scm reads this list dynamically; no change to prometheus.scm is needed for node-exporter coverage.
 
