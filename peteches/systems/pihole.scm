@@ -44,13 +44,19 @@
       (synology-host "nas.peteches.co.uk")
       (schedule "40 2 * * *")
       (backup-paths '("/var/lib/pihole"))
-      (password-file "/run/secrets/restic-password"))
+      (password-file "/run/secrets/restic-password")
+      (ssh-key-file "/run/secrets/restic-ssh-key"))
      #:sops-secrets
      (list
       (sops-secret
        (key '("restic-password"))
        (file (local-file "../../secrets/hosts/pihole/restic.yaml"))
-       (path "/run/secrets/restic-password")))
+       (path "/run/secrets/restic-password"))
+      (sops-secret
+       (key '("ssh-key"))
+       (file (local-file "../../secrets/hosts/pihole/restic.yaml"))
+       (path "/run/secrets/restic-ssh-key")
+       (permissions #o400)))
      #:extra-services
      (list
       (service alloy-service-type

@@ -15,8 +15,9 @@ repos:
       - id: check-added-large-files
         args:
           - --maxkb=2000
-  - repo: https://github.com/yuvipanda/pre-commit-hook-ensure-sops
-    rev: v1.1
+  - repo: https://github.com/voldy/validate-sops
+    rev: 'v0.1.1'  # Use the latest commit SHA or tag
     hooks:
-      - id: sops-encryption
-        files: ^secrets
+    -   id: validate-sops
+        # Adjust based on your file(s) location and type(s)
+        files: '.*\/secrets\/encrypted\.(yaml|yml|json|env)$'

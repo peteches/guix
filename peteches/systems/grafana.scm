@@ -45,13 +45,19 @@
       (synology-host "nas.peteches.co.uk")
       (schedule "20 2 * * *")
       (backup-paths '("/var/lib/grafana"))
-      (password-file "/run/secrets/restic-password"))
+      (password-file "/run/secrets/restic-password")
+      (ssh-key-file "/run/secrets/restic-ssh-key"))
      #:sops-secrets
      (list
       (sops-secret
        (key '("restic-password"))
        (file (local-file "../../secrets/hosts/grafana/restic.yaml"))
-       (path "/run/secrets/restic-password")))
+       (path "/run/secrets/restic-password"))
+      (sops-secret
+       (key '("ssh-key"))
+       (file (local-file "../../secrets/hosts/grafana/restic.yaml"))
+       (path "/run/secrets/restic-ssh-key")
+       (permissions #o400)))
      #:extra-services
      (list
       (service alloy-service-type

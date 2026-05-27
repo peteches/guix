@@ -45,13 +45,19 @@
       (vm-name "prometheus")
       (synology-host "nas.peteches.co.uk")
       (backup-paths '("/var/lib/prometheus"))
-      (password-file "/run/secrets/restic-password"))
+      (password-file "/run/secrets/restic-password")
+      (ssh-key-file "/run/secrets/restic-ssh-key"))
      #:sops-secrets
      (list
       (sops-secret
        (key '("restic-password"))
        (file (local-file "../../secrets/hosts/prometheus/restic.yaml"))
-       (path "/run/secrets/restic-password")))
+       (path "/run/secrets/restic-password"))
+      (sops-secret
+       (key '("ssh-key"))
+       (file (local-file "../../secrets/hosts/prometheus/restic.yaml"))
+       (path "/run/secrets/restic-ssh-key")
+       (permissions #o400)))
      #:extra-services
      (list
       (service alloy-service-type

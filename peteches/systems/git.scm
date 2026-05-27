@@ -16,6 +16,7 @@
   #:use-module (peteches system-services alloy)
   #:use-module (peteches system-services restic)
   #:use-module (peteches system-services tailscale)
+  #:use-module (sops secrets)
   #:export (git-os))
 
 (define-public git-os
@@ -44,7 +45,20 @@
      (restic-vm-backup-configuration
       (vm-name "git")
       (synology-host "nas.peteches.co.uk")
-      (backup-paths '("/var/lib/gitolite")))
+      (backup-paths '("/var/lib/gitolite"))
+      (password-file "/run/secrets/restic-password")
+      (ssh-key-file "/run/secrets/restic-ssh-key"))
+     #:sops-secrets
+     (list
+      (sops-secret
+       (key '("restic-password"))
+       (file (local-file "../../secrets/hosts/git/restic.yaml"))
+       (path "/run/secrets/restic-password"))
+      (sops-secret
+       (key '("ssh-key"))
+       (file (local-file "../../secrets/hosts/git/restic.yaml"))
+       (path "/run/secrets/restic-ssh-key")
+       (permissions #o400)))
      #:extra-services
      (list
       (service gitolite-service-type

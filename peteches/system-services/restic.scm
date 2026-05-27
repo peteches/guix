@@ -1,12 +1,12 @@
 ;; restic.scm — VM backup service using restic over SFTP to a Synology NAS.
 ;;
 ;; On first deploy the activation phase:
-;;   1. Generates /etc/restic/id_ed25519 (SSH keypair) if absent.
-;;   2. Fetches the Synology SSH host key via ssh-keyscan (TOFU) if absent.
-;;   3. Attempts restic init; fails gracefully with instructions if SSH not yet
+;;   1. Fetches the Synology SSH host key via ssh-keyscan (TOFU) if absent.
+;;   2. Attempts restic init; fails gracefully with instructions if SSH not yet
 ;;      authorised on the NAS.
 ;;
-;; The repository password must be provided via password-file (managed by sops).
+;; Both the repository password and the SSH private key must be provided via
+;; SOPS secrets (managed externally — no secrets are generated locally).
 ;;
 ;; Each scheduled backup job also attempts init if the repository does not yet
 ;; exist, making runs self-healing once SSH access is in place.
@@ -72,12 +72,6 @@
               (pw-file  #$pw-file)
               (kh-file  "/root/.ssh/known_hosts"))
 
-          (mkdir-p "/etc/restic")
-          (chmod "/etc/restic" #o700)
-
-          (unless (file-exists? key-file)
-            (invoke #$(file-append openssh "/bin/ssh-keygen")
-                    "-t" "ed25519" "-f" key-file "-N" ""))
 
           (mkdir-p "/root/.ssh")
           (chmod "/root/.ssh" #o700)
@@ -96,7 +90,7 @@
                 (display
                  (string-append
                   "restic: WARNING - init failed for " #$repo ".\n"
-                  "Add /etc/restic/id_ed25519.pub to Synology authorized_keys,\n"
+                  "Ensure " #$key-file " is authorised on the NAS,\n"
                   "then re-run: guix deploy -L . peteches/deploy.scm\n")))))))))
 
 (define (restic-vm-shepherd-services cfg)
@@ -180,8 +174,8 @@
      (service-extension activation-service-type    restic-vm-backup-activation)
      (service-extension shepherd-root-service-type restic-vm-shepherd-services)))
    (description
-    "VM backup service using restic over SFTP to a Synology NAS.  Auto-generates \
-SSH keypair and repository password on first deploy, fetches NAS host key via \
-ssh-keyscan (TOFU), and initializes the restic repository if missing.  Each \
+    "VM backup service using restic over SFTP to a Synology NAS.  Fetches the \
+NAS host key via ssh-keyscan (TOFU) and initializes the restic repository if \
+missing.  Secrets (password and SSH key) are provided via SOPS.  Each \
 scheduled backup also auto-inits if needed.  Trigger manually with \
 `herd trigger <vm-name>-backup`.")))
