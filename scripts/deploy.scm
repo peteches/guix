@@ -28,6 +28,13 @@ exec guix repl -- "$0" "$@"
 
 ;;; --- Locate repo root ------------------------------------------------------
 ;;; Script lives in scripts/; repo root is its parent directory.
+;;; Guard: skip execution when this file is loaded as a Guile module by
+;;; `guix home reconfigure -L .'.  The module scanner picks up every .scm
+;;; file in the load path; the top-level (exit ...) call would spawn a
+;;; real `guix deploy' subprocess and crash the reconfigure.
+;;; Heuristic: when run as a script, argv[0] ends with "deploy.scm".
+(when (string-suffix? "deploy.scm" (canonicalize-path (car (command-line))))
+
 (define repo-root
   (dirname (dirname (canonicalize-path (car (command-line))))))
 
@@ -130,3 +137,4 @@ For bare patterns (no KEY= prefix), tries both 'name' and 'host-name'."
 (exit
  (status:exit-val
   (apply system* "guix" "deploy" "-L" repo-root "-e" deploy-expr passthrough)))
+) ;; end when

@@ -62,7 +62,7 @@
 (define %vm-interface   "eth0")
 (define %vm-ipv4-gw    "192.168.50.1")
 (define %vm-ipv6-gw    "2a10:d582:ef59::1")
-(define %vm-nameservers '("192.168.50.1"))
+(define %vm-nameservers '("192.168.51.189"))
 
 (define %vm-base-firewall
   (nftables-rules
@@ -86,6 +86,7 @@
           (ipv4-address #f)
           (ipv6-address #f)
           (restic-config #f)
+          (nameservers %vm-nameservers)
           (sops-secrets '()))
   (let* ((nonguix-services (if with-nonguix? (list (nonguix-substitute-service)) '()))
          (restic-services
@@ -131,7 +132,7 @@
                                                            (gateway %vm-ipv6-gw)
                                                            (ipv6? #t)))
                                       '())))
-                                (name-servers %vm-nameservers))))
+                                (name-servers nameservers))))
                 (service dhcpcd-service-type))
             (service ntp-service-type)
             (service qemu-guest-agent-service-type)

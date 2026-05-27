@@ -11,7 +11,7 @@
 ;; Each scheduled backup job also attempts init if the repository does not yet
 ;; exist, making runs self-healing once SSH access is in place.
 ;;
-;; Trigger a backup manually: herd trigger <vm-name>-backup
+;; Trigger a backup manually: herd trigger restic-backup
 
 (define-module (peteches system-services restic)
   #:use-module (guix gexp)
@@ -103,7 +103,7 @@
          (prune-s  (restic-vm-backup-configuration-prune-schedule cfg))
          (backup-script
           (program-file
-           (string-append vm-name "-backup")
+           "restic-backup"
            #~(begin
                (setenv "PATH" (string-append #$(file-append openssh "/bin") ":"
                                              (or (getenv "PATH") "")))
@@ -120,7 +120,7 @@
                         #$@paths))))
          (prune-script
           (program-file
-           (string-append vm-name "-prune")
+           "restic-prune"
            #~(begin
                (setenv "PATH" (string-append #$(file-append openssh "/bin") ":"
                                              (or (getenv "PATH") "")))
@@ -133,7 +133,7 @@
                         "--keep-monthly" "3")))))
     (list
      (shepherd-service
-      (provision (list (string->symbol (string-append vm-name "-backup"))))
+      (provision '(restic-backup))
       (requirement '(networking))
       (modules '((shepherd service timer)))
       (start #~(make-timer-constructor
@@ -147,10 +147,9 @@
               (procedure #~(lambda (running . _)
                              (system* #$backup-script)
                              running)))))
-      (documentation (string-append "Daily restic backup for " vm-name
-                                    ". Trigger: herd trigger " vm-name "-backup")))
+      (documentation "Daily restic backup. Trigger: herd trigger restic-backup"))
      (shepherd-service
-      (provision (list (string->symbol (string-append vm-name "-prune"))))
+      (provision '(restic-prune))
       (requirement '(networking))
       (modules '((shepherd service timer)))
       (start #~(make-timer-constructor
@@ -164,7 +163,7 @@
               (procedure #~(lambda (running . _)
                              (system* #$prune-script)
                              running)))))
-      (documentation (string-append "Weekly restic prune for " vm-name))))))
+      (documentation "Weekly restic prune.")))))
 
 (define restic-vm-backup-service-type
   (service-type
@@ -178,4 +177,4 @@
 NAS host key via ssh-keyscan (TOFU) and initializes the restic repository if \
 missing.  Secrets (password and SSH key) are provided via SOPS.  Each \
 scheduled backup also auto-inits if needed.  Trigger manually with \
-`herd trigger <vm-name>-backup`.")))
+`herd trigger restic-backup`.")))
