@@ -17,7 +17,7 @@
 
 ;;; Prompt-buffer (the popup "menu") — override selection highlight and
 ;;; match highlighting for higher contrast.
-(define-configuration nyxt/prompt-buffer:prompt-buffer
+(define-configuration prompt-buffer
   ((style (str:concat
            %slot-default%
            (cl-css:css
