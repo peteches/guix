@@ -14,6 +14,7 @@
   #:use-module (peteches system-services loki)
   #:use-module (peteches system-services restic)
   #:use-module (peteches system-services tailscale)
+  #:use-module (sops secrets)
   #:export (loki-os))
 
 (define-public loki-os
@@ -42,7 +43,14 @@
      (restic-vm-backup-configuration
       (vm-name "loki")
       (synology-host "nas.peteches.co.uk")
-      (backup-paths '("/var/lib/loki")))
+      (backup-paths '("/var/lib/loki"))
+      (password-file "/run/secrets/restic-password"))
+     #:sops-secrets
+     (list
+      (sops-secret
+       (key '("restic-password"))
+       (file (local-file "../../secrets/hosts/loki/restic.yaml"))
+       (path "/run/secrets/restic-password")))
      #:extra-services
      (list
       (service alloy-service-type

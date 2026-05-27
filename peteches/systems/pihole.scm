@@ -2,6 +2,7 @@
 ;; EFI bootloader, virtio root on vda2 with ESP on vda1, static networking.
 
 (define-module (peteches systems pihole)
+  #:use-module (guix gexp)
   #:use-module (gnu bootloader)
   #:use-module (gnu bootloader grub)
   #:use-module (gnu services)
@@ -12,6 +13,7 @@
   #:use-module (peteches system-services alloy)
   #:use-module (peteches system-services pihole)
   #:use-module (peteches system-services restic)
+  #:use-module (sops secrets)
   #:export (pihole-os))
 
 (define-public pihole-os
@@ -41,7 +43,14 @@
       (vm-name "pihole")
       (synology-host "nas.peteches.co.uk")
       (schedule "40 2 * * *")
-      (backup-paths '("/var/lib/pihole")))
+      (backup-paths '("/var/lib/pihole"))
+      (password-file "/run/secrets/restic-password"))
+     #:sops-secrets
+     (list
+      (sops-secret
+       (key '("restic-password"))
+       (file (local-file "../../secrets/hosts/pihole/restic.yaml"))
+       (path "/run/secrets/restic-password")))
      #:extra-services
      (list
       (service alloy-service-type

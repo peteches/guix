@@ -2,10 +2,11 @@
 ;;
 ;; On first deploy the activation phase:
 ;;   1. Generates /etc/restic/id_ed25519 (SSH keypair) if absent.
-;;   2. Generates /etc/restic/password (64-char hex from /dev/urandom) if absent.
-;;   3. Fetches the Synology SSH host key via ssh-keyscan (TOFU) if absent.
-;;   4. Attempts restic init; fails gracefully with instructions if SSH not yet
+;;   2. Fetches the Synology SSH host key via ssh-keyscan (TOFU) if absent.
+;;   3. Attempts restic init; fails gracefully with instructions if SSH not yet
 ;;      authorised on the NAS.
+;;
+;; The repository password must be provided via password-file (managed by sops).
 ;;
 ;; Each scheduled backup job also attempts init if the repository does not yet
 ;; exist, making runs self-healing once SSH access is in place.
@@ -65,13 +66,7 @@
         (repo     (restic-repository cfg))
         (sftp-o   (restic-sftp-args cfg)))
     #~(begin
-        (use-modules (guix build utils)
-                     (rnrs bytevectors)
-                     (ice-9 binary-ports))
-
-        (define (byte->hex b)
-          (let ((s (number->string b 16)))
-            (if (= 1 (string-length s)) (string-append "0" s) s)))
+        (use-modules (guix build utils))
 
         (let ((key-file #$key-file)
               (pw-file  #$pw-file)
@@ -83,16 +78,6 @@
           (unless (file-exists? key-file)
             (invoke #$(file-append openssh "/bin/ssh-keygen")
                     "-t" "ed25519" "-f" key-file "-N" ""))
-
-          (unless (file-exists? pw-file)
-            (let* ((port (open-file "/dev/urandom" "rb"))
-                   (bv   (get-bytevector-n port 32)))
-              (close-port port)
-              (call-with-output-file pw-file
-                (lambda (out)
-                  (for-each (lambda (b) (display (byte->hex b) out))
-                            (bytevector->u8-list bv))))
-              (chmod pw-file #o600)))
 
           (mkdir-p "/root/.ssh")
           (chmod "/root/.ssh" #o700)

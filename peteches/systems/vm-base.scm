@@ -21,6 +21,9 @@
   #:use-module (gnu packages linux)
   #:use-module (peteches system-services firewall)
   #:use-module (peteches system-services restic)
+  #:use-module (peteches system-services sops-key-generator)
+  #:use-module (sops secrets)
+  #:use-module (sops services sops)
   #:export (make-vm-os
             %vm-peteches-user))
 
@@ -82,11 +85,19 @@
           (with-nonguix? #f)
           (ipv4-address #f)
           (ipv6-address #f)
-          (restic-config #f))
+          (restic-config #f)
+          (sops-secrets '()))
   (let* ((nonguix-services (if with-nonguix? (list (nonguix-substitute-service)) '()))
          (restic-services
           (if restic-config
               (list (service restic-vm-backup-service-type restic-config))
+              '()))
+         (sops-services
+          (if (not (null? sops-secrets))
+              (list (service sops-secrets-service-type
+                             (sops-service-configuration
+                              (age-key-file "/etc/age/keys.txt")
+                              (secrets sops-secrets))))
               '()))
          (final-services
           (append
@@ -126,9 +137,11 @@
             (service qemu-guest-agent-service-type)
             (service firewall-service-type %vm-base-firewall)
             (service prometheus-node-exporter-service-type)
+            (service sops-key-generator-service-type)
             %authorize-coordinator-key)
            nonguix-services
            restic-services
+           sops-services
            extra-services)))
     (operating-system
       (kernel kernel)

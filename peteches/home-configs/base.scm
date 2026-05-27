@@ -87,6 +87,7 @@
    terragrunt
    go-golangci-lint
    pgcli
+   sops
    ripgrep
    pinentry-qt
    pinentry-tty

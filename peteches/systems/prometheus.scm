@@ -15,6 +15,7 @@
   #:use-module (peteches system-services prometheus)
   #:use-module (peteches system-services restic)
   #:use-module (peteches system-services tailscale)
+  #:use-module (sops secrets)
   #:export (prometheus-os))
 
 (define-public prometheus-os
@@ -43,7 +44,14 @@
      (restic-vm-backup-configuration
       (vm-name "prometheus")
       (synology-host "nas.peteches.co.uk")
-      (backup-paths '("/var/lib/prometheus")))
+      (backup-paths '("/var/lib/prometheus"))
+      (password-file "/run/secrets/restic-password"))
+     #:sops-secrets
+     (list
+      (sops-secret
+       (key '("restic-password"))
+       (file (local-file "../../secrets/hosts/prometheus/restic.yaml"))
+       (path "/run/secrets/restic-password")))
      #:extra-services
      (list
       (service alloy-service-type

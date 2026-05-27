@@ -31,8 +31,6 @@
   (append (list claude-code)
 	  (map specification->package '("emacs"
 
-					"emacs-sops"
-					"emacs-guix"
 					"emacs-linear"
 					"emacs-forge"
 					"emacs-olivetti"
@@ -120,9 +118,6 @@
 					"emacs-company-quickhelp"
 					"emacs-company-org-block"
 					"emacs-company-emoji"
-
-					"hashicorp-terraform"
-					"emacs-terraform-mode"
 
 					;; language servers
 					"guile-lsp-server"

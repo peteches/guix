@@ -14,6 +14,7 @@
   #:use-module (peteches system-services grafana)
   #:use-module (peteches system-services restic)
   #:use-module (peteches system-services tailscale)
+  #:use-module (sops secrets)
   #:export (grafana-os))
 
 (define-public grafana-os
@@ -43,7 +44,14 @@
       (vm-name "grafana")
       (synology-host "nas.peteches.co.uk")
       (schedule "20 2 * * *")
-      (backup-paths '("/var/lib/grafana")))
+      (backup-paths '("/var/lib/grafana"))
+      (password-file "/run/secrets/restic-password"))
+     #:sops-secrets
+     (list
+      (sops-secret
+       (key '("restic-password"))
+       (file (local-file "../../secrets/hosts/grafana/restic.yaml"))
+       (path "/run/secrets/restic-password")))
      #:extra-services
      (list
       (service alloy-service-type

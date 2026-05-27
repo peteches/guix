@@ -260,3 +260,47 @@ When creating a new VM system config (`peteches/systems/<name>.scm`), always upd
 
 - `gather-manifest-packages` — reads manifest `.scm` files from `manifests/` directory and converts them to package+output pairs for inclusion in home/system package lists.
 - `apply-template-file` — reads a file and substitutes `${KEY}` placeholders from an alist; used for generating config files from templates.
+
+## Editing Lisp / Scheme / Guile Code
+
+This repository uses the **Anvil** MCP server (`anvil` in the MCP server list) which bridges Claude Code to a live Emacs instance. Emacs has `paredit-mode` active for all `.el`, `.scm`, and `.lisp` buffers.
+
+**Always prefer Anvil for structural edits** — raw text substitution of parenthetical code is error-prone. Use the `emacs-eval` tool instead:
+
+### Workflow for editing a Scheme/Guile/Elisp file
+
+1. **Visit the file** in Emacs:
+   ```elisp
+   (find-file "/path/to/file.scm")
+   ```
+
+2. **Navigate to the target form** using search or `re-search-forward`, then use paredit commands to restructure safely:
+   - `(paredit-wrap-round)` — wrap sexp in parens
+   - `(paredit-forward-slurp-sexp)` — slurp next sibling into current list
+   - `(paredit-forward-barf-sexp)` — barf last child out of current list
+   - `(paredit-splice-sexp)` — splice (unwrap) current list
+   - `(paredit-kill)` — kill sexp at point
+   - `(kill-sexp)` / `(forward-sexp N)` — navigate/kill whole sexps
+
+3. **Make inline edits** via `(insert ...)`, `(delete-region ...)`, or `(replace-string ...)` within the buffer context.
+
+4. **Verify balance** after every significant change:
+   ```elisp
+   (with-current-buffer (get-file-buffer "/path/to/file.scm")
+     (check-parens))
+   ```
+   `check-parens` signals an error if parens are unbalanced — treat any error as a blocker.
+
+5. **Save** when clean:
+   ```elisp
+   (with-current-buffer (get-file-buffer "/path/to/file.scm")
+     (save-buffer))
+   ```
+
+### When Anvil is unavailable
+
+Only fall back to `Edit`/`Write` tools if:
+- The `anvil` MCP server shows as disconnected, **and**
+- Emacs cannot be reached via `emacsclient`
+
+In that case, make the smallest possible textual change and double-check paren balance manually.
