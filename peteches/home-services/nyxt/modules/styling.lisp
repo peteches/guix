@@ -1,34 +1,40 @@
-;;; Use the built-in dark theme as a base but bump contrast on all surfaces.
+;;; Theme colours — defined once here and reused in both blocks below.
+;;;
+;;;   background      #1c1c1e   on-background  #f5f5f7
+;;;   primary         #0a84ff   on-primary     #ffffff
+;;;   secondary       #2c2c2e   on-secondary   #f5f5f7
+;;;   accent          #ffd60a   on-accent      #1c1c1e
+
+;;; Browser-wide theme — all surfaces derived from the palette above.
 (define-configuration browser
   ((theme (make-instance 'theme:theme
                          :dark-p t
-                         ;; Page background / default surface
                          :background-color "#1c1c1e"
-                         :on-background-color "#f5f5f7"   ; near-white text
-                         ;; Primary interactive colour (buttons, active links)
+                         :on-background-color "#f5f5f7"
                          :primary-color "#0a84ff"
                          :on-primary-color "#ffffff"
-                         ;; Secondary surface — menus, panels
                          :secondary-color "#2c2c2e"
                          :on-secondary-color "#f5f5f7"
-                         ;; Accent — highlights, focus rings
                          :accent-color "#ffd60a"
                          :on-accent-color "#1c1c1e"))))
 
-;;; Prompt-buffer (the popup "menu") — override selection highlight and
-;;; match highlighting for higher contrast.
+;;; Prompt-buffer — all colours taken from the palette above so the
+;;; popup feels like part of the same browser, not a foreign widget.
 (define-configuration prompt-buffer
   ((style (str:concat
            %slot-default%
-           (cl-css:css
-            '(;; Selected row: vivid blue background, white text
-              ("#selection"
-               :background-color "#0a50c0"
-               :color            "#ffffff")
-              ;; Fuzzy-match character highlights inside each row
-              (".match"
-               :color            "#ffd60a"
-               :font-weight      "bold")
-              ;; Unselected row text — ensure it reads on the dark panel
-              (".result"
-               :color            "#e0e0e5")))))))
+           "/* Input / prompt strip */
+#prompt-area  { background-color: #2c2c2e; color: #f5f5f7; }
+#input        { background-color: #2c2c2e; color: #f5f5f7; }
+
+/* Completions panel background */
+#completions  { background-color: #1c1c1e; }
+
+/* Selected row: primary blue + white text */
+#selection    { background-color: #0a84ff; color: #ffffff; }
+
+/* Fuzzy-match characters: accent gold */
+.match        { color: #ffd60a; font-weight: bold; }
+
+/* Unselected rows: on-background white */
+.result       { color: #f5f5f7; }"))))
