@@ -275,7 +275,7 @@ When creating a new VM system config (`peteches/systems/<name>.scm`), always upd
    ```scheme
    (openssh-host
     (name "<name>.ts")
-    (host-name "<name>.tailb21dfe.ts.net"))
+    (host-name "<name>.spaniel-cordylus.ts.net"))
    ```
 
 3. **`peteches/machines.scm`** — add a `define-public <name>-machine` entry and include it in `%all-machines`. The SSH `host-key` can only be filled in after the VM's first boot (`ssh-keyscan <ip>`); use a `TODO` placeholder until then.

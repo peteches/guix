@@ -508,7 +508,7 @@ d. Verify the module loads cleanly:
      (identity-file "~/.ssh/id_ed25519"))
     (openssh-host
      (name "<name>.ts")
-     (host-name "<name>.tailb21dfe.ts.net"))
+     (host-name "<name>.spaniel-cordylus.ts.net"))
     ```
 
 24. **`peteches/systems/monitored-hosts.scm`** — add a node-exporter entry inside the

@@ -9,7 +9,7 @@
 
 ;;; URL pattern → proxy URL rules for automatic routing
 (defvar *peteches-url-proxy-rules*
-  '(("\\.tailb21dfe\\.ts\\.net" . "socks5://localhost:1080")))
+  '(("\\.spaniel-cordylus\\.ts\\.net" . "socks5://localhost:1080")))
 
 ;;; Mode holds per-buffer manual proxy preference and installs hooks.
 ;;; Follows the force-https-mode pattern from nyxt/source/mode/force-https.lisp.

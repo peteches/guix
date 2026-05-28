@@ -311,7 +311,7 @@
               (port 41641)
 	      (forward-ports '((22 . 22)))
 	      (socks-proxy-port 1080)
-	      (magic-dns-suffix "tailb21dfe.ts.net"))))))
+	      (magic-dns-suffix "spaniel-cordylus.ts.net"))))))
 
 ;; Grab the *unexported* accessor from (gnu services base).
 (define nscd-cache-database*

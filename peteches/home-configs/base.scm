@@ -175,7 +175,7 @@
    (simple-service 'ssh-proxy-fragment
                    home-files-service-type
                    `((".ssh/config.d/peteches-ts-proxy.conf"   ,(mixed-text-file "guix-proxy.conf"
-										 "Host *.tailb21dfe.ts.net\n"
+										 "Host *.spaniel-cordylus.ts.net\n"
 										 "  ProxyCommand netns-peteches "
 										 (file-append netcat "/bin/nc")
 										 " -w 10 %h %p\n"))))
@@ -196,16 +196,16 @@
 				       "    Include ~/.ssh/config.d/peteches-ts-proxy.conf\n")))
 		      (openssh-host
 		       (name "nyarlothotep.ts")
-		       (host-name "nyarlothotep.tailb21dfe.ts.net"))
+		       (host-name "nyarlothotep.spaniel-cordylus.ts.net"))
 		      (openssh-host
 		       (name "nug.ts")
-		       (host-name "nug.tailb21dfe.ts.net"))
+		       (host-name "nug.spaniel-cordylus.ts.net"))
 		      (openssh-host
 		       (name "prometheus.ts")
-		       (host-name "prometheus.tailb21dfe.ts.net"))
+		       (host-name "prometheus.spaniel-cordylus.ts.net"))
 		      (openssh-host
 		       (name "grafana.ts")
-		       (host-name "grafana.tailb21dfe.ts.net"))
+		       (host-name "grafana.spaniel-cordylus.ts.net"))
 		      (openssh-host
 		       (name "prometheus")
 		       (host-name "192.168.51.187")
@@ -223,7 +223,7 @@
 		       (identity-file "~/.ssh/id_ed25519"))
 		      (openssh-host
 		       (name "loki.ts")
-		       (host-name "loki.tailb21dfe.ts.net"))
+		       (host-name "loki.spaniel-cordylus.ts.net"))
 		      (openssh-host
 		       (name "loki")
 		       (host-name "192.168.51.190")
@@ -231,7 +231,7 @@
 		       (identity-file "~/.ssh/id_ed25519"))
 		      (openssh-host
 		       (name "git.ts")
-		       (host-name "git.tailb21dfe.ts.net"))
+		       (host-name "git.spaniel-cordylus.ts.net"))
 		      (openssh-host
 		       (name "git")
 		       (host-name "192.168.51.191")
@@ -239,7 +239,7 @@
 		       (identity-file "~/.ssh/id_ed25519")))
 		      (openssh-host
 		       (name "jellyfin.ts")
-		       (host-name "jellyfin.tailb21dfe.ts.net"))
+		       (host-name "jellyfin.spaniel-cordylus.ts.net"))
 		      (openssh-host
 		       (name "jellyfin")
 		       (host-name "192.168.51.192")
