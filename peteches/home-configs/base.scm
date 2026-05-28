@@ -237,6 +237,14 @@
 		       (host-name "192.168.51.191")
 		       (user "peteches")
 		       (identity-file "~/.ssh/id_ed25519")))
+		      (openssh-host
+		       (name "jellyfin.ts")
+		       (host-name "jellyfin.tailb21dfe.ts.net"))
+		      (openssh-host
+		       (name "jellyfin")
+		       (host-name "192.168.51.192")
+		       (user "peteches")
+		       (identity-file "~/.ssh/id_ed25519"))
 		     %scoreplay-ssh-hosts))))
 
    ;; GPG Agent

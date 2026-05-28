@@ -5,7 +5,8 @@
   #:use-module (peteches systems grafana)
   #:use-module (peteches systems loki)
   #:use-module (peteches systems pihole)
-  #:use-module (peteches systems git))
+  #:use-module (peteches systems git)
+  #:use-module (peteches systems jellyfin))
 
 (define-public prometheus-machine
   (machine
@@ -67,9 +68,22 @@
      (user "peteches")
      (identity "/home/peteches/.ssh/id_ed25519")))))
 
+(define-public jellyfin-machine
+  (machine
+   (operating-system jellyfin-os)
+   (environment managed-host-environment-type)
+   (configuration
+    (machine-ssh-configuration
+     (host-name "192.168.51.192")
+     (host-key "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIO0K7C2Fom+JtznRuvkCn1oIrjMy5ASD9tE5Ag8buO2Q")
+     (system "x86_64-linux")
+     (user "peteches")
+     (identity "/home/peteches/.ssh/id_ed25519")))))
+
 (define-public %all-machines
   (list prometheus-machine
         grafana-machine
         loki-machine
         pihole-machine
-        git-machine))
+        git-machine
+        jellyfin-machine))

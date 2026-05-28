@@ -94,5 +94,7 @@
                                       (hostname "loki.peteches.co.uk"))
                   (pihole-custom-host (address "192.168.51.191")
                                       (hostname "git.peteches.co.uk")))))))))))
+                  (pihole-custom-host (address "192.168.51.192")
+                                      (hostname "jellyfin.peteches.co.uk"))
 
 pihole-os

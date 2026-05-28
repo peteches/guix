@@ -19,6 +19,10 @@ creation_rules:
     pgp: "5FFB7006A36B0AEDE8D08E3753B1E002546A642A"
     age: "age1drdf9gte6s33vrdq6sa7j55qtuznq33f2edfm8p2jw7kvshmx3ks8v0qmt"
 
+  - path_regex: secrets/hosts/jellyfin/.*\.yaml$
+    pgp: "5FFB7006A36B0AEDE8D08E3753B1E002546A642A"
+    age: "age172hu2lpp60nemm89a8l3pa7mz2kp90xnds7e5r0skwjghu8nm9aszut7es"
+
   - path_regex: secrets/shared/.*\.yaml$
     pgp: "5FFB7006A36B0AEDE8D08E3753B1E002546A642A"
     age:
@@ -27,3 +31,4 @@ creation_rules:
       - age1gd29zcp8xpm92aprc03u8a959zlmavue768gxstxu0ykhxh87e3sywr4jj  # grafana
       - age16chm6mdzyn5u38epes5jgct35edal282dst59s3f48umzelkueustn6xsm  # loki
       - age1euvhmllrqrn7xxuphtjp74l08u8kvflx83ky4n4j2f4egyylgdxswn7095  # pihole
+      - age172hu2lpp60nemm89a8l3pa7mz2kp90xnds7e5r0skwjghu8nm9aszut7es  # jellyfin

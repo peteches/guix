@@ -78,18 +78,31 @@ For bare patterns (no KEY= prefix), tries both 'name' and 'host-name'."
               (cons "host-name" str)))))
 
 ;;; --- Machine filtering ------------------------------------------------------
+;;; Guix define-record-type* field accessors are syntax-transformers, not
+;;; first-class procedures. They also cannot be macro-expanded inside a (when)
+;;; body (the whole body is compiled before use-modules runs, so the macros are
+;;; invisible to the compiler). Use @@ to grab the internal %-procedure
+;;; accessors directly — these are real procedures and work at runtime.
+(define %get-machine-config
+  (@@ (gnu machine) %machine-configuration-procedure))
+(define %get-ssh-host-name
+  (@@ (gnu machine ssh) %machine-ssh-configuration-host-name-procedure))
+(define %get-ssh-host-key
+  (@@ (gnu machine ssh) %machine-ssh-configuration-host-key-procedure))
+(define %get-ssh-user
+  (@@ (gnu machine ssh) %machine-ssh-configuration-user-procedure))
+
 (define %field-accessors
-  `(("host-name" . ,machine-ssh-configuration-host-name)
-    ("host-key"  . ,machine-ssh-configuration-host-key)
-    ("user"      . ,machine-ssh-configuration-user)))
+  `(("host-name" . ,(lambda (m) (%get-ssh-host-name (%get-machine-config m))))
+    ("host-key"  . ,(lambda (m) (%get-ssh-host-key  (%get-machine-config m))))
+    ("user"      . ,(lambda (m) (%get-ssh-user       (%get-machine-config m))))))
 
 (define (machine-matches-pattern? m key regex-str)
   (let ((value (if (string=? key "name")
                    (machine-name m)
                    (let* ((entry    (assoc key %field-accessors))
-                          (accessor (and entry (cdr entry)))
-                          (config   (machine-configuration m)))
-                     (and accessor (accessor config))))))
+                          (accessor (and entry (cdr entry))))
+                     (and accessor (accessor m))))))
     (and (string? value)
          (regexp-exec (make-regexp regex-str) value)
          #t)))
@@ -110,7 +123,8 @@ For bare patterns (no KEY= prefix), tries both 'name' and 'host-name'."
     (,grafana-machine    . "grafana-machine")
     (,loki-machine       . "loki-machine")
     (,pihole-machine     . "pihole-machine")
-    (,git-machine        . "git-machine")))
+    (,git-machine        . "git-machine")
+    (,jellyfin-machine   . "jellyfin-machine")))
 
 (define (machine-name m)
   (let ((entry (assq m %machine-names)))

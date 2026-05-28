@@ -2,6 +2,31 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Secret Handling — MANDATORY
+
+**Never print, echo, or display secret or key material in any shell command output.**
+This conversation is recorded by Anthropic. Anything that appears in a tool result is
+part of that record and must be treated as permanently exposed.
+
+This applies to **all** key material without exception:
+- Private keys (SSH, age, GPG)
+- Passwords and passphrases
+- **Public keys** — even public keys reveal which VM/identity owns them and can be used
+  for correlation attacks against SOPS-encrypted files or SSH `authorized_keys`
+- Age public keys — expose which recipients can decrypt which secrets
+- SSH host keys — fingerprints help attackers impersonate hosts
+- IP addresses of newly provisioned machines before they are publicly registered
+- Any value read out of a SOPS-encrypted file
+
+**Rules:**
+1. Secrets must live exclusively in shell variables or `/dev/shm` files. Never in `/tmp`.
+2. Shell commands must **not** `echo`, `cat`, `print`, or otherwise output key material to
+   stdout or stderr. Status messages like `echo "Key saved."` are fine; `echo "$KEY"` is not.
+3. When a value is needed across steps (e.g. age key, host key), store it in a `/dev/shm`
+   file and read it back silently — do not echo it as confirmation.
+4. Use `shred -u` to destroy any `/dev/shm` files as soon as they are no longer needed.
+5. If a secret has appeared in conversation output, treat it as compromised and rotate it.
+
 ## What This Repository Is
 
 A personal [GNU Guix](https://guix.gnu.org/) system configuration repository. All files are written in Guile Scheme. It defines operating systems, home environments, custom packages, and system services for multiple machines. The root Guile module namespace is `(peteches ...)`.
