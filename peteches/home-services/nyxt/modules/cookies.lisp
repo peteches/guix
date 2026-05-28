@@ -46,11 +46,11 @@
 .cmpbox, #cmpbox, .cmpmain,
 .sp-message-container,
 div[aria-label*='cookie' i], div[aria-label*='consent' i]
-{ display: none !important; visibility: hidden !important; }
+{ display: none; visibility: hidden; }
 
 /* Restore scrolling when banners lock the page body */
 body.has-overlay, body.overflow-hidden, body.noscroll
-{ overflow: auto !important; }"
+{ overflow: auto; }"
                          :level :user)))))
 
 (define-configuration web-buffer
