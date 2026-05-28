@@ -50,7 +50,7 @@
      #:sops-secrets
      (list
       (sops-secret
-       (key '("restic-password"))
+       (key '("password"))
        (file (local-file "../../secrets/hosts/prometheus/restic.yaml"))
        (path "/run/secrets/restic-password"))
       (sops-secret

@@ -11,7 +11,13 @@
       "WebFetch(domain:raw.githubusercontent.com)",
       "WebFetch(domain:grafana.com)",
       "Bash(guix build *)",
-      "mcp__anvil__emacs-eval"
+      "mcp__anvil__emacs-eval",
+      "WebFetch(domain:repo.jellyfin.org)",
+      "WebSearch",
+      "WebFetch(domain:jellyfin.org)",
+      "Read(//dev/shm/jf-server/jellyfin/**)",
+      "Bash(readelf -d /dev/shm/jf-server/jellyfin/jellyfin)",
+      "Bash(awk '/RPATH|RUNPATH/ {print}')"
     ]
   }
 }
