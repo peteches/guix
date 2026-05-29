@@ -13,8 +13,8 @@
 		   ("editor" . "emacsclient --create-frame")
 		   ("hooksPath" . "~/.config/git/hooks"))))
 	(git-section
-	 (name "url \"git@github.com:\"")
-	 (config '(("insteadOf" . "https://github.com/"))))
+	 (name "url \"git@github.com:peteches\"")
+	 (config '(("insteadOf" . "https://github.com/peteches"))))
 	(git-section
 	 (name "pull")
 	 (config '(("ff" . "true")
