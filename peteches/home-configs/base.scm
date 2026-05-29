@@ -236,7 +236,7 @@
 		       (name "git")
 		       (host-name "192.168.51.191")
 		       (user "peteches")
-		       (identity-file "~/.ssh/id_ed25519")))
+		       (identity-file "~/.ssh/id_ed25519"))
 		      (openssh-host
 		       (name "jellyfin.ts")
 		       (host-name "jellyfin.spaniel-cordylus.ts.net"))
@@ -252,7 +252,7 @@
 		       (name "caddy")
 		       (host-name "192.168.51.193")
 		       (user "peteches")
-		       (identity-file "~/.ssh/id_ed25519"))
+		       (identity-file "~/.ssh/id_ed25519")))
 		     %scoreplay-ssh-hosts))))
 
    ;; GPG Agent

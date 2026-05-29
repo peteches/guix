@@ -77,19 +77,19 @@
                 (virtual-hosts
                  (list
                   (caddy-reverse-proxy
-                   (domain "prometheus.peteches.co.uk")
+                   (domain "prometheus.ts.peteches.co.uk")
                    (upstream "192.168.51.187:9090"))
                   (caddy-reverse-proxy
-                   (domain "grafana.peteches.co.uk")
+                   (domain "grafana.ts.peteches.co.uk")
                    (upstream "192.168.51.188:3000"))
                   (caddy-reverse-proxy
-                   (domain "git.peteches.co.uk")
+                   (domain "git.ts.peteches.co.uk")
                    (upstream "192.168.51.191:80"))
                   (caddy-reverse-proxy
-                   (domain "jellyfin.peteches.co.uk")
+                   (domain "jellyfin.ts.peteches.co.uk")
                    (upstream "192.168.51.192:8096"))
                   (caddy-reverse-proxy
-                   (domain "pihole.peteches.co.uk")
+                   (domain "pihole.ts.peteches.co.uk")
                    (upstream "192.168.51.189:80"))))))
       (service alloy-service-type
                (alloy-configuration
