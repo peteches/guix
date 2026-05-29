@@ -6,7 +6,8 @@
   #:use-module (peteches systems loki)
   #:use-module (peteches systems pihole)
   #:use-module (peteches systems git)
-  #:use-module (peteches systems jellyfin))
+  #:use-module (peteches systems jellyfin)
+  #:use-module (peteches systems caddy))
 
 (define-public prometheus-machine
   (machine
@@ -80,10 +81,23 @@
      (user "peteches")
      (identity "/home/peteches/.ssh/id_ed25519")))))
 
+(define-public caddy-machine
+  (machine
+   (operating-system caddy-os)
+   (environment managed-host-environment-type)
+   (configuration
+    (machine-ssh-configuration
+     (host-name "192.168.51.193")
+     (host-key "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIKFIxCigw2WFpZwTOWa075uT1IdGMbdCFGs4tCsNzNEz") ; fill in after new-vm Phase 6: ssh-keyscan 192.168.51.193
+     (system "x86_64-linux")
+     (user "peteches")
+     (identity "/home/peteches/.ssh/id_ed25519")))))
+
 (define-public %all-machines
   (list prometheus-machine
         grafana-machine
         loki-machine
         pihole-machine
         git-machine
-        jellyfin-machine))
+        jellyfin-machine
+        caddy-machine))

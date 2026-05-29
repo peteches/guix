@@ -119,7 +119,10 @@
                       (labels '(("instance" . "loki"))))
                      (prometheus-static-config
                       (targets '("192.168.51.189:12345"))
-                      (labels '(("instance" . "pihole")))))))
+                      (labels '(("instance" . "pihole"))))
+                     (prometheus-static-config
+                      (targets '("192.168.51.193:12345"))
+                      (labels '(("instance" . "caddy")))))))
                   (prometheus-scrape-config
                    (job-name "proxmox")
                    (metrics-path "/pve")

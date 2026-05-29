@@ -245,6 +245,14 @@
 		       (host-name "192.168.51.192")
 		       (user "peteches")
 		       (identity-file "~/.ssh/id_ed25519"))
+		      (openssh-host
+		       (name "caddy.ts")
+		       (host-name "caddy.spaniel-cordylus.ts.net"))
+		      (openssh-host
+		       (name "caddy")
+		       (host-name "192.168.51.193")
+		       (user "peteches")
+		       (identity-file "~/.ssh/id_ed25519"))
 		     %scoreplay-ssh-hosts))))
 
    ;; GPG Agent

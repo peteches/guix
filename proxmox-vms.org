@@ -19,6 +19,7 @@ Current VMs (all use OVMF/EFI and =qcow2-gpt= images):
 | peteches/systems/loki.scm       | loki.peteches.co.uk       | Loki log aggregation on :3100 |
 | peteches/systems/git.scm                | git.peteches.co.uk  | Git server (gitolite SSH + cgit web on :80 via Tailscale) |
 | peteches/systems/jellyfin.scm           | jellyfin.peteches.co.uk | Jellyfin media server on :8096 (VMID 105, 192.168.51.192, 4 vCPU, 8192 MB) |
+| peteches/systems/caddy.scm              | caddy.peteches.co.uk    | Caddy HTTPS reverse proxy on :80/:443 (192.168.51.193, 2 vCPU, 1024 MB) |
 
 * Adding a New VM Config
 

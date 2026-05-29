@@ -124,7 +124,8 @@ For bare patterns (no KEY= prefix), tries both 'name' and 'host-name'."
     (,loki-machine       . "loki-machine")
     (,pihole-machine     . "pihole-machine")
     (,git-machine        . "git-machine")
-    (,jellyfin-machine   . "jellyfin-machine")))
+    (,jellyfin-machine   . "jellyfin-machine")
+    (,caddy-machine      . "caddy-machine")))
 
 (define (machine-name m)
   (let ((entry (assq m %machine-names)))
