@@ -73,7 +73,7 @@
                       (forward-ports '((22 . 22) (80 . 80) (443 . 443))))))
       (service caddy-service-type
                (caddy-configuration
-                (email "pete@peteches.co.uk")
+                (email "desec@peteches.co.uk")
                 (virtual-hosts
                  (list
                   (caddy-reverse-proxy

@@ -11,6 +11,7 @@
   #:use-module (gnu services shepherd)
   #:use-module (peteches packages caddy)
   #:use-module (peteches system-services firewall)
+  #:use-module (gnu packages base)
   #:export (caddy-reverse-proxy
             caddy-reverse-proxy?
             caddy-reverse-proxy-domain
@@ -100,7 +101,8 @@
      "                \"provider\": {\n"
      "                  \"name\": \"desec\",\n"
      "                  \"token\": \"{env.DESEC_TOKEN}\"\n"
-     "                }\n"
+     "                },\n"
+     "                \"resolvers\": [\"ns1.desec.io\", \"ns2.desec.org\"]\n"
      "              }\n"
      "            }\n"
      "          }]\n"
@@ -162,7 +164,7 @@
        #~(make-forkexec-constructor
           (list "/bin/sh" "-c"
                 (string-append
-                 "DESEC_TOKEN=$(cat " #$desec-token-file ") "
+                 "DESEC_TOKEN=$(" #$(file-append coreutils "/bin/cat") " " #$desec-token-file ") "
                  "exec " #$(file-append pkg "/bin/caddy")
                  " run --config /etc/caddy/caddy.json"))
           #:log-file #$log-file))

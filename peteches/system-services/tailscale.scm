@@ -197,7 +197,7 @@
               (args         (append (list tailscale
                                           (string-append "--socket=" socket-file)
                                           "set"
-                                          (string-append "--accept-dns=true")
+                                          (string-append "--accept-dns=false")
                                           (string-append "--accept-routes=true"))
                                     ;; Extra safety: keep this instance from trying to be an exit node by accident
                                     ;; (uncomment if you want)
