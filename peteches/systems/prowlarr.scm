@@ -16,6 +16,7 @@
   #:use-module (peteches system-services alloy)
   #:use-module (peteches system-services media-accounts)
   #:use-module (peteches system-services prowlarr)
+  #:use-module (peteches system-services restic)
   #:use-module (peteches system-services tailscale)
   #:use-module (sops secrets)
   #:export (prowlarr-os))
@@ -51,6 +52,13 @@
         (create-mount-point? #t)
         (shepherd-requirements '(sops-secrets networking))
         (options "credentials=/run/secrets/media-smb-credentials,file_mode=0664,dir_mode=0775,vers=3.1.1,cache=loose,actimeo=1800,rsize=1048576,wsize=65536,serverino,iocharset=utf8,noperm,nobrl")))
+     #:restic-config
+     (restic-vm-backup-configuration
+      (vm-name "prowlarr")
+      (synology-host "nas.peteches.co.uk")
+      (backup-paths '("/var/lib/prowlarr"))
+      (password-file "/run/secrets/restic-password")
+      (ssh-key-file "/run/secrets/restic-ssh-key"))
      #:sops-secrets
      (list
       (sops-secret
@@ -62,6 +70,15 @@
        (key '("auth-key"))
        (file (local-file "../../secrets/shared/tailscale.yaml"))
        (path "/run/secrets/tailscale-auth-key")
+       (permissions #o400))
+      (sops-secret
+       (key '("password"))
+       (file (local-file "../../secrets/hosts/prowlarr/restic.yaml"))
+       (path "/run/secrets/restic-password"))
+      (sops-secret
+       (key '("ssh-key"))
+       (file (local-file "../../secrets/hosts/prowlarr/restic.yaml"))
+       (path "/run/secrets/restic-ssh-key")
        (permissions #o400)))
      #:extra-services
      (list

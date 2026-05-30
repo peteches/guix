@@ -23,7 +23,7 @@ creation_rules:
     pgp: "5FFB7006A36B0AEDE8D08E3753B1E002546A642A"
     age: "age12kqksjf5cjh8y3l70r2jzzxz3gdv9wda7jylvk46vqrfd6hgqy4qz6ntc7"
 
-  - path_regex: secrets/hosts/caddy/.*.yaml$
+  - path_regex: secrets/hosts/caddy/.*\.yaml$
     pgp: "5FFB7006A36B0AEDE8D08E3753B1E002546A642A"
     age: "age1ed7uvjrv2t6k0ytc8raqsm7jvlpdxls82xf2h45ptdwdwxkqacjq2rkf64"
 
@@ -39,7 +39,7 @@ creation_rules:
     pgp: "5FFB7006A36B0AEDE8D08E3753B1E002546A642A"
     age: "age1ssely7qxd0yjrdukl6xjns2gal43nm3n3zulpxzgdsuzd8z85u5qguvlna"
 
-  - path_regex: secrets/groups/media/.*\.yaml
+  - path_regex: secrets/groups/media/.*\.yaml$
     pgp: "5FFB7006A36B0AEDE8D08E3753B1E002546A642A"
     age:
       - age12kqksjf5cjh8y3l70r2jzzxz3gdv9wda7jylvk46vqrfd6hgqy4qz6ntc7  # jellyfin
