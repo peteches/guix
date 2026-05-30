@@ -76,6 +76,8 @@
       (service caddy-service-type
                (caddy-configuration
                 (netns "ts-peteches")
+                (cname-target "caddy.spaniel-cordylus.ts.net.")
+                (cname-zone   "ts.peteches.co.uk")
                 (email "desec@peteches.co.uk")
 ;;                (tls-subjects '("*.ts.peteches.co.uk"))
                 (virtual-hosts
