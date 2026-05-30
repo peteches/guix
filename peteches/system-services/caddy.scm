@@ -165,22 +165,33 @@
          (log-file         (caddy-configuration-log-file config))
          (desec-token-file (caddy-configuration-desec-token-file config))
          (cname-target     (caddy-configuration-cname-target config))
+         (netns            (caddy-configuration-netns config))
+         (netns-req        (if netns
+                               (list (string->symbol
+                                      (string-append "tailscale-netns-setup-"
+                                                     (string-drop netns 3))))
+                               '()))
          (extra-req        (if cname-target '(caddy-ensure-cnames) '())))
     (list
      (shepherd-service
       (provision '(caddy))
       (documentation "Caddy web server with automatic HTTPS via deSEC DNS-01.")
-      (requirement `(networking file-systems sops-secrets ,@extra-req))
+      (requirement `(networking file-systems sops-secrets ,@extra-req ,@netns-req))
       (start
        ;; Read the DESEC_TOKEN from the SOPS-decrypted secret file at start-up
        ;; and inject it into Caddy's environment via a shell subshell expansion.
        ;; The token never appears in process arguments or log output.
        #~(make-forkexec-constructor
-          (list "/bin/sh" "-c"
-                (string-append
-                 "DESEC_TOKEN=$(" #$(file-append coreutils "/bin/cat") " " #$desec-token-file ") "
-                 "exec " #$(file-append pkg "/bin/caddy")
-                 " run --config /etc/caddy/caddy.json"))
+          (append
+           (if #$netns
+               (list #$(file-append iproute "/sbin/ip") "netns" "exec" #$netns)
+               '())
+           (list "/bin/sh" "-c"
+                 (string-append
+                  "DESEC_TOKEN=$(" #$(file-append coreutils "/bin/cat")
+                  " " #$desec-token-file ") "
+                  "exec " #$(file-append pkg "/bin/caddy")
+                  " run --config /etc/caddy/caddy.json")))
           #:log-file #$log-file))
       (stop #~(make-kill-destructor))
       (actions
@@ -209,8 +220,7 @@
          (domains          (map caddy-reverse-proxy-domain virtual-hosts)))
     (if (or (not cname-target) (not cname-zone))
         '()
-        (let* ((drill-out (list ldns "drill"))
-               (curl-bin  (file-append curl "/bin/curl"))
+        (let* ((curl-bin (file-append curl "/bin/curl"))
                (script
                 (program-file
                  "caddy-ensure-cnames"
@@ -223,32 +233,44 @@
                        (string-trim-right
                         (call-with-input-file #$desec-token-file read-line)))
 
-                     ;; Query DNS for a CNAME on DOMAIN using the system
-                     ;; resolver.  Returns #t if any non-comment answer line
-                     ;; contains "CNAME".
-                     (define (cname-exists? domain)
-                       (let* ((port (open-input-pipe
-                                     (string-append #$drill-out "/bin/drill"
-                                                    " " domain " CNAME")))
-                              (found #f))
-                         (let loop ()
-                           (let ((line (read-line port)))
-                             (unless (eof-object? line)
-                               (when (and (not (string-prefix? ";;" line))
-                                          (string-contains line "CNAME"))
-                                 (set! found #t))
-                               (loop))))
-                         (close-pipe port)
-                         found))
-
                      ;; Strip .<zone> suffix to get the deSEC subname.
                      ;; e.g. "prometheus.ts.peteches.co.uk" + "ts.peteches.co.uk"
                      ;;   => "prometheus"
                      (define (fqdn->subname fqdn zone)
                        (string-drop-right fqdn (+ 1 (string-length zone))))
 
+                     ;; Fetch existing CNAME rrsets from the deSEC API (one GET,
+                     ;; much higher rate limit than PATCH).  Returns the JSON body
+                     ;; as a string, or "" on error.
+                     (define existing-json
+                       (let* ((port (open-input-pipe
+                                     (string-append
+                                      #$curl-bin
+                                      " --silent --fail"
+                                      " --cacert /etc/ssl/certs/ca-certificates.crt"
+                                      " --header 'Authorization: Token " token "'"
+                                      " https://desec.io/api/v1/domains/"
+                                      #$cname-zone "/rrsets/?type=CNAME")))
+                              (body
+                               (let loop ((lines '()))
+                                 (let ((line (read-line port)))
+                                   (if (eof-object? line)
+                                       (string-join (reverse lines) "")
+                                       (loop (cons line lines)))))))
+                         (close-pipe port)
+                         body))
+
+                     ;; A CNAME is already configured if its subname appears in
+                     ;; the API JSON response.
+                     (define (cname-configured? domain)
+                       (string-contains existing-json
+                                        (string-append
+                                         "\"subname\":\""
+                                         (fqdn->subname domain #$cname-zone)
+                                         "\"")))
+
                      (define missing
-                       (filter (lambda (d) (not (cname-exists? d)))
+                       (filter (lambda (d) (not (cname-configured? d)))
                                '#$domains))
 
                      ;; Issue at most one PATCH request for all missing CNAMEs.
@@ -274,6 +296,7 @@
                                     zone "/rrsets/"))
                               (rc  (system* #$curl-bin
                                             "--silent" "--show-error" "--fail"
+                                            "--cacert" "/etc/ssl/certs/ca-certificates.crt"
                                             "--request" "PATCH"
                                             "--header"
                                             (string-append
