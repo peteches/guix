@@ -1,8 +1,10 @@
-;; jellyfin.scm — Jellyfin media server on a Proxmox QEMU/KVM VM.
-;; Serves media over HTTP (port 8096) via Tailscale.
-;; EFI bootloader, virtio root on vda2 with ESP on vda1, static networking.
+;; prowlarr.scm — Prowlarr indexer manager on a Proxmox QEMU/KVM VM.
+;; Serves the web UI on port 9696 via Tailscale.
+;;
+;; Bootstrap note: the CIFS mount and SOPS secrets require the VM's age key
+;; to be enrolled first.  See the deployment plan for the two-pass sequence.
 
-(define-module (peteches systems jellyfin)
+(define-module (peteches systems prowlarr)
   #:use-module (guix gexp)
   #:use-module (gnu bootloader)
   #:use-module (gnu bootloader grub)
@@ -12,19 +14,18 @@
   #:use-module (gnu system keyboard)
   #:use-module (peteches systems vm-base)
   #:use-module (peteches system-services alloy)
-  #:use-module (peteches system-services jellyfin)
-  #:use-module (peteches system-services restic)
+  #:use-module (peteches system-services media-accounts)
+  #:use-module (peteches system-services prowlarr)
   #:use-module (peteches system-services tailscale)
   #:use-module (sops secrets)
-  #:export (jellyfin-os))
+  #:export (prowlarr-os))
 
-(define-public jellyfin-os
+(define-public prowlarr-os
   (operating-system
    (inherit
     (make-vm-os
-     #:host-name "jellyfin.peteches.co.uk"
-     #:ipv4-address "192.168.51.192/23"
-     #:ipv6-address "2a10:d582:ef59::104/64"
+     #:host-name "prowlarr.peteches.co.uk"
+     #:ipv4-address "192.168.51.194/23"
      #:bootloader
      (bootloader-configuration
       (bootloader grub-efi-removable-bootloader)
@@ -50,45 +51,36 @@
         (create-mount-point? #t)
         (shepherd-requirements '(sops-secrets networking))
         (options "credentials=/run/secrets/media-smb-credentials,file_mode=0664,dir_mode=0775,vers=3.1.1,cache=loose,actimeo=1800,rsize=1048576,wsize=65536,serverino,iocharset=utf8,noperm,nobrl")))
-     #:restic-config
-     (restic-vm-backup-configuration
-      (vm-name "jellyfin")
-      (synology-host "nas.peteches.co.uk")
-      (backup-paths '("/var/lib/jellyfin"))
-      (password-file "/run/secrets/restic-password")
-      (ssh-key-file "/run/secrets/restic-ssh-key"))
      #:sops-secrets
      (list
-      (sops-secret
-       (key '("password"))
-       (file (local-file "../../secrets/hosts/jellyfin/restic.yaml"))
-       (path "/run/secrets/restic-password"))
-      (sops-secret
-       (key '("ssh-key"))
-       (file (local-file "../../secrets/hosts/jellyfin/restic.yaml"))
-       (path "/run/secrets/restic-ssh-key")
-       (permissions #o400))
       (sops-secret
        (key '("credentials"))
        (file (local-file "../../secrets/groups/media/smb.yaml"))
        (path "/run/secrets/media-smb-credentials")
+       (permissions #o400))
+      (sops-secret
+       (key '("auth-key"))
+       (file (local-file "../../secrets/shared/tailscale.yaml"))
+       (path "/run/secrets/tailscale-auth-key")
        (permissions #o400)))
      #:extra-services
      (list
+      (service media-accounts-service-type)
       (service tailscale-service-type
                (list (tailscale-instance-configuration
                       (name "peteches")
-                      (forward-ports '((22 . 22) (8096 . 8096))))))
-      (service jellyfin-service-type
-               (jellyfin-configuration))
+                      (auth-key-file "/run/secrets/tailscale-auth-key")
+                      (forward-ports '((22 . 22) (9696 . 9696))))))
+      (service prowlarr-service-type
+               (prowlarr-configuration))
       (service alloy-service-type
                (alloy-configuration
-                (hostname "jellyfin.peteches.co.uk")
+                (hostname "prowlarr.peteches.co.uk")
                 (log-files (list (cons "/var/log/messages" "syslog")
                                  (cons "/var/log/prometheus-node-exporter.log" "node-exporter")
                                  (cons "/var/log/ntpd.log" "ntpd")
                                  (cons "/var/log/alloy.log" "alloy")
                                  (cons "/var/log/tailscaled-*.log" "tailscale")
-                                 (cons "/var/log/jellyfin/startup.log" "jellyfin"))))))))))
+                                 (cons "/var/log/prowlarr.log" "prowlarr"))))))))))
 
-jellyfin-os
+prowlarr-os

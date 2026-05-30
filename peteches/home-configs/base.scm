@@ -252,6 +252,30 @@
 		       (name "caddy")
 		       (host-name "192.168.51.193")
 		       (user "peteches")
+		       (identity-file "~/.ssh/id_ed25519"))
+		      (openssh-host
+		       (name "prowlarr.ts")
+		       (host-name "prowlarr.spaniel-cordylus.ts.net"))
+		      (openssh-host
+		       (name "prowlarr")
+		       (host-name "192.168.51.194")
+		       (user "peteches")
+		       (identity-file "~/.ssh/id_ed25519"))
+		      (openssh-host
+		       (name "arr.ts")
+		       (host-name "arr.spaniel-cordylus.ts.net"))
+		      (openssh-host
+		       (name "arr")
+		       (host-name "192.168.51.195")
+		       (user "peteches")
+		       (identity-file "~/.ssh/id_ed25519"))
+		      (openssh-host
+		       (name "downloads.ts")
+		       (host-name "downloads.spaniel-cordylus.ts.net"))
+		      (openssh-host
+		       (name "downloads")
+		       (host-name "192.168.51.196")
+		       (user "peteches")
 		       (identity-file "~/.ssh/id_ed25519")))
 		     %scoreplay-ssh-hosts))))
 

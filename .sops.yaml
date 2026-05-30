@@ -27,6 +27,26 @@ creation_rules:
     pgp: "5FFB7006A36B0AEDE8D08E3753B1E002546A642A"
     age: "age1ed7uvjrv2t6k0ytc8raqsm7jvlpdxls82xf2h45ptdwdwxkqacjq2rkf64"
 
+  - path_regex: secrets/hosts/prowlarr/.*\.yaml$
+    pgp: "5FFB7006A36B0AEDE8D08E3753B1E002546A642A"
+    age: "age18qc9n2dlah5z6vda3x9qrwjpgz8armuqz5456vekegvut6ez4q5quvwhf3"
+
+  - path_regex: secrets/hosts/arr/.*\.yaml$
+    pgp: "5FFB7006A36B0AEDE8D08E3753B1E002546A642A"
+    age: "age1z7alg2ssx9n5nzgnnyac4hvd6yaga00tlw4je72jlfch3hafdg5st7enrl"
+
+  - path_regex: secrets/hosts/downloads/.*\.yaml$
+    pgp: "5FFB7006A36B0AEDE8D08E3753B1E002546A642A"
+    age: "age1ssely7qxd0yjrdukl6xjns2gal43nm3n3zulpxzgdsuzd8z85u5qguvlna"
+
+  - path_regex: secrets/groups/media/.*\.yaml
+    pgp: "5FFB7006A36B0AEDE8D08E3753B1E002546A642A"
+    age:
+      - age12kqksjf5cjh8y3l70r2jzzxz3gdv9wda7jylvk46vqrfd6hgqy4qz6ntc7  # jellyfin
+      - age18qc9n2dlah5z6vda3x9qrwjpgz8armuqz5456vekegvut6ez4q5quvwhf3  # prowlarr
+      - age1z7alg2ssx9n5nzgnnyac4hvd6yaga00tlw4je72jlfch3hafdg5st7enrl  # arr
+      - age1ssely7qxd0yjrdukl6xjns2gal43nm3n3zulpxzgdsuzd8z85u5qguvlna  # downloads
+
   - path_regex: secrets/shared/.*\.yaml$
     pgp: "5FFB7006A36B0AEDE8D08E3753B1E002546A642A"
     age:
@@ -37,3 +57,6 @@ creation_rules:
       - age1euvhmllrqrn7xxuphtjp74l08u8kvflx83ky4n4j2f4egyylgdxswn7095  # pihole
       - age12kqksjf5cjh8y3l70r2jzzxz3gdv9wda7jylvk46vqrfd6hgqy4qz6ntc7  # jellyfin
       - age1ed7uvjrv2t6k0ytc8raqsm7jvlpdxls82xf2h45ptdwdwxkqacjq2rkf64  # caddy
+      - age18qc9n2dlah5z6vda3x9qrwjpgz8armuqz5456vekegvut6ez4q5quvwhf3  # prowlarr
+      - age1z7alg2ssx9n5nzgnnyac4hvd6yaga00tlw4je72jlfch3hafdg5st7enrl  # arr
+      - age1ssely7qxd0yjrdukl6xjns2gal43nm3n3zulpxzgdsuzd8z85u5qguvlna  # downloads

@@ -97,6 +97,12 @@
                   (pihole-custom-host (address "192.168.51.192")
                                       (hostname "jellyfin.peteches.co.uk"))
                   (pihole-custom-host (address "192.168.51.193")
-                                      (hostname "caddy.peteches.co.uk")))))))))))
+                                      (hostname "caddy.peteches.co.uk"))
+                  (pihole-custom-host (address "192.168.51.194")
+                                      (hostname "prowlarr.peteches.co.uk"))
+                  (pihole-custom-host (address "192.168.51.195")
+                                      (hostname "arr.peteches.co.uk"))
+                  (pihole-custom-host (address "192.168.51.196")
+                                      (hostname "downloads.peteches.co.uk")))))))))))
 
 pihole-os

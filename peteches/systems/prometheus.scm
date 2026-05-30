@@ -122,7 +122,16 @@
                       (labels '(("instance" . "pihole"))))
                      (prometheus-static-config
                       (targets '("192.168.51.193:12345"))
-                      (labels '(("instance" . "caddy")))))))
+                      (labels '(("instance" . "caddy"))))
+                     (prometheus-static-config
+                      (targets '("192.168.51.194:12345"))
+                      (labels '(("instance" . "prowlarr"))))
+                     (prometheus-static-config
+                      (targets '("192.168.51.195:12345"))
+                      (labels '(("instance" . "arr"))))
+                     (prometheus-static-config
+                      (targets '("192.168.51.196:12345"))
+                      (labels '(("instance" . "downloads")))))))
                   (prometheus-scrape-config
                    (job-name "proxmox")
                    (metrics-path "/pve")
@@ -141,6 +150,36 @@
                      (prometheus-relabel-config
                       (target-label "__address__")
                       (replacement "192.168.51.1:9221")))))
+                  (prometheus-scrape-config
+                   (job-name "prowlarr")
+                   (static-configs
+                    (list (prometheus-static-config
+                           (targets '("192.168.51.194:9696"))
+                           (labels '(("instance" . "prowlarr")))))))
+                  (prometheus-scrape-config
+                   (job-name "sonarr")
+                   (static-configs
+                    (list (prometheus-static-config
+                           (targets '("192.168.51.195:8989"))
+                           (labels '(("instance" . "sonarr")))))))
+                  (prometheus-scrape-config
+                   (job-name "radarr")
+                   (static-configs
+                    (list (prometheus-static-config
+                           (targets '("192.168.51.195:7878"))
+                           (labels '(("instance" . "radarr")))))))
+                  (prometheus-scrape-config
+                   (job-name "nzbget")
+                   (static-configs
+                    (list (prometheus-static-config
+                           (targets '("192.168.51.196:6789"))
+                           (labels '(("instance" . "nzbget")))))))
+                  (prometheus-scrape-config
+                   (job-name "transmission")
+                   (static-configs
+                    (list (prometheus-static-config
+                           (targets '("192.168.51.196:9091"))
+                           (labels '(("instance" . "transmission")))))))
                   (prometheus-scrape-config
                    (job-name "snmp")
                    (metrics-path "/snmp")

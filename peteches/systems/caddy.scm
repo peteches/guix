@@ -94,7 +94,22 @@
                    (upstream "jellyfin.spaniel-cordylus.ts.net:8096"))
                   (caddy-reverse-proxy
                    (domain "pihole.ts.peteches.co.uk")
-                   (upstream "pihole.spaniel-cordylus.ts.net:80"))))))
+                   (upstream "pihole.spaniel-cordylus.ts.net:80"))
+                  (caddy-reverse-proxy
+                   (domain "prowlarr.ts.peteches.co.uk")
+                   (upstream "prowlarr.spaniel-cordylus.ts.net:9696"))
+                  (caddy-reverse-proxy
+                   (domain "sonarr.ts.peteches.co.uk")
+                   (upstream "arr.spaniel-cordylus.ts.net:8989"))
+                  (caddy-reverse-proxy
+                   (domain "radarr.ts.peteches.co.uk")
+                   (upstream "arr.spaniel-cordylus.ts.net:7878"))
+                  (caddy-reverse-proxy
+                   (domain "nzbget.ts.peteches.co.uk")
+                   (upstream "downloads.spaniel-cordylus.ts.net:6789"))
+                  (caddy-reverse-proxy
+                   (domain "transmission.ts.peteches.co.uk")
+                   (upstream "downloads.spaniel-cordylus.ts.net:9091"))))))
       (service alloy-service-type
                (alloy-configuration
                 (hostname "caddy.peteches.co.uk")

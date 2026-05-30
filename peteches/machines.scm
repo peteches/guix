@@ -7,7 +7,10 @@
   #:use-module (peteches systems pihole)
   #:use-module (peteches systems git)
   #:use-module (peteches systems jellyfin)
-  #:use-module (peteches systems caddy))
+  #:use-module (peteches systems caddy)
+  #:use-module (peteches systems prowlarr)
+  #:use-module (peteches systems arr)
+  #:use-module (peteches systems downloads))
 
 (define-public prometheus-machine
   (machine
@@ -93,6 +96,42 @@
      (user "peteches")
      (identity "/home/peteches/.ssh/id_ed25519")))))
 
+(define-public prowlarr-machine
+  (machine
+   (operating-system prowlarr-os)
+   (environment managed-host-environment-type)
+   (configuration
+    (machine-ssh-configuration
+     (host-name "192.168.51.194")
+     (host-key "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIHiYZARBCM47v7xWtaEhYRQNwfHK0ch6UnzOlaqnhIyA")
+     (system "x86_64-linux")
+     (user "peteches")
+     (identity "/home/peteches/.ssh/id_ed25519")))))
+
+(define-public arr-machine
+  (machine
+   (operating-system arr-os)
+   (environment managed-host-environment-type)
+   (configuration
+    (machine-ssh-configuration
+     (host-name "192.168.51.195")
+     (host-key "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAILv1EPh7kKTpPwuOBQPvyPiJ1XZ5Nd7SRzYMNEBewtNv")
+     (system "x86_64-linux")
+     (user "peteches")
+     (identity "/home/peteches/.ssh/id_ed25519")))))
+
+(define-public downloads-machine
+  (machine
+   (operating-system downloads-os)
+   (environment managed-host-environment-type)
+   (configuration
+    (machine-ssh-configuration
+     (host-name "192.168.51.196")
+     (host-key "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIF1K5LlMCN5seUpx5CRZOmZHvi7JR0NbijQtACHbBGaC")
+     (system "x86_64-linux")
+     (user "peteches")
+     (identity "/home/peteches/.ssh/id_ed25519")))))
+
 (define-public %all-machines
   (list prometheus-machine
         grafana-machine
@@ -100,4 +139,7 @@
         pihole-machine
         git-machine
         jellyfin-machine
-        caddy-machine))
+        caddy-machine
+        prowlarr-machine
+        arr-machine
+        downloads-machine))
