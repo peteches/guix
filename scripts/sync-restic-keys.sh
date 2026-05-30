@@ -9,7 +9,8 @@ SYNOLOGY_USER="${SYNOLOGY_USER:-peteches}"
 AUTHORIZED_KEYS_PATH="/homes/restic-backup/.ssh/authorized_keys"
 
 KEYS_FILE="/dev/shm/restic-keys-$$"
-trap 'shred -u "$KEYS_FILE" 2>/dev/null || true' EXIT
+SFTP_BATCH="/dev/shm/restic-sftp-batch-$$"
+trap 'shred -u "$KEYS_FILE" "$SFTP_BATCH" 2>/dev/null || true' EXIT
 
 for secret_file in "$SECRETS_DIR"/*/restic.yaml; do
     host=$(basename "$(dirname "$secret_file")")
@@ -30,9 +31,9 @@ fi
 
 echo "Syncing $KEY_COUNT SSH public keys to $SYNOLOGY_USER@$SYNOLOGY_HOST:$AUTHORIZED_KEYS_PATH"
 
-sftp -b - "$SYNOLOGY_USER@$SYNOLOGY_HOST" <<EOF
-put $KEYS_FILE $AUTHORIZED_KEYS_PATH
-chmod 600 $AUTHORIZED_KEYS_PATH
-EOF
+printf 'put %s %s\nchmod 600 %s\n' \
+    "$KEYS_FILE" "$AUTHORIZED_KEYS_PATH" "$AUTHORIZED_KEYS_PATH" \
+    > "$SFTP_BATCH"
+sftp -b "$SFTP_BATCH" "$SYNOLOGY_USER@$SYNOLOGY_HOST"
 
 echo "Done."
