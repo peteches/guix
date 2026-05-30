@@ -70,27 +70,31 @@
       (service tailscale-service-type
                (list (tailscale-instance-configuration
                       (name "peteches")
-                      (forward-ports '((22 . 22) (80 . 80) (443 . 443))))))
+                      (magic-dns-suffix "spaniel-cordylus.ts.net")
+                      (forward-ports '((22 . 22)))
+                      (host-forward-ports '((80 . 80) (443 . 443))))))
       (service caddy-service-type
                (caddy-configuration
+                (netns "ts-peteches")
                 (email "desec@peteches.co.uk")
+                (tls-subjects '("*.ts.peteches.co.uk"))
                 (virtual-hosts
                  (list
                   (caddy-reverse-proxy
                    (domain "prometheus.ts.peteches.co.uk")
-                   (upstream "192.168.51.187:9090"))
+                   (upstream "prometheus.spaniel-cordylus.ts.net:9090"))
                   (caddy-reverse-proxy
                    (domain "grafana.ts.peteches.co.uk")
-                   (upstream "192.168.51.188:3000"))
+                   (upstream "grafana.spaniel-cordylus.ts.net:3000"))
                   (caddy-reverse-proxy
                    (domain "git.ts.peteches.co.uk")
-                   (upstream "192.168.51.191:80"))
+                   (upstream "git.spaniel-cordylus.ts.net:80"))
                   (caddy-reverse-proxy
                    (domain "jellyfin.ts.peteches.co.uk")
-                   (upstream "192.168.51.192:8096"))
+                   (upstream "jellyfin.spaniel-cordylus.ts.net:8096"))
                   (caddy-reverse-proxy
                    (domain "pihole.ts.peteches.co.uk")
-                   (upstream "192.168.51.189:80"))))))
+                   (upstream "pihole.spaniel-cordylus.ts.net:80"))))))
       (service alloy-service-type
                (alloy-configuration
                 (hostname "caddy.peteches.co.uk")

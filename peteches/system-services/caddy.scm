@@ -12,6 +12,7 @@
   #:use-module (peteches packages caddy)
   #:use-module (peteches system-services firewall)
   #:use-module (gnu packages base)
+  #:use-module (gnu packages linux)
   #:export (caddy-reverse-proxy
             caddy-reverse-proxy?
             caddy-reverse-proxy-domain
@@ -40,6 +41,8 @@
   (log-file         caddy-configuration-log-file         (default "/var/log/caddy.log"))
   (http-port        caddy-configuration-http-port        (default 80))
   (https-port       caddy-configuration-https-port       (default 443)))
+  ;; Optional: run Caddy inside this named network namespace (e.g. "ts-peteches").
+  (netns caddy-configuration-netns (default #f))
 
 ;;; ── JSON config rendering ─────────────────────────────────────────────────
 ;;

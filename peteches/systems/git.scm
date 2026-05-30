@@ -16,6 +16,7 @@
   #:use-module (peteches system-services alloy)
   #:use-module (peteches system-services restic)
   #:use-module (peteches system-services tailscale)
+  #:use-module (peteches system-services firewall)
   #:use-module (sops secrets)
   #:export (git-os))
 
@@ -83,6 +84,10 @@
                                  (cons "/var/log/prometheus-node-exporter.log" "node-exporter")
                                  (cons "/var/log/ntpd.log" "ntpd")
                                  (cons "/var/log/alloy.log" "alloy")
-                                 (cons "/var/log/tailscaled-*.log" "tailscale"))))))))))
+                                 (cons "/var/log/tailscaled-*.log" "tailscale")))))
+      (simple-service 'cgit-firewall
+                       firewall-service-type
+                       (nftables-rules
+                        (input (list "tcp dport 80 accept comment \"cgit\"")))))))))
 
 git-os

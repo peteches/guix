@@ -106,6 +106,11 @@
   (forward-ports tailscale-instance-configuration-forward-ports
                  (default '()))
 
+  ;; Forward ports from the host into the netns (reverse of forward-ports).
+  ;; Each element is (SRC . DST) or (SRC DST), ports are integers.
+  (host-forward-ports tailscale-instance-configuration-host-forward-ports
+                      (default '()))
+
   ;; Optional SOCKS5 proxy port.  When set (integer), microsocks is started
   ;; inside the netns bound to 0.0.0.0:<port>, whitelisting the host veth IP.
   ;; Host applications connect via SOCKS5 at 10.250.X.2:<port>.
@@ -136,7 +141,7 @@
   (match cfg
     (($ <tailscale-instance-configuration>
         name package netns magic-dns state-file socket-file tun port log-file extra-args forward-ports
-        socks-proxy-port taildrop-dir taildrop-user taildrop-schedule)
+        host-forward-ports socks-proxy-port taildrop-dir taildrop-user taildrop-schedule)
      (let-values (((dstate dsock dlog dtun) (instance-default-paths name)))
        (tailscale-instance-configuration
         (name name)
@@ -150,6 +155,7 @@
         (log-file (or log-file dlog))
         (extra-args extra-args)
         (forward-ports forward-ports)
+        (host-forward-ports host-forward-ports)
         (socks-proxy-port socks-proxy-port)
         (taildrop-dir taildrop-dir)
         (taildrop-user taildrop-user)
@@ -159,7 +165,7 @@
   (let ((cfg (instance->resolved cfg)))
     (match cfg
       (($ <tailscale-instance-configuration>
-          name package netns magic-dns state-file socket-file tun port log-file extra-args forward-ports _ _ _ _)
+          name package netns magic-dns state-file socket-file tun port log-file extra-args forward-ports _ _ _ _ _)
        (let* ((service-name (string->symbol (string-append "tailscaled-" name)))
               (setup-name   (string->symbol (string-append "tailscale-netns-setup-" name)))
               (ip (file-append iproute "/sbin/ip"))
@@ -190,7 +196,7 @@
   (let ((cfg (instance->resolved cfg)))
     (match cfg
       (($ <tailscale-instance-configuration>
-          name package netns magic-dns state-file socket-file tun port log-file extra-args forward-ports _ _ _ _)
+          name package netns magic-dns state-file socket-file tun port log-file extra-args forward-ports _ _ _ _ _)
        (let* ((svc-name     (string->symbol (string-append "tailscale-prefs-" name)))
               (tsd-svc      (string->symbol (string-append "tailscaled-" name)))
               (tailscale    (file-append package "/bin/tailscale"))
@@ -221,7 +227,7 @@
   (let ((cfg (instance->resolved cfg)))
     (match cfg
       (($ <tailscale-instance-configuration>
-          inst-name inst-package ns-name magic-dns state-file socket-file tun port log-file extra-args forward-ports _ _ _ _)
+          inst-name inst-package ns-name magic-dns state-file socket-file tun port log-file extra-args forward-ports _ _ _ _ _)
        (let* ((bash-path    (file-append bash "/bin/bash"))
               (ip-path      (file-append iproute "/sbin/ip"))
               (ts-bin       (file-append inst-package "/bin/tailscale"))
@@ -322,7 +328,7 @@
   (let ((cfg (instance->resolved cfg)))
     (match cfg
       (($ <tailscale-instance-configuration>
-          name package netns magic-dns state-file socket-file tun port log-file extra-args forward-ports _ _ _ _)
+          name package netns magic-dns state-file socket-file tun port log-file extra-args forward-ports _ _ _ _ _)
        (let-values (((subnet hostip nsip gw) (subnet-for name)))
          (let* ((ip (file-append iproute "/sbin/ip"))
                 (veth-host (ifname "vts-" name))
@@ -410,7 +416,7 @@ Accept elements like (SRC . DST) or (SRC DST)."
   (let ((cfg (instance->resolved cfg)))
     (match cfg
       (($ <tailscale-instance-configuration>
-          name package netns magic-dns state-file socket-file tun port log-file extra-args forward-ports _ _ _ _)
+          name package netns magic-dns state-file socket-file tun port log-file extra-args forward-ports _ _ _ _ _)
        (let* ((setup-name (string->symbol (string-append "tailscale-netns-setup-" name)))
               (ip         (file-append iproute "/sbin/ip"))
               (socat      (file-append socat "/bin/socat")))
@@ -446,6 +452,47 @@ Accept elements like (SRC . DST) or (SRC DST)."
                      (stop #~(make-kill-destructor)))))
                 (forward-ports->alist forward-ports))))))))
 
+(define (tailscale-instance->host-forward-services cfg)
+  "Return shepherd services running socat on the HOST, forwarding TCP ports into
+the netns.  This is the reverse of tailscale-instance->forward-services.
+Returns an empty list when host-forward-ports is empty."
+  (let ((cfg (instance->resolved cfg)))
+    (match cfg
+      (($ <tailscale-instance-configuration>
+          name package netns magic-dns state-file socket-file tun port log-file extra-args
+          forward-ports host-forward-ports _ _ _ _)
+       (let-values (((subnet hostip nsip gw) (subnet-for name)))
+         (let* ((socat      (file-append socat "/bin/socat"))
+                (setup-name (string->symbol (string-append "tailscale-netns-setup-" name)))
+                (ns-ip      (car (string-split nsip #\/))))
+           (map (lambda (p)
+                  (let* ((src      (car p))
+                         (dst      (cdr p))
+                         (svc-name (string->symbol
+                                    (format #f "tailscale-host-forward-~a-~a" name src)))
+                         (lf       (format #f "/var/log/tailscale-host-forward-~a-~a.log"
+                                           name src)))
+                    (shepherd-service
+                     (provision (list svc-name))
+                     (documentation
+                      (format #f "Forward TCP port ~a on host to ~a:~a in netns ~a"
+                              src ns-ip dst netns))
+                     (requirement (list 'user-processes 'networking setup-name))
+                     (auto-start? #t)
+                     (one-shot? #f)
+                     (start
+                      #~(make-forkexec-constructor
+                         (list #$socat
+                               (string-append "TCP-LISTEN:" #$(number->string src)
+                                              ",fork,reuseaddr")
+                               (string-append "TCP:" #$ns-ip ":" #$(number->string dst)))
+                         #:log-file #$lf
+                         #:environment-variables
+                         (list "PATH=/run/setuid-programs:/run/current-system/profile/bin:/run/current-system/profile/sbin")))
+                     (stop #~(make-kill-destructor)))))
+                (forward-ports->alist host-forward-ports))))))))
+
+
 (define (tailscale-instance->socks-service cfg)
   "Return a shepherd service running microsocks inside the netns, or #f when
 socks-proxy-port is not configured."
@@ -453,7 +500,7 @@ socks-proxy-port is not configured."
     (match cfg
       (($ <tailscale-instance-configuration>
           name package netns magic-dns state-file socket-file tun port log-file extra-args
-          forward-ports socks-proxy-port _ _ _)
+          forward-ports _ socks-proxy-port _ _ _)
        (if (not socks-proxy-port)
            #f
            (let-values (((subnet hostip nsip gw) (subnet-for name)))
@@ -489,7 +536,7 @@ netns.  Returns #f when socks-proxy-port is not configured."
     (match cfg
       (($ <tailscale-instance-configuration>
           name package netns magic-dns state-file socket-file tun port log-file extra-args
-          forward-ports socks-proxy-port _ _ _)
+          forward-ports _ socks-proxy-port _ _ _)
        (if (not socks-proxy-port)
            #f
            (let-values (((subnet hostip nsip gw) (subnet-for name)))
@@ -529,7 +576,7 @@ instance, or #f when taildrop-dir is not configured."
     (match cfg
       (($ <tailscale-instance-configuration>
           name package netns magic-dns state-file socket-file tun port log-file extra-args
-          forward-ports socks-proxy-port taildrop-dir taildrop-user taildrop-schedule)
+          forward-ports host-forward-ports socks-proxy-port taildrop-dir taildrop-user taildrop-schedule)
        (if (not taildrop-dir)
            #f
            (let* ((svc-name  (string->symbol (string-append "tailscale-taildrop-" name)))
@@ -658,7 +705,7 @@ instance, or #f when taildrop-dir is not configured."
               (match cfg
                 (($ <tailscale-instance-configuration>
                     name package netns magic-dns state-file socket-file tun port log-file extra-args forward-ports
-                    _ taildrop-dir taildrop-user _)
+                    _ _ taildrop-dir taildrop-user _)
                  (let ((ip (file-append iproute "/sbin/ip"))
                        (ts (file-append package "/bin/tailscale"))
 		       (nc (file-append netcat "/bin/nc"))
@@ -692,7 +739,7 @@ instance, or #f when taildrop-dir is not configured."
       (match cfg
         (($ <tailscale-instance-configuration>
             inst-name inst-package netns magic-dns state-file socket-file tun port log-file extra-args forward-ports
-            socks-proxy-port _ _ _)
+            _ socks-proxy-port _ _ _)
          (let-values (((subnet hostip nsip gw) (subnet-for inst-name)))
            (let* ((veth-host (ifname "vts-" inst-name))
                   (fwd-pairs (forward-ports->alist forward-ports)))
@@ -737,6 +784,7 @@ instance, or #f when taildrop-dir is not configured."
   (append
    (map tailscale-instance->netns-setup-service instances)
    (append-map tailscale-instance->forward-services instances)
+   (append-map tailscale-instance->host-forward-services instances)
    (filter-map tailscale-instance->socks-service instances)
    (filter-map tailscale-instance->socks-expose-service instances)
    (filter-map tailscale-instance->taildrop-service instances)
