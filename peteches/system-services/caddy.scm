@@ -40,9 +40,9 @@
   (data-path        caddy-configuration-data-path        (default "/var/lib/caddy"))
   (log-file         caddy-configuration-log-file         (default "/var/log/caddy.log"))
   (http-port        caddy-configuration-http-port        (default 80))
-  (https-port       caddy-configuration-https-port       (default 443)))
+  (https-port       caddy-configuration-https-port       (default 443))
   ;; Optional: run Caddy inside this named network namespace (e.g. "ts-peteches").
-  (netns caddy-configuration-netns (default #f))
+  (netns caddy-configuration-netns (default #f)))
 
 ;;; ── JSON config rendering ─────────────────────────────────────────────────
 ;;

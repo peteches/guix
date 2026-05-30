@@ -87,9 +87,6 @@ gptel backend objects)."
 (define-key gptel-mode-prefix-map (kbd "A") 'gptel-abort)
 (define-key gptel-mode-prefix-map (kbd "S") 'peteches/switch-gptel-backend)
 (define-key gptel-mode-prefix-map (kbd "C") 'gptel-commit)
-(with-eval-after-load 'claude-code
-  (define-key gptel-mode-prefix-map (kbd "c") claude-code-command-map))
-
 ;; Bind C-c a g to the prefix map
 (global-set-key (kbd "C-c a") 'gptel-mode-prefix-map)
 

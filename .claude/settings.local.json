@@ -20,7 +20,10 @@
       "Bash(awk '/RPATH|RUNPATH/ {print}')",
       "Bash(/run/current-system/profile/bin/grep *)",
       "mcp__anvil-emacs-eval__file-batch",
-      "mcp__anvil-emacs-eval__file-replace-string"
+      "mcp__anvil-emacs-eval__file-replace-string",
+      "WebFetch(domain:eca.dev)",
+      "mcp__anvil-emacs-eval__file-create",
+      "mcp__anvil-emacs-eval__file-read"
     ]
   }
 }

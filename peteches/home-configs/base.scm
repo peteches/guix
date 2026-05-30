@@ -338,43 +338,70 @@
    ;; home-desktop-service; keep it as the place to set common env/aliases.
    (service home-desktop-service-type)
 
-   ;; Ensure ~/.claude/settings.json contains the anvil MCP server entry so
-   ;; Claude Code can connect to the running Emacs daemon via anvil.el.
-   ;; anvil-stdio.sh uses #!/bin/bash which doesn't exist on Guix systems.
-   ;; Use bash explicitly as the command and pass the script as the first arg.
-   (simple-service 'claude-anvil-mcp-config
+   ;; Configure MCP servers for both Claude Code CLI and ECA.
+   ;; The MCP server JSON block is built once and reused for both
+   ;; ~/.claude/settings.json and ~/.config/eca/config.json.
+   (simple-service 'ai-mcp-config
                    home-activation-service-type
-                   #~(let* ((home (getenv "HOME"))
-                            (settings-file (string-append home "/.claude/settings.json"))
-                            (tmp-file (string-append settings-file ".guix-tmp"))
-                            (bash-path        #$(file-append bash "/bin/bash"))
-                            (emacsclient-dir  #$(file-append emacs "/bin"))
-                            (script-path (string-append home
-                                           "/.config/emacs/straight/repos/anvil.el/anvil-stdio.sh"))
-                            (guix-profile-bin (string-append home "/.guix-home/profile/bin"))
-                            (path-val (string-append guix-profile-bin
-                                                     ":" emacsclient-dir
-                                                     ":/usr/bin:/bin"))
-                            (jq-filter
-                             (string-append
-                              ".mcpServers.anvil = {"
-                              "\"command\": \"" bash-path "\","
-                              "\"args\": [\"" script-path "\","
-                              "\"--server-id=anvil\","
-                              "\"--init-function=anvil-enable\","
-                              "\"--stop-function=anvil-disable\"],"
-                              "\"env\": {"
-                              "\"PATH\": \"" path-val "\","
-                              "\"ANVIL_EMACSCLIENT_RETRY_MAX\": \"300\""
-                              "}}")))
-                       (when (file-exists? settings-file)
-                         (use-modules (ice-9 popen) (ice-9 textual-ports))
-                         (let* ((pipe (open-pipe* OPEN_READ
-                                                  #$(file-append jq "/bin/jq")
-                                                  jq-filter
-                                                  settings-file))
-                                (output (get-string-all pipe)))
-                           (close-pipe pipe)
-                           (call-with-output-file tmp-file
-                             (lambda (port) (display output port)))
-                           (rename-file tmp-file settings-file)))))))
+                   #~(begin
+                       (use-modules (ice-9 popen) (ice-9 textual-ports))
+                       (let* ((home        (getenv "HOME"))
+                              (bash-path   #$(file-append bash "/bin/bash"))
+                              (script-path (string-append home
+                                             "/.config/emacs/straight/repos/anvil.el/anvil-stdio.sh"))
+                              (mcp-json
+                               (string-append
+                                "{"
+                                "\"anvil\":{"
+                                "\"type\":\"stdio\","
+                                "\"command\":\"" bash-path "\","
+                                "\"args\":[\"" script-path "\","
+                                "\"--server-id=anvil\","
+                                "\"--init-function=anvil-enable\","
+                                "\"--stop-function=anvil-disable\"],"
+                                "\"env\":{}},"
+                                "\"anvil-emacs-eval\":{"
+                                "\"type\":\"stdio\","
+                                "\"command\":\"" bash-path "\","
+                                "\"args\":[\"" script-path "\","
+                                "\"--server-id=emacs-eval\"],"
+                                "\"env\":{}}"
+                                "}"))
+                              (claude-file (string-append home "/.claude/settings.json"))
+                              (claude-tmp  (string-append claude-file ".guix-tmp"))
+                              (eca-dir     (string-append home "/.config/eca"))
+                              (eca-file    (string-append eca-dir "/config.json")))
+                         (when (file-exists? claude-file)
+                           (let* ((jq-filter (string-append ".mcpServers = " mcp-json))
+                                  (pipe (open-pipe* OPEN_READ
+                                                    #$(file-append jq "/bin/jq")
+                                                    jq-filter
+                                                    claude-file))
+                                  (output (get-string-all pipe)))
+                             (close-pipe pipe)
+                             (call-with-output-file claude-tmp
+                               (lambda (port) (display output port)))
+                             (rename-file claude-tmp claude-file)))
+                         (unless (file-exists? eca-dir)
+                           (mkdir eca-dir))
+                         (call-with-output-file eca-file
+                           (lambda (port)
+                             (display
+                              (string-append
+                               "{"
+                               "\"providers\":{"
+                               "\"koboldcpp\":{"
+                               "\"api\":\"openai-chat\","
+                               "\"url\":\"https://nug.peteches.co.uk:5001\","
+                               "\"key\":\"local\","
+                               "\"completionUrlRelativePath\":\"/v1/chat/completions\","
+                               "\"models\":{\"default\":{}}"
+                               "}},"
+                               "\"agents\":{"
+                               "\"code\":{\"provider\":\"koboldcpp\",\"model\":\"default\"},"
+                               "\"chat\":{\"provider\":\"koboldcpp\",\"model\":\"default\"}"
+                               "},"
+                               "\"mcpServers\":" mcp-json
+                               "}")
+                              port))))))
+))

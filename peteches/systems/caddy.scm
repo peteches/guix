@@ -77,7 +77,7 @@
                (caddy-configuration
                 (netns "ts-peteches")
                 (email "desec@peteches.co.uk")
-                (tls-subjects '("*.ts.peteches.co.uk"))
+;;                (tls-subjects '("*.ts.peteches.co.uk"))
                 (virtual-hosts
                  (list
                   (caddy-reverse-proxy

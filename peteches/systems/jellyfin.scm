@@ -49,7 +49,7 @@
         (mount-may-fail? #f)
         (create-mount-point? #t)
         (shepherd-requirements '(sops-secrets networking))
-        (options "credentials=/run/secrets/smb-credentials,vers=3.1.1,cache=loose,actimeo=1800,rsize=1048576,wsize=65536,serverino,iocharset=utf8,noperm,nobrl")))
+        (options "credentials=/run/secrets/smb-credentials,uid=985,gid=981,file_mode=0664,dir_mode=0775,vers=3.1.1,cache=loose,actimeo=1800,rsize=1048576,wsize=65536,serverino,iocharset=utf8,noperm,nobrl")))
      #:restic-config
      (restic-vm-backup-configuration
       (vm-name "jellyfin")

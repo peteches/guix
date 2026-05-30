@@ -20,7 +20,8 @@
   #:use-module (gnu packages gcc)
   #:use-module (gnu packages tls)
   #:use-module (gnu packages elf)
-  #:use-module (gnu packages icu4c))
+  #:use-module (gnu packages icu4c)
+  #:use-module (gnu packages fontutils))
 
 ;;; ── jellyfin-ffmpeg ──────────────────────────────────────────────────────
 
@@ -81,10 +82,12 @@ hardware-accelerated transcoding (VAAPI, NVENC, QuickSync) and tone mapping
        (sha256 (base32 "1jhaqm5p0dnr2n051j3pwajgmak9c64mji4yan2222321h40a7zj"))))
     (build-system copy-build-system)
     (inputs
-     (list (list "glibc"   glibc)
-           (list "openssl" openssl)
-           (list "gcc:lib" gcc "lib")
-           (list "icu4c"   icu4c)))
+     (list (list "glibc"      glibc)
+           (list "openssl"    openssl)
+           (list "gcc:lib"    gcc "lib")
+           (list "icu4c"      icu4c)
+           (list "fontconfig" fontconfig)
+           (list "freetype"   freetype)))
     (native-inputs (list patchelf))
     (arguments
      (list
@@ -104,6 +107,8 @@ hardware-accelerated transcoding (VAAPI, NVENC, QuickSync) and tone mapping
                      (gcc-lib  (assoc-ref inputs "gcc:lib"))
                      (ssl      (assoc-ref inputs "openssl"))
                      (icu      (assoc-ref inputs "icu4c"))
+                     (fc       (assoc-ref inputs "fontconfig"))
+                     (ft       (assoc-ref inputs "freetype"))
                      (pe       (search-input-file inputs "/bin/patchelf"))
                      (loader   (string-append libc "/lib/ld-linux-x86-64.so.2"))
                      (app-dir  (string-append out "/share/jellyfin"))
@@ -112,7 +117,9 @@ hardware-accelerated transcoding (VAAPI, NVENC, QuickSync) and tone mapping
                                       (string-append libc "/lib")
                                       (string-append gcc-lib "/lib")
                                       (string-append ssl "/lib")
-                                      (string-append icu "/lib"))
+                                      (string-append icu "/lib")
+                                      (string-append fc "/lib")
+                                      (string-append ft "/lib"))
                                 ":"))
                      (real     (string-append app-dir "/jellyfin"))
                      (wrapper  (string-append out "/bin/jellyfin")))

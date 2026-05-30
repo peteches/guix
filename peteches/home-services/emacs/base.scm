@@ -21,15 +21,13 @@
   #:use-module (gnu services)
   #:use-module (guix gexp)
   #:use-module (nongnu packages node)
-  #:use-module (peteches packages claude-code)
   #:use-module (peteches packages emacs)
   #:use-module (peteches packages mcp)
   #:use-module (peteches packages mermaid)
   #:export (home-emacs-base-service-type))
 
 (define (home-emacs-base-profile-service config)
-  (append (list claude-code)
-	  (map specification->package '("emacs"
+  (map specification->package '("emacs"
 
 					"emacs-linear"
 					"emacs-forge"
@@ -140,7 +138,7 @@
 
 					"font-google-noto"
 					"font-google-noto-emoji"
-					"font-iosevka@33.3.0"))))
+					"font-iosevka@33.3.0")))
 
 (define (home-emacs-base-files-service config)
   (list
