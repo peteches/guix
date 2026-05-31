@@ -154,3 +154,33 @@
        (list (bind (mods "SUPER")        (key s) (dispatcher "workspace")       (params s))
              (bind (mods "SUPER SHIFT")  (key s) (dispatcher "movetoworkspace") (params s)))))
    (iota n 1)))
+
+(define-public base-hyprland-multimedia-binds
+  (list
+   ;; Audio
+   (bind (mods "") (key "XF86AudioMute")
+         (dispatcher "exec") (params "wpctl set-mute @DEFAULT_AUDIO_SINK@ toggle"))
+   (bind (flags "e") (mods "") (key "XF86AudioLowerVolume")
+         (dispatcher "exec") (params "wpctl set-volume -l 1.0 @DEFAULT_AUDIO_SINK@ 5%-"))
+   (bind (flags "e") (mods "") (key "XF86AudioRaiseVolume")
+         (dispatcher "exec") (params "wpctl set-volume -l 1.0 @DEFAULT_AUDIO_SINK@ 5%+"))
+   ;; Media
+   (bind (mods "") (key "XF86AudioPrev")
+         (dispatcher "exec") (params "playerctl previous"))
+   (bind (mods "") (key "XF86AudioPlay")
+         (dispatcher "exec") (params "playerctl play-pause"))
+   (bind (mods "") (key "XF86AudioNext")
+         (dispatcher "exec") (params "playerctl next"))
+   ;; Brightness -- monitor
+   (bind (flags "e") (mods "") (key "XF86MonBrightnessDown")
+         (dispatcher "exec") (params "brightnessctl s 5%-"))
+   (bind (flags "e") (mods "") (key "XF86MonBrightnessUp")
+         (dispatcher "exec") (params "brightnessctl s 5%+"))
+   ;; Brightness -- keyboard backlight (SHIFT+F7/F8)
+   (bind (flags "e") (mods "SHIFT") (key "XF86MonBrightnessDown")
+         (dispatcher "exec") (params "brightnessctl -d '*::kbd_backlight' s 5%-"))
+   (bind (flags "e") (mods "SHIFT") (key "XF86MonBrightnessUp")
+         (dispatcher "exec") (params "brightnessctl -d '*::kbd_backlight' s 5%+"))
+   ;; Screenshot
+   (bind (mods "") (key "Print")
+         (dispatcher "exec") (params "wofi-screenshot.sh"))))

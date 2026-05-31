@@ -28,7 +28,8 @@
 	"ocean-sound-theme"
 	"libcanberra"
 	"pipewire" "wireplumber"
-	"alsa-utils" "pulseaudio")))
+	"alsa-utils" "pulseaudio"
+	"playerctl")))
 
 (define (home-desktop-environment-variables config)
   (list
@@ -76,7 +77,7 @@
    (name 'home-desktop)
    (description "My desktop environment service.")
    (extensions
-    (list  
+    (list
      (service-extension
       home-xdg-configuration-files-service-type
       home-desktop-xdg-files)

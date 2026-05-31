@@ -309,7 +309,8 @@
 					(variables base-hyprland-variables)
 					(binds (append
 						base-hyprland-default-application-launcher-binds
-						(base-hyprland-window-workspace-binds 9)))
+						(base-hyprland-window-workspace-binds 9)
+					base-hyprland-multimedia-binds))
 					(command-execution
 					 (hyprland-execs
 					  (exec-once (list #~(string-append #$(file-append dank-material-shell "/bin/dms") " run")
