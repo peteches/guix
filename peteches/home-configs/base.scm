@@ -58,6 +58,7 @@
   #:use-module (peteches home-configs hyprland)
   #:use-module (peteches packages dank-material-shell)
   #:use-module (peteches packages gurps)
+  #:use-module (peteches packages claude-code)
   #:use-module (peteches packages proxmox-scripts)
   ;; utilities
   #:use-module (ice-9 popen)
@@ -70,6 +71,7 @@
 (define-public base-packages
   (list
    alacritty
+   claude-code
    dank-material-shell
    recutils
    eza

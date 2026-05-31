@@ -33,6 +33,7 @@ exec guix repl -- "$0" "$@"
 ;;; file in the load path; the top-level (exit ...) call would spawn a
 ;;; real `guix deploy' subprocess and crash the reconfigure.
 ;;; Heuristic: when run as a script, argv[0] ends with "deploy.scm".
+(define-module (scripts deploy))
 (when (string-suffix? "deploy.scm" (canonicalize-path (car (command-line))))
 
 (define repo-root

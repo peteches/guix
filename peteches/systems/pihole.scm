@@ -13,6 +13,7 @@
   #:use-module (peteches system-services alloy)
   #:use-module (peteches system-services pihole)
   #:use-module (peteches system-services restic)
+  #:use-module (peteches system-services tailscale)
   #:use-module (sops secrets)
   #:export (pihole-os))
 
@@ -59,6 +60,12 @@
        (permissions #o400)))
      #:extra-services
      (list
+      (service tailscale-service-type
+               (list (tailscale-instance-configuration
+                      (name "peteches")
+                      (magic-dns-suffix "spaniel-cordylus.ts.net")
+                      (forward-ports '((22 . 22)))
+                      (host-forward-ports '((80 . 80) (443 . 443) (53 . 53))))))
       (service alloy-service-type
                (alloy-configuration
                 (hostname "pihole.peteches.co.uk")

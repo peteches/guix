@@ -25,7 +25,10 @@
       "mcp__anvil-emacs-eval__file-create",
       "mcp__anvil-emacs-eval__file-read",
       "Bash(tar -tf /gnu/store/yfrrs130ii6m4qw0j9mf2yzmzamih8yg-Prowlarr.master.2.3.5.5327.linux-core-x64.tar.gz)",
-      "Bash(grep -v \"\\\\.dll$\\\\|\\\\.pdb$\\\\|\\\\.xml$\")"
+      "Bash(grep -v \"\\\\.dll$\\\\|\\\\.pdb$\\\\|\\\\.xml$\")",
+      "WebFetch(domain:tailscale.com)",
+      "WebFetch(domain:roy.marples.name)",
+      "mcp__anvil-emacs-eval__file-replace-regexp"
     ]
   }
 }

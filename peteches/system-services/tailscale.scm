@@ -26,6 +26,7 @@
   #:use-module (gnu packages guile)
   #:use-module (gnu packages linux)     ; iproute + nftables
   #:use-module (gnu packages bash)      ; bash for wrapper scripts
+  #:use-module (gnu packages dns)           ; dnsmasq
   #:use-module (gnu packages web)
   #:use-module (gnu packages base)     ; coreutils
   #:use-module (peteches packages tailscale)
@@ -132,7 +133,18 @@
   ;; enrolls without manual intervention.  No --accept-dns is passed;
   ;; the prefs service handles --accept-dns=false separately.
   (auth-key-file tailscale-instance-configuration-auth-key-file
-                 (default #f)))
+                 (default #f))
+
+  ;; Fallback DNS for non-tailnet queries when split-DNS is active.
+  (fallback-dns tailscale-instance-configuration-fallback-dns
+                (default "1.1.1.1"))
+
+  ;; List of zone strings for additional split-DNS routing.  At reconfigure
+  ;; time the activation script discovers the NS records for each zone via dig
+  ;; and writes authoritative server= lines so dnsmasq receives NOERROR+CNAME
+  ;; and can resolve CNAME targets via its own server= rules.
+  (extra-split-zones tailscale-instance-configuration-extra-split-zones
+                     (default '())))
 
 (define (instance-default-paths name)
   (let ((base (string-append "/var/lib/tailscale/" name))
@@ -148,7 +160,8 @@
   (match cfg
     (($ <tailscale-instance-configuration>
         name package netns magic-dns state-file socket-file tun port log-file extra-args forward-ports
-        host-forward-ports socks-proxy-port taildrop-dir taildrop-user taildrop-schedule auth-key-file)
+        host-forward-ports socks-proxy-port taildrop-dir taildrop-user taildrop-schedule auth-key-file
+        fallback-dns extra-split-zones)
      (let-values (((dstate dsock dlog dtun) (instance-default-paths name)))
        (tailscale-instance-configuration
         (name name)
@@ -167,13 +180,15 @@
         (taildrop-dir taildrop-dir)
         (taildrop-user taildrop-user)
         (taildrop-schedule taildrop-schedule)
-        (auth-key-file auth-key-file))))))
+        (auth-key-file auth-key-file)
+        (fallback-dns fallback-dns)
+        (extra-split-zones extra-split-zones))))))
 
 (define (tailscale-instance->shepherd-service cfg)
   (let ((cfg (instance->resolved cfg)))
     (match cfg
       (($ <tailscale-instance-configuration>
-          name package netns magic-dns state-file socket-file tun port log-file extra-args forward-ports _ _ _ _ _ _)
+          name package netns magic-dns state-file socket-file tun port log-file extra-args forward-ports _ _ _ _ _ _ _)
        (let* ((service-name (string->symbol (string-append "tailscaled-" name)))
               (setup-name   (string->symbol (string-append "tailscale-netns-setup-" name)))
               (ip (file-append iproute "/sbin/ip"))
@@ -204,7 +219,7 @@
   (let ((cfg (instance->resolved cfg)))
     (match cfg
       (($ <tailscale-instance-configuration>
-          name package netns magic-dns state-file socket-file tun port log-file extra-args forward-ports _ _ _ _ _ auth-key-file)
+          name package netns magic-dns state-file socket-file tun port log-file extra-args forward-ports _ _ _ _ _ auth-key-file _)
        (let* ((svc-name     (string->symbol (string-append "tailscale-prefs-" name)))
               (tsd-svc      (string->symbol (string-append "tailscaled-" name)))
               (up-svc       (string->symbol (string-append "tailscale-up-" name)))
@@ -235,7 +250,7 @@
   (let ((cfg (instance->resolved cfg)))
     (match cfg
       (($ <tailscale-instance-configuration>
-          inst-name inst-package ns-name magic-dns state-file socket-file tun port log-file extra-args forward-ports _ _ _ _ _)
+          inst-name inst-package ns-name magic-dns state-file socket-file tun port log-file extra-args forward-ports _ _ _ _ _ _)
        (let* ((bash-path    (file-append bash "/bin/bash"))
               (ip-path      (file-append iproute "/sbin/ip"))
               (ts-bin       (file-append inst-package "/bin/tailscale"))
@@ -308,10 +323,12 @@
   (let* ((resolved    (map instance->resolved instances))
          (pkgs        (map tailscale-instance-configuration-package resolved))
          (wrappers    (map ts-wrapper-package instances))
-         (need-socks? (any tailscale-instance-configuration-socks-proxy-port resolved)))
+         (need-socks? (any tailscale-instance-configuration-socks-proxy-port resolved))
+         (need-dns?   (any tailscale-instance-configuration-magic-dns-suffix resolved)))
     (delete-duplicates
      (append pkgs wrappers (list netcat)
-             (if need-socks? (list microsocks) '()))
+             (if need-socks? (list microsocks) '())
+             (if need-dns?   (list dnsmasq)    '()))
      eq?)))
 
 ;; Sudo is picky: sudoers.d files must be owned by root and typically 0440.
@@ -336,7 +353,7 @@
   (let ((cfg (instance->resolved cfg)))
     (match cfg
       (($ <tailscale-instance-configuration>
-          name package netns magic-dns state-file socket-file tun port log-file extra-args forward-ports _ _ _ _ _ _)
+          name package netns magic-dns state-file socket-file tun port log-file extra-args forward-ports _ _ _ _ _ _ _)
        (let-values (((subnet hostip nsip gw) (subnet-for name)))
          (let* ((ip (file-append iproute "/sbin/ip"))
                 (veth-host (ifname "vts-" name))
@@ -397,7 +414,6 @@
                  ;; Default route inside netns
                  (unless (run/ok? (list #$ip "netns" "exec" #$netns #$ip "route" "replace" "default" "via" #$gw))
                    (exit 1))
-
                  #t))
             (stop #~(lambda _ #t)))))))))
 
@@ -424,7 +440,7 @@ Accept elements like (SRC . DST) or (SRC DST)."
   (let ((cfg (instance->resolved cfg)))
     (match cfg
       (($ <tailscale-instance-configuration>
-          name package netns magic-dns state-file socket-file tun port log-file extra-args forward-ports _ _ _ _ _ _)
+          name package netns magic-dns state-file socket-file tun port log-file extra-args forward-ports _ _ _ _ _ _ _)
        (let* ((setup-name (string->symbol (string-append "tailscale-netns-setup-" name)))
               (ip         (file-append iproute "/sbin/ip"))
               (socat      (file-append socat "/bin/socat")))
@@ -468,7 +484,7 @@ Returns an empty list when host-forward-ports is empty."
     (match cfg
       (($ <tailscale-instance-configuration>
           name package netns magic-dns state-file socket-file tun port log-file extra-args
-          forward-ports host-forward-ports _ _ _ _ _)
+          forward-ports host-forward-ports _ _ _ _ _ _)
        (let-values (((subnet hostip nsip gw) (subnet-for name)))
          (let* ((socat      (file-append socat "/bin/socat"))
                 (setup-name (string->symbol (string-append "tailscale-netns-setup-" name)))
@@ -508,7 +524,7 @@ socks-proxy-port is not configured."
     (match cfg
       (($ <tailscale-instance-configuration>
           name package netns magic-dns state-file socket-file tun port log-file extra-args
-          forward-ports _ socks-proxy-port _ _ _ _)
+          forward-ports _ socks-proxy-port _ _ _ _ _)
        (if (not socks-proxy-port)
            #f
            (let-values (((subnet hostip nsip gw) (subnet-for name)))
@@ -544,7 +560,7 @@ netns.  Returns #f when socks-proxy-port is not configured."
     (match cfg
       (($ <tailscale-instance-configuration>
           name package netns magic-dns state-file socket-file tun port log-file extra-args
-          forward-ports _ socks-proxy-port _ _ _ _)
+          forward-ports _ socks-proxy-port _ _ _ _ _)
        (if (not socks-proxy-port)
            #f
            (let-values (((subnet hostip nsip gw) (subnet-for name)))
@@ -584,7 +600,7 @@ instance, or #f when taildrop-dir is not configured."
     (match cfg
       (($ <tailscale-instance-configuration>
           name package netns magic-dns state-file socket-file tun port log-file extra-args
-          forward-ports host-forward-ports socks-proxy-port taildrop-dir taildrop-user taildrop-schedule _)
+          forward-ports host-forward-ports socks-proxy-port taildrop-dir taildrop-user taildrop-schedule _ _)
        (if (not taildrop-dir)
            #f
            (let* ((svc-name  (string->symbol (string-append "tailscale-taildrop-" name)))
@@ -630,7 +646,9 @@ instance, or #f when taildrop-dir is not configured."
         (use-modules (guix build utils)
                      (srfi srfi-1)
                      (srfi srfi-13)
-                     (ice-9 match))
+                     (ice-9 match)
+                     (ice-9 popen)
+                     (ice-9 rdelim))
 
         (mkdir-p "/var/log")
         (mkdir-p "/run/tailscale")
@@ -663,14 +681,49 @@ instance, or #f when taildrop-dir is not configured."
           (let ((md-list (magic-dns->list magic-dns)))
             (call-with-output-file path
               (lambda (out)
-                (display "nameserver 100.100.100.100\n" out)
-                (display "nameserver 1.1.1.1\n" out)
-                (display "nameserver 8.8.8.8\n" out)
+                (if md-list
+                    (display "nameserver 127.0.0.1\n" out)
+                    (begin
+                      (display "nameserver 100.100.100.100\n" out)
+                      (display "nameserver 1.1.1.1\n" out)
+                      (display "nameserver 8.8.8.8\n" out)))
                 (when (and md-list (not (null? md-list)))
                   (display "search " out)
                   (display (string-join md-list " ") out)
                   (newline out))))
             (chmod path #o644)))
+
+        (define (write-netns-dnsmasq-config! path magic-dns fallback-dns extra-zones)
+          (define dig #$(file-append (@ (gnu packages dns) isc-bind) "/bin/dig"))
+          (define (run-dig . args)
+            (let* ((port  (apply open-pipe* OPEN_READ (cons dig args)))
+                   (lines (let loop ((acc '()))
+                            (let ((line (read-line port)))
+                              (if (eof-object? line)
+                                  (reverse (filter (lambda (l) (not (string-null? l))) acc))
+                                  (loop (cons (string-trim-right line) acc))))))
+                   (_     (close-pipe port)))
+              lines))
+          (define (zone->ns-ips zone)
+            (let* ((ns-names (run-dig "+short" "NS" zone))
+                   (ns-names (map (lambda (n) (string-trim-right n #\.)) ns-names)))
+              (append-map (lambda (ns) (run-dig "+short" "A" ns)) ns-names)))
+          (call-with-output-file path
+            (lambda (out)
+              (display "no-resolv\n" out)
+              (display "no-hosts\n" out)
+              (display "bind-interfaces\n" out)
+              (display "listen-address=127.0.0.1\n" out)
+              (display "port=53\n" out)
+              (when magic-dns
+                (display (string-append "server=/" magic-dns "/100.100.100.100\n") out))
+              (for-each (lambda (zone)
+                          (for-each (lambda (ip)
+                                      (display (string-append "server=/" zone "/" ip "\n") out))
+                                    (zone->ns-ips zone)))
+                        extra-zones)
+              (display (string-append "server=" fallback-dns "\n") out)))
+          (chmod path #o644))
 
         ;; Helper: write sudoers include as a REAL file with strict perms.
 	(define (write-sudoers! dest ip netns ts socket nc)
@@ -713,7 +766,7 @@ instance, or #f when taildrop-dir is not configured."
               (match cfg
                 (($ <tailscale-instance-configuration>
                     name package netns magic-dns state-file socket-file tun port log-file extra-args forward-ports
-                    _ _ taildrop-dir taildrop-user _ _)
+                    _ _ taildrop-dir taildrop-user _ _ fallback-dns extra-split-zones)
                  (let ((ip (file-append iproute "/sbin/ip"))
                        (ts (file-append package "/bin/tailscale"))
 		       (nc (file-append netcat "/bin/nc"))
@@ -722,10 +775,13 @@ instance, or #f when taildrop-dir is not configured."
                        (mkdir-p (dirname #$state-file))
                        (mkdir-p (dirname #$socket-file))
                        (let* ((d  (string-append "/etc/netns/" #$netns))
-                              (rc (string-append d "/resolv.conf")))
+                              (rc (string-append d "/resolv.conf"))
+                              (dc (string-append "/run/tailscale/" #$netns "/dnsmasq.conf")))
                          (mkdir-p d)
-                         ;; Always write it so it can't get stuck broken.
-                         (write-netns-resolv! rc #$magic-dns))
+                         (write-netns-resolv! rc #$magic-dns)
+                         (when #$magic-dns
+                           (mkdir-p (dirname dc))
+                           (write-netns-dnsmasq-config! dc #$magic-dns #$fallback-dns '#$extra-split-zones)))
                        (write-sudoers!
                         (string-append "/run/sudoers.d/tailscale-" #$name)
                         #$ip
@@ -747,7 +803,7 @@ instance, or #f when taildrop-dir is not configured."
       (match cfg
         (($ <tailscale-instance-configuration>
             inst-name inst-package netns magic-dns state-file socket-file tun port log-file extra-args forward-ports
-            _ socks-proxy-port _ _ _ _)
+            _ socks-proxy-port _ _ _ _ _)
          (let-values (((subnet hostip nsip gw) (subnet-for inst-name)))
            (let* ((veth-host (ifname "vts-" inst-name))
                   (fwd-pairs (forward-ports->alist forward-ports)))
@@ -796,7 +852,7 @@ is passed; the prefs service handles --accept-dns=false separately."
     (match cfg
       (($ <tailscale-instance-configuration>
           name package netns magic-dns state-file socket-file tun port log-file extra-args
-          forward-ports _ _ _ _ _ auth-key-file)
+          forward-ports _ _ _ _ _ auth-key-file _)
        (if (not auth-key-file)
            #f
            (let* ((svc-name  (string->symbol (string-append "tailscale-up-" name)))
@@ -830,6 +886,39 @@ is passed; the prefs service handles --accept-dns=false separately."
                         (list "PATH=/run/setuid-programs:/run/current-system/profile/bin:/run/current-system/profile/sbin")))
               (stop #~(lambda _ #t)))))))))
 
+(define (tailscale-instance->dns-service cfg)
+  "Return a long-running shepherd service running dnsmasq for split-DNS inside
+the namespace, or #f when magic-dns-suffix is not configured."
+  (let ((cfg (instance->resolved cfg)))
+    (match cfg
+      (($ <tailscale-instance-configuration>
+          name package netns magic-dns state-file socket-file tun port log-file extra-args
+          forward-ports _ _ _ _ _ _ fallback-dns)
+       (if (not magic-dns)
+           #f
+           (let* ((setup-name (string->symbol (string-append "tailscale-netns-setup-" name)))
+                  (svc-name   (string->symbol (string-append "tailscale-dns-" name)))
+                  (ip         (file-append iproute "/sbin/ip"))
+                  (dm         (file-append dnsmasq "/sbin/dnsmasq"))
+                  (conf-path  (string-append "/run/tailscale/" netns "/dnsmasq.conf"))
+                  (lf         (string-append "/var/log/tailscale-dns-" name ".log")))
+             (shepherd-service
+              (provision (list svc-name))
+              (documentation (string-append "Split-DNS (dnsmasq) inside namespace " netns))
+              (requirement (list 'user-processes setup-name))
+              (auto-start? #t)
+              (one-shot? #f)
+              (start
+               #~(make-forkexec-constructor
+                  (list #$ip "netns" "exec" #$netns
+                        #$dm
+                        "--no-daemon"
+                        (string-append "--conf-file=" #$conf-path))
+                  #:log-file #$lf
+                  #:environment-variables
+                  (list "PATH=/run/setuid-programs:/run/current-system/profile/bin:/run/current-system/profile/sbin")))
+              (stop #~(make-kill-destructor)))))))))
+
 (define (tailscale-shepherd-services instances)
   (append
    (map tailscale-instance->netns-setup-service instances)
@@ -838,6 +927,7 @@ is passed; the prefs service handles --accept-dns=false separately."
    (filter-map tailscale-instance->socks-service instances)
    (filter-map tailscale-instance->socks-expose-service instances)
    (filter-map tailscale-instance->taildrop-service instances)
+   (filter-map tailscale-instance->dns-service instances)
    (filter-map tailscale-instance->up-service instances)
    (map tailscale-instance->shepherd-service instances)
    (map tailscale-instance->prefs-service instances)))

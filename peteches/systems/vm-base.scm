@@ -18,6 +18,7 @@
   #:use-module (gnu services ssh)
   #:use-module (gnu services monitoring)
   #:use-module (gnu services virtualization)
+  #:use-module (gnu packages admin)
   #:use-module (gnu packages linux)
   #:use-module (peteches system-services firewall)
   #:use-module (peteches system-services restic)
@@ -60,10 +61,25 @@
                           (plain-file "nyarlothotep-coordinator.pub"
                                       "(public-key (ecc (curve Ed25519) (q #C41C4703766F019CF43C8FBA3C7E284610799FBBF9875AB561AD7D8A74075AFE#)))"))))))
 
+
+;; nscd-cache-database is not exported by (gnu services base) in current Guix.
+(define nscd-cache-database*
+  (@@ (gnu services base) nscd-cache-database))
+
+(define (nscd-without-hosts-cache cfg)
+  (nscd-configuration
+   (inherit cfg)
+   (caches (filter (lambda (cache)
+                     (let ((db (nscd-cache-database* cache)))
+                       (not (or (eq? db 'hosts)
+                                (equal? db "hosts")))))
+                   %nscd-default-caches))))
+
 (define %vm-interface   "eth0")
 (define %vm-ipv4-gw    "192.168.50.1")
 (define %vm-ipv6-gw    "2a10:d582:ef59::1")
 (define %vm-nameservers '("192.168.51.189"))
+(define %vm-base-packages (cons btop %base-packages))
 
 (define %vm-base-firewall
   (nftables-rules
@@ -166,8 +182,10 @@
        (name-service-switch
         (inherit %mdns-host-lookup-nss)
         (hosts (list %files %dns))))
-      (packages (append extra-packages %base-packages))
-      (services final-services)
+      (packages (append extra-packages %vm-base-packages))
+      (services
+       (modify-services final-services
+         (nscd-service-type cfg => (nscd-without-hosts-cache cfg))))
       (mapped-devices mapped-devices)
       (file-systems (append file-systems %base-file-systems))
       (bootloader bootloader))))

@@ -22,8 +22,8 @@
             caddy-configuration
             caddy-configuration?
             render-caddy-json
-            caddy-configuration-cname-target
-            caddy-configuration-cname-zone
+            caddy-configuration-dns-target
+            caddy-configuration-dns-zone
             caddy-service-type))
 
 ;;; ── Record types ─────────────────────────────────────────────────────────
@@ -47,11 +47,11 @@
   (https-port       caddy-configuration-https-port       (default 443))
   ;; Optional: run Caddy inside this named network namespace (e.g. "ts-peteches").
   (netns caddy-configuration-netns (default #f))
-  ;; When both are set, a one-shot shepherd service ensures per-service CNAMEs
-  ;; exist in the given deSEC zone.  DNS lookups (not API calls) are used for
-  ;; checking; at most one PATCH request is made when records are missing.
-  (cname-target caddy-configuration-cname-target (default #f))
-  (cname-zone   caddy-configuration-cname-zone   (default #f)))
+  ;; When both are set, a one-shot shepherd service ensures per-service CNAME
+  ;; records exist in the given deSEC zone.  The deSEC API GET is used to
+  ;; check existing records; at most one PATCH request is made for missing ones.
+  (dns-target caddy-configuration-dns-target (default #f))
+  (dns-zone   caddy-configuration-dns-zone   (default #f)))
 
 ;;; ── JSON config rendering ─────────────────────────────────────────────────
 ;;
@@ -164,14 +164,14 @@
   (let* ((pkg              (caddy-configuration-package config))
          (log-file         (caddy-configuration-log-file config))
          (desec-token-file (caddy-configuration-desec-token-file config))
-         (cname-target     (caddy-configuration-cname-target config))
+         (dns-target       (caddy-configuration-dns-target config))
          (netns            (caddy-configuration-netns config))
          (netns-req        (if netns
                                (list (string->symbol
                                       (string-append "tailscale-netns-setup-"
                                                      (string-drop netns 3))))
                                '()))
-         (extra-req        (if cname-target '(caddy-ensure-cnames) '())))
+         (extra-req        (if dns-target '(caddy-ensure-cnames) '())))
     (list
      (shepherd-service
       (provision '(caddy))
@@ -205,20 +205,26 @@
                        "reload" "--config" "/etc/caddy/caddy.json")
               #t)))))))))
 
-;;; ── DNS CNAME bootstrap service ─────────────────────────────────────────
+;;; ── DNS CNAME bootstrap service ──────────────────────────────────────────
 ;;
-;; One-shot shepherd service that checks each virtual-host domain for a CNAME
-;; via a standard DNS lookup and creates any missing records with a single bulk
-;; PATCH to the deSEC API.  Requires cname-target and cname-zone to be set;
-;; returns '() otherwise so the feature is opt-in.
+;; One-shot shepherd service that creates or updates deSEC CNAME records for
+;; all virtual-host subnames pointing to dns-target.  Requires dns-target (a
+;; hostname) and dns-zone to be set; returns '() otherwise so the feature is
+;; opt-in.
 
 (define (caddy-dns-setup-shepherd-service config)
-  (let* ((cname-target     (caddy-configuration-cname-target config))
-         (cname-zone       (caddy-configuration-cname-zone config))
+  (let* ((dns-target       (caddy-configuration-dns-target config))
+         (dns-zone         (caddy-configuration-dns-zone config))
+         (netns            (caddy-configuration-netns config))
+         (netns-req        (if netns
+                               (list (string->symbol
+                                      (string-append "tailscale-netns-setup-"
+                                                     (string-drop netns 3))))
+                               '()))
          (virtual-hosts    (caddy-configuration-virtual-hosts config))
          (desec-token-file (caddy-configuration-desec-token-file config))
          (domains          (map caddy-reverse-proxy-domain virtual-hosts)))
-    (if (or (not cname-target) (not cname-zone))
+    (if (or (not dns-target) (not dns-zone))
         '()
         (let* ((curl-bin (file-append curl "/bin/curl"))
                (script
@@ -227,6 +233,7 @@
                  #~(begin
                      (use-modules (ice-9 rdelim)
                                   (ice-9 popen)
+                                  (srfi srfi-1)
                                   (srfi srfi-13))
 
                      (define token
@@ -239,10 +246,13 @@
                      (define (fqdn->subname fqdn zone)
                        (string-drop-right fqdn (+ 1 (string-length zone))))
 
-                     ;; Fetch existing CNAME rrsets from the deSEC API (one GET,
-                     ;; much higher rate limit than PATCH).  Returns the JSON body
-                     ;; as a string, or "" on error.
-                     (define existing-json
+                     ;; CNAME target must end with a trailing dot for DNS RDATA.
+                     (define cname-target
+                       (let ((t #$dns-target))
+                         (if (string-suffix? "." t) t (string-append t "."))))
+
+                     ;; Fetch existing rrsets of type from deSEC (high rate limit).
+                     (define (fetch-existing-json type)
                        (let* ((port (open-input-pipe
                                      (string-append
                                       #$curl-bin
@@ -250,81 +260,88 @@
                                       " --cacert /etc/ssl/certs/ca-certificates.crt"
                                       " --header 'Authorization: Token " token "'"
                                       " https://desec.io/api/v1/domains/"
-                                      #$cname-zone "/rrsets/?type=CNAME")))
-                              (body
-                               (let loop ((lines '()))
-                                 (let ((line (read-line port)))
-                                   (if (eof-object? line)
-                                       (string-join (reverse lines) "")
-                                       (loop (cons line lines)))))))
+                                      #$dns-zone "/rrsets/?type=" type)))
+                              (body (let loop ((lines '()))
+                                      (let ((line (read-line port)))
+                                        (if (eof-object? line)
+                                            (string-join (reverse lines) "")
+                                            (loop (cons line lines)))))))
                          (close-pipe port)
                          body))
 
-                     ;; A CNAME is already configured if its subname appears in
-                     ;; the API JSON response.
-                     (define (cname-configured? domain)
-                       (string-contains existing-json
-                                        (string-append
-                                         "\"subname\":\""
-                                         (fqdn->subname domain #$cname-zone)
-                                         "\"")))
+                     ;; Check if sub+target both appear in the same JSON object chunk.
+                     ;; Split on "{" so each chunk = one rrset.
+                     (define (record-current? existing-json sub target)
+                       (any (lambda (chunk)
+                              (and (string-contains chunk
+                                                    (string-append "\"subname\":\"" sub "\""))
+                                   (string-contains chunk
+                                                    (string-append "\"" target "\""))))
+                            (string-split existing-json #\{)))
 
-                     (define missing
-                       (filter (lambda (d) (not (cname-configured? d)))
-                               '#$domains))
+                     ;; Ensure all virtual-host subnames have a CNAME -> cname-target.
+                     (define (ensure-cname-records!)
+                       (let* ((existing (fetch-existing-json "CNAME"))
+                              (missing  (filter
+                                         (lambda (d)
+                                           (not (record-current?
+                                                 existing
+                                                 (fqdn->subname d #$dns-zone)
+                                                 cname-target)))
+                                         '#$domains)))
+                         (unless (null? missing)
+                           (let* ((body (string-append
+                                         "["
+                                         (string-join
+                                          (map (lambda (domain)
+                                                 (let ((sub (fqdn->subname domain #$dns-zone)))
+                                                   (string-append
+                                                    "{\"subname\":\"" sub "\""
+                                                    ",\"type\":\"CNAME\""
+                                                    ",\"ttl\":3600"
+                                                    ",\"records\":[\"" cname-target "\"]}")))
+                                               missing)
+                                          ",")
+                                         "]"))
+                                  (url (string-append
+                                        "https://desec.io/api/v1/domains/"
+                                        #$dns-zone "/rrsets/"))
+                                  (rc  (system* #$curl-bin
+                                                "--silent" "--show-error" "--fail"
+                                                "--cacert" "/etc/ssl/certs/ca-certificates.crt"
+                                                "--request" "PATCH"
+                                                "--header"
+                                                (string-append "Authorization: Token " token)
+                                                "--header"
+                                                "Content-Type: application/json"
+                                                "--data" body url)))
+                             (when (not (zero? rc))
+                               (exit 1))))))
 
-                     ;; Issue at most one PATCH request for all missing CNAMEs.
-                     (unless (null? missing)
-                       (let* ((zone   #$cname-zone)
-                              (target #$cname-target)
-                              (body
-                               (string-append
-                                "["
-                                (string-join
-                                 (map (lambda (domain)
-                                        (let ((sub (fqdn->subname domain zone)))
-                                          (string-append
-                                           "{\"subname\":\"" sub "\""
-                                           ",\"type\":\"CNAME\""
-                                           ",\"ttl\":3600"
-                                           ",\"records\":[\"" target "\"]}")))
-                                      missing)
-                                 ",")
-                                "]"))
-                              (url (string-append
-                                    "https://desec.io/api/v1/domains/"
-                                    zone "/rrsets/"))
-                              (rc  (system* #$curl-bin
-                                            "--silent" "--show-error" "--fail"
-                                            "--cacert" "/etc/ssl/certs/ca-certificates.crt"
-                                            "--request" "PATCH"
-                                            "--header"
-                                            (string-append
-                                             "Authorization: Token " token)
-                                            "--header"
-                                            "Content-Type: application/json"
-                                            "--data" body
-                                            url)))
-                         (exit (if (zero? rc) 0 1))))
-
+                     (ensure-cname-records!)
                      (exit 0)))))
           (list
            (shepherd-service
             (provision '(caddy-ensure-cnames))
             (documentation
-             "One-shot: create missing deSEC CNAMEs for Caddy virtual hosts.")
-            (requirement '(networking sops-secrets))
+             "One-shot: create/update deSEC CNAME records for all virtual-host subnames.")
+            (requirement `(networking sops-secrets ,@netns-req))
             (one-shot? #t)
             (auto-start? #t)
             (start #~(make-forkexec-constructor
-                      (list #$script)
+                      (append
+                       (if #$netns
+                           (list #$(file-append iproute "/sbin/ip")
+                                 "netns" "exec" #$netns)
+                           '())
+                       (list #$script))
                       #:log-file "/var/log/caddy-ensure-cnames.log"
                       #:environment-variables
                       (list "PATH=/run/setuid-programs:/run/current-system/profile/bin:/run/current-system/profile/sbin")))
             (stop #~(lambda _ #t))))))))
 
 (define (caddy-all-shepherd-services config)
-  "Return all Caddy shepherd services: optional CNAME bootstrap first, then
+  "Return all Caddy shepherd services: optional A/AAAA bootstrap first, then
 the main caddy service.  A single combiner avoids duplicate
 shepherd-root-service-type extensions in the service-type."
   (append (caddy-dns-setup-shepherd-service config)
