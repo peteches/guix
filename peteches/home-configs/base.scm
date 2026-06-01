@@ -59,6 +59,7 @@
   #:use-module (peteches packages dank-material-shell)
   #:use-module (peteches packages gurps)
   #:use-module (peteches packages claude-code)
+  #:use-module (peteches packages rustdesk)
   #:use-module (peteches packages proxmox-scripts)
   ;; utilities
   #:use-module (ice-9 popen)
@@ -72,6 +73,7 @@
   (list
    alacritty
    claude-code
+   rustdesk
    dank-material-shell
    recutils
    eza
