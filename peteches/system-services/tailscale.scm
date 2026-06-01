@@ -26,7 +26,7 @@
   #:use-module (gnu packages guile)
   #:use-module (gnu packages linux)     ; iproute + nftables
   #:use-module (gnu packages bash)      ; bash for wrapper scripts
-  #:use-module (gnu packages dns)           ; dnsmasq
+  #:use-module (gnu packages dns)           ; dnsmasq, unbound, isc-bind
   #:use-module (gnu packages web)
   #:use-module (gnu packages base)     ; coreutils
   #:use-module (peteches packages tailscale)
@@ -139,10 +139,10 @@
   (fallback-dns tailscale-instance-configuration-fallback-dns
                 (default "1.1.1.1"))
 
-  ;; List of zone strings for additional split-DNS routing.  At reconfigure
-  ;; time the activation script discovers the NS records for each zone via dig
-  ;; and writes authoritative server= lines so dnsmasq receives NOERROR+CNAME
-  ;; and can resolve CNAME targets via its own server= rules.
+  ;; List of zone strings for additional split-DNS routing.  At service start
+  ;; the start-script discovers NS IPs via dig and writes stub-zone entries
+  ;; for unbound, which queries authoritative servers without the RD bit so
+  ;; CNAME chains are followed through MagicDNS.
   (extra-split-zones tailscale-instance-configuration-extra-split-zones
                      (default '())))
 
@@ -328,7 +328,7 @@
     (delete-duplicates
      (append pkgs wrappers (list netcat)
              (if need-socks? (list microsocks) '())
-             (if need-dns?   (list dnsmasq)    '()))
+             (if need-dns?   (list unbound)    '()))
      eq?)))
 
 ;; Sudo is picky: sudoers.d files must be owned by root and typically 0440.
@@ -693,36 +693,27 @@ instance, or #f when taildrop-dir is not configured."
                   (newline out))))
             (chmod path #o644)))
 
-        (define (write-netns-dnsmasq-config! path magic-dns fallback-dns extra-zones)
-          (define dig #$(file-append (@ (gnu packages dns) isc-bind) "/bin/dig"))
-          (define (run-dig . args)
-            (let* ((port  (apply open-pipe* OPEN_READ (cons dig args)))
-                   (lines (let loop ((acc '()))
-                            (let ((line (read-line port)))
-                              (if (eof-object? line)
-                                  (reverse (filter (lambda (l) (not (string-null? l))) acc))
-                                  (loop (cons (string-trim-right line) acc))))))
-                   (_     (close-pipe port)))
-              lines))
-          (define (zone->ns-ips zone)
-            (let* ((ns-names (run-dig "+short" "NS" zone))
-                   (ns-names (map (lambda (n) (string-trim-right n #\.)) ns-names)))
-              (append-map (lambda (ns) (run-dig "+short" "A" ns)) ns-names)))
+        (define (write-netns-dns-config! path magic-dns fallback-dns)
           (call-with-output-file path
             (lambda (out)
-              (display "no-resolv\n" out)
-              (display "no-hosts\n" out)
-              (display "bind-interfaces\n" out)
-              (display "listen-address=127.0.0.1\n" out)
-              (display "port=53\n" out)
+              (display "server:\n" out)
+              (display "    interface: 127.0.0.1\n" out)
+              (display "    port: 53\n" out)
+              (display "    do-daemonize: no\n" out)
+              (display "    username: \"\"\n" out)
+              (display "    chroot: \"\"\n" out)
+              (display "    pidfile: \"\"\n" out)
+              (display "    logfile: \"\"\n" out)
+              (display "    verbosity: 1\n" out)
+              (display "    access-control: 127.0.0.0/8 allow\n" out)
+              (display "    module-config: \"iterator\"\n" out)
               (when magic-dns
-                (display (string-append "server=/" magic-dns "/100.100.100.100\n") out))
-              (for-each (lambda (zone)
-                          (for-each (lambda (ip)
-                                      (display (string-append "server=/" zone "/" ip "\n") out))
-                                    (zone->ns-ips zone)))
-                        extra-zones)
-              (display (string-append "server=" fallback-dns "\n") out)))
+                (display "forward-zone:\n" out)
+                (display (string-append "    name: \"" magic-dns "\"\n") out)
+                (display "    forward-addr: 100.100.100.100\n" out))
+              (display "forward-zone:\n" out)
+              (display "    name: \".\"\n" out)
+              (display (string-append "    forward-addr: " fallback-dns "\n") out)))
           (chmod path #o644))
 
         ;; Helper: write sudoers include as a REAL file with strict perms.
@@ -776,12 +767,12 @@ instance, or #f when taildrop-dir is not configured."
                        (mkdir-p (dirname #$socket-file))
                        (let* ((d  (string-append "/etc/netns/" #$netns))
                               (rc (string-append d "/resolv.conf"))
-                              (dc (string-append "/run/tailscale/" #$netns "/dnsmasq.conf")))
+                              (dc (string-append "/run/tailscale/" #$netns "/unbound.conf")))
                          (mkdir-p d)
                          (write-netns-resolv! rc #$magic-dns)
                          (when #$magic-dns
                            (mkdir-p (dirname dc))
-                           (write-netns-dnsmasq-config! dc #$magic-dns #$fallback-dns '#$extra-split-zones)))
+                           (write-netns-dns-config! dc #$magic-dns #$fallback-dns)))
                        (write-sudoers!
                         (string-append "/run/sudoers.d/tailscale-" #$name)
                         #$ip
@@ -887,33 +878,87 @@ is passed; the prefs service handles --accept-dns=false separately."
               (stop #~(lambda _ #t)))))))))
 
 (define (tailscale-instance->dns-service cfg)
-  "Return a long-running shepherd service running dnsmasq for split-DNS inside
+  "Return a long-running shepherd service running unbound for split-DNS inside
 the namespace, or #f when magic-dns-suffix is not configured."
   (let ((cfg (instance->resolved cfg)))
     (match cfg
       (($ <tailscale-instance-configuration>
           name package netns magic-dns state-file socket-file tun port log-file extra-args
-          forward-ports _ _ _ _ _ _ fallback-dns)
+          forward-ports _ _ _ _ _ _ fallback-dns extra-split-zones)
        (if (not magic-dns)
            #f
-           (let* ((setup-name (string->symbol (string-append "tailscale-netns-setup-" name)))
-                  (svc-name   (string->symbol (string-append "tailscale-dns-" name)))
-                  (ip         (file-append iproute "/sbin/ip"))
-                  (dm         (file-append dnsmasq "/sbin/dnsmasq"))
-                  (conf-path  (string-append "/run/tailscale/" netns "/dnsmasq.conf"))
-                  (lf         (string-append "/var/log/tailscale-dns-" name ".log")))
+           (let* ((setup-name   (string->symbol (string-append "tailscale-netns-setup-" name)))
+                  (svc-name     (string->symbol (string-append "tailscale-dns-" name)))
+                  (ip           (file-append iproute "/sbin/ip"))
+                  (ub           (file-append (@ (gnu packages dns) unbound) "/sbin/unbound"))
+                  (dig          (file-append (gexp-input (@ (gnu packages dns) isc-bind) "utils") "/bin/dig"))
+                  (conf-path    (string-append "/run/tailscale/" netns "/unbound.conf"))
+                  (lf           (string-append "/var/log/tailscale-dns-" name ".log"))
+                  (start-script
+                   (program-file
+                    (string-append "tailscale-dns-start-" name)
+                    #~(begin
+                        (use-modules (ice-9 popen) (ice-9 rdelim) (srfi srfi-1) (srfi srfi-13))
+
+                        (define (run-dig . args)
+                          (let* ((port  (apply open-pipe* OPEN_READ (cons #$dig args)))
+                                 (lines (let loop ((acc '()))
+                                          (let ((line (read-line port)))
+                                            (if (eof-object? line)
+                                                (reverse (filter (lambda (l) (not (string-null? l))) acc))
+                                                (loop (cons (string-trim-right line) acc))))))
+                                 (_     (close-pipe port)))
+                            lines))
+
+                        (define (zone->ns-ips zone)
+                          (let* ((ns-names (run-dig "@1.1.1.1" "+short" "+time=5" "NS" zone))
+                                 (ns-names (map (lambda (n) (string-trim-right n #\.)) ns-names)))
+                            (append-map (lambda (ns)
+                                          (run-dig "@1.1.1.1" "+short" "+time=5" "A" ns))
+                                        ns-names)))
+
+                        (call-with-output-file #$conf-path
+                          (lambda (out)
+                            (display "server:\n" out)
+                            (display "    interface: 127.0.0.1\n" out)
+                            (display "    port: 53\n" out)
+                            (display "    do-daemonize: no\n" out)
+                            (display "    username: \"\"\n" out)
+                            (display "    chroot: \"\"\n" out)
+                            (display "    pidfile: \"\"\n" out)
+                            (display "    logfile: \"\"\n" out)
+                            (display "    verbosity: 1\n" out)
+                            (display "    access-control: 127.0.0.0/8 allow\n" out)
+                            (display "    module-config: \"iterator\"\n" out)
+                            (when #$magic-dns
+                              (display "forward-zone:\n" out)
+                              (display (string-append "    name: \"" #$magic-dns "\"\n") out)
+                              (display "    forward-addr: 100.100.100.100\n" out))
+                            (for-each
+                             (lambda (zone)
+                               (display "stub-zone:\n" out)
+                               (display (string-append "    name: \"" zone "\"\n") out)
+                               (for-each
+                                (lambda (ns-ip)
+                                  (display (string-append "    stub-addr: " ns-ip "\n") out))
+                                (zone->ns-ips zone)))
+                             (list #$@extra-split-zones))
+                            (display "forward-zone:\n" out)
+                            (display "    name: \".\"\n" out)
+                            (display (string-append "    forward-addr: " #$fallback-dns "\n") out)))
+                        (chmod #$conf-path #o644)
+
+                        (execlp #$ip "ip" "netns" "exec" #$netns
+                                #$ub "-d" "-c" #$conf-path)))))
              (shepherd-service
               (provision (list svc-name))
-              (documentation (string-append "Split-DNS (dnsmasq) inside namespace " netns))
+              (documentation (string-append "Split-DNS (unbound) inside namespace " netns))
               (requirement (list 'user-processes setup-name))
               (auto-start? #t)
               (one-shot? #f)
               (start
                #~(make-forkexec-constructor
-                  (list #$ip "netns" "exec" #$netns
-                        #$dm
-                        "--no-daemon"
-                        (string-append "--conf-file=" #$conf-path))
+                  (list #$start-script)
                   #:log-file #$lf
                   #:environment-variables
                   (list "PATH=/run/setuid-programs:/run/current-system/profile/bin:/run/current-system/profile/sbin")))

@@ -28,7 +28,8 @@
       "Bash(grep -v \"\\\\.dll$\\\\|\\\\.pdb$\\\\|\\\\.xml$\")",
       "WebFetch(domain:tailscale.com)",
       "WebFetch(domain:roy.marples.name)",
-      "mcp__anvil-emacs-eval__file-replace-regexp"
+      "mcp__anvil-emacs-eval__file-replace-regexp",
+      "WebFetch(domain:rustdesk.com)"
     ]
   }
 }
