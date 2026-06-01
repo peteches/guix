@@ -29,7 +29,8 @@
       "WebFetch(domain:tailscale.com)",
       "WebFetch(domain:roy.marples.name)",
       "mcp__anvil-emacs-eval__file-replace-regexp",
-      "WebFetch(domain:rustdesk.com)"
+      "WebFetch(domain:rustdesk.com)",
+      "Bash(guix lint *)"
     ]
   }
 }
