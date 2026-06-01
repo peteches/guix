@@ -280,6 +280,14 @@
 		       (name "downloads")
 		       (host-name "192.168.51.196")
 		       (user "peteches")
+		       (identity-file "~/.ssh/id_ed25519"))
+		      (openssh-host
+		       (name "rustdesk.ts")
+		       (host-name "rustdesk.spaniel-cordylus.ts.net"))
+		      (openssh-host
+		       (name "rustdesk")
+		       (host-name "192.168.51.197")
+		       (user "peteches")
 		       (identity-file "~/.ssh/id_ed25519")))
 		     %scoreplay-ssh-hosts))))
 

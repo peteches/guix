@@ -10,7 +10,8 @@
   #:use-module (peteches systems caddy)
   #:use-module (peteches systems prowlarr)
   #:use-module (peteches systems arr)
-  #:use-module (peteches systems downloads))
+  #:use-module (peteches systems downloads)
+  #:use-module (peteches systems rustdesk))
 
 (define-public prometheus-machine
   (machine
@@ -132,6 +133,19 @@
      (user "peteches")
      (identity "/home/peteches/.ssh/id_ed25519")))))
 
+
+(define-public rustdesk-machine
+  (machine
+   (operating-system rustdesk-os)
+   (environment managed-host-environment-type)
+   (configuration
+    (machine-ssh-configuration
+     (host-name "192.168.51.197")
+     (host-key "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIKcfUmsDVPcwbgd52PCaDDKyTMW/usAXACJHGg9cu2Wu")
+     (system "x86_64-linux")
+     (user "peteches")
+     (identity "/home/peteches/.ssh/id_ed25519")))))
+
 (define-public %all-machines
   (list prometheus-machine
         grafana-machine
@@ -142,4 +156,5 @@
         caddy-machine
         prowlarr-machine
         arr-machine
-        downloads-machine))
+        downloads-machine
+        rustdesk-machine))

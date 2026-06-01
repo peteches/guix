@@ -23,6 +23,7 @@ Current VMs (all use OVMF/EFI and =qcow2-gpt= images):
 | peteches/systems/prowlarr.scm           | prowlarr.peteches.co.uk | Prowlarr indexer manager on :9696 (192.168.51.194, 2 vCPU, 1024 MB) |
 | peteches/systems/arr.scm                | arr.peteches.co.uk      | Sonarr :8989 + Radarr :7878 (192.168.51.195, 2 vCPU, 2048 MB) |
 | peteches/systems/downloads.scm          | downloads.peteches.co.uk | NZBGet :6789 + Transmission :9091 (192.168.51.196, 2 vCPU, 2048 MB) |
+| peteches/systems/rustdesk.scm           | rustdesk.peteches.co.uk  | RustDesk relay/rendezvous server (192.168.51.197, 2 vCPU, 2048 MB)  |
 
 * Adding a New VM Config
 
