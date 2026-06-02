@@ -1,4 +1,4 @@
-;; rustdesk.scm — RustDesk relay/rendezvous server (bootstrap, service TBD).
+;; rustdesk.scm — RustDesk relay/rendezvous server.
 ;; EFI bootloader, virtio root on vda2 with ESP on vda1, static networking.
 
 (define-module (peteches systems rustdesk)
@@ -13,6 +13,8 @@
   #:use-module (peteches system-services alloy)
   #:use-module (peteches system-services restic)
   #:use-module (peteches system-services tailscale)
+  #:use-module (peteches system-services rustdesk)
+  #:use-module (peteches system-services firewall)
   #:use-module (sops secrets)
   #:export (rustdesk-os))
 
@@ -42,7 +44,7 @@
      (restic-vm-backup-configuration
       (vm-name "rustdesk")
       (synology-host "nas.peteches.co.uk")
-      (backup-paths '("/var/lib/rustdesk"))  ;; TODO: confirm when service is added
+      (backup-paths '("/var/lib/rustdesk"))
       (password-file "/run/secrets/restic-password")
       (ssh-key-file "/run/secrets/restic-ssh-key"))
      #:sops-secrets
@@ -61,10 +63,23 @@
       (service tailscale-service-type
                (list (tailscale-instance-configuration
                       (name "peteches")
-                      ;; TODO: extend to RustDesk ports when service is added:
-                      ;;   21115 (NAT test), 21116 (rendezvous), 21117 (relay)
-                      ;;   21118 (hbbs ws), 21119 (hbbr ws)
-                      (forward-ports '((22 . 22))))))
+                      (forward-ports '((22 . 22)
+                                       (21115 . 21115)
+                                       (21116 . 21116)
+                                       (21117 . 21117)
+                                       (21118 . 21118)
+                                       (21119 . 21119)))
+                      (udp-forward-ports '((21116 . 21116))))))
+      (service rustdesk-service-type
+               (rustdesk-configuration
+                (relay-servers (list "100.112.48.78:21117"))))
+      (simple-service 'rustdesk-firewall
+                      firewall-service-type
+                      (nftables-rules
+                       (input
+                        (list
+                         "tcp dport { 21114, 21115, 21116, 21117, 21118, 21119 } accept comment \"rustdesk\""
+                         "udp dport 21116 accept comment \"rustdesk udp\""))))
       (service alloy-service-type
                (alloy-configuration
                 (hostname "rustdesk.peteches.co.uk")
@@ -72,6 +87,8 @@
                                  (cons "/var/log/prometheus-node-exporter.log" "node-exporter")
                                  (cons "/var/log/ntpd.log" "ntpd")
                                  (cons "/var/log/alloy.log" "alloy")
-                                 (cons "/var/log/tailscaled-*.log" "tailscale"))))))))))
+                                 (cons "/var/log/tailscaled-*.log" "tailscale")
+                                 (cons "/var/log/rustdesk/hbbs.log" "rustdesk-hbbs")
+                                 (cons "/var/log/rustdesk/hbbr.log" "rustdesk-hbbr"))))))))))
 
 rustdesk-os

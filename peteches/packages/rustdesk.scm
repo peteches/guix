@@ -20,9 +20,9 @@
 ;;; ── rustdesk-server ──────────────────────────────────────────────────────
 ;;
 ;; The release zip contains three statically-linked musl binaries:
-;;   amd64/hbbs          — rendezvous / ID server
-;;   amd64/hbbr          — relay server
-;;   amd64/rustdesk-utils — CLI utility bundled with the server release
+;;   hbbs          — rendezvous / ID server (inside amd64/ in zip)
+;;   hbbr          — relay server
+;;   rustdesk-utils — CLI utility bundled with the server release
 ;; No ELF patching or glibc wrapper is required.
 
 (define-public rustdesk-server
@@ -42,9 +42,9 @@
     (arguments
      (list
       #:install-plan
-      #~'(("amd64/hbbs"          "bin/hbbs")
-          ("amd64/hbbr"          "bin/hbbr")
-          ("amd64/rustdesk-utils" "bin/rustdesk-utils"))))
+      #~'(("hbbs"          "bin/hbbs")
+          ("hbbr"          "bin/hbbr")
+          ("rustdesk-utils" "bin/rustdesk-utils"))))
     (supported-systems '("x86_64-linux"))
     (home-page "https://rustdesk.com/")
     (synopsis "RustDesk self-hosted relay and ID servers")

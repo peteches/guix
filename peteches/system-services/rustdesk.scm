@@ -35,7 +35,7 @@
                     (default "/var/log/rustdesk"))
   ;; hbbs (ID/rendezvous server) listen port.
   (hbbs-port        rustdesk-configuration-hbbs-port
-                    (default 21115))
+                    (default 21116))
   ;; hbbr (relay server) listen port.
   (hbbr-port        rustdesk-configuration-hbbr-port
                     (default 21117))
@@ -103,14 +103,13 @@
       (requirement '(user-processes networking))
       (documentation "RustDesk rendezvous/ID server (hbbs)")
       (start #~(make-forkexec-constructor
-                (append
-                 (list #$(file-append package "/bin/hbbs")
-                       "-p" #$(number->string hbbs-port))
-                 #$(if (pair? relay-servers)
-                       (list "-r" (string-join relay-servers ","))
-                       '())
-                 #$(if key (list "-k" key) '())
-                 '#$extra-hbbs)
+                (list #$(file-append package "/bin/hbbs")
+                      "-p" #$(number->string hbbs-port)
+                      #$@(if (pair? relay-servers)
+                             (list "-r" (string-join relay-servers ","))
+                             '())
+                      #$@(if key (list "-k" key) '())
+                      #$@extra-hbbs)
                 #:user "rustdesk"
                 #:group "rustdesk"
                 #:directory #$data-dir
@@ -122,11 +121,10 @@
       (requirement '(user-processes networking))
       (documentation "RustDesk relay server (hbbr)")
       (start #~(make-forkexec-constructor
-                (append
-                 (list #$(file-append package "/bin/hbbr")
-                       "-p" #$(number->string hbbr-port))
-                 #$(if key (list "-k" key) '())
-                 '#$extra-hbbr)
+                (list #$(file-append package "/bin/hbbr")
+                      "-p" #$(number->string hbbr-port)
+                      #$@(if key (list "-k" key) '())
+                      #$@extra-hbbr)
                 #:user "rustdesk"
                 #:group "rustdesk"
                 #:log-file #$(string-append log-dir "/hbbr.log")))

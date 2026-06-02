@@ -131,7 +131,10 @@
                       (labels '(("instance" . "arr"))))
                      (prometheus-static-config
                       (targets '("192.168.51.196:12345"))
-                      (labels '(("instance" . "downloads")))))))
+                      (labels '(("instance" . "downloads"))))
+                     (prometheus-static-config
+                      (targets '("192.168.51.197:12345"))
+                      (labels '(("instance" . "rustdesk")))))))
                   (prometheus-scrape-config
                    (job-name "proxmox")
                    (metrics-path "/pve")

@@ -144,6 +144,11 @@
   ;; for unbound, which queries authoritative servers without the RD bit so
   ;; CNAME chains are followed through MagicDNS.
   (extra-split-zones tailscale-instance-configuration-extra-split-zones
+                     (default '()))
+
+  ;; UDP ports to forward from inside the netns to the host.
+  ;; Same format as forward-ports: list of (SRC . DST) or (SRC DST) integer pairs.
+  (udp-forward-ports tailscale-instance-configuration-udp-forward-ports
                      (default '())))
 
 (define (instance-default-paths name)
@@ -161,7 +166,7 @@
     (($ <tailscale-instance-configuration>
         name package netns magic-dns state-file socket-file tun port log-file extra-args forward-ports
         host-forward-ports socks-proxy-port taildrop-dir taildrop-user taildrop-schedule auth-key-file
-        fallback-dns extra-split-zones)
+        fallback-dns extra-split-zones udp-forward-ports)
      (let-values (((dstate dsock dlog dtun) (instance-default-paths name)))
        (tailscale-instance-configuration
         (name name)
@@ -182,7 +187,8 @@
         (taildrop-schedule taildrop-schedule)
         (auth-key-file auth-key-file)
         (fallback-dns fallback-dns)
-        (extra-split-zones extra-split-zones))))))
+        (extra-split-zones extra-split-zones)
+        (udp-forward-ports udp-forward-ports))))))
 
 (define (tailscale-instance->shepherd-service cfg)
   (let ((cfg (instance->resolved cfg)))
@@ -475,6 +481,48 @@ Accept elements like (SRC . DST) or (SRC DST)."
                          (list "PATH=/run/setuid-programs:/run/current-system/profile/bin:/run/current-system/profile/sbin")))
                      (stop #~(make-kill-destructor)))))
                 (forward-ports->alist forward-ports))))))))
+
+(define (tailscale-instance->udp-forward-services cfg)
+  (let ((cfg (instance->resolved cfg)))
+    (match cfg
+      (($ <tailscale-instance-configuration>
+          name package netns magic-dns state-file socket-file tun port log-file extra-args forward-ports
+          host-forward-ports socks-proxy-port taildrop-dir taildrop-user taildrop-schedule auth-key-file
+          fallback-dns extra-split-zones udp-forward-ports)
+       (let* ((setup-name (string->symbol (string-append "tailscale-netns-setup-" name)))
+              (ip         (file-append iproute "/sbin/ip"))
+              (socat      (file-append socat "/bin/socat")))
+         (let-values (((subnet hostip nsip gw) (subnet-for name)))
+           (map (lambda (p)
+                  (let* ((src      (car p))
+                         (dst      (cdr p))
+                         (svc-name (string->symbol
+                                    (format #f "tailscale-udp-forward-~a-~a" name src)))
+                         (lf       (format #f "/var/log/tailscale-udp-forward-~a-~a.log" name src)))
+                    (shepherd-service
+                     (provision (list svc-name))
+                     (documentation
+                      (format #f "Forward UDP port ~a in netns ~a to host ~a:~a"
+                              src netns gw dst))
+                     (requirement (list 'user-processes 'networking setup-name))
+                     (auto-start? #t)
+                     (one-shot? #f)
+                     (start
+                      #~(make-forkexec-constructor
+                         (list #$ip "netns" "exec" #$netns
+                               #$socat
+                               (string-append "UDP-LISTEN:"
+                                              #$(number->string src)
+                                              ",fork,reuseaddr")
+                               (string-append "UDP:"
+                                              #$gw
+                                              ":"
+                                              #$(number->string dst)))
+                         #:log-file #$lf
+                         #:environment-variables
+                         (list "PATH=/run/setuid-programs:/run/current-system/profile/bin:/run/current-system/profile/sbin")))
+                     (stop #~(make-kill-destructor)))))
+                (forward-ports->alist udp-forward-ports))))))))
 
 (define (tailscale-instance->host-forward-services cfg)
   "Return shepherd services running socat on the HOST, forwarding TCP ports into
@@ -794,10 +842,11 @@ instance, or #f when taildrop-dir is not configured."
       (match cfg
         (($ <tailscale-instance-configuration>
             inst-name inst-package netns magic-dns state-file socket-file tun port log-file extra-args forward-ports
-            _ socks-proxy-port _ _ _ _ _)
+            _ socks-proxy-port _ _ _ _ _ _ udp-forward-ports)
          (let-values (((subnet hostip nsip gw) (subnet-for inst-name)))
-           (let* ((veth-host (ifname "vts-" inst-name))
-                  (fwd-pairs (forward-ports->alist forward-ports)))
+           (let* ((veth-host    (ifname "vts-" inst-name))
+                  (fwd-pairs    (forward-ports->alist forward-ports))
+                  (udp-fwd-pairs (forward-ports->alist udp-forward-ports)))
              (nftables-rules
               (input (append
                       (map (lambda (p)
@@ -817,7 +866,12 @@ instance, or #f when taildrop-dir is not configured."
                             " tcp sport " (number->string socks-proxy-port)
                             " ct state { established, related }"
                             " accept comment \"ts-socks return " inst-name ":" (number->string socks-proxy-port) "\""))
-                          '())))
+                          '())
+                      (map (lambda (p)
+                             (string-append "ip saddr " subnet
+                                            " udp dport " (number->string (cdr p))
+                                            " accept comment \"ts-udp-fwd " inst-name ":" (number->string (cdr p)) "\""))
+                           udp-fwd-pairs)))
               (forward (list
                         ;; Allow NEW+EST+REL flows from the netns veth into the rest of the host.
                         (string-append "iifname \"" veth-host "\" ip saddr " subnet
@@ -968,6 +1022,7 @@ the namespace, or #f when magic-dns-suffix is not configured."
   (append
    (map tailscale-instance->netns-setup-service instances)
    (append-map tailscale-instance->forward-services instances)
+   (append-map tailscale-instance->udp-forward-services instances)
    (append-map tailscale-instance->host-forward-services instances)
    (filter-map tailscale-instance->socks-service instances)
    (filter-map tailscale-instance->socks-expose-service instances)
