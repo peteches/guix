@@ -312,7 +312,8 @@
 	      (forward-ports '((22 . 22)))
 	      (socks-proxy-port 1080)
 	      (magic-dns-suffix "spaniel-cordylus.ts.net")
-	      (extra-split-zones '("ts.peteches.co.uk")))))))
+	      (extra-split-zones '("ts.peteches.co.uk"))
+	      (udp-relay-destinations '(("100.112.48.78" . 21116))))))))
 
 ;; Grab the *unexported* accessor from (gnu services base).
 (define nscd-cache-database*

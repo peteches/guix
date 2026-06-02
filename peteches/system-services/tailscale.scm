@@ -149,7 +149,17 @@
   ;; UDP ports to forward from inside the netns to the host.
   ;; Same format as forward-ports: list of (SRC . DST) or (SRC DST) integer pairs.
   (udp-forward-ports tailscale-instance-configuration-udp-forward-ports
-                     (default '())))
+                     (default '()))
+
+  ;; UDP relay: for each (tailscale-ip . port) pair, run a socat inside the netns
+  ;; that listens on the port and relays UDP to that specific Tailscale destination.
+  ;; A nftables OUTPUT DNAT rule redirects host traffic for that exact IP:port into the relay.
+  (udp-relay-destinations tailscale-instance-configuration-udp-relay-destinations
+                          (default '())))
+
+(define (ip-address-string? s)
+  "Return #t if S looks like an IPv4 or IPv6 address, #f for a hostname."
+  (string-every (lambda (c) (or (char-numeric? c) (char=? c #\.) (char=? c #\:))) s))
 
 (define (instance-default-paths name)
   (let ((base (string-append "/var/lib/tailscale/" name))
@@ -166,7 +176,7 @@
     (($ <tailscale-instance-configuration>
         name package netns magic-dns state-file socket-file tun port log-file extra-args forward-ports
         host-forward-ports socks-proxy-port taildrop-dir taildrop-user taildrop-schedule auth-key-file
-        fallback-dns extra-split-zones udp-forward-ports)
+        fallback-dns extra-split-zones udp-forward-ports udp-relay-destinations)
      (let-values (((dstate dsock dlog dtun) (instance-default-paths name)))
        (tailscale-instance-configuration
         (name name)
@@ -188,7 +198,8 @@
         (auth-key-file auth-key-file)
         (fallback-dns fallback-dns)
         (extra-split-zones extra-split-zones)
-        (udp-forward-ports udp-forward-ports))))))
+        (udp-forward-ports udp-forward-ports)
+        (udp-relay-destinations udp-relay-destinations))))))
 
 (define (tailscale-instance->shepherd-service cfg)
   (let ((cfg (instance->resolved cfg)))
@@ -442,6 +453,18 @@ Accept elements like (SRC . DST) or (SRC DST)."
       (_ (error "invalid forward-ports entry; expected (SRC . DST) or (SRC DST)" x))))
   (map ->pair forward-ports))
 
+(define (relay-destinations->alist relay-destinations)
+  "Normalize RELAY-DESTINATIONS to a list of (host-string . port-integer) pairs.
+HOST-STRING may be a dotted-decimal IPv4/IPv6 address or a DNS hostname."
+  (define (->pair x)
+    (match x
+      ((host . port)
+       (unless (and (string? host) (integer? port))
+         (error "udp-relay-destinations entries must be (host-string . port-integer)" x))
+       (cons host port))
+      (_ (error "invalid udp-relay-destinations entry; expected (host-or-ip . port)" x))))
+  (map ->pair relay-destinations))
+
 (define (tailscale-instance->forward-services cfg)
   (let ((cfg (instance->resolved cfg)))
     (match cfg
@@ -523,6 +546,161 @@ Accept elements like (SRC . DST) or (SRC DST)."
                          (list "PATH=/run/setuid-programs:/run/current-system/profile/bin:/run/current-system/profile/sbin")))
                      (stop #~(make-kill-destructor)))))
                 (forward-ports->alist udp-forward-ports))))))))
+
+(define (tailscale-instance->udp-relay-services cfg)
+  "For each udp-relay-destination, run a socat inside the netns that relays UDP
+to the specified Tailscale host:port.  For IP address entries the DNAT rule is
+static (generated in tailscale->firewall-rules).  For hostname entries the DNAT
+rule is applied dynamically at service start after resolving the hostname inside
+the netns (so Tailscale MagicDNS is used for resolution)."
+  (let ((cfg (instance->resolved cfg)))
+    (match cfg
+      (($ <tailscale-instance-configuration>
+          name _ netns _ _ _ _ _ _ _ _
+          _ _ _ _ _ _ _ _ _ udp-relay-destinations)
+       (let* ((setup-name (string->symbol (string-append "tailscale-netns-setup-" name)))
+              (tsd-name   (string->symbol (string-append "tailscaled-" name)))
+              (ip-cmd     (file-append iproute "/sbin/ip"))
+              (socat-bin  (file-append socat "/bin/socat"))
+              (nft-bin    (file-append nftables "/sbin/nft")))
+         (let-values (((subnet hostip nsip gw) (subnet-for name)))
+           (let ((ns-ip (car (string-split nsip #\/))))
+             (map (lambda (p)
+                    (let* ((dest-host  (car p))
+                           (dest-port  (cdr p))
+                           (host-tag   (string-join (string-split dest-host #\.) "-"))
+                           (svc-name   (string->symbol
+                                        (format #f "tailscale-udp-relay-~a-~a-~a"
+                                                name host-tag dest-port)))
+                           (lf         (format #f "/var/log/tailscale-udp-relay-~a-~a-~a.log"
+                                               name host-tag dest-port)))
+                      (if (ip-address-string? dest-host)
+                          ;; IP address: DNAT rule already in static firewall — just run socat.
+                          (shepherd-service
+                           (provision (list svc-name))
+                           (documentation
+                            (format #f "UDP relay: host:~a -> netns ~a -> ~a:~a"
+                                    dest-port netns dest-host dest-port))
+                           (requirement (list 'user-processes 'networking setup-name))
+                           (auto-start? #t)
+                           (one-shot? #f)
+                           (start
+                            #~(make-forkexec-constructor
+                               (list #$ip-cmd "netns" "exec" #$netns
+                                     #$socat-bin
+                                     (string-append "UDP-LISTEN:"
+                                                    #$(number->string dest-port)
+                                                    ",fork,reuseaddr")
+                                     (string-append "UDP:"
+                                                    #$dest-host
+                                                    ":"
+                                                    #$(number->string dest-port)))
+                               #:log-file #$lf
+                               #:environment-variables
+                               (list "PATH=/run/setuid-programs:/run/current-system/profile/bin:/run/current-system/profile/sbin")))
+                           (stop #~(make-kill-destructor)))
+                          ;; Hostname: resolve in netns, apply DNAT dynamically, exec socat.
+                          (let* ((comment-tag (format #f "ts-udp-relay-dyn-~a-~a"
+                                                      name dest-port))
+                                 (start-script
+                                  (program-file
+                                   (format #f "tailscale-udp-relay-start-~a-~a-~a"
+                                           name host-tag dest-port)
+                                   #~(begin
+                                       (use-modules (ice-9 popen) (ice-9 rdelim)
+                                                    (srfi srfi-1) (srfi srfi-13))
+
+                                       (define getent #$(file-append glibc "/bin/getent"))
+                                       (define nft    #$nft-bin)
+                                       (define ip     #$ip-cmd)
+                                       (define socat  #$socat-bin)
+
+                                       ;; Resolve hostname via getent inside the netns
+                                       ;; (uses Tailscale MagicDNS / unbound resolv.conf).
+                                       (define (resolve-in-netns hostname)
+                                         (let* ((pipe (open-pipe* OPEN_READ
+                                                                   ip "netns" "exec" #$netns
+                                                                   getent "hosts" hostname))
+                                                (line (read-line pipe))
+                                                (_    (close-pipe pipe)))
+                                           (if (or (eof-object? line)
+                                                   (string-null? (string-trim-right line)))
+                                               #f
+                                               (car (string-tokenize line)))))
+
+                                       ;; Delete any stale DNAT rules with our comment tag
+                                       ;; (left over from a previous service run).
+                                       (define (cleanup-stale-dnat!)
+                                         (let* ((pipe (open-pipe* OPEN_READ
+                                                                   nft "-a" "list" "chain"
+                                                                   "ip" "nat" "output"))
+                                                (lines (let lp ((acc '()))
+                                                         (let ((l (read-line pipe)))
+                                                           (if (eof-object? l)
+                                                               (reverse acc)
+                                                               (lp (cons (string-trim-right l) acc))))))
+                                                (_     (close-pipe pipe)))
+                                           (for-each
+                                            (lambda (line)
+                                              (when (string-contains line #$comment-tag)
+                                                (let* ((parts  (string-tokenize line))
+                                                       (hi-pos (list-index
+                                                                (lambda (w) (string=? w "handle"))
+                                                                parts))
+                                                       (hi     (and hi-pos
+                                                                    (< (1+ hi-pos) (length parts))
+                                                                    (list-ref parts (1+ hi-pos)))))
+                                                  (when hi
+                                                    (system* nft "delete" "rule"
+                                                             "ip" "nat" "output"
+                                                             "handle" hi)))))
+                                            lines)))
+
+                                       (let* ((resolved (resolve-in-netns #$dest-host))
+                                              (_ (unless resolved
+                                                   (format (current-error-port)
+                                                           "udp-relay: cannot resolve ~a in netns ~a\n"
+                                                           #$dest-host #$netns)
+                                                   (exit 1)))
+                                              (_ (cleanup-stale-dnat!))
+                                              (rc (system* nft
+                                                           "add" "rule" "ip" "nat" "output"
+                                                           "ip" "daddr" resolved
+                                                           "udp" "dport" #$(number->string dest-port)
+                                                           "dnat" "to"
+                                                           (string-append #$ns-ip ":"
+                                                                          #$(number->string dest-port))
+                                                           "comment" #$comment-tag))
+                                              (_ (unless (zero? rc)
+                                                   (format (current-error-port)
+                                                           "udp-relay: nft add rule failed rc=~a\n"
+                                                           rc)
+                                                   (exit 1))))
+                                         (execlp ip "ip" "netns" "exec" #$netns
+                                                 socat
+                                                 (string-append "UDP-LISTEN:"
+                                                                #$(number->string dest-port)
+                                                                ",fork,reuseaddr")
+                                                 (string-append "UDP:" resolved ":"
+                                                                #$(number->string dest-port))))))))
+                            (shepherd-service
+                             (provision (list svc-name))
+                             (documentation
+                              (format #f "UDP relay (~a): host:~a -> netns ~a"
+                                      dest-host dest-port netns))
+                             ;; Hostname relay needs tailscaled running so DNS resolves.
+                             (requirement (list 'user-processes 'networking
+                                                setup-name tsd-name))
+                             (auto-start? #t)
+                             (one-shot? #f)
+                             (start
+                              #~(make-forkexec-constructor
+                                 (list #$start-script)
+                                 #:log-file #$lf
+                                 #:environment-variables
+                                 (list "PATH=/run/setuid-programs:/run/current-system/profile/bin:/run/current-system/profile/sbin")))
+                             (stop #~(make-kill-destructor)))))))
+                  (relay-destinations->alist udp-relay-destinations)))))))))
 
 (define (tailscale-instance->host-forward-services cfg)
   "Return shepherd services running socat on the HOST, forwarding TCP ports into
@@ -842,11 +1020,13 @@ instance, or #f when taildrop-dir is not configured."
       (match cfg
         (($ <tailscale-instance-configuration>
             inst-name inst-package netns magic-dns state-file socket-file tun port log-file extra-args forward-ports
-            _ socks-proxy-port _ _ _ _ _ _ udp-forward-ports)
+            _ socks-proxy-port _ _ _ _ _ _ udp-forward-ports udp-relay-destinations)
          (let-values (((subnet hostip nsip gw) (subnet-for inst-name)))
-           (let* ((veth-host    (ifname "vts-" inst-name))
-                  (fwd-pairs    (forward-ports->alist forward-ports))
-                  (udp-fwd-pairs (forward-ports->alist udp-forward-ports)))
+           (let* ((veth-host     (ifname "vts-" inst-name))
+                  (fwd-pairs     (forward-ports->alist forward-ports))
+                  (udp-fwd-pairs (forward-ports->alist udp-forward-ports))
+                  (relay-pairs   (relay-destinations->alist udp-relay-destinations))
+                  (ns-ip         (car (string-split nsip #\/))))
              (nftables-rules
               (input (append
                       (map (lambda (p)
@@ -886,7 +1066,16 @@ instance, or #f when taildrop-dir is not configured."
                                 ;; vs Ethernet vs tethering changes.
                                 (string-append "ip saddr " subnet
                                                " oifname != \"" veth-host "\" "
-                                               "counter masquerade comment \"masquerade ts-netns " inst-name "\"")))))))))
+                                               "counter masquerade comment \"masquerade ts-netns " inst-name "\"")))
+              (nat-output
+               (filter-map (lambda (p)
+                              (and (ip-address-string? (car p))
+                                   (string-append "ip daddr " (car p)
+                                                  " udp dport " (number->string (cdr p))
+                                                  " dnat to " ns-ip ":" (number->string (cdr p))
+                                                  " comment \"ts-udp-relay " inst-name ":"
+                                                  (number->string (cdr p)) "\"")))
+                            relay-pairs))))))))
     (fold rules-merge (nftables-rules) (map one instances))))
 
 (define (tailscale-instance->up-service cfg)
@@ -1023,6 +1212,7 @@ the namespace, or #f when magic-dns-suffix is not configured."
    (map tailscale-instance->netns-setup-service instances)
    (append-map tailscale-instance->forward-services instances)
    (append-map tailscale-instance->udp-forward-services instances)
+   (append-map tailscale-instance->udp-relay-services instances)
    (append-map tailscale-instance->host-forward-services instances)
    (filter-map tailscale-instance->socks-service instances)
    (filter-map tailscale-instance->socks-expose-service instances)

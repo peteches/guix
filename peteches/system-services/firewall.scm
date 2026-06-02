@@ -35,6 +35,7 @@
   (input           nftables-rules-input           (default '()))
   (forward         nftables-rules-forward         (default '()))
   (nat-postrouting nftables-rules-nat-postrouting (default '()))
+  (nat-output      nftables-rules-nat-output      (default '()))
   ;; Raw text appended verbatim at the end (e.g. extra tables, sets, maps).
   (raw             nftables-rules-raw             (default '())))
 
@@ -45,6 +46,7 @@
    (forward (append (nftables-rules-forward a) (nftables-rules-forward b)))
    (nat-postrouting (append (nftables-rules-nat-postrouting a)
                             (nftables-rules-nat-postrouting b)))
+   (nat-output (append (nftables-rules-nat-output a) (nftables-rules-nat-output b)))
    (raw (append (nftables-rules-raw a) (nftables-rules-raw b)))))
 
 ;; Compose a list of fragments (Guix calls (compose ...) with one argument: a list).
@@ -74,6 +76,10 @@
    "  chain postrouting {\n"
    "    type nat hook postrouting priority srcnat; policy accept;\n\n"
    (lines (nftables-rules-nat-postrouting rules) "    ")
+   "  }\n"
+   "  chain output {\n"
+   "    type nat hook output priority -100; policy accept;\n\n"
+   (lines (nftables-rules-nat-output rules) "    ")
    "  }\n"
    "}\n\n"
    (lines (nftables-rules-raw rules) "")
