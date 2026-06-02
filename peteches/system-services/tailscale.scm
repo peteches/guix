@@ -53,7 +53,7 @@
 
   ;; Persistent preferences applied via `tailscale set' after daemon start.
   (accept-dns    tailscale-instance-configuration-accept-dns
-                 (default #f))
+                 (default #t))
   (accept-routes tailscale-instance-configuration-accept-routes
                  (default #t))
 
