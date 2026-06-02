@@ -1,7 +1,6 @@
 ;;; Named proxy configurations for the interactive selector
 (defvar *peteches-proxies*
   '(("None"      . nil)
-    ("Tailscale" . "socks5://localhost:1080")
     ("Tor"       . "socks5://127.0.0.1:9050")))
 
 (defun peteches/make-proxy (url-string)
@@ -9,8 +8,7 @@
 
 ;;; URL pattern → proxy URL rules for automatic routing
 (defvar *peteches-url-proxy-rules*
-  '(("\\.ts\\.peteches\\.co\\.uk" . "socks5://localhost:1080")
-    ("\\.spaniel-cordylus\\.ts\\.net" . "socks5://localhost:1080")))
+  '())
 
 ;;; Mode holds per-buffer manual proxy preference and installs hooks.
 ;;; Follows the force-https-mode pattern from nyxt/source/mode/force-https.lisp.
