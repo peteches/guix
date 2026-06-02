@@ -69,15 +69,9 @@
      (list
       (service tailscale-service-type
                (list (tailscale-instance-configuration
-                      (name "peteches")
-                      (magic-dns-suffix "spaniel-cordylus.ts.net")
-                      (fallback-dns "192.168.51.189")
-                      (forward-ports '((22 . 22)))
-                      (host-forward-ports '((80 . 80) (443 . 443)))
-                      (extra-split-zones '("ts.peteches.co.uk")))))
+                      (name "peteches"))))
       (service caddy-service-type
                (caddy-configuration
-                (netns "ts-peteches")
                 (dns-target "caddy.spaniel-cordylus.ts.net")
                 (dns-zone   "ts.peteches.co.uk")
                 (email "desec@peteches.co.uk")

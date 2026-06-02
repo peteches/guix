@@ -75,8 +75,7 @@
                 (repository-directory "/var/lib/gitolite/repositories")))
       (service tailscale-service-type
                (list (tailscale-instance-configuration
-                      (name "peteches")
-                      (forward-ports '((22 . 22) (80 . 80))))))
+                      (name "peteches"))))
       (service alloy-service-type
                (alloy-configuration
                 (hostname "git.peteches.co.uk")

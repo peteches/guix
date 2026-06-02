@@ -73,7 +73,6 @@
       (service loki-service-type (loki-configuration))
       (service tailscale-service-type
                (list (tailscale-instance-configuration
-                      (name "peteches")
-                      (forward-ports '((22 . 22) (3100 . 3100)))))))))))
+                      (name "peteches")))))))))
 
 loki-os

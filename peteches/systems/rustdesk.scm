@@ -62,14 +62,7 @@
      (list
       (service tailscale-service-type
                (list (tailscale-instance-configuration
-                      (name "peteches")
-                      (forward-ports '((22 . 22)
-                                       (21115 . 21115)
-                                       (21116 . 21116)
-                                       (21117 . 21117)
-                                       (21118 . 21118)
-                                       (21119 . 21119)))
-                      (udp-forward-ports '((21116 . 21116))))))
+                      (name "peteches"))))
       (service rustdesk-service-type
                (rustdesk-configuration
                 (relay-servers (list "100.112.48.78:21117"))))

@@ -203,7 +203,6 @@
                       (replacement "192.168.50.244:9116")))))))))
       (service tailscale-service-type
                (list (tailscale-instance-configuration
-                      (name "peteches")
-                      (forward-ports '((22 . 22) (9090 . 9090)))))))))))
+                      (name "peteches")))))))))
 
 prometheus-os

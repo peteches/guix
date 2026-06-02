@@ -87,8 +87,7 @@
       (service tailscale-service-type
                (list (tailscale-instance-configuration
                       (name "peteches")
-                      (auth-key-file "/run/secrets/tailscale-auth-key")
-                      (forward-ports '((22 . 22) (6789 . 6789) (9091 . 9091))))))
+                      (auth-key-file "/run/secrets/tailscale-auth-key"))))
       (service nzbget-service-type
                (nzbget-configuration))
       (service transmission-service-type

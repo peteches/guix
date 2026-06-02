@@ -77,8 +77,7 @@
      (list
       (service tailscale-service-type
                (list (tailscale-instance-configuration
-                      (name "peteches")
-                      (forward-ports '((22 . 22) (8096 . 8096))))))
+                      (name "peteches"))))
       (service jellyfin-service-type
                (jellyfin-configuration))
       (service alloy-service-type

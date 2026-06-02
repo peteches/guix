@@ -62,10 +62,7 @@
      (list
       (service tailscale-service-type
                (list (tailscale-instance-configuration
-                      (name "peteches")
-                      (magic-dns-suffix "spaniel-cordylus.ts.net")
-                      (forward-ports '((22 . 22)))
-                      (host-forward-ports '((80 . 80) (443 . 443) (53 . 53))))))
+                      (name "peteches"))))
       (service alloy-service-type
                (alloy-configuration
                 (hostname "pihole.peteches.co.uk")

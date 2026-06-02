@@ -12,7 +12,6 @@
   #:use-module (peteches packages caddy)
   #:use-module (peteches system-services firewall)
   #:use-module (gnu packages base)
-  #:use-module (gnu packages linux)
   #:use-module (gnu packages dns)
   #:use-module (gnu packages curl)
   #:export (caddy-reverse-proxy
@@ -45,8 +44,6 @@
   (log-file         caddy-configuration-log-file         (default "/var/log/caddy.log"))
   (http-port        caddy-configuration-http-port        (default 80))
   (https-port       caddy-configuration-https-port       (default 443))
-  ;; Optional: run Caddy inside this named network namespace (e.g. "ts-peteches").
-  (netns caddy-configuration-netns (default #f))
   ;; When both are set, a one-shot shepherd service ensures per-service CNAME
   ;; records exist in the given deSEC zone.  The deSEC API GET is used to
   ;; check existing records; at most one PATCH request is made for missing ones.
@@ -165,33 +162,23 @@
          (log-file         (caddy-configuration-log-file config))
          (desec-token-file (caddy-configuration-desec-token-file config))
          (dns-target       (caddy-configuration-dns-target config))
-         (netns            (caddy-configuration-netns config))
-         (netns-req        (if netns
-                               (list (string->symbol
-                                      (string-append "tailscale-netns-setup-"
-                                                     (string-drop netns 3))))
-                               '()))
          (extra-req        (if dns-target '(caddy-ensure-cnames) '())))
     (list
      (shepherd-service
       (provision '(caddy))
       (documentation "Caddy web server with automatic HTTPS via deSEC DNS-01.")
-      (requirement `(networking file-systems sops-secrets ,@extra-req ,@netns-req))
+      (requirement `(networking file-systems sops-secrets ,@extra-req))
       (start
        ;; Read the DESEC_TOKEN from the SOPS-decrypted secret file at start-up
        ;; and inject it into Caddy's environment via a shell subshell expansion.
        ;; The token never appears in process arguments or log output.
        #~(make-forkexec-constructor
-          (append
-           (if #$netns
-               (list #$(file-append iproute "/sbin/ip") "netns" "exec" #$netns)
-               '())
-           (list "/bin/sh" "-c"
-                 (string-append
-                  "DESEC_TOKEN=$(" #$(file-append coreutils "/bin/cat")
-                  " " #$desec-token-file ") "
-                  "exec " #$(file-append pkg "/bin/caddy")
-                  " run --config /etc/caddy/caddy.json")))
+          (list "/bin/sh" "-c"
+                (string-append
+                 "DESEC_TOKEN=$(" #$(file-append coreutils "/bin/cat")
+                 " " #$desec-token-file ") "
+                 "exec " #$(file-append pkg "/bin/caddy")
+                 " run --config /etc/caddy/caddy.json"))
           #:log-file #$log-file))
       (stop #~(make-kill-destructor))
       (actions
@@ -215,12 +202,6 @@
 (define (caddy-dns-setup-shepherd-service config)
   (let* ((dns-target       (caddy-configuration-dns-target config))
          (dns-zone         (caddy-configuration-dns-zone config))
-         (netns            (caddy-configuration-netns config))
-         (netns-req        (if netns
-                               (list (string->symbol
-                                      (string-append "tailscale-netns-setup-"
-                                                     (string-drop netns 3))))
-                               '()))
          (virtual-hosts    (caddy-configuration-virtual-hosts config))
          (desec-token-file (caddy-configuration-desec-token-file config))
          (domains          (map caddy-reverse-proxy-domain virtual-hosts)))
@@ -325,16 +306,11 @@
             (provision '(caddy-ensure-cnames))
             (documentation
              "One-shot: create/update deSEC CNAME records for all virtual-host subnames.")
-            (requirement `(networking sops-secrets ,@netns-req))
+            (requirement '(networking sops-secrets))
             (one-shot? #t)
             (auto-start? #t)
             (start #~(make-forkexec-constructor
-                      (append
-                       (if #$netns
-                           (list #$(file-append iproute "/sbin/ip")
-                                 "netns" "exec" #$netns)
-                           '())
-                       (list #$script))
+                      (list #$script)
                       #:log-file "/var/log/caddy-ensure-cnames.log"
                       #:environment-variables
                       (list "PATH=/run/setuid-programs:/run/current-system/profile/bin:/run/current-system/profile/sbin")))

@@ -87,8 +87,7 @@
       (service tailscale-service-type
                (list (tailscale-instance-configuration
                       (name "peteches")
-                      (auth-key-file "/run/secrets/tailscale-auth-key")
-                      (forward-ports '((22 . 22) (8989 . 8989) (7878 . 7878))))))
+                      (auth-key-file "/run/secrets/tailscale-auth-key"))))
       (service sonarr-service-type
                (sonarr-configuration))
       (service radarr-service-type
