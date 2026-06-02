@@ -264,7 +264,9 @@ COMMIT;
   (listen-port    pihole-unbound-configuration-listen-port    (default 5335))
   (listen-address pihole-unbound-configuration-listen-address (default "127.0.0.1"))
   ;; Raw text appended to the server: block of unbound.conf.
-  (extra-server   pihole-unbound-configuration-extra-server   (default "")))
+  (extra-server   pihole-unbound-configuration-extra-server   (default ""))
+  ;; List of (zone-name . forward-addr) pairs emitted as forward-zone: blocks.
+  (forward-zones  pihole-unbound-configuration-forward-zones  (default '())))
 
 (define-record-type* <pihole-configuration>
   pihole-configuration make-pihole-configuration
@@ -272,6 +274,8 @@ COMMIT;
   (package                 pihole-configuration-package                 (default pihole-ftl))
   ;; Network interface FTL binds to.
   (interface               pihole-configuration-interface               (default "eth0"))
+  ;; dnsmasq listening mode: "SINGLE" (named interface only), "ALL" (all interfaces), "LOCAL".
+  (listening-mode          pihole-configuration-listening-mode          (default "SINGLE"))
   ;; Upstream DNS servers.  When with-unbound? is #t this is overridden to
   ;; point at the local Unbound instance.
   (dns-upstreams           pihole-configuration-dns-upstreams           (default '("8.8.8.8" "8.8.4.4")))
@@ -351,7 +355,7 @@ COMMIT;
      "[dns]\n"
      "  upstreams = " (toml-string-array upstreams) "\n"
      "  interface = " (toml-string (pihole-configuration-interface config)) "\n"
-     "  listeningMode = \"SINGLE\"\n"
+     "  listeningMode = " (toml-string (pihole-configuration-listening-mode config)) "\n"
      "  queryLogging = " (toml-bool (pihole-configuration-query-logging? config)) "\n"
      "  blocking.active = true\n"
      "  blocking.mode = " (toml-string (pihole-configuration-blocking-mode config)) "\n"
@@ -383,10 +387,11 @@ COMMIT;
 
 (define (render-unbound-conf config)
   "Produce an unbound.conf for use as a Pi-hole recursive upstream resolver."
-  (let* ((ub   (pihole-configuration-unbound config))
-         (port (pihole-unbound-configuration-listen-port ub))
-         (addr (pihole-unbound-configuration-listen-address ub))
-         (xtra (pihole-unbound-configuration-extra-server ub)))
+  (let* ((ub        (pihole-configuration-unbound config))
+         (port      (pihole-unbound-configuration-listen-port ub))
+         (addr      (pihole-unbound-configuration-listen-address ub))
+         (xtra      (pihole-unbound-configuration-extra-server ub))
+         (fwd-zones (pihole-unbound-configuration-forward-zones ub)))
     (string-append
      "server:\n"
      "    verbosity: 0\n"
@@ -410,7 +415,15 @@ COMMIT;
      "    private-address: 10.0.0.0/8\n"
      "    private-address: fd00::/8\n"
      "    private-address: fe80::/10\n"
-     xtra "\n")))
+     xtra "\n"
+     (string-join
+      (map (lambda (zone)
+             (string-append
+              "forward-zone:\n"
+              "    name: \"" (car zone) "\"\n"
+              "    forward-addr: " (cdr zone) "\n"))
+           fwd-zones)
+      "\n"))))
 
 (define (render-custom-hosts hosts)
   "Render a list of <pihole-custom-host> records to custom.list format (ip hostname)."

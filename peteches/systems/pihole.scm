@@ -78,8 +78,13 @@
       (service pihole-service-type
                (pihole-configuration
                 (interface "eth0")
+                (listening-mode "ALL")
                 (dns-upstreams '()) ; using unbound
                 (with-unbound? #t)
+                (unbound
+                 (pihole-unbound-configuration
+                  (forward-zones
+                   '(("spaniel-cordylus.ts.net." . "100.100.100.100")))))
 		(adlists '("https://raw.githubusercontent.com/r0xd4n3t/pihole-adblock-lists/main/pihole_adlists.txt"))
                 (with-exporter? #t)
                 (custom-hosts
