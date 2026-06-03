@@ -80,6 +80,11 @@
        (key '("ssh-key"))
        (file (local-file "../../secrets/hosts/downloads/restic.yaml"))
        (path "/run/secrets/restic-ssh-key")
+       (permissions #o400))
+      (sops-secret
+       (key '("control-password"))
+       (file (local-file "../../secrets/hosts/downloads/nzbget.yaml"))
+       (path "/run/secrets/nzbget-password")
        (permissions #o400)))
      #:extra-services
      (list
@@ -89,7 +94,11 @@
                       (name "peteches")
                       (auth-key-file "/run/secrets/tailscale-auth-key"))))
       (service nzbget-service-type
-               (nzbget-configuration))
+               (nzbget-configuration
+                (nzb-dir "/media/downloads/nzb")
+                (temp-dir "/var/lib/nzbget/tmp")
+                (disk-space 4096)
+                (password-file "/run/secrets/nzbget-password")))
       (service transmission-service-type
                (transmission-configuration))
       (service alloy-service-type

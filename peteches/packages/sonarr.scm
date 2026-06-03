@@ -4,7 +4,7 @@
 
 (define-module (peteches packages sonarr)
   #:use-module (guix packages)
-  #:use-module (guix licenses)
+  #:use-module ((guix licenses) #:select (gpl3+))
   #:use-module (guix download)
   #:use-module (guix gexp)
   #:use-module (guix build-system copy)
@@ -12,7 +12,9 @@
   #:use-module (gnu packages gcc)
   #:use-module (gnu packages tls)
   #:use-module (gnu packages elf)
-  #:use-module (gnu packages icu4c))
+  #:use-module (gnu packages icu4c)
+  #:use-module (gnu packages compression)
+  #:use-module (gnu packages sqlite))
 
 (define-public sonarr
   (package
@@ -30,7 +32,9 @@
      (list (list "glibc"   glibc)
            (list "gcc:lib" gcc "lib")
            (list "openssl" openssl)
-           (list "icu4c"   icu4c)))
+           (list "icu4c"   icu4c)
+           (list "zlib"    zlib)
+           (list "sqlite"  sqlite)))
     (native-inputs (list patchelf))
     (arguments
      (list
@@ -48,6 +52,8 @@
                      (gcc-lib  (assoc-ref inputs "gcc:lib"))
                      (ssl      (assoc-ref inputs "openssl"))
                      (icu      (assoc-ref inputs "icu4c"))
+                     (zlib     (assoc-ref inputs "zlib"))
+                     (sqlite   (assoc-ref inputs "sqlite"))
                      (pe       (search-input-file inputs "/bin/patchelf"))
                      (loader   (string-append libc "/lib/ld-linux-x86-64.so.2"))
                      (app-dir  (string-append out "/share/sonarr"))
@@ -56,7 +62,9 @@
                                       (string-append libc "/lib")
                                       (string-append gcc-lib "/lib")
                                       (string-append ssl "/lib")
-                                      (string-append icu "/lib"))
+                                      (string-append icu "/lib")
+                                      (string-append zlib "/lib")
+                                      (string-append sqlite "/lib"))
                                 ":"))
                      (real     (string-append app-dir "/Sonarr"))
                      (wrapper  (string-append out "/bin/sonarr")))
