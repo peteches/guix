@@ -85,6 +85,11 @@
        (key '("control-password"))
        (file (local-file "../../secrets/hosts/downloads/nzbget.yaml"))
        (path "/run/secrets/nzbget-password")
+       (permissions #o400))
+      (sops-secret
+       (key '("rpc-password"))
+       (file (local-file "../../secrets/hosts/downloads/transmission.yaml"))
+       (path "/run/secrets/transmission-password")
        (permissions #o400)))
      #:extra-services
      (list
@@ -100,7 +105,9 @@
                 (disk-space 4096)
                 (password-file "/run/secrets/nzbget-password")))
       (service transmission-service-type
-               (transmission-configuration))
+               (transmission-configuration
+                (rpc-authentication-required? #t)
+                (rpc-password-file "/run/secrets/transmission-password")))
       (service alloy-service-type
                (alloy-configuration
                 (hostname "downloads.peteches.co.uk")
