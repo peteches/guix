@@ -75,12 +75,17 @@
                 (dns-target "caddy.spaniel-cordylus.ts.net")
                 (dns-zone   "ts.peteches.co.uk")
                 (email "desec@peteches.co.uk")
-;;                (tls-subjects '("*.ts.peteches.co.uk"))
+               (tls-subjects '("*.ts.peteches.co.uk"))
                 (virtual-hosts
                  (list
                   (caddy-reverse-proxy
                    (domain "prometheus.ts.peteches.co.uk")
                    (upstream "prometheus.spaniel-cordylus.ts.net:9090"))
+		  (caddy-reverse-proxy
+		   (domain "proxmox1.ts.peteches.co.uk")
+		   (upstream "proxmox1.spaniel-cordylus.ts.net:8006")
+		   (tls-backend? #t)
+		   (tls-insecure-skip-verify? #t))
                   (caddy-reverse-proxy
                    (domain "grafana.ts.peteches.co.uk")
                    (upstream "grafana.spaniel-cordylus.ts.net:3000"))
@@ -92,7 +97,7 @@
                    (upstream "jellyfin.spaniel-cordylus.ts.net:8096"))
                   (caddy-reverse-proxy
                    (domain "pihole.ts.peteches.co.uk")
-                   (upstream "pihole.spaniel-cordylus.ts.net:80"))
+                   (upstream "pihole.spaniel-cordylus.ts.net:80/admin"))
                   (caddy-reverse-proxy
                    (domain "prowlarr.ts.peteches.co.uk")
                    (upstream "prowlarr.spaniel-cordylus.ts.net:9696"))

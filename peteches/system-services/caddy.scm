@@ -18,6 +18,8 @@
             caddy-reverse-proxy?
             caddy-reverse-proxy-domain
             caddy-reverse-proxy-upstream
+            caddy-reverse-proxy-tls-backend?
+            caddy-reverse-proxy-tls-insecure-skip-verify?
             caddy-configuration
             caddy-configuration?
             render-caddy-json
@@ -30,8 +32,10 @@
 (define-record-type* <caddy-reverse-proxy>
   caddy-reverse-proxy make-caddy-reverse-proxy
   caddy-reverse-proxy?
-  (domain   caddy-reverse-proxy-domain)    ; "prometheus.peteches.co.uk"
-  (upstream caddy-reverse-proxy-upstream)) ; "192.168.51.187:9090"
+  (domain                    caddy-reverse-proxy-domain)
+  (upstream                  caddy-reverse-proxy-upstream)
+  (tls-backend?              caddy-reverse-proxy-tls-backend?              (default #f))
+  (tls-insecure-skip-verify? caddy-reverse-proxy-tls-insecure-skip-verify? (default #f)))
 
 (define-record-type* <caddy-configuration>
   caddy-configuration make-caddy-configuration
@@ -40,6 +44,7 @@
   (email            caddy-configuration-email            (default "pete@peteches.co.uk"))
   (desec-token-file caddy-configuration-desec-token-file (default "/run/secrets/desec-token"))
   (virtual-hosts    caddy-configuration-virtual-hosts    (default '()))
+  (tls-subjects     caddy-configuration-tls-subjects     (default #f))
   (data-path        caddy-configuration-data-path        (default "/var/lib/caddy"))
   (log-file         caddy-configuration-log-file         (default "/var/log/caddy.log"))
   (http-port        caddy-configuration-http-port        (default 80))
@@ -60,14 +65,27 @@
 
 (define (render-route vhost)
   "Render one Caddy JSON route object for a <caddy-reverse-proxy>."
-  (let ((domain   (caddy-reverse-proxy-domain vhost))
-        (upstream (caddy-reverse-proxy-upstream vhost)))
+  (let ((domain    (caddy-reverse-proxy-domain vhost))
+        (upstream  (caddy-reverse-proxy-upstream vhost))
+        (tls?      (caddy-reverse-proxy-tls-backend? vhost))
+        (insecure? (caddy-reverse-proxy-tls-insecure-skip-verify? vhost)))
     (string-append
      "        {\n"
      "          \"match\": [{\"host\": [" (jq domain) "]}],\n"
      "          \"handle\": [{\n"
      "            \"handler\": \"reverse_proxy\",\n"
-     "            \"upstreams\": [{\"dial\": " (jq upstream) "}]\n"
+     "            \"upstreams\": [{\"dial\": " (jq upstream) "}]"
+     (if tls?
+         (string-append
+          ",\n"
+          "            \"transport\": {\n"
+          "              \"protocol\": \"http\",\n"
+          "              \"tls\": {\"insecure_skip_verify\": "
+          (if insecure? "true" "false")
+          "}\n"
+          "            }")
+         "")
+     "\n"
      "          }]\n"
      "        }")))
 
@@ -80,7 +98,8 @@
          (https-port       (number->string (caddy-configuration-https-port config)))
          (virtual-hosts    (caddy-configuration-virtual-hosts config))
          (domains          (map caddy-reverse-proxy-domain virtual-hosts))
-         (domain-list      (string-join (map jq domains) ", "))
+         (subjects         (or (caddy-configuration-tls-subjects config) domains))
+         (domain-list      (string-join (map jq subjects) ", "))
          (routes           (map render-route virtual-hosts))
          (routes-str       (string-join routes ",\n")))
     (string-append
@@ -111,7 +130,8 @@
      "                  \"name\": \"desec\",\n"
      "                  \"token\": \"{env.DESEC_TOKEN}\"\n"
      "                },\n"
-     "                \"resolvers\": [\"ns1.desec.io\", \"ns2.desec.org\"]\n"
+     "                \"resolvers\": [\"ns1.desec.io\", \"ns2.desec.org\"],\n"
+     "                \"propagation_delay\": \"60s\"\n"
      "              }\n"
      "            }\n"
      "          }]\n"
