@@ -11,9 +11,19 @@
   #:use-module (peteches packages nzbget)
   #:use-module (peteches system-services firewall)
   #:use-module (peteches system-services media-accounts)
-  #:export (nzbget-configuration
+  #:export (nzbget-category
+            nzbget-category?
+            nzbget-configuration
             nzbget-configuration?
             nzbget-service-type))
+
+(define-record-type* <nzbget-category>
+  nzbget-category make-nzbget-category
+  nzbget-category?
+  (name       nzbget-category-name)
+  (dest-dir   nzbget-category-dest-dir   (default #f))
+  (unpack?    nzbget-category-unpack?    (default #t))
+  (extensions nzbget-category-extensions (default '())))
 
 (define-record-type* <nzbget-configuration>
   nzbget-configuration make-nzbget-configuration
@@ -31,18 +41,41 @@
   (disk-space           nzbget-configuration-disk-space           (default 250))
   (par-check            nzbget-configuration-par-check            (default "auto"))
   (direct-unpack?       nzbget-configuration-direct-unpack?       (default #t))
-  (append-category-dir? nzbget-configuration-append-category-dir? (default #t)))
+  (append-category-dir? nzbget-configuration-append-category-dir? (default #t))
+  (categories           nzbget-configuration-categories           (default '())))
 
 (define (bool->nzbget b)
   (if b "yes" "no"))
 
+(define (render-nzbget-categories categories)
+  "Return a config string fragment for CATEGORIES, numbered from 1."
+  (let loop ((cats categories) (n 1) (result ""))
+    (if (null? cats)
+        result
+        (let* ((cat      (car cats))
+               (num      (number->string n))
+               (name     (nzbget-category-name cat))
+               (dest-dir (nzbget-category-dest-dir cat))
+               (unpack?  (nzbget-category-unpack? cat))
+               (exts     (nzbget-category-extensions cat))
+               (chunk
+                (string-append
+                 "Category" num ".Name="       name "\n"
+                 (if dest-dir
+                     (string-append "Category" num ".DestDir=" dest-dir "\n")
+                     "")
+                 "Category" num ".Unpack="     (bool->nzbget unpack?) "\n"
+                 "Category" num ".Extensions=" (string-join exts ",") "\n")))
+          (loop (cdr cats) (+ n 1) (string-append result chunk))))))
+
 (define (nzbget-initial-config config)
   "Return a string with the initial nzbget.conf content (WebDir is written separately)."
-  (let* ((main-dir  (nzbget-configuration-main-dir config))
-         (dest-dir  (or (nzbget-configuration-dest-dir config)
-                        (string-append "${MainDir}/completed")))
-         (temp-dir  (or (nzbget-configuration-temp-dir config)
-                        (string-append "${MainDir}/tmp"))))
+  (let* ((main-dir   (nzbget-configuration-main-dir config))
+         (dest-dir   (or (nzbget-configuration-dest-dir config)
+                         (string-append "${MainDir}/completed")))
+         (temp-dir   (or (nzbget-configuration-temp-dir config)
+                         (string-append "${MainDir}/tmp")))
+         (categories (nzbget-configuration-categories config)))
     (string-append
      "MainDir="  main-dir  "\n"
      "DestDir="  dest-dir  "\n"
@@ -61,7 +94,8 @@
      "DiskSpace=" (number->string (nzbget-configuration-disk-space config)) "\n"
      "ParCheck=" (nzbget-configuration-par-check config) "\n"
      "UnpackPassFile=\n"
-     "DirectUnpack=" (bool->nzbget (nzbget-configuration-direct-unpack? config)) "\n")))
+     "DirectUnpack=" (bool->nzbget (nzbget-configuration-direct-unpack? config)) "\n"
+     (render-nzbget-categories categories))))
 
 (define (nzbget-accounts config)
   (list
@@ -74,16 +108,19 @@
     (shell (file-append shadow "/sbin/nologin")))))
 
 (define (nzbget-activation config)
-  (let* ((pkg      (nzbget-configuration-package config))
-         (data-dir (nzbget-configuration-data-dir config))
-         (main-dir (nzbget-configuration-main-dir config))
-         (dest-dir (or (nzbget-configuration-dest-dir config)
-                       (string-append main-dir "/completed")))
-         (temp-dir (or (nzbget-configuration-temp-dir config)
-                       (string-append main-dir "/tmp")))
-         (nzb-dir  (nzbget-configuration-nzb-dir config))
-         (web-dir  (file-append pkg "/share/nzbget/webui"))
-         (conf     (nzbget-initial-config config)))
+  (let* ((pkg        (nzbget-configuration-package config))
+         (data-dir   (nzbget-configuration-data-dir config))
+         (main-dir   (nzbget-configuration-main-dir config))
+         (dest-dir   (or (nzbget-configuration-dest-dir config)
+                         (string-append main-dir "/completed")))
+         (temp-dir   (or (nzbget-configuration-temp-dir config)
+                         (string-append main-dir "/tmp")))
+         (nzb-dir    (nzbget-configuration-nzb-dir config))
+         (web-dir    (file-append pkg "/share/nzbget/webui"))
+         (conf       (nzbget-initial-config config))
+         (cat-dirs   (filter string?
+                             (map nzbget-category-dest-dir
+                                  (nzbget-configuration-categories config)))))
     #~(begin
         (use-modules (guix build utils))
         (let* ((pw        (getpwnam "nzbget"))
@@ -99,7 +136,8 @@
                            #$main-dir
                            #$dest-dir
                            #$temp-dir)
-                     (if (string-null? #$nzb-dir) '() (list #$nzb-dir))))
+                     (if (string-null? #$nzb-dir) '() (list #$nzb-dir))
+                     '#$cat-dirs))
           (call-with-output-file conf-file
             (lambda (p)
               (display #$conf p)

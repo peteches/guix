@@ -27,7 +27,9 @@
   (data-dir                     transmission-configuration-data-dir
                                 (default "/var/lib/transmission"))
   (download-dir                 transmission-configuration-download-dir
-                                (default "/media/downloads/torrents"))
+                                (default "/media/downloads/torrents/completed"))
+  (incomplete-dir               transmission-configuration-incomplete-dir
+				(default "/media/downloads/torrents/incomplete"))
   (log-file                     transmission-configuration-log-file
                                 (default "/var/log/transmission.log"))
   (rpc-bind-address             transmission-configuration-rpc-bind-address
@@ -39,7 +41,9 @@
   (rpc-password-file            transmission-configuration-rpc-password-file
                                 (default #f))
   (portmap-enabled?             transmission-configuration-portmap-enabled?
-                                (default #f)))
+                                (default #f))
+  (categories                   transmission-configuration-categories
+                                (default '())))
 
 (define (transmission-initial-settings config)
   "Return a JSON string with initial Transmission settings.
@@ -66,9 +70,11 @@ else is enforced via the daemon's command-line arguments."
     (shell (file-append shadow "/sbin/nologin")))))
 
 (define (transmission-activation config)
-  (let ((data-dir     (transmission-configuration-data-dir config))
-        (download-dir (transmission-configuration-download-dir config))
-        (settings     (transmission-initial-settings config)))
+  (let ((data-dir      (transmission-configuration-data-dir config))
+        (download-dir  (transmission-configuration-download-dir config))
+        (incomplete-dir (transmission-configuration-incomplete-dir config))
+        (categories    (transmission-configuration-categories config))
+        (settings      (transmission-initial-settings config)))
     #~(begin
         (use-modules (guix build utils))
         (let* ((pw            (getpwnam "transmission"))
@@ -80,7 +86,12 @@ else is enforced via the daemon's command-line arguments."
                       (chown d uid gid))
                     (list #$data-dir
                           #$download-dir
-                          (string-append #$download-dir "/.incomplete")))
+                          #$incomplete-dir))
+          (for-each (lambda (cat)
+                      (let ((d (string-append #$download-dir "/" cat)))
+                        (mkdir-p d)
+                        (chown d uid gid)))
+                    '#$categories)
           (unless (file-exists? settings-file)
             (call-with-output-file settings-file
               (lambda (p) (display #$settings p)))
@@ -94,6 +105,7 @@ else is enforced via the daemon's command-line arguments."
          (rpc-port      (transmission-configuration-rpc-port config))
          (peer-port     (transmission-configuration-peer-port config))
          (dl-dir        (transmission-configuration-download-dir config))
+	 (incomplete-dir (transmission-configuration-incomplete-dir config))
          (bind-addr     (transmission-configuration-rpc-bind-address config))
          (auth?         (transmission-configuration-rpc-authentication-required? config))
          (username      (transmission-configuration-rpc-username config))
@@ -120,7 +132,7 @@ else is enforced via the daemon's command-line arguments."
                                  "--port"             #$(number->string rpc-port)
                                  "--peerport"         #$(number->string peer-port)
                                  "--download-dir"     #$dl-dir
-                                 "--incomplete-dir"   #$(string-append dl-dir "/.incomplete")
+                                 "--incomplete-dir"   #$incomplete-dir
                                  "--rpc-bind-address" #$bind-addr
                                  #$@(if auth? '("--auth") '("--no-auth"))
                                  #$@(if portmap? '("--portmap") '("--no-portmap")))

@@ -103,11 +103,22 @@
                 (nzb-dir "/media/downloads/nzb")
                 (temp-dir "/var/lib/nzbget/tmp")
                 (disk-space 4096)
-                (password-file "/run/secrets/nzbget-password")))
+                (password-file "/run/secrets/nzbget-password")
+                (categories
+                 (list (nzbget-category (name "tv")
+                                        (dest-dir "/media/downloads/usenet/completed/tv"))
+                       (nzbget-category (name "films")
+                                        (dest-dir "/media/downloads/usenet/completed/films"))
+                       (nzbget-category (name "music")
+                                        (dest-dir "/media/downloads/usenet/completed/music"))
+                       (nzbget-category (name "books")
+                                        (dest-dir "/media/downloads/usenet/completed/books"))))))
       (service transmission-service-type
                (transmission-configuration
                 (rpc-authentication-required? #t)
-                (rpc-password-file "/run/secrets/transmission-password")))
+                (rpc-password-file "/run/secrets/transmission-password")
+
+                (categories '("tv" "film"))))
       (service alloy-service-type
                (alloy-configuration
                 (hostname "downloads.peteches.co.uk")
