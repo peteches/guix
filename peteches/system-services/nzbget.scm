@@ -171,13 +171,13 @@
       (documentation "NZBGet Usenet downloader.")
       (requirement requirements)
       (start #~(lambda _
-                 (use-modules (ice-9 rdelim))
                  (let* ((pw-file #$password-file)
                         (pw-opt  (if pw-file
                                      (list "--option"
                                            (string-append "ControlPassword="
                                                           (string-trim-right
-                                                           (call-with-input-file pw-file read-line))))
+                                                           (call-with-input-file pw-file
+                                                             (@ (ice-9 rdelim) read-line)))))
                                      '())))
                    ((make-forkexec-constructor
                      (append

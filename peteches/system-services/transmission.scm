@@ -122,7 +122,8 @@ else is enforced via the daemon's command-line arguments."
                  (let* ((password
                          (and #$auth?
                               #$password-file
-                              (call-with-input-file #$password-file read-line)))
+                              (call-with-input-file #$password-file
+                                (@ (ice-9 rdelim) read-line))))
                         (forkexec
                          (make-forkexec-constructor
                           (append
