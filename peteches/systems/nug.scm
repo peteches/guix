@@ -136,7 +136,6 @@
                    (input (list "tcp dport 3000 accept comment \"guix-publish\""))))
   (service guix-publish-service-type
            (guix-publish-configuration
-            (host "0.0.0.0")
             (port 3000)
             (compression '(("zstd" 9)))
             (advertise? #t)
