@@ -57,6 +57,11 @@
        (key '("ssh-key"))
        (file (local-file "../../secrets/hosts/prometheus/restic.yaml"))
        (path "/run/secrets/restic-ssh-key")
+       (permissions #o400))
+      (sops-secret
+       (key '("ssh-private-key"))
+       (file (local-file "../../secrets/hosts/prometheus/guix-build.yaml"))
+       (path "/run/secrets/guix-offload-key")
        (permissions #o400)))
      #:extra-services
      (list

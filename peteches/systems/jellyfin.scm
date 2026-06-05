@@ -72,6 +72,11 @@
        (key '("credentials"))
        (file (local-file "../../secrets/groups/media/smb.yaml"))
        (path "/run/secrets/media-smb-credentials")
+       (permissions #o400))
+      (sops-secret
+       (key '("ssh-private-key"))
+       (file (local-file "../../secrets/hosts/jellyfin/guix-build.yaml"))
+       (path "/run/secrets/guix-offload-key")
        (permissions #o400)))
      #:extra-services
      (list

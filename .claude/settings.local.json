@@ -30,7 +30,15 @@
       "WebFetch(domain:roy.marples.name)",
       "mcp__anvil-emacs-eval__file-replace-regexp",
       "WebFetch(domain:rustdesk.com)",
-      "Bash(guix lint *)"
+      "Bash(guix lint *)",
+      "WebFetch(domain:docs.seerr.dev)",
+      "Bash(guix import *)",
+      "Read(//tmp/**)",
+      "Bash(guix download *)",
+      "mcp__anvil-emacs-eval__file-append",
+      "mcp__anvil__emacs-eval-async",
+      "mcp__anvil__emacs-eval-result",
+      "mcp__anvil__emacs-eval-jobs"
     ]
   }
 }

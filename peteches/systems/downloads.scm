@@ -90,6 +90,11 @@
        (key '("rpc-password"))
        (file (local-file "../../secrets/hosts/downloads/transmission.yaml"))
        (path "/run/secrets/transmission-password")
+       (permissions #o400))
+      (sops-secret
+       (key '("ssh-private-key"))
+       (file (local-file "../../secrets/hosts/downloads/guix-build.yaml"))
+       (path "/run/secrets/guix-offload-key")
        (permissions #o400)))
      #:extra-services
      (list

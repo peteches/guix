@@ -39,6 +39,9 @@ creation_rules:
     pgp: "5FFB7006A36B0AEDE8D08E3753B1E002546A642A"
     age: "age1ssely7qxd0yjrdukl6xjns2gal43nm3n3zulpxzgdsuzd8z85u5qguvlna"
 
+  - path_regex: secrets/hosts/nyarlothotep/.*\.yaml
+    pgp: "5FFB7006A36B0AEDE8D08E3753B1E002546A642A"
+        
   - path_regex: secrets/groups/media/.*\.yaml$
     pgp: "5FFB7006A36B0AEDE8D08E3753B1E002546A642A"
     age:
