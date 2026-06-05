@@ -125,6 +125,7 @@
  #:with-nonguix? #t
  #:with-nvidia? #t
  #:with-docker? #t
+ #:offload-builds? #f
 
  ;; Host-only services
  #:extra-services
