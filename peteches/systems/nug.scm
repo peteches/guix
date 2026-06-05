@@ -149,7 +149,7 @@
                          (system? #t)
                          (comment "Guix build offload SSH user")
                          (home-directory "/var/empty")
-                         (shell (file-append shadow "/sbin/nologin")))))
+                         (shell "/bin/sh")))))
   (service tailscale-service-type
            (list (tailscale-instance-configuration
                   (name "thumbwar")

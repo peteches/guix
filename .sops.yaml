@@ -1,3 +1,4 @@
+
 creation_rules:
   - path_regex: secrets/hosts/prometheus/.*\.yaml$
     pgp: "5FFB7006A36B0AEDE8D08E3753B1E002546A642A"
@@ -41,7 +42,8 @@ creation_rules:
 
   - path_regex: secrets/hosts/nyarlothotep/.*\.yaml
     pgp: "5FFB7006A36B0AEDE8D08E3753B1E002546A642A"
-        
+    age: "age1e5298p2egdrwj7wjh5n4pkpu60f92pkqajnt7lv20tcrynurt4aq7v2v5r"
+    
   - path_regex: secrets/groups/media/.*\.yaml$
     pgp: "5FFB7006A36B0AEDE8D08E3753B1E002546A642A"
     age:

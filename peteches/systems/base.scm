@@ -53,7 +53,8 @@
   #:use-module (nongnu packages linux)
 
   #:use-module (gnu system nss)
-
+  
+  #:use-module (peteches systems common)
   #:use-module (peteches system-services boltd)
   #:use-module (peteches system-services firewall)
   #:use-module (peteches system-services tailscale)
@@ -83,7 +84,8 @@
 ;; NOTE: Do NOT add elogind here; it already comes with %desktop-services.
 (define %common-services
   (list (service openssh-service-type)
-        (service tor-service-type)
+	%authorize-coordinator-key
+	(service tor-service-type)
 	(service fprintd-service-type)
 	(service virtlog-service-type)     ; virtlogd (recommended)
         (service libvirt-service-type
@@ -219,7 +221,8 @@
 			%default-substitute-urls))
 	       (authorized-keys
 		(append (list (local-file "./nug-substitute-key.pub"))
-			%default-authorized-guix-keys))))))
+			%default-authorized-guix-keys))
+	       (build-machines (list %nug-build-machine))))))
 
 (define (hyprland-launcher with-nvidia?)
   (if with-nvidia?

@@ -8,7 +8,10 @@
   #:use-module (nongnu packages linux)
   #:use-module (peteches systems base)
   #:use-module (peteches system-services tailscale)
-  #:use-module (peteches systems network-mounts))
+  #:use-module (peteches systems network-mounts)
+  #:use-module (peteches system-services sops-key-generator)
+  #:use-module (sops secrets)
+  #:use-module (sops services sops))
 
 (use-service-modules base linux cups desktop networking ssh xorg)
 
@@ -57,6 +60,19 @@
 
     ;; Host-specific packages
     #:extra-packages (list glibc-locales)
+
+    #:extra-services (list
+     (service sops-key-generator-service-type)
+     (service sops-secrets-service-type
+              (sops-service-configuration
+               (age-key-file "/etc/age/keys.txt")
+               (secrets
+                (list
+                 (sops-secret
+                  (key '("ssh-private-key"))
+                  (file (local-file "../../secrets/hosts/nyarlothotep/guix-build.yaml"))
+                  (path "/run/secrets/guix-offload-key")
+                  (permissions #o400)))))))
 
     ;; Flags
     #:laptop? #t

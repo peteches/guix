@@ -2,6 +2,7 @@
    #:use-module (peteches utils)
    #:use-module (peteches home-services desktop)
    #:use-module (gnu services)
+   #:use-module (gnu services base)
    #:use-module (gnu packages gnupg)
    #:use-module (gnu home)
    #:use-module (gnu home services)
@@ -12,6 +13,31 @@
    #:use-module (gnu home services desktop)
    #:use-module (gnu home services syncthing)
    #:use-module (guix gexp))
+
+;; Build machine record for offloading to nug.
+;; Used by vm-base.scm and base.scm via (guix-configuration (build-machines ...)).
+(define-public %nug-build-machine
+  #~(build-machine
+     (name "nug.peteches.co.uk")
+     (systems '("x86_64-linux"))
+     (user "guix-offload")
+     (private-key "/run/secrets/guix-offload-key")
+     (host-key "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFV+RLdfvLSuCoedNwepqbEEHnHu363OQj6U0diCX+SR")))
+
+;; Authorize deploy coordinators (nug and nyarlothotep) to push store items to all VMs,
+;; and register nug's guix-publish as a substitute server.
+(define-public %authorize-coordinator-key
+  (simple-service 'authorize-coordinator-key
+                  guix-service-type
+                  (guix-extension
+                   (substitute-urls
+                    (append (list "http://nug.peteches.co.uk:3000")
+                            %default-substitute-urls))
+                   (authorized-keys
+                    (list (plain-file "nug-coordinator.pub"
+                                      "(public-key (ecc (curve Ed25519) (q #89306B461D55FBB9F6A60C75463BA2AEE181FB3E8FA5F46CB2E1C29157ACA88A#)))")
+                          (plain-file "nyarlothotep-coordinator.pub"
+                                      "(public-key (ecc (curve Ed25519) (q #C41C4703766F019CF43C8FBA3C7E284610799FBBF9875AB561AD7D8A74075AFE#)))"))))))
 
 (define-public common-home-services
   (list

@@ -20,6 +20,7 @@
   #:use-module (gnu services virtualization)
   #:use-module (gnu packages admin)
   #:use-module (gnu packages linux)
+  #:use-module (peteches systems common)
   #:use-module (peteches system-services firewall)
   #:use-module (peteches system-services restic)
   #:use-module (peteches system-services cifs)
@@ -27,8 +28,7 @@
   #:use-module (sops secrets)
   #:use-module (sops services sops)
   #:export (make-vm-os
-            %vm-peteches-user
-            nug-offload-service))
+            %vm-peteches-user))
 
 (define %vm-peteches-user
   (user-account
@@ -50,32 +50,6 @@
                     (append (list (plain-file "non-guix.pub"
                                              "(public-key (ecc (curve Ed25519) (q #C1FD53E5D4CE971933EC50C9F307AE2171A2D3B52C804642A7A35F84F3A4EA98#)))"))
                             %default-authorized-guix-keys)))))
-
-;; Authorize deploy coordinators (nug and nyarlothotep) to push store items to all VMs,
-;; and register nug's guix-publish as a substitute server.
-(define %authorize-coordinator-key
-  (simple-service 'authorize-coordinator-key
-                  guix-service-type
-                  (guix-extension
-                   (substitute-urls
-                    (append (list "http://nug.peteches.co.uk:3000")
-                            %default-substitute-urls))
-                   (authorized-keys
-                    (list (plain-file "nug-coordinator.pub"
-                                      "(public-key (ecc (curve Ed25519) (q #89306B461D55FBB9F6A60C75463BA2AEE181FB3E8FA5F46CB2E1C29157ACA88A#)))")
-                          (plain-file "nyarlothotep-coordinator.pub"
-                                      "(public-key (ecc (curve Ed25519) (q #C41C4703766F019CF43C8FBA3C7E284610799FBBF9875AB561AD7D8A74075AFE#)))"))))))
-
-;; Deploy /etc/guix/machines.scm so the guix daemon offloads builds to nug.
-;; Fill in (host-key ...) with: ssh-keyscan -t ed25519 nug.peteches.co.uk
-(define (nug-offload-service)
-  (simple-service 'nug-build-machines
-                  etc-service-type
-                  `(("guix/machines.scm"
-                     ,(plain-file "guix-machines.scm"
-                                  "(use-modules (guix offload))\n\n(list\n (build-machine\n  (name \"nug.peteches.co.uk\")\n  (systems '(\"x86_64-linux\"))\n  (user \"guix-offload\")\n  (private-key \"/run/secrets/guix-offload-key\")\n  (host-key \"nug.peteches.co.uk ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFV+RLdfvLSuCoedNwepqbEEHnHu363OQj6U0diCX+SR\")))\n")))))
-
-
 
 ;; nscd-cache-database is not exported by (gnu services base) in current Guix.
 (define nscd-cache-database*
@@ -133,7 +107,6 @@
                               (age-key-file "/etc/age/keys.txt")
                               (secrets sops-secrets))))
               '()))
-         (offload-services (if with-nug-offload? (list (nug-offload-service)) '()))
          (final-services
           (append
            %base-services
@@ -178,7 +151,6 @@
            nonguix-services
            restic-services
            sops-services
-           offload-services
            extra-services)))
     (operating-system
       (kernel kernel)
@@ -203,7 +175,13 @@
       (packages (append extra-packages %vm-base-packages))
       (services
        (modify-services final-services
-         (nscd-service-type cfg => (nscd-without-hosts-cache cfg))))
+         (nscd-service-type cfg => (nscd-without-hosts-cache cfg))
+         (guix-service-type cfg =>
+           (if with-nug-offload?
+               (guix-configuration
+                (inherit cfg)
+                (build-machines (list %nug-build-machine)))
+               cfg))))
       (mapped-devices mapped-devices)
       (file-systems (append file-systems %base-file-systems))
       (bootloader bootloader))))
