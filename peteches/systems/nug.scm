@@ -18,7 +18,6 @@
   #:use-module (gnu packages base)           ; e.g. glibc-locales if you want it
   #:use-module (peteches systems base)
   #:use-module (peteches system-services firewall)
-  #:use-module (peteches system-services tailscale)
   #:use-module (peteches systems network-mounts)
   #:use-module (gnu packages admin))
 
@@ -150,22 +149,6 @@
                          (comment "Guix build offload SSH user")
                          (home-directory "/var/empty")
                          (shell "/bin/sh")))))
-  (service tailscale-service-type
-           (list (tailscale-instance-configuration
-                  (name "thumbwar")
-                  (port 41642))))
-  (service tailscale-service-type
-           (list (tailscale-instance-configuration
-                  (name "scoreplay")
-                  (port 41643))))
-  (service certbot-service-type
-           (certbot-configuration
-            (email "certbot@peteches.co.uk")
-            (certificates
-             (list
-              (certificate-configuration
-               (domains '("nug.peteches.co.uk"))
-               (deploy-hook %fix-perms-hook))))))
   (simple-service 'guix-offload-authorized-keys
                   openssh-service-type
                   `(("guix-offload"
@@ -180,4 +163,4 @@
                      ,(plain-file "pihole-offload.pub" "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIMNAir7xhAl7Z50tloQKOfCeVPqTqDgmIuSVxtfFdLES guix-offload@pihole\n")
                      ,(plain-file "prometheus-offload.pub" "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIM+nhIk+ySFYMj7I4SDwA/LKyM8MH3+8NMIabyAIuMSC guix-offload@prometheus\n")
                      ,(plain-file "prowlarr-offload.pub" "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIPxWQLDvXJGgp4HsOpSEMyLTGi0lL2zYcvRvARuVv/nU guix-offload@prowlarr\n")
-                     ,(plain-file "rustdesk-offload.pub" "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAII0DTgAJjaG1+0STwTBDRfUrbP/q0KFVnY5OdjrqKasS guix-offload@rustdesk\n"))))))
+                     ,(plain-file "rustdesk-offload.pub" "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAII0DTgAJjaG1+0STwTBDRfUrbP/q0KFVnY5OdjrqKasS guix-offload@rustdesk\n")))))
