@@ -16,6 +16,7 @@
   #:use-module (peteches system-services alloy)
   #:use-module (peteches system-services media-accounts)
   #:use-module (peteches system-services prowlarr)
+  #:use-module (peteches system-services seerr)
   #:use-module (peteches system-services restic)
   #:use-module (peteches system-services tailscale)
   #:use-module (sops secrets)
@@ -56,7 +57,7 @@
      (restic-vm-backup-configuration
       (vm-name "prowlarr")
       (synology-host "nas.peteches.co.uk")
-      (backup-paths '("/var/lib/prowlarr"))
+      (backup-paths '("/var/lib/prowlarr" "/var/lib/seerr"))
       (password-file "/run/secrets/restic-password")
       (ssh-key-file "/run/secrets/restic-ssh-key"))
      #:sops-secrets
@@ -94,6 +95,8 @@
                       (auth-key-file "/run/secrets/tailscale-auth-key"))))
       (service prowlarr-service-type
                (prowlarr-configuration))
+      (service seerr-service-type
+               (seerr-configuration))
       (service alloy-service-type
                (alloy-configuration
                 (hostname "prowlarr.peteches.co.uk")
@@ -102,6 +105,7 @@
                                  (cons "/var/log/ntpd.log" "ntpd")
                                  (cons "/var/log/alloy.log" "alloy")
                                  (cons "/var/log/tailscaled-*.log" "tailscale")
-                                 (cons "/var/log/prowlarr.log" "prowlarr"))))))))))
+                                 (cons "/var/log/prowlarr.log" "prowlarr")
+                                 (cons "/var/log/seerr.log" "seerr"))))))))))
 
 prowlarr-os
