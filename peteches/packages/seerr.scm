@@ -231,13 +231,54 @@
                  configs))
               #t))
 
+          ;; Seerr's next.config provides an SVG→React-component rule for
+          ;; Turbopack mode via turbopack.rules.  That block is ignored when
+          ;; building with `next build --webpack'.  Without an explicit webpack
+          ;; configuration function, Next.js' default webpack treats .svg imports
+          ;; as static assets (URL-string or image-object exports), causing React
+          ;; to throw "Element type is invalid: got: object" at runtime.
+          (add-after 'disable-next-typecheck 'add-webpack-svgr-config
+            (lambda _
+              (let ((configs (filter file-exists?
+                                     '("next.config.js"
+                                       "next.config.mjs"
+                                       "next.config.ts"))))
+                (for-each
+                 (lambda (file)
+                   (format #t "adding webpack SVG/SVGR rule to ~a~%" file)
+                   (substitute* file
+                     ;; The transpilePackages line is unique and unaffected by
+                     ;; the disable-next-typecheck patch, making it a stable
+                     ;; insertion point.
+                     ;; SVGO (enabled by default) runs removeMetadata which
+                     ;; strips the <metadata> block from SVGs.  Without it,
+                     ;; SVGs like emby-icon-only.svg that contain
+                     ;; namespace-qualified elements (rdf:RDF, cc:Work, dc:type)
+                     ;; cause Babel to throw "Namespace tags are not supported".
+                     ;; The css-tree/csso version conflict previously requiring
+                     ;; svgo:false is resolved by the fix-direct-node-module-links
+                     ;; phase replacing the bundled css-tree@2.3.1 with 2.2.1.
+                     (("transpilePackages:[[:space:]]*\\['country-flag-icons'\\],")
+                      (string-append
+                       "transpilePackages: ['country-flag-icons'],\n"
+                       "  webpack: (config) => {\n"
+                       "    config.module.rules.unshift({\n"
+                       "      test: /\\.svg$/,\n"
+                       "      issuer: /\\.[jt]sx?$/,\n"
+                       "      use: ['@svgr/webpack'],\n"
+                       "    });\n"
+                       "    return config;\n"
+                       "  },"))))
+                 configs))
+              #t))
+
           ;; Link Guix-provided node modules into the build tree.
           ;;
           ;; Most packages can be symlinked from the store.  The listed writable
           ;; packages are copied because we need to mutate their package
           ;; directories during the build, or because their own require() calls
           ;; should resolve through the build-tree node_modules.
-          (add-after 'disable-next-typecheck 'link-node-inputs
+          (add-after 'add-webpack-svgr-config 'link-node-inputs
             (lambda* (#:key inputs #:allow-other-keys)
               (define node-bin
                 (search-input-file inputs "/bin/node"))
@@ -271,7 +312,13 @@
                   "@react-spring/web"
                   "@react-spring/animated"
                   "@react-spring/core"
-                  "@react-spring/shared"))
+                  "@react-spring/shared"
+                  ;; @svgr/webpack bundles css-tree@2.3.1 alongside
+                  ;; csso@5.0.5, but csso was built against css-tree@2.2.1.
+                  ;; Node.js finds 2.3.1 first and csso crashes on init.
+                  ;; Must be writable so fix-direct-node-module-links can
+                  ;; replace the 2.3.1 directory with a symlink to 2.2.1.
+                  "@svgr/webpack"))
 
               (define (writable-node-package? module-name)
                 (member module-name writable-node-packages))
@@ -850,6 +897,39 @@ export function generateVAPIDKeys(): {
                 (when input
                   (force-link "node_modules/dayjs" source)))
 
+              ;; @svgr/webpack bundles css-tree@2.3.1 next to csso@5.0.5, but
+              ;; csso was built (as a Guix package) against css-tree@2.2.1.
+              ;; Node.js module resolution finds 2.3.1 first; csso crashes at
+              ;; module-init time with "Missed `structure' field".  Replace the
+              ;; bundled 2.3.1 directory with a symlink to the 2.2.1 store path
+              ;; that is recorded in csso's own package.json dependencies field.
+              (let* ((node-bin  (search-input-file inputs "/bin/node"))
+                     (svgr-nm   "node_modules/@svgr/webpack/node_modules")
+                     (ct-dir    (string-append svgr-nm "/css-tree"))
+                     (csso-pkg  (string-append svgr-nm "/csso/package.json")))
+                (when (and (file-exists? ct-dir)
+                           (file-exists? csso-pkg))
+                  (let* ((port    (open-pipe* OPEN_READ
+                                             node-bin "-e"
+                                             (string-append
+                                              "try{const p=JSON.parse("
+                                              "require('fs').readFileSync("
+                                              (format #f "~s" csso-pkg)
+                                              ",'utf8'));"
+                                              "process.stdout.write("
+                                              "(p.dependencies||{})"
+                                              "['css-tree']||'')"
+                                              "}catch(e){process.exit(0)}")))
+                         (ct-path (let ((l (read-line port)))
+                                    (close-pipe port)
+                                    (if (eof-object? l) "" l))))
+                    (when (and (not (string-null? ct-path))
+                               (file-exists? ct-path))
+                      (format #t "replacing @svgr/webpack bundled css-tree ~
+with ~a~%" ct-path)
+                      (delete-file-recursively ct-dir)
+                      (symlink ct-path ct-dir)))))
+
               #t))
 
           ;; Link binaries from actual node package inputs only.
@@ -965,6 +1045,13 @@ export function generateVAPIDKeys(): {
 #!/bin/sh
 export NODE_ENV=production
 export NEXT_TELEMETRY_DISABLED=1
+
+# --preserve-symlinks makes symlinked node_modules/ entries resolve their ESM
+# peer dependencies (like react) through the symlink location (the app's
+# node_modules/) instead of the real store path, where peers are absent.
+# ESM imports do not fall back to NODE_PATH, so this flag is required for any
+# symlinked package that uses ESM.  Mirrors the build-time NODE_OPTIONS setting.
+export NODE_OPTIONS=\"--preserve-symlinks${NODE_OPTIONS:+ $NODE_OPTIONS}\"
 
 # CONFIG_DIRECTORY and PORT are expected to be provided by the Shepherd service.
 # NODE_PATH must point to the app's own node_modules/ so that symlinked
