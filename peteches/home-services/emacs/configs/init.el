@@ -81,6 +81,7 @@
 
 (require 'peteches-abbrev)
 (require 'peteches-alert)
+(require 'peteches-agent-shell)
 (require 'peteches-anvil)
 (require 'peteches-auth-sources)
 (require 'peteches-sops)

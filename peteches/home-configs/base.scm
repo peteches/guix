@@ -188,108 +188,110 @@
             (home-openssh-configuration
 	     (add-keys-to-agent "yes")
 	     (authorized-keys (list (local-file "ssh-authorized-keys")))
-             (hosts (append
-		     (list
-		      (openssh-host
-		       (name "*")
-		       (extra-content (string-append
-				       "    ControlMaster auto\n"
-				       "    ControlPath ~/.ssh/ctrl-%C\n"
-				       "    ControlPersist 10m\n"
-				       "    CanonicalizeHostname always\n"
-				       "    Include ~/.ssh/config.d/peteches-ts-proxy.conf\n")))
-		      (openssh-host
-		       (name "nyarlothotep.ts")
-		       (host-name "nyarlothotep.spaniel-cordylus.ts.net"))
-		      (openssh-host
-		       (name "nug.ts")
-		       (host-name "nug.spaniel-cordylus.ts.net"))
-		      (openssh-host
-		       (name "prometheus.ts")
-		       (host-name "prometheus.spaniel-cordylus.ts.net"))
-		      (openssh-host
-		       (name "grafana.ts")
-		       (host-name "grafana.spaniel-cordylus.ts.net"))
-		      (openssh-host
-		       (name "prometheus")
-		       (host-name "192.168.51.187")
-		       (user "peteches")
-		       (identity-file "~/.ssh/id_ed25519"))
-		      (openssh-host
-		       (name "grafana")
-		       (host-name "192.168.51.188")
-		       (user "peteches")
-		       (identity-file "~/.ssh/id_ed25519"))
-		      (openssh-host
-		       (name "pihole")
-		       (host-name "192.168.51.189")
-		       (user "peteches")
-		       (identity-file "~/.ssh/id_ed25519"))
-		      (openssh-host
-		       (name "loki.ts")
-		       (host-name "loki.spaniel-cordylus.ts.net"))
-		      (openssh-host
-		       (name "loki")
-		       (host-name "192.168.51.190")
-		       (user "peteches")
-		       (identity-file "~/.ssh/id_ed25519"))
-		      (openssh-host
-		       (name "git.ts")
-		       (host-name "git.spaniel-cordylus.ts.net"))
-		      (openssh-host
-		       (name "git")
-		       (host-name "192.168.51.191")
-		       (user "peteches")
-		       (identity-file "~/.ssh/id_ed25519"))
-		      (openssh-host
-		       (name "jellyfin.ts")
-		       (host-name "jellyfin.spaniel-cordylus.ts.net"))
-		      (openssh-host
-		       (name "jellyfin")
-		       (host-name "192.168.51.192")
-		       (user "peteches")
-		       (identity-file "~/.ssh/id_ed25519"))
-		      (openssh-host
-		       (name "caddy.ts")
-		       (host-name "caddy.spaniel-cordylus.ts.net"))
-		      (openssh-host
-		       (name "caddy")
-		       (host-name "192.168.51.193")
-		       (user "peteches")
-		       (identity-file "~/.ssh/id_ed25519"))
-		      (openssh-host
-		       (name "prowlarr.ts")
-		       (host-name "prowlarr.spaniel-cordylus.ts.net"))
-		      (openssh-host
-		       (name "prowlarr")
-		       (host-name "192.168.51.194")
-		       (user "peteches")
-		       (identity-file "~/.ssh/id_ed25519"))
-		      (openssh-host
-		       (name "arr.ts")
-		       (host-name "arr.spaniel-cordylus.ts.net"))
-		      (openssh-host
-		       (name "arr")
-		       (host-name "192.168.51.195")
-		       (user "peteches")
-		       (identity-file "~/.ssh/id_ed25519"))
-		      (openssh-host
-		       (name "downloads.ts")
-		       (host-name "downloads.spaniel-cordylus.ts.net"))
-		      (openssh-host
-		       (name "downloads")
-		       (host-name "192.168.51.196")
-		       (user "peteches")
-		       (identity-file "~/.ssh/id_ed25519"))
-		      (openssh-host
-		       (name "rustdesk.ts")
-		       (host-name "rustdesk.spaniel-cordylus.ts.net"))
-		      (openssh-host
-		       (name "rustdesk")
-		       (host-name "192.168.51.197")
-		       (user "peteches")
-		       (identity-file "~/.ssh/id_ed25519")))
-		     %scoreplay-ssh-hosts))))
+             (hosts (list
+		     (openssh-host
+		      (name "*")
+		      (extra-content (string-append
+				      "    ControlMaster auto\n"
+				      "    ControlPath ~/.ssh/ctrl-%C\n"
+				      "    ControlPersist 10m\n"
+				      "    CanonicalizeHostname always\n"
+				      "    Include ~/.ssh/config.d/peteches-ts-proxy.conf\n")))
+		     (openssh-host
+		      (name "proxmox1")
+		      (host-name "proxmox1.spaniel-cordylus.ts.net")
+		      (user "root"))
+		     (openssh-host
+		      (name "nyarlothotep.ts")
+		      (host-name "nyarlothotep.spaniel-cordylus.ts.net"))
+		     (openssh-host
+		      (name "nug.ts")
+		      (host-name "nug.spaniel-cordylus.ts.net"))
+		     (openssh-host
+		      (name "prometheus.ts")
+		      (host-name "prometheus.spaniel-cordylus.ts.net"))
+		     (openssh-host
+		      (name "grafana.ts")
+		      (host-name "grafana.spaniel-cordylus.ts.net"))
+		     (openssh-host
+		      (name "prometheus")
+		      (host-name "192.168.51.187")
+		      (user "peteches")
+		      (identity-file "~/.ssh/id_ed25519"))
+		     (openssh-host
+		      (name "grafana")
+		      (host-name "192.168.51.188")
+		      (user "peteches")
+		      (identity-file "~/.ssh/id_ed25519"))
+		     (openssh-host
+		      (name "pihole")
+		      (host-name "192.168.51.189")
+		      (user "peteches")
+		      (identity-file "~/.ssh/id_ed25519"))
+		     (openssh-host
+		      (name "loki.ts")
+		      (host-name "loki.spaniel-cordylus.ts.net"))
+		     (openssh-host
+		      (name "loki")
+		      (host-name "192.168.51.190")
+		      (user "peteches")
+		      (identity-file "~/.ssh/id_ed25519"))
+		     (openssh-host
+		      (name "git.ts")
+		      (host-name "git.spaniel-cordylus.ts.net"))
+		     (openssh-host
+		      (name "git")
+		      (host-name "192.168.51.191")
+		      (user "peteches")
+		      (identity-file "~/.ssh/id_ed25519"))
+		     (openssh-host
+		      (name "jellyfin.ts")
+		      (host-name "jellyfin.spaniel-cordylus.ts.net"))
+		     (openssh-host
+		      (name "jellyfin")
+		      (host-name "192.168.51.192")
+		      (user "peteches")
+		      (identity-file "~/.ssh/id_ed25519"))
+		     (openssh-host
+		      (name "caddy.ts")
+		      (host-name "caddy.spaniel-cordylus.ts.net"))
+		     (openssh-host
+		      (name "caddy")
+		      (host-name "192.168.51.193")
+		      (user "peteches")
+		      (identity-file "~/.ssh/id_ed25519"))
+		     (openssh-host
+		      (name "prowlarr.ts")
+		      (host-name "prowlarr.spaniel-cordylus.ts.net"))
+		     (openssh-host
+		      (name "prowlarr")
+		      (host-name "192.168.51.194")
+		      (user "peteches")
+		      (identity-file "~/.ssh/id_ed25519"))
+		     (openssh-host
+		      (name "arr.ts")
+		      (host-name "arr.spaniel-cordylus.ts.net"))
+		     (openssh-host
+		      (name "arr")
+		      (host-name "192.168.51.195")
+		      (user "peteches")
+		      (identity-file "~/.ssh/id_ed25519"))
+		     (openssh-host
+		      (name "downloads.ts")
+		      (host-name "downloads.spaniel-cordylus.ts.net"))
+		     (openssh-host
+		      (name "downloads")
+		      (host-name "192.168.51.196")
+		      (user "peteches")
+		      (identity-file "~/.ssh/id_ed25519"))
+		     (openssh-host
+		      (name "rustdesk.ts")
+		      (host-name "rustdesk.spaniel-cordylus.ts.net"))
+		     (openssh-host
+		      (name "rustdesk")
+		      (host-name "192.168.51.197")
+		      (user "peteches")
+		      (identity-file "~/.ssh/id_ed25519"))))))
 
    ;; GPG Agent
    (service home-gpg-agent-service-type
