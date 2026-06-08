@@ -63,6 +63,12 @@
  #:kernel linux
  ;; Base will append %base-file-systems — you only give machine-specific mounts here.
  #:firmware (list linux-firmware)
+ #:users-extra (list (user-account
+		     (name "guix-offload")
+		     (comment "Build offload user")
+		     (group "users")
+		     (system? #t)
+		     (home-directory "/var/empty")))
  #:mapped-devices
  (list
   (mapped-device
@@ -141,15 +147,6 @@
             (compression '(("zstd" 9)))
             (advertise? #t)
             (cache "/var/cache/guix/publish")))
-  (simple-service 'guix-offload-user
-                  account-service-type
-                  (list (user-account
-                         (name "guix-offload")
-                         (group "users")
-                         (system? #t)
-                         (comment "Guix build offload SSH user")
-                         (home-directory "/var/empty")
-                         (shell "/bin/sh"))))
   (simple-service 'guix-offload-authorized-keys
                   openssh-service-type
                   `(("guix-offload"
