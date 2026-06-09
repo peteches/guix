@@ -87,6 +87,11 @@
        (path "/run/secrets/nzbget-password")
        (permissions #o400))
       (sops-secret
+       (key '("frugal-password"))
+       (file (local-file "../../secrets/hosts/downloads/nzbget.yaml"))
+       (path "/run/secrets/nzbget-frugal-password")
+       (permissions #o400))
+      (sops-secret
        (key '("rpc-password"))
        (file (local-file "../../secrets/hosts/downloads/transmission.yaml"))
        (path "/run/secrets/transmission-password")
@@ -109,6 +114,15 @@
                 (temp-dir "/var/lib/nzbget/tmp")
                 (disk-space 4096)
                 (password-file "/run/secrets/nzbget-password")
+                (news-servers
+                 (list (nzbget-news-server
+                        (name "Frugal")
+                        (host "eunews-v6.frugalusenet.com")
+                        (port 563)
+                        (username "peteches")
+                        (password-file "/run/secrets/nzbget-frugal-password")
+                        (connections 15)
+                        (encryption? #t))))
                 (categories
                  (list (nzbget-category (name "tv")
                                         (dest-dir "/media/downloads/usenet/completed/tv"))
@@ -116,6 +130,8 @@
                                         (dest-dir "/media/downloads/usenet/completed/films"))
                        (nzbget-category (name "music")
                                         (dest-dir "/media/downloads/usenet/completed/music"))
+		       (nzbget-category (name "standup-comedy")
+					(dest-dir "/media/downloads/usenet/completed/standup-comedy"))
                        (nzbget-category (name "books")
                                         (dest-dir "/media/downloads/usenet/completed/books"))))))
       (service transmission-service-type
