@@ -16,7 +16,6 @@
   #:use-module (peteches system-services alloy)
   #:use-module (peteches system-services media-accounts)
   #:use-module (peteches system-services prowlarr)
-  #:use-module (peteches system-services seerr)
   #:use-module (peteches system-services restic)
   #:use-module (peteches system-services tailscale)
   #:use-module (sops secrets)
@@ -42,22 +41,12 @@
       (file-system
         (mount-point "/")
         (device "/dev/vda2")
-        (type "ext4"))
-      (file-system
-        (device "//nas.peteches.co.uk/media")
-        (mount-point "/media")
-        (type "cifs")
-        (mount? #t)
-        (check? #f)
-        (mount-may-fail? #f)
-        (create-mount-point? #t)
-        (shepherd-requirements '(sops-secrets networking))
-        (options "credentials=/run/secrets/media-smb-credentials,file_mode=0664,dir_mode=0775,gid=490,vers=3.1.1,cache=loose,actimeo=1800,rsize=1048576,wsize=65536,serverino,iocharset=utf8,noperm,nobrl")))
+        (type "ext4")))
      #:restic-config
      (restic-vm-backup-configuration
       (vm-name "prowlarr")
       (synology-host "nas.peteches.co.uk")
-      (backup-paths '("/var/lib/prowlarr" "/var/lib/seerr"))
+      (backup-paths '("/var/lib/prowlarr"))
       (password-file "/run/secrets/restic-password")
       (ssh-key-file "/run/secrets/restic-ssh-key"))
      #:sops-secrets
@@ -95,8 +84,6 @@
                       (auth-key-file "/run/secrets/tailscale-auth-key"))))
       (service prowlarr-service-type
                (prowlarr-configuration))
-      (service seerr-service-type
-               (seerr-configuration))
       (service alloy-service-type
                (alloy-configuration
                 (hostname "prowlarr.peteches.co.uk")
@@ -105,7 +92,6 @@
                                  (cons "/var/log/ntpd.log" "ntpd")
                                  (cons "/var/log/alloy.log" "alloy")
                                  (cons "/var/log/tailscaled-*.log" "tailscale")
-                                 (cons "/var/log/prowlarr.log" "prowlarr")
-                                 (cons "/var/log/seerr.log" "seerr"))))))))))
+                                 (cons "/var/log/prowlarr.log" "prowlarr"))))))))))
 
 prowlarr-os

@@ -14,6 +14,7 @@
   #:use-module (peteches system-services alloy)
   #:use-module (peteches system-services jellyfin)
   #:use-module (peteches system-services restic)
+  #:use-module (peteches system-services seerr)
   #:use-module (peteches system-services tailscale)
   #:use-module (sops secrets)
   #:export (jellyfin-os))
@@ -54,7 +55,7 @@
      (restic-vm-backup-configuration
       (vm-name "jellyfin")
       (synology-host "nas.peteches.co.uk")
-      (backup-paths '("/var/lib/jellyfin"))
+      (backup-paths '("/var/lib/jellyfin" "/var/lib/seerr"))
       (password-file "/run/secrets/restic-password")
       (ssh-key-file "/run/secrets/restic-ssh-key"))
      #:sops-secrets
@@ -83,6 +84,8 @@
       (service tailscale-service-type
                (list (tailscale-instance-configuration
                       (name "peteches"))))
+      (service seerr-service-type
+	       (seerr-configuration))
       (service jellyfin-service-type
                (jellyfin-configuration))
       (service alloy-service-type
@@ -93,6 +96,7 @@
                                  (cons "/var/log/ntpd.log" "ntpd")
                                  (cons "/var/log/alloy.log" "alloy")
                                  (cons "/var/log/tailscaled-*.log" "tailscale")
-                                 (cons "/var/log/jellyfin/startup.log" "jellyfin"))))))))))
+                                 (cons "/var/log/jellyfin/startup.log" "jellyfin")
+				 (cons "/var/log/seerr.log" "seerr"))))))))))
 
 jellyfin-os

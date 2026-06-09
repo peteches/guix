@@ -27,7 +27,7 @@
   (list
    (user-account
     (name "seerr")
-    (group "media")
+    (group "users")
     (system? #t)
     (comment "Seerr media request manager daemon")
     (home-directory (seerr-configuration-data-dir config))
@@ -56,7 +56,7 @@
       (start #~(make-forkexec-constructor
                 (list #$(file-append pkg "/bin/seerr"))
                 #:user "seerr"
-                #:group "media"
+                #:group "users"
                 #:environment-variables
                 (list (string-append "CONFIG_DIRECTORY=" #$data-dir)
                       (string-append "PORT=" #$(number->string port))

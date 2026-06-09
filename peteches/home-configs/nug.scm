@@ -47,15 +47,116 @@
 ;; Services unique to nug (AI stacks, AGiXT bots, etc.)
 (define nug-extra-services
   (list
-(service home-mpv-service-type
-         (mpv-config
-          (hwdec "nvdec")
-          (demuxer-max-bytes "4096MiB")
-          (demuxer-max-back-bytes "1024MiB")
-          (demuxer-readahead-secs 1200)
-          (cache-secs 7200)
+   (service home-mpv-service-type
+            (mpv-config
+             (hwdec "nvdec")
+             (demuxer-max-bytes "4096MiB")
+             (demuxer-max-back-bytes "1024MiB")
+             (demuxer-readahead-secs 1200)
+             (cache-secs 7200)
 
-          (profiles %mpv-profiles)))
+             (profiles %mpv-profiles)))
+
+   (simple-service 'wireplumber-audio-device-names
+                   home-xdg-configuration-files-service-type
+                   `(("wireplumber/wireplumber.conf.d/51-audio-device-names.conf"
+                      ,(plain-file
+			"51-audio-device-names.conf"
+			(string-join
+			 (list
+			  "monitor.alsa.rules = ["
+			  "# Desktop USB audio device: physical USB path 9.1.2.2."
+			  "  {"
+			  "    matches = ["
+			  "      {"
+			  "        api.alsa.card.longname = \"~.*usb-0000:00:14\\.0-9\\.1\\.2\\.2.*\""
+			  "      }"
+			  "    ]"
+			  "    actions = {"
+			  "      update-props = {"
+			  "        device.description = \"Desktop USB Audio\""
+			  "        device.nick = \"Desktop USB Audio\""
+			  "      }"
+			  "    }"
+			  "  }"
+			  "  {"
+			  "    matches = ["
+			  "      {"
+			  "        media.class = \"Audio/Sink\""
+			  "        api.alsa.card.longname = \"~.*usb-0000:00:14\\.0-9\\.1\\.2\\.2.*\""
+			  "      }"
+			  "    ]"
+			  "    actions = {"
+			  "      update-props = {"
+			  "        node.description = \"Desktop Speakers\""
+			  "        node.nick = \"Desktop Speakers\""
+			  "        priority.session = 2000"
+			  "        priority.driver = 2000"
+			  "      }"
+			  "    }"
+			  "  }"
+			  "  {"
+			  "    matches = ["
+			  "      {"
+			  "        media.class = \"Audio/Sink\""
+			  "        api.alsa.card.longname = \"~.*usb-0000:00:14\\.0-9\\.1\\.2\\.2.*\""
+			  "      }"
+			  "    ]"
+			  "    actions = {"
+			  "      update-props = {"
+			  "        node.description = \"Desktop Audio Capture\""
+			  "        node.nick = \"Desktop Audio Capture\""
+			  "      }"
+			  "    }"
+			  "  }"
+			  ""
+			  "  # M-Audio device: physical USB path 9.1.3."
+			  "  {"
+			  "    matches = ["
+			  "      {"
+			  "        api.alsa.card.longname = \"~.*usb-0000:00:14\\.0-9\\.1\\.3.*\""
+			  "      }"
+			  "    ]"
+			  "    actions = {"
+			  "      update-props = {"
+			  "        device.description = \"M-Audio Microphone\""
+			  "        device.nick = \"M-Audio Microphone\""
+			  "      }"
+			  "    }"
+			  "  }"
+			  "  {"
+			  "    matches = ["
+			  "      {"
+			  "        media.class = \"Audio/Source\""
+			  "        api.alsa.card.longname = \"~.*usb-0000:00:14\\.0-9\\.1\\.3.*\""
+			  "      }"
+			  "    ]"
+			  "    actions = {"
+			  "      update-props = {"
+			  "        node.description = \"M-Audio Microphone\""
+			  "        node.nick = \"M-Audio Microphone\""
+			  "      }"
+			  "    }"
+			  "  }"
+			  "  # The M-Audio device exposes an output sink, but you do not want apps routed to it."
+			  "  {"
+			  "    matches = ["
+			  "      {"
+			  "        media.class = \"Audio/Source\""
+			  "        api.alsa.card.longname = \"~.*usb-0000:00:14\\.0-9\\.1\\.3.*\""
+			  "      }"
+			  "    ]"
+			  "    actions = {"
+			  "      update-props = {"
+			  "        node.description = \"M-Audio Unused Output\""
+			  "        node.nick = \"M-Audio Unused Output\""
+			  "        priority.session = 1"
+			  "        priority.driver  = 1"
+			  "      }"
+			  "    }"
+			  "  }"
+			  "]")
+			 "\n")))))
 
    (service koboldcpp-service-type
 	    (koboldcpp-configuration

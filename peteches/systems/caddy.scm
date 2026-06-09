@@ -108,7 +108,7 @@
                    (upstream "prowlarr.spaniel-cordylus.ts.net:9696"))
                   (caddy-reverse-proxy
                    (domain "seerr.ts.peteches.co.uk")
-                   (upstream "prowlarr.spaniel-cordylus.ts.net:5055"))
+                   (upstream "jellyfin.spaniel-cordylus.ts.net:5055"))
                   (caddy-reverse-proxy
                    (domain "sonarr.ts.peteches.co.uk")
                    (upstream "arr.spaniel-cordylus.ts.net:8989"))
