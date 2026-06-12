@@ -1073,7 +1073,7 @@ version=1
 					  "xdg-desktop-portals.conf"
 					  "# --- XDG portal startup (Guix absolute paths) ---\n"
 					  "exec-once = " dbus-update-bin " DISPLAY WAYLAND_DISPLAY HYPRLAND_INSTANCE_SIGNATURE XDG_CURRENT_DESKTOP XDG_SESSION_DESKTOP XDG_SESSION_TYPE\n"
-					  "exec-once = " sh-bin " -c '" pkill-bin " -f xdg-desktop-portal;" pkill-bin " -f xdg-desktop-portal-wlr" pkill-bin " -f xdg-desktop-portal-gtk; " sleep-bin " 0.5'\n"
+					  "exec-once = " sh-bin " -c '" pkill-bin " -f xdg-desktop-portal;" pkill-bin " -f xdg-desktop-portal-wlr;" pkill-bin " -f xdg-desktop-portal-gtk; " sleep-bin " 0.5'\n"
 					  "exec-once = " gtk-backend " &\n"
 					  "exec-once = " hypr-backend " &\n"
 
