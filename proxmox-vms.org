@@ -24,6 +24,9 @@ Current VMs (all use OVMF/EFI and =qcow2-gpt= images):
 | peteches/systems/arr.scm                | arr.peteches.co.uk      | Sonarr :8989 + Radarr :7878 (192.168.51.195, 2 vCPU, 2048 MB) |
 | peteches/systems/downloads.scm          | downloads.peteches.co.uk | NZBGet :6789 + Transmission :9091 (192.168.51.196, 2 vCPU, 2048 MB) |
 | peteches/systems/rustdesk.scm           | rustdesk.peteches.co.uk  | RustDesk relay/rendezvous server (192.168.51.197, 2 vCPU, 2048 MB)  |
+| peteches/systems/concourse-db.scm      | concourse-db.peteches.co.uk      | PostgreSQL for Concourse CI (192.168.51.198, 2 vCPU, 2048 MB)           |
+| peteches/systems/concourse-web01.scm   | concourse-web01.peteches.co.uk   | Concourse ATC web on :8080, TSA on :2222 (192.168.51.199, 2 vCPU, 2048 MB) |
+| peteches/systems/concourse-worker01.scm | concourse-worker01.peteches.co.uk | Concourse CI worker → web01 TSA (192.168.51.200, 4 vCPU, 4096 MB)    |
 
 * Adding a New VM Config
 

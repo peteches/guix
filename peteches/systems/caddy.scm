@@ -120,7 +120,10 @@
                    (upstream "downloads.spaniel-cordylus.ts.net:6789"))
                   (caddy-reverse-proxy
                    (domain "transmission.ts.peteches.co.uk")
-                   (upstream "downloads.spaniel-cordylus.ts.net:9091"))))))
+                   (upstream "downloads.spaniel-cordylus.ts.net:9091"))
+                  (caddy-reverse-proxy
+                   (domain "concourse.ts.peteches.co.uk")
+                   (upstream "concourse-web01.spaniel-cordylus.ts.net:8080"))))))
       (service alloy-service-type
                (alloy-configuration
                 (hostname "caddy.peteches.co.uk")

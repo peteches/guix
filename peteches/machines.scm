@@ -11,7 +11,10 @@
   #:use-module (peteches systems prowlarr)
   #:use-module (peteches systems arr)
   #:use-module (peteches systems downloads)
-  #:use-module (peteches systems rustdesk))
+  #:use-module (peteches systems rustdesk)
+  #:use-module (peteches systems concourse-db)
+  #:use-module (peteches systems concourse-web01)
+  #:use-module (peteches systems concourse-worker01))
 
 (define-public prometheus-machine
   (machine
@@ -146,6 +149,42 @@
      (user "peteches")
      (identity "/home/peteches/.ssh/id_ed25519")))))
 
+(define-public concourse-db-machine
+  (machine
+   (operating-system concourse-db-os)
+   (environment managed-host-environment-type)
+   (configuration
+    (machine-ssh-configuration
+     (host-name "192.168.51.198")
+     (host-key "TODO: run ssh-keyscan 192.168.51.198 after first boot")
+     (system "x86_64-linux")
+     (user "peteches")
+     (identity "/home/peteches/.ssh/id_ed25519")))))
+
+(define-public concourse-web01-machine
+  (machine
+   (operating-system concourse-web01-os)
+   (environment managed-host-environment-type)
+   (configuration
+    (machine-ssh-configuration
+     (host-name "192.168.51.199")
+     (host-key "TODO: run ssh-keyscan 192.168.51.199 after first boot")
+     (system "x86_64-linux")
+     (user "peteches")
+     (identity "/home/peteches/.ssh/id_ed25519")))))
+
+(define-public concourse-worker01-machine
+  (machine
+   (operating-system concourse-worker01-os)
+   (environment managed-host-environment-type)
+   (configuration
+    (machine-ssh-configuration
+     (host-name "192.168.51.200")
+     (host-key "TODO: run ssh-keyscan 192.168.51.200 after first boot")
+     (system "x86_64-linux")
+     (user "peteches")
+     (identity "/home/peteches/.ssh/id_ed25519")))))
+
 (define-public %all-machines
   (list prometheus-machine
         grafana-machine
@@ -157,4 +196,7 @@
         prowlarr-machine
         arr-machine
         downloads-machine
-        rustdesk-machine))
+        rustdesk-machine
+        concourse-db-machine
+        concourse-web01-machine
+        concourse-worker01-machine))

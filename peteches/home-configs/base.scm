@@ -291,6 +291,30 @@
 		      (name "rustdesk")
 		      (host-name "192.168.51.197")
 		      (user "peteches")
+		      (identity-file "~/.ssh/id_ed25519"))
+		     (openssh-host
+		      (name "concourse-db.ts")
+		      (host-name "concourse-db.spaniel-cordylus.ts.net"))
+		     (openssh-host
+		      (name "concourse-db")
+		      (host-name "192.168.51.198")
+		      (user "peteches")
+		      (identity-file "~/.ssh/id_ed25519"))
+		     (openssh-host
+		      (name "concourse-web01.ts")
+		      (host-name "concourse-web01.spaniel-cordylus.ts.net"))
+		     (openssh-host
+		      (name "concourse-web01")
+		      (host-name "192.168.51.199")
+		      (user "peteches")
+		      (identity-file "~/.ssh/id_ed25519"))
+		     (openssh-host
+		      (name "concourse-worker01.ts")
+		      (host-name "concourse-worker01.spaniel-cordylus.ts.net"))
+		     (openssh-host
+		      (name "concourse-worker01")
+		      (host-name "192.168.51.200")
+		      (user "peteches")
 		      (identity-file "~/.ssh/id_ed25519"))))))
 
    ;; GPG Agent

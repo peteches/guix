@@ -139,7 +139,16 @@
                       (labels '(("instance" . "downloads"))))
                      (prometheus-static-config
                       (targets '("192.168.51.197:12345"))
-                      (labels '(("instance" . "rustdesk")))))))
+                      (labels '(("instance" . "rustdesk"))))
+                     (prometheus-static-config
+                      (targets '("192.168.51.198:12345"))
+                      (labels '(("instance" . "concourse-db"))))
+                     (prometheus-static-config
+                      (targets '("192.168.51.199:12345"))
+                      (labels '(("instance" . "concourse-web01"))))
+                     (prometheus-static-config
+                      (targets '("192.168.51.200:12345"))
+                      (labels '(("instance" . "concourse-worker01")))))))
                   (prometheus-scrape-config
                    (job-name "proxmox")
                    (metrics-path "/pve")
@@ -188,6 +197,13 @@
                     (list (prometheus-static-config
                            (targets '("192.168.51.196:9091"))
                            (labels '(("instance" . "transmission")))))))
+                  (prometheus-scrape-config
+                   (job-name "concourse")
+                   (metrics-path "/api/v1/metrics")
+                   (static-configs
+                    (list (prometheus-static-config
+                           (targets '("192.168.51.199:8080"))
+                           (labels '(("instance" . "concourse-web01")))))))
                   (prometheus-scrape-config
                    (job-name "snmp")
                    (metrics-path "/snmp")

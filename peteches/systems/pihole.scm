@@ -119,6 +119,12 @@
                   (pihole-custom-host (address "192.168.51.196")
                                       (hostname "downloads.peteches.co.uk"))
                   (pihole-custom-host (address "192.168.51.197")
-                                      (hostname "rustdesk.peteches.co.uk")))))))))))
+                                      (hostname "rustdesk.peteches.co.uk"))
+                  (pihole-custom-host (address "192.168.51.198")
+                                      (hostname "concourse-db.peteches.co.uk"))
+                  (pihole-custom-host (address "192.168.51.199")
+                                      (hostname "concourse-web01.peteches.co.uk"))
+                  (pihole-custom-host (address "192.168.51.200")
+                                      (hostname "concourse-worker01.peteches.co.uk")))))))))))
 
 pihole-os
