@@ -57,6 +57,7 @@
   #:use-module (peteches packages gurps)
   #:use-module (peteches packages claude-code)
   #:use-module (peteches packages rustdesk)
+  #:use-module (peteches packages concourse)
   #:use-module (peteches packages proxmox-scripts)
   ;; utilities
   #:use-module (ice-9 popen)
@@ -74,6 +75,7 @@
    dank-material-shell
    recutils
    eza
+   fly
    tcpdump
    netcat
    ncdu

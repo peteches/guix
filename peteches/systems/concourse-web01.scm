@@ -63,21 +63,31 @@
      (key '("db-password"))
      (file (local-file "../../secrets/hosts/concourse-web01/concourse.yaml"))
      (path "/run/secrets/concourse-db-password")
+     (user "concourse-web")
      (permissions #o400))
     (sops-secret
      (key '("session-signing-key"))
      (file (local-file "../../secrets/hosts/concourse-web01/concourse.yaml"))
      (path "/run/secrets/concourse-session-signing-key")
+     (user "concourse-web")
      (permissions #o400))
     (sops-secret
      (key '("tsa-host-key"))
      (file (local-file "../../secrets/hosts/concourse-web01/concourse.yaml"))
      (path "/run/secrets/concourse-tsa-host-key")
+     (user "concourse-web")
      (permissions #o400))
     (sops-secret
      (key '("authorized-worker-keys"))
      (file (local-file "../../secrets/hosts/concourse-web01/concourse.yaml"))
      (path "/run/secrets/concourse-authorized-worker-keys")
+     (user "concourse-web")
+     (permissions #o400))
+    (sops-secret
+     (key '("local-users"))
+     (file (local-file "../../secrets/hosts/concourse-web01/concourse.yaml"))
+     (path "/run/secrets/concourse-local-users")
+     (user "concourse-web")
      (permissions #o400)))
    #:extra-services
    (list
@@ -99,9 +109,10 @@
    (inherit %base-os)
    (services
     (cons* (service concourse-web-service-type
-                    (concourse-web-configuration
-                     (postgres-host "192.168.51.198")
-                     (external-url "https://concourse.ts.peteches.co.uk")))
+		    (concourse-web-configuration
+		     (postgres-host "192.168.51.198")
+		     (external-url "https://concourse.ts.peteches.co.uk")
+		     (main-team-local-users '("peteches"))))
            (operating-system-user-services %base-os)))))
 
 concourse-web01-os
