@@ -1,12 +1,12 @@
 (define-module (peteches home-configs firefox)
   #:use-module (guix gexp)
-  #:use-module (peteches home-services firefox))
+  #:use-module (peteches home services firefox))
 
 (define-public base-firefox-profiles
   (list
    (firefox-profile "Default" "default"
 		    #:prefs '(("browser.startup.homepage" . "about:blank")))
-   
+
    (firefox-profile "ScorePlay" "scoreplay"
 		    #:extensions `(("5c474add-03f0-4c67-9479-f32939d7599a"
 				    . ,(local-file "./firefox-extensions/aws_sso_container-v1.14.xpi")))
@@ -14,7 +14,7 @@
 			      ;; Startup: open specific pages
 			      ("browser.startup.page"                                 . 1) ; 1 = homepage(s)
 			      ("browser.startup.homepage"                             . "https://mail.google.com/|https://calendar.google.com/|https://meet.google.com/")))
-   
+
    (firefox-profile "Other"   "other"
 		    #:prefs '(
 			      ("browser.startup.homepage" . "about:blank")
@@ -85,7 +85,7 @@
     ;; Dark Reader
     ("addon@darkreader.org"
      . ,(local-file "./firefox-extensions/darkreader-4.9.110.xpi"))
-    
+
     ;; uBlock Origin
     ("uBlock0@raymondhill.net"
      . ,(local-file "./firefox-extensions/uBlock0_1.65.0.firefox.signed.xpi"))

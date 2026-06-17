@@ -38,25 +38,22 @@
   #:use-module (peteches packages terraform)
   #:use-module (gnu packages libcanberra)
   ;; Your feature modules
-  #:use-module (peteches home-services aws)
-  #:use-module (peteches home-services desktop)
-  #:use-module (peteches home-services emacs base)
-  #:use-module (peteches home-services git)
-  #:use-module (peteches home-services password-store)
-  #:use-module (peteches home-services firefox)
-  #:use-module (peteches home-services hyprland)
-  #:use-module (peteches home-services mako)
-  #:use-module (peteches home-services waybar)
-  #:use-module (peteches home-services wofi)
-  #:use-module (peteches home-services nyxt base)
+  #:use-module (peteches home services aws)
+  #:use-module (peteches home services desktop)
+  #:use-module (peteches home services emacs)
+  #:use-module (peteches home services git)
+  #:use-module (peteches home services password-store)
+  #:use-module (peteches home services firefox)
+  #:use-module (peteches home services hyprland)
+  #:use-module (peteches home services mako)
+  #:use-module (peteches home services wofi)
+  #:use-module (peteches home services nyxt)
   ;; Your config fragments
   #:use-module (peteches home-configs scoreplay)
   #:use-module (peteches home-configs git)
   #:use-module (peteches home-configs mako)
-  #:use-module (peteches home-configs waybar)
   #:use-module (peteches home-configs firefox)
   #:use-module (peteches home-configs hyprland)
-  #:use-module (peteches packages dank-material-shell)
   #:use-module (peteches packages gurps)
   #:use-module (peteches packages claude-code)
   #:use-module (peteches packages rustdesk)
@@ -357,30 +354,6 @@
 							   #~#$(file-append mako "/bin/mako")
 							   #~(string-append #$(file-append libcanberra "/bin/canberra-gtk-play") " -i desktop-login")))))))
 
-   ;; Waybar / Wofi
-   (service waybar-service-type
-            (waybar-configuration
-	     (config
-	      (waybar-config
-	       (position "top")
-	       (height 46)
-	       (spacing 10)
-	       (margin-top 6)
-	       (margin-bottom 6)
-	       (margin-left 10)
-	       (margin-right 10)
-	       (fixed-center #t)
-	       (exclusive #t)
-	       (reload_style_on_change #t)
-	       (output "")
-
-
-	       ;; Hyprland modules
-	       (modules-left  #("hyprland/workspaces" "hyprland/window"))
-	       (modules-center #("clock"))
-	       (modules-right #("backlight" "wireplumber#source" "wireplumber#sink" "cpu" "memory" "temperature" "network" "battery" "tray"))
-
-               (modules-config base-waybar-modules-config)))))
    (service wofi-service-type
 	    (wofi-config
 	     (matching "multi-contains")

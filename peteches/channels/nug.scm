@@ -19,3 +19,4 @@
      (branch "master")
      (commit "f0997dfc0b74272cba970c97773c63f7e126d46d")
      ))))
+%nug-channels

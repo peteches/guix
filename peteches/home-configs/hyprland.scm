@@ -1,6 +1,6 @@
 (define-module (peteches home-configs hyprland)
   #:use-module (srfi srfi-1)
-  #:use-module (peteches home-services hyprland))
+  #:use-module (peteches home services hyprland))
 
 (define-public base-hyprland-env-vars
   `(("QT_QPA_PLATFORMTHEME" . "qt6ct")

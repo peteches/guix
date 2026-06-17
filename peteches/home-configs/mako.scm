@@ -1,5 +1,5 @@
 (define-module (peteches home-configs mako)
-  #:use-module (peteches home-services mako))
+  #:use-module (peteches home services mako))
 
 (define-public base-mako-config
   (mako-config

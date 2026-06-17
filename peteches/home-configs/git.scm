@@ -1,5 +1,5 @@
 (define-module (peteches home-configs git)
-  #:use-module (peteches home-services git))
+  #:use-module (peteches home services git))
 
 (define-public git-config
   (list (git-section

@@ -5,8 +5,8 @@
   #:use-module (gnu home services guix)
   #:use-module (peteches channels base)
   #:use-module (peteches packages lycheeslicer)
-  #:use-module (peteches home-services hyprland)
-  #:use-module (peteches home-services mpv)
+  #:use-module (peteches home services hyprland)
+  #:use-module (peteches home services mpv)
   #:use-module (peteches home-configs mpv)
 
   #:use-module (peteches home-configs base))

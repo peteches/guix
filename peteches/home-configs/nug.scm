@@ -19,16 +19,13 @@
   #:use-module (peteches home-configs mpv)
 
   ;; my packages
-  #:use-module (peteches home-services koboldcpp)
-  #:use-module (peteches home-services hyprland)
-  #:use-module (peteches home-services mpv)
+  #:use-module (peteches home services koboldcpp)
+  #:use-module (peteches home services hyprland)
+  #:use-module (peteches home services mpv)
 
   #:use-module (peteches packages lycheeslicer)
 
   #:use-module (peteches channels nug)
-
-  ;; host-only services
-  #:use-module (peteches home-services ai)
 )
 
 (define (home-abs-path path)

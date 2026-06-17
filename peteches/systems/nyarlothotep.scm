@@ -7,9 +7,9 @@
   #:use-module (gnu packages base)           ; glibc-locales
   #:use-module (nongnu packages linux)
   #:use-module (peteches systems base)
-  #:use-module (peteches system-services tailscale)
+  #:use-module (peteches services tailscale)
   #:use-module (peteches systems network-mounts)
-  #:use-module (peteches system-services sops-key-generator)
+  #:use-module (peteches services sops-key-generator)
   #:use-module (sops secrets)
   #:use-module (sops services sops))
 

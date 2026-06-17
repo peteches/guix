@@ -156,7 +156,7 @@
    (configuration
     (machine-ssh-configuration
      (host-name "192.168.51.198")
-     (host-key "TODO: run ssh-keyscan 192.168.51.198 after first boot")
+     (host-key "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIEdDypH5/tQh+ZXp5vNk8bnADKgSJ03GglQRc4mWfkMt")
      (system "x86_64-linux")
      (user "peteches")
      (identity "/home/peteches/.ssh/id_ed25519")))))
@@ -168,7 +168,7 @@
    (configuration
     (machine-ssh-configuration
      (host-name "192.168.51.199")
-     (host-key "TODO: run ssh-keyscan 192.168.51.199 after first boot")
+     (host-key "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIBi4OydXz+VS2GhJ3tG8SEbI8MtY9C62iGYD3DBjYGsq")
      (system "x86_64-linux")
      (user "peteches")
      (identity "/home/peteches/.ssh/id_ed25519")))))
@@ -180,7 +180,7 @@
    (configuration
     (machine-ssh-configuration
      (host-name "192.168.51.200")
-     (host-key "TODO: run ssh-keyscan 192.168.51.200 after first boot")
+     (host-key "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFaB9+BPAly8+5hdeufEvQFzr+XhJSND9LxMHRqVbE7B")
      (system "x86_64-linux")
      (user "peteches")
      (identity "/home/peteches/.ssh/id_ed25519")))))

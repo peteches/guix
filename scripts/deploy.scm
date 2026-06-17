@@ -130,7 +130,10 @@ For bare patterns (no KEY= prefix), tries both 'name' and 'host-name'."
     (,prowlarr-machine   . "prowlarr-machine")
     (,arr-machine        . "arr-machine")
     (,downloads-machine  . "downloads-machine")
-    (,rustdesk-machine   . "rustdesk-machine")))
+    (,rustdesk-machine   . "rustdesk-machine")
+    (,concourse-db-machine       . "concourse-db-machine")
+    (,concourse-web01-machine    . "concourse-web01-machine")
+    (,concourse-worker01-machine . "concourse-worker01-machine")))
 
 (define (machine-name m)
   (let ((entry (assq m %machine-names)))

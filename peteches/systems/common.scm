@@ -1,6 +1,6 @@
 (define-module (peteches systems common)
    #:use-module (peteches utils)
-   #:use-module (peteches home-services desktop)
+   #:use-module (peteches home services desktop)
    #:use-module (gnu services)
    #:use-module (gnu services base)
    #:use-module (gnu packages gnupg)

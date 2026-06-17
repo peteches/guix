@@ -1,5 +1,5 @@
 (define-module (peteches home-configs mpv)
-  #:use-module (peteches home-services mpv))
+  #:use-module (peteches home services mpv))
 
 (define-public %mpv-profiles
   (list

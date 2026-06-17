@@ -1,11 +1,5 @@
 ;; concourse-web01.scm — Concourse CI web (ATC + TSA) node on a Proxmox QEMU/KVM VM.
 ;; EFI bootloader, virtio root on vda2 with ESP on vda1, static networking.
-;;
-;; Firewall note: concourse-web-service-type from (peteches services concourse)
-;; extends (peteches services firewall)'s firewall-service-type (the channel's).
-;; make-vm-os installs the main repo's (peteches system-services firewall) instead.
-;; We therefore swap the two: delete the main-repo firewall from the base OS and
-;; add the channel's firewall service so that the concourse extension can target it.
 
 (define-module (peteches systems concourse-web01)
   #:use-module (guix gexp)
@@ -16,29 +10,12 @@
   #:use-module (gnu system file-systems)
   #:use-module (gnu system keyboard)
   #:use-module (peteches systems vm-base)
-  ;; Main-repo firewall imported under vm-fw: prefix so we can delete it
-  #:use-module ((peteches system-services firewall) #:prefix vm-fw:)
-  ;; Channel modules: firewall-service-type, nftables-rules, concourse service
-  #:use-module (peteches services firewall)
   #:use-module (peteches services concourse)
-  #:use-module (peteches system-services alloy)
-  #:use-module (peteches system-services restic)
-  #:use-module (peteches system-services tailscale)
+  #:use-module (peteches services alloy)
+  #:use-module (peteches services restic)
+  #:use-module (peteches services tailscale)
   #:use-module (sops secrets)
   #:export (concourse-web01-os))
-
-;; Base VM firewall rules mirroring %vm-base-firewall in vm-base.scm.
-;; Uses the channel's nftables-rules constructor so concourse-web-service-type
-;; can extend this firewall service instance.
-(define %ch-vm-base-firewall
-  (nftables-rules
-   (input (list
-           "iifname \"lo\" accept comment \"loopback\""
-           "ct state { established, related } accept comment \"established/related\""
-           "tcp dport 22 accept comment \"ssh\""
-           "tcp dport 9100 accept comment \"prometheus node-exporter\""
-           "ip protocol icmp accept comment \"icmpv4\""
-           "ip6 nexthdr ipv6-icmp accept comment \"icmpv6\""))))
 
 (define %base-os
   (make-vm-os
@@ -121,12 +98,10 @@
   (operating-system
    (inherit %base-os)
    (services
-    (cons* (service firewall-service-type %ch-vm-base-firewall)
-           (service concourse-web-service-type
+    (cons* (service concourse-web-service-type
                     (concourse-web-configuration
                      (postgres-host "192.168.51.198")
                      (external-url "https://concourse.ts.peteches.co.uk")))
-           (modify-services (operating-system-services %base-os)
-             (delete vm-fw:firewall-service-type))))))
+           (operating-system-user-services %base-os)))))
 
 concourse-web01-os

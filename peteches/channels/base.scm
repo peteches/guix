@@ -58,10 +58,10 @@
    (channel
     (name 'peteches)
     (url "https://codeberg.org/peteches/guix-channel")
-    (commit "15c6b11f1a1d6e2fec87e5e58864482dccfafc2c")
+    (commit "0caced781255781d5e7c1aabbaf5e9d6ff7d3ab4")
     (introduction
      (make-channel-introduction
-      "e42b13b4e38f2d0c45afe9688005d2b816d99fa9"
+      "ff4b8a08276932c10cf6ca8cf726d78a86c17588"
       (openpgp-fingerprint
-       "5FFB 7006 A36B 0AED E8D0  8E37 53B1 E002 546A 642A"))))))
+       "73C1 C132 9190 37C0 6D6A  6729 A6E8 150F ED00 29D7"))))))
 %base-channels

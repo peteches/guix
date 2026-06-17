@@ -53,11 +53,11 @@
   #:use-module (nongnu packages linux)
 
   #:use-module (gnu system nss)
-  
+
   #:use-module (peteches systems common)
-  #:use-module (peteches system-services boltd)
-  #:use-module (peteches system-services firewall)
-  #:use-module (peteches system-services tailscale)
+  #:use-module (peteches services boltd)
+  #:use-module (peteches services firewall)
+  #:use-module (peteches services tailscale)
   #:use-module (peteches packages nvidia-container-runtime)
   #:use-module (peteches packages hyprland)
   #:export (make-base-os

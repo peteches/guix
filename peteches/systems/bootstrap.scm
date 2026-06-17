@@ -18,7 +18,7 @@
   #:use-module (gnu system file-systems)
   #:use-module (gnu system keyboard)
   #:use-module (peteches systems vm-base)
-  #:use-module (peteches system-services sops-key-generator)
+  #:use-module (peteches services sops-key-generator)
   #:export (bootstrap-os))
 
 (define-public bootstrap-os

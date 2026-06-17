@@ -17,7 +17,7 @@
   #:use-module (gnu services certbot)
   #:use-module (gnu packages base)           ; e.g. glibc-locales if you want it
   #:use-module (peteches systems base)
-  #:use-module (peteches system-services firewall)
+  #:use-module (peteches services firewall)
   #:use-module (peteches systems network-mounts)
   #:use-module (gnu packages admin))
 
