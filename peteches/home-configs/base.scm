@@ -10,6 +10,7 @@
   #:use-module (gnu services)
   #:use-module (guix gexp)
   ;; Packages
+  #:use-module (gnu packages)
   #:use-module (gnu packages admin)
   #:use-module (gnu packages dns)
   #:use-module (gnu packages databases)
@@ -65,6 +66,19 @@
   ;; Export
   #:export (base-packages
             base-services))
+
+;; This file lives at:
+;;   <repo-root>/peteches/home-configs/base.scm
+;;
+;; Resolve paths relative to <repo-root>, regardless of where
+;; `guix home reconfigure' is run from.
+(define %repo-root
+  (canonicalize-path
+   (string-append (dirname (current-filename)) "/../..")))
+
+(define (repo-file path)
+  (string-append %repo-root "/" path))
+
 
 ;; 1) Shared package set for all machines.
 (define-public base-packages
@@ -366,7 +380,120 @@
 	     (close_on_focus_loss "true")
 	     (key_up "Ctrl-p")
 	     (key_down "Ctrl-n")))
-   (service home-emacs-base-service-type)
+   (service home-emacs-base-service-type
+	    (home-emacs-base-configuration
+	     (config-directory (repo-file "./configs/emacs"))
+	     (extra-packages (map specification->package
+				 '("emacs-forge"
+				   "emacs-olivetti"
+				   "emacs-string-inflection"
+				   "emacs-ob-go"
+				   "emacs-modus-themes"
+				   "emacs-gruvbox-theme"
+				   "emacs-paredit"
+				   "emacs-geiser"
+				   "emacs-emojify"
+				   "emacs-geiser-guile"
+				   "emacs-org-present"
+				   "gcc-toolchain" ; to compile vterm / treesitter grammers
+				   "emacs-vterm"
+				   "emacs-eat"
+
+				   "yarn" ; for mcp servers
+				   "curl"
+				   "emacs-compat"
+				   "postgresql"
+					;	emacs-go-playground
+
+				   "emacs-orderless"
+
+				   "emacs-show-font"
+				   "emacs-projectile"
+				   "ripgrep"
+
+				   "emacs-gnus-desktop-notify"
+
+				   "emacs-tramp"
+
+				   "emacs-password-store"
+				   "emacs-password-store-otp"
+				   "emacs-auth-source-pass"
+
+				   "emacs-marginalia"
+				   "emacs-vertico"
+
+				   "emacs-slack"
+
+				   "emacs-which-key"
+
+				   "emacs-magit"
+
+				   "emacs-rainbow-delimiters"
+
+				   ;; language support
+				   "tree-sitter"
+
+				   "tree-sitter-yaml"
+
+				   "tree-sitter-go"
+				   "tree-sitter-gomod"
+
+				   "tree-sitter-scheme"
+
+				   "tree-sitter-python"
+
+				   "tree-sitter-org"
+
+				   "tree-sitter-markdown"
+
+				   "tree-sitter-json"
+
+				   "tree-sitter-html"
+
+				   "tree-sitter-hcl"
+
+				   "tree-sitter-dockerfile"
+
+				   "tree-sitter-c"
+
+				   "tree-sitter-bash"
+				   "tree-sitter-awk"
+
+
+				   "emacs-go-mode"
+
+				   "emacs-pinentry"
+
+				   "emacs-atom-one-dark-theme"
+
+				   "emacs-company"
+				   "emacs-company-quickhelp"
+				   "emacs-company-org-block"
+				   "emacs-company-emoji"
+
+				   ;; language servers
+				   "guile-lsp-server"
+				   "go"
+				   "gopls"
+				   "sqls"
+
+				   "emacs-yaml-mode"
+
+				   ;; mcp stuff
+				   "mcp-server-filesystem-go"
+				   "go-github-com-sonirico-mcp-shell"
+
+				   "emacs-mcp"
+
+				   "emacs-all-the-icons"
+				   "emacs-all-the-icons-dired"
+				   "emacs-all-the-icons-ibuffer"
+				   "emacs-all-the-icons-completion"
+
+				   "font-google-noto"
+				   "font-google-noto-emoji"
+				   "font-iosevka@33.3.0")))))
+	    
 
    (service home-bash-service-type
 	    (home-bash-configuration
