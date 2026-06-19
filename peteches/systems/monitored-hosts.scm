@@ -1,6 +1,6 @@
 ;; peteches/systems/monitored-hosts.scm — central registry of Prometheus-monitored hosts.
 ;; Add one entry here when a new machine is provisioned; the Prometheus scrape
-;; config is regenerated automatically on the next `guix deploy`.
+;; config is regenerated automatically on the next `guix deploy'.
 
 (define-module (peteches systems monitored-hosts)
   #:export (%monitored-hosts))
@@ -24,4 +24,5 @@
     ("rustdesk"         . "192.168.51.197:9100")
     ("concourse-db"     . "192.168.51.198:9100")
     ("concourse-web01"  . "192.168.51.199:9100")
-    ("concourse-worker01" . "192.168.51.200:9100")))
+    ("concourse-worker01" . "192.168.51.200:9100")
+    ("vault"        . "192.168.51.201:9100")))

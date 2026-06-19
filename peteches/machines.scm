@@ -14,7 +14,8 @@
   #:use-module (peteches systems rustdesk)
   #:use-module (peteches systems concourse-db)
   #:use-module (peteches systems concourse-web01)
-  #:use-module (peteches systems concourse-worker01))
+  #:use-module (peteches systems concourse-worker01)
+  #:use-module (peteches systems vault))
 
 (define-public prometheus-machine
   (machine
@@ -185,6 +186,18 @@
      (user "peteches")
      (identity "/home/peteches/.ssh/id_ed25519")))))
 
+(define-public vault-machine
+  (machine
+   (operating-system vault-os)
+   (environment managed-host-environment-type)
+   (configuration
+    (machine-ssh-configuration
+     (host-name "192.168.51.201")
+     (host-key "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIInM3jubj/B/ghMJumiBPKtY3AFAj4NCzzoFa57RXdWc")
+     (system "x86_64-linux")
+     (user "peteches")
+     (identity "/home/peteches/.ssh/id_ed25519")))))
+
 (define-public %all-machines
   (list prometheus-machine
         grafana-machine
@@ -199,4 +212,5 @@
         rustdesk-machine
         concourse-db-machine
         concourse-web01-machine
+        vault-machine
         concourse-worker01-machine))

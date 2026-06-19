@@ -331,7 +331,15 @@
 		      (name "concourse-worker01")
 		      (host-name "192.168.51.200")
 		      (user "peteches")
-		      (identity-file "~/.ssh/id_ed25519"))))))
+		      (identity-file "~/.ssh/id_ed25519"))
+		     (openssh-host
+		      (name "vault")
+		      (host-name "192.168.51.201")
+		      (user "peteches")
+		      (identity-file "~/.ssh/id_ed25519"))
+		     (openssh-host
+		      (name "vault.ts")
+		      (host-name "vault.spaniel-cordylus.ts.net"))))))
 
    ;; GPG Agent
    (service home-gpg-agent-service-type
@@ -365,7 +373,10 @@
 					base-hyprland-multimedia-binds))
 					(command-execution
 					 (hyprland-execs
-					  (exec-once (list #~(string-append #$(file-append dank-material-shell "/bin/dms") " run")
+					  (exec-once (list #~(string-append
+							      #$(file-append dank-material-shell "/bin/dms")
+							      " run -c "
+							      #$(file-append dank-material-shell "/share/quickshell"))
 							   #~(string-append #$(file-append bash "/bin/bash")
 								      " -c \"mkdir -p ${XDG_LOG_HOME:-$HOME/.local/var/log} && exec "
 								      #$(file-append emacs "/bin/emacs")
@@ -493,7 +504,7 @@
 				   "font-google-noto"
 				   "font-google-noto-emoji"
 				   "font-iosevka@33.3.0")))))
-	    
+
 
    (service home-bash-service-type
 	    (home-bash-configuration

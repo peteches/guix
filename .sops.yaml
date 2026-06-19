@@ -44,6 +44,11 @@ creation_rules:
     pgp: "5FFB7006A36B0AEDE8D08E3753B1E002546A642A"
     age: "age1e5298p2egdrwj7wjh5n4pkpu60f92pkqajnt7lv20tcrynurt4aq7v2v5r"
 
+  - path_regex: secrets/groups/concourse/vault.yaml
+    pgp: "5FFB7006A36B0AEDE8D08E3753B1E002546A642A"
+    age:
+      - age127sr66dp0za797zes24lxlsj4pvc5nn0097mpcdmrckf468ycfdsjrhe6g # concourse-web01
+
   - path_regex: secrets/groups/media/.*\.yaml$
     pgp: "5FFB7006A36B0AEDE8D08E3753B1E002546A642A"
     age:
@@ -69,6 +74,10 @@ creation_rules:
     pgp: "5FFB7006A36B0AEDE8D08E3753B1E002546A642A"
     age: "age1fww7z7rv5rtm0e3jwd5scquaxkz28mwx53mu8e85etfwj7ssqp6qzc4n7r"
 
+  - path_regex: secrets/hosts/vault/.*\.yaml$
+    pgp: "5FFB7006A36B0AEDE8D08E3753B1E002546A642A"
+    age: "age14wrglclq4jcp5jx2vkz5evt0fmjl32zuzq86hmnt5hn6pcl02dyq9qhkew"
+
   - path_regex: secrets/shared/.*\.yaml$
     pgp: "5FFB7006A36B0AEDE8D08E3753B1E002546A642A"
     age:
@@ -83,3 +92,4 @@ creation_rules:
       - age1z7alg2ssx9n5nzgnnyac4hvd6yaga00tlw4je72jlfch3hafdg5st7enrl  # arr
       - age1ssely7qxd0yjrdukl6xjns2gal43nm3n3zulpxzgdsuzd8z85u5qguvlna  # downloads
       - age1fww7z7rv5rtm0e3jwd5scquaxkz28mwx53mu8e85etfwj7ssqp6qzc4n7r  # rustdesk
+      - age14wrglclq4jcp5jx2vkz5evt0fmjl32zuzq86hmnt5hn6pcl02dyq9qhkew  # vault

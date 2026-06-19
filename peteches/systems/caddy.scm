@@ -123,7 +123,22 @@
                    (upstream "downloads.spaniel-cordylus.ts.net:9091"))
                   (caddy-reverse-proxy
                    (domain "concourse.ts.peteches.co.uk")
-                   (upstream "concourse-web01.spaniel-cordylus.ts.net:8080"))))))
+                   (upstream "concourse-web01.spaniel-cordylus.ts.net:8080"))
+		  (caddy-reverse-proxy
+		   (domain "minio.ts.peteches.co.uk")
+		   (upstream "petechesnas.spaniel-cordylus.ts.net:9000"))
+		  (caddy-reverse-proxy
+		   (domain "minio-console.ts.peteches.co.uk")
+		   (upstream "petechesnas.spaniel-cordylus.ts.net:9001"))
+		  (caddy-reverse-proxy
+		   (domain "immich.ts.peteches.co.uk")
+		   (upstream "petechesnas.spaniel-cordylus.ts.net:2283"))
+		  (caddy-reverse-proxy
+		   (domain "vault.ts.peteches.co.uk")
+		   (upstream "vault.spaniel-cordylus.ts.net:8200"))
+		  (caddy-reverse-proxy
+		   (domain "nas.ts.peteches.co.uk")
+		   (upstream "petechesnas.spaniel-cordylus.ts.net:5001"))))))
       (service alloy-service-type
                (alloy-configuration
                 (hostname "caddy.peteches.co.uk")

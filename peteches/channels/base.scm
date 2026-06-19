@@ -58,7 +58,7 @@
    (channel
     (name 'peteches)
     (url "https://codeberg.org/peteches/guix-channel")
-    (commit "3ae430fc342bbcb340dde5a6a737d84096357983")
+    (commit "f2a75cee76b6e414a62863b11bfb8f4c9e5fab0a")
     (introduction
      (make-channel-introduction
       "ff4b8a08276932c10cf6ca8cf726d78a86c17588"

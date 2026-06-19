@@ -125,6 +125,8 @@
                   (pihole-custom-host (address "192.168.51.199")
                                       (hostname "concourse-web01.peteches.co.uk"))
                   (pihole-custom-host (address "192.168.51.200")
-                                      (hostname "concourse-worker01.peteches.co.uk")))))))))))
+                                      (hostname "concourse-worker01.peteches.co.uk"))
+                  (pihole-custom-host (address "192.168.51.201")
+                                      (hostname "vault.peteches.co.uk")))))))))))
 
 pihole-os

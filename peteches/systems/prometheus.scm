@@ -110,6 +110,14 @@
                            (targets '("192.168.51.190:3100"))
                            (labels '(("instance" . "loki")))))))
                   (prometheus-scrape-config
+                   (job-name "vault")
+                   (metrics-path "/v1/sys/metrics")
+                   (params '(("format" . ("prometheus"))))
+                   (static-configs
+                    (list (prometheus-static-config
+                           (targets '("192.168.51.201:8200"))
+                           (labels '(("instance" . "vault")))))))
+                  (prometheus-scrape-config
                    (job-name "alloy")
                    (static-configs
                     (list
@@ -148,7 +156,10 @@
                       (labels '(("instance" . "concourse-web01"))))
                      (prometheus-static-config
                       (targets '("192.168.51.200:12345"))
-                      (labels '(("instance" . "concourse-worker01")))))))
+                      (labels '(("instance" . "concourse-worker01"))))
+                     (prometheus-static-config
+                      (targets '("192.168.51.201:12345"))
+                      (labels '(("instance" . "vault")))))))
                   (prometheus-scrape-config
                    (job-name "proxmox")
                    (metrics-path "/pve")

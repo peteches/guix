@@ -88,6 +88,18 @@
      (file (local-file "../../secrets/hosts/concourse-web01/concourse.yaml"))
      (path "/run/secrets/concourse-local-users")
      (user "concourse-web")
+     (permissions #o400))
+    (sops-secret
+     (key '("role-id"))
+     (file (local-file "../../secrets/groups/concourse/vault.yaml"))
+     (path "/run/secrets/concourse-vault-role-id")
+     (user "concourse-web")
+     (permissions #o400))
+    (sops-secret
+     (key '("secret-id"))
+     (file (local-file "../../secrets/groups/concourse/vault.yaml"))
+     (path "/run/secrets/concourse-vault-secret-id")
+     (user "concourse-web")
      (permissions #o400)))
    #:extra-services
    (list
@@ -112,7 +124,8 @@
 		    (concourse-web-configuration
 		     (postgres-host "192.168.51.198")
 		     (external-url "https://concourse.ts.peteches.co.uk")
-		     (main-team-local-users '("peteches"))))
+		     (main-team-local-users '("peteches"))
+		     (vault-url "https://vault.ts.peteches.co.uk")))
            (operating-system-user-services %base-os)))))
 
 concourse-web01-os
