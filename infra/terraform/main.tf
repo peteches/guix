@@ -108,7 +108,7 @@ module "rustdesk" {
   disk_size = 25
 }
 
-module "concourse_db" {
+module "concourse-db" {
   source    = "./modules/proxmox-vm"
   vmid      = 111
   name      = "concourse-db"
@@ -118,7 +118,7 @@ module "concourse_db" {
   disk_size = 25
 }
 
-module "concourse_web01" {
+module "concourse-web01" {
   source    = "./modules/proxmox-vm"
   vmid      = 112
   name      = "concourse-web01"
@@ -128,10 +128,20 @@ module "concourse_web01" {
   disk_size = 25
 }
 
-module "concourse_worker01" {
+module "concourse-worker01" {
   source    = "./modules/proxmox-vm"
   vmid      = 113
   name      = "concourse-worker01"
+  node_name = var.node_name
+  cores     = 2
+  memory    = 2048
+  disk_size = 25
+}
+
+module "vault" {
+  source    = "./modules/proxmox-vm"
+  vmid      = 114
+  name      = "vault"
   node_name = var.node_name
   cores     = 2
   memory    = 2048
