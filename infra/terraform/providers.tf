@@ -6,11 +6,14 @@ terraform {
     key      = "proxmox-vms/terraform.tfstate"
     region   = "us-east-1"  # required by the S3 backend; ignored by MinIO
 
-    endpoint                    = "https://minio.ts.peteches.co.uk"
+    endpoints = {
+    	      s3 = "https://minio.ts.peteches.co.uk"
+    }
+    skip_requesting_account_id  = true 
     skip_credentials_validation = true
     skip_metadata_api_check     = true
     skip_region_validation      = true
-    force_path_style            = true
+    use_path_style              = true
 
     # Credentials are read from env vars at init time:
     #   export AWS_ACCESS_KEY_ID=<minio-access-key>

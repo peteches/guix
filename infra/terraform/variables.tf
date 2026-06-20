@@ -1,7 +1,7 @@
 variable "proxmox_endpoint" {
   type        = string
   description = "Proxmox VE API endpoint, e.g. https://proxmox1.peteches.co.uk:8006/"
-  default     = "https://proxmox1.peteches.co.uk:8006/"
+  default     = "https://proxmox1.ts.peteches.co.uk"
 }
 
 variable "proxmox_api_token" {

@@ -1,0 +1,25 @@
+platform: linux
+
+image_resource:
+  type: registry-image
+  source:
+    repository: hashicorp/terraform
+    tag: "1.10"
+
+inputs:
+- name: repo-main
+  path: repo
+
+params:
+  AWS_ACCESS_KEY_ID: ((terraform.minio_access_key))
+  AWS_SECRET_ACCESS_KEY: ((terraform.minio_secret_key))
+  TF_VAR_proxmox_api_token: ((terraform.proxmox_api_token))
+
+run:
+  path: sh
+  args:
+  - -ec
+  - |
+    cd repo/infra/terraform
+    terraform init
+    terraform apply -auto-approve

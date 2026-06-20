@@ -1,0 +1,73 @@
+# ci/tasks/proxmox-debug.yml
+platform: linux
+
+# Prefer copying this image_resource from your real Terraform task.
+image_resource:
+  type: registry-image
+  source:
+    repository: hashicorp/terraform
+    tag: latest
+
+inputs:
+  - name: repo
+
+params:
+  AWS_ACCESS_KEY_ID: ((terraform.minio_access_key))
+  AWS_SECRET_ACCESS_KEY: ((terraform.minio_secret_key))
+  TF_VAR_proxmox_api_token: ((terraform.proxmox_api_token))
+
+run:
+  path: sh
+  args:
+    - -euc
+    - |
+      cd repo
+
+      # Do not use `set -x`; it can leak the API token.
+
+      echo "== Basic tools =="
+      terraform version || true
+      command -v curl || true
+      command -v jq || true
+
+      # If this is an Alpine-based image, install debug tools.
+      if command -v apk >/dev/null 2>&1; then
+        apk add --no-cache curl jq ca-certificates openssl bind-tools >/dev/null
+      fi
+
+      echo
+      echo "== Provider lock =="
+      if [ -f .terraform.lock.hcl ]; then
+        grep -A20 'registry.terraform.io/bpg/proxmox' .terraform.lock.hcl || true
+      else
+        echo "No .terraform.lock.hcl yet"
+      fi
+
+      echo
+      echo "== DNS from inside Concourse container =="
+      nslookup proxmox1.ts.peteches.co.uk || true
+      getent hosts proxmox1.ts.peteches.co.uk || true
+
+      echo
+      echo "== Test Proxmox API using configured endpoint =="
+      echo "Endpoint: proxmox1.ts.peteches.co.uk"
+
+      curl -sS \
+        -H "Authorization: PVEAPIToken=${TF_VAR_proxmox_api_token}" \
+        "https://proxmox1.ts.peteches.co.uk/api2/json/nodes/proxmox1/qemu/100/config" \
+        | jq .
+
+      echo
+      echo "== Test Proxmox API with normal TLS =="
+      curl -sS \
+        -H "Authorization: PVEAPIToken=${TF_VAR_proxmox_api_token}" \
+        "https://proxmox1.ts.peteches.co.uk/api2/json/nodes/proxmox1/qemu/100/config" 
+
+      # cd infra/terraform
+      # echo
+      # echo "== Terraform provider init =="
+      # terraform init -backend=false -upgrade
+
+      # echo
+      # echo "== Terraform providers =="
+      # terraform providers

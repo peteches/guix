@@ -12,10 +12,36 @@
   #:use-module (gnu system keyboard)
   #:use-module (peteches systems vm-base)
   #:use-module (peteches services alloy)
+  #:use-module (peteches services firewall)
   #:use-module (peteches services tailscale)
   #:use-module (peteches services concourse)
   #:use-module (sops secrets)
   #:export (concourse-worker01-os))
+
+(define concourse-worker-firewall-rules
+  (nftables-rules
+   ;; Mostly not needed for normal forwarded container egress, but useful if
+   ;; Quad100 traffic is handled as local input by tailscaled.
+   (input
+    (list
+     "iifname \"concourse0\" ip daddr 100.100.100.100 udp dport 53 accept comment \"concourse containers to tailscale dns udp\""
+     "iifname \"concourse0\" ip daddr 100.100.100.100 tcp dport 53 accept comment \"concourse containers to tailscale dns tcp\""))
+
+   ;; Concourse build/resource containers live behind concourse0.
+   ;; Allow egress to LAN/internet via eth0 and tailnet via ts-peteches.
+   (forward
+    (list
+     "iifname \"concourse0\" oifname \"eth0\" accept comment \"concourse containers to lan/internet\""
+     "iifname \"eth0\" oifname \"concourse0\" ct state established,related accept comment \"lan/internet return to concourse containers\""
+
+     "iifname \"concourse0\" oifname \"ts-peteches\" accept comment \"concourse containers to tailscale\""
+     "iifname \"ts-peteches\" oifname \"concourse0\" ct state established,related accept comment \"tailscale return to concourse containers\""))
+
+   ;; NAT containers through normal LAN/internet and through Tailscale.
+   (nat-postrouting
+    (list
+     "ip saddr 10.80.0.0/16 oifname \"eth0\" masquerade comment \"nat concourse containers to lan/internet\""
+     "ip saddr 10.80.0.0/16 oifname \"ts-peteches\" masquerade comment \"nat concourse containers to tailscale\""))))
 
 (define-public concourse-worker01-os
   (operating-system
@@ -31,13 +57,19 @@
      #:file-systems
      (list
       (file-system
-        (mount-point "/boot/efi")
-        (device (file-system-label "GNU-ESP"))
-        (type "vfat"))
+       (device "none")
+       (mount-point "/sys/fs/cgroup")
+       (type "cgroup2")
+       (check? #f)
+       (create-mount-point? #f))
       (file-system
-        (mount-point "/")
-        (device "/dev/vda2")
-        (type "ext4")))
+       (mount-point "/boot/efi")
+       (device (file-system-label "GNU-ESP"))
+       (type "vfat"))
+      (file-system
+       (mount-point "/")
+       (device "/dev/vda2")
+       (type "ext4")))
      #:sops-secrets
      (list
       (sops-secret
@@ -71,6 +103,9 @@
                                  (cons "/var/log/ntpd.log" "ntpd")
                                  (cons "/var/log/alloy.log" "alloy")
                                  (cons "/var/log/tailscaled-*.log" "tailscale")))))
+      (simple-service 'concourse-worker-firewall
+                firewall-service-type
+                concourse-worker-firewall-rules)
       (service tailscale-service-type
                (list (tailscale-instance-configuration
                       (name "peteches")))))))))

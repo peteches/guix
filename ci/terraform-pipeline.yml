@@ -3,110 +3,64 @@ jobs:
   plan:
   - get: non-main-branches
     trigger: true
-  - file: non-main-branches/branches.json
-    load_var: branches
+  - get: repo-main
+    trigger: false
+  - load_var: branches
+    file: non-main-branches/branches.json
   - across:
-    - max_in_flight: 3
+    - var: branch
       values: ((.:branches))
-      var: branch
-    config:
-      image_resource:
-        name: ""
-        source:
-          repository: hashicorp/terraform
-          tag: "1.10"
-        type: registry-image
-      params:
-        AWS_ACCESS_KEY_ID: ((terraform.minio_access_key))
-        AWS_SECRET_ACCESS_KEY: ((terraform.minio_secret_key))
-        TF_VAR_proxmox_api_token: ((terraform.proxmox_api_token))
-      platform: linux
-      run:
-        args:
-        - -ec
-        - |
-          git clone https://github.com/peteches/guix \
-            --branch ((.:branch.name)) \
-            --depth 1 \
-            repo
-          cd repo/infra/terraform
-          terraform init
-          terraform plan
-        path: sh
+      max_in_flight: 3
     task: plan-branch
+    file: repo-main/ci/tasks/terraform-plan-branch.yml
+    params:
+      BRANCH_NAME: ((.:branch.name))
+      AWS_ACCESS_KEY_ID: ((terraform.minio_access_key))
+      AWS_SECRET_ACCESS_KEY: ((terraform.minio_secret_key))
+      TF_VAR_proxmox_api_token: ((terraform.proxmox_api_token))
+
 - name: plan-main
   plan:
   - get: repo-main
     trigger: true
-  - config:
-      image_resource:
-        name: ""
-        source:
-          repository: hashicorp/terraform
-          tag: "1.10"
-        type: registry-image
-      inputs:
-      - name: repo-main
-        path: repo
-      params:
-        AWS_ACCESS_KEY_ID: ((terraform.minio_access_key))
-        AWS_SECRET_ACCESS_KEY: ((terraform.minio_secret_key))
-        TF_VAR_proxmox_api_token: ((terraform.proxmox_api_token))
-      platform: linux
-      run:
-        args:
-        - -ec
-        - |
-          cd repo/infra/terraform
-          terraform init
-          terraform plan
-        path: sh
-    task: plan
+  - task: plan
+    file: repo-main/ci/tasks/terraform-plan.yml
+    params:
+      AWS_ACCESS_KEY_ID: ((terraform.minio_access_key))
+      AWS_SECRET_ACCESS_KEY: ((terraform.minio_secret_key))
+      TF_VAR_proxmox_api_token: ((terraform.proxmox_api_token))
+
 - name: apply-main
   plan:
   - get: repo-main
     passed:
     - plan-main
     trigger: true
-  - config:
-      image_resource:
-        name: ""
-        source:
-          repository: hashicorp/terraform
-          tag: "1.10"
-        type: registry-image
-      inputs:
-      - name: repo-main
-        path: repo
-      params:
-        AWS_ACCESS_KEY_ID: ((terraform.minio_access_key))
-        AWS_SECRET_ACCESS_KEY: ((terraform.minio_secret_key))
-        TF_VAR_proxmox_api_token: ((terraform.proxmox_api_token))
-      platform: linux
-      run:
-        args:
-        - -ec
-        - |
-          cd repo/infra/terraform
-          terraform init
-          terraform apply -auto-approve
-        path: sh
-    task: apply
+  - task: apply
+    file: repo-main/ci/tasks/terraform-apply.yml
+    params:
+      AWS_ACCESS_KEY_ID: ((terraform.minio_access_key))
+      AWS_SECRET_ACCESS_KEY: ((terraform.minio_secret_key))
+      TF_VAR_proxmox_api_token: ((terraform.proxmox_api_token))
+
 resource_types:
 - name: git-branches
   source:
     repository: aoldershaw/git-branches-resource
   type: registry-image
+
 resources:
 - name: non-main-branches
   source:
     branch_regexp: ^(?!main$).*
     uri: https://github.com/peteches/guix
   type: git-branches
+
 - name: repo-main
   source:
     branch: main
     paths:
-    - infra/terraform/
+    - infra/terraform/*
+    - ci/tasks/*
     uri: https://github.com/peteches/guix
   type: git
