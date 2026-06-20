@@ -3,20 +3,22 @@ resource "proxmox_virtual_environment_vm" "vm" {
   node_name = var.node_name
   vm_id     = var.vmid
 
-  # Only used when creating a new VM — ignored on import of existing VMs.
   clone {
-    vm_id = var.template_vmid
-    full  = true
+    vm_id   = var.template_vmid
+    full    = var.clone_full
+    retries = var.clone_retries
   }
 
-  machine = "q35"
-  bios    = "ovmf"
-  on_boot = true
-  started = true
+  bios          = var.bios
+  machine       = var.machine
+  scsi_hardware = var.scsi_hardware
+
+  on_boot = var.on_boot
+  started = var.started
 
   cpu {
-    cores = var.cores
-    type  = "x86-64-v2-AES"
+    cores = var.cpu.cores
+    type  = var.cpu.type
   }
 
   memory {
@@ -24,23 +26,31 @@ resource "proxmox_virtual_environment_vm" "vm" {
   }
 
   efi_disk {
-    datastore_id      = var.storage
-    type              = "4m"
-    pre_enrolled_keys = false
+    datastore_id      = var.efi_disk.datastore_id
+    type              = var.efi_disk.type
+    pre_enrolled_keys = var.efi_disk.pre_enrolled_keys
   }
 
   disk {
-    datastore_id = var.storage
-    interface    = "virtio0"
-    size         = var.disk_size
+    datastore_id = var.disk.datastore_id
+    interface    = var.disk.interface
+    size         = var.disk.size
   }
 
   network_device {
-    bridge = "vmbr0"
-    model  = "virtio"
+    bridge = var.network_device.bridge
+    model  = var.network_device.model
   }
 
   agent {
-    enabled = true
+    enabled = var.agent.enabled
+  }
+
+  # Imported state contains an operating_system block, but no explicit type.
+  # Keeping an empty block avoids Terraform trying to remove it or set type=l26.
+  operating_system {}
+
+  lifecycle {
+    prevent_destroy = true
   }
 }

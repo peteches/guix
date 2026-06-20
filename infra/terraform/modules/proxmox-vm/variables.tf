@@ -13,32 +13,96 @@ variable "node_name" {
   description = "Proxmox cluster node name"
 }
 
-variable "cores" {
+variable "template_vmid" {
   type        = number
-  default     = 2
-  description = "Number of vCPUs"
+  default     = 9000
+  description = "VMID of the template to clone from when creating or recreating the VM"
+}
+
+variable "clone_full" {
+  type        = bool
+  default     = true
+  description = "Whether to perform a full clone"
+}
+
+variable "clone_retries" {
+  type        = number
+  default     = 1
+  description = "Clone retry count"
+}
+
+variable "bios" {
+  type        = string
+  description = "VM BIOS type, for example ovmf"
+}
+
+variable "machine" {
+  type        = string
+  description = "VM machine type, for example q35"
+}
+
+variable "scsi_hardware" {
+  type        = string
+  description = "SCSI controller type, for example virtio-scsi-pci"
+}
+
+variable "on_boot" {
+  type        = bool
+  description = "Whether the VM should start when the Proxmox node boots"
+}
+
+variable "started" {
+  type        = bool
+  description = "Whether Terraform should keep the VM running"
+}
+
+variable "cpu" {
+  type = object({
+    cores = number
+    type  = string
+  })
+
+  description = "CPU configuration"
 }
 
 variable "memory" {
   type        = number
-  default     = 2048
   description = "RAM in MB"
 }
 
-variable "disk_size" {
-  type        = number
-  default     = 25
-  description = "virtio0 disk size in GiB"
+variable "efi_disk" {
+  type = object({
+    datastore_id      = string
+    type              = string
+    pre_enrolled_keys = bool
+  })
+
+  description = "EFI disk configuration"
 }
 
-variable "storage" {
-  type        = string
-  default     = "local-lvm"
-  description = "Proxmox storage pool name"
+variable "disk" {
+  type = object({
+    datastore_id = string
+    interface    = string
+    size         = number
+  })
+
+  description = "Primary VM disk configuration"
 }
 
-variable "template_vmid" {
-  type        = number
-  default     = 9000
-  description = "VMID of the template to clone from when creating a new VM"
+variable "network_device" {
+  type = object({
+    bridge = string
+    model  = string
+  })
+
+  description = "Primary VM network device"
+}
+
+variable "agent" {
+  type = object({
+    enabled = bool
+  })
+
+  description = "QEMU guest agent configuration"
 }

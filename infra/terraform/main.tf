@@ -3,9 +3,39 @@ module "prometheus" {
   vmid      = 100
   name      = "prometheus"
   node_name = var.node_name
-  cores     = 1
-  memory    = 2048
-  disk_size = 25
+
+  bios          = "ovmf"
+  machine       = "q35"
+  scsi_hardware = "virtio-scsi-pci"
+  on_boot       = true
+  started       = true
+  memory        = 2048
+
+  cpu = {
+    cores = 1
+    type  = "qemu64"
+  }
+
+  efi_disk = {
+    datastore_id      = "local-lvm"
+    type              = "4m"
+    pre_enrolled_keys = false
+  }
+
+  disk = {
+    datastore_id = "local-lvm"
+    interface    = "virtio0"
+    size         = 25
+  }
+
+  network_device = {
+    bridge = "vmbr0"
+    model  = "virtio"
+  }
+
+  agent = {
+    enabled = true
+  }
 }
 
 module "grafana" {
@@ -13,9 +43,39 @@ module "grafana" {
   vmid      = 101
   name      = "grafana"
   node_name = var.node_name
-  cores     = 2
-  memory    = 4096
-  disk_size = 25
+
+  bios          = "ovmf"
+  machine       = "q35"
+  scsi_hardware = "virtio-scsi-pci"
+  on_boot       = true
+  started       = true
+  memory        = 4096
+
+  cpu = {
+    cores = 2
+    type  = "qemu64"
+  }
+
+  efi_disk = {
+    datastore_id      = "local-lvm"
+    type              = "4m"
+    pre_enrolled_keys = false
+  }
+
+  disk = {
+    datastore_id = "local-lvm"
+    interface    = "virtio0"
+    size         = 25
+  }
+
+  network_device = {
+    bridge = "vmbr0"
+    model  = "virtio"
+  }
+
+  agent = {
+    enabled = true
+  }
 }
 
 module "pihole" {
@@ -23,9 +83,39 @@ module "pihole" {
   vmid      = 102
   name      = "pihole"
   node_name = var.node_name
-  cores     = 2
-  memory    = 1024
-  disk_size = 25
+
+  bios          = "ovmf"
+  machine       = "q35"
+  scsi_hardware = "virtio-scsi-pci"
+  on_boot       = true
+  started       = true
+  memory        = 1024
+
+  cpu = {
+    cores = 2
+    type  = "qemu64"
+  }
+
+  efi_disk = {
+    datastore_id      = "local-lvm"
+    type              = "4m"
+    pre_enrolled_keys = false
+  }
+
+  disk = {
+    datastore_id = "local-lvm"
+    interface    = "virtio0"
+    size         = 25
+  }
+
+  network_device = {
+    bridge = "vmbr0"
+    model  = "virtio"
+  }
+
+  agent = {
+    enabled = true
+  }
 }
 
 module "loki" {
@@ -33,9 +123,39 @@ module "loki" {
   vmid      = 103
   name      = "loki"
   node_name = var.node_name
-  cores     = 1
-  memory    = 2048
-  disk_size = 25
+
+  bios          = "ovmf"
+  machine       = "q35"
+  scsi_hardware = "virtio-scsi-pci"
+  on_boot       = true
+  started       = true
+  memory        = 2048
+
+  cpu = {
+    cores = 1
+    type  = "qemu64"
+  }
+
+  efi_disk = {
+    datastore_id      = "local-lvm"
+    type              = "4m"
+    pre_enrolled_keys = false
+  }
+
+  disk = {
+    datastore_id = "local-lvm"
+    interface    = "virtio0"
+    size         = 25
+  }
+
+  network_device = {
+    bridge = "vmbr0"
+    model  = "virtio"
+  }
+
+  agent = {
+    enabled = true
+  }
 }
 
 module "git" {
@@ -43,9 +163,39 @@ module "git" {
   vmid      = 104
   name      = "git"
   node_name = var.node_name
-  cores     = 1
-  memory    = 1024
-  disk_size = 25
+
+  bios          = "ovmf"
+  machine       = "q35"
+  scsi_hardware = "virtio-scsi-pci"
+  on_boot       = true
+  started       = true
+  memory        = 1024
+
+  cpu = {
+    cores = 1
+    type  = "qemu64"
+  }
+
+  efi_disk = {
+    datastore_id      = "local-lvm"
+    type              = "4m"
+    pre_enrolled_keys = false
+  }
+
+  disk = {
+    datastore_id = "local-lvm"
+    interface    = "virtio0"
+    size         = 25
+  }
+
+  network_device = {
+    bridge = "vmbr0"
+    model  = "virtio"
+  }
+
+  agent = {
+    enabled = true
+  }
 }
 
 module "jellyfin" {
@@ -53,9 +203,39 @@ module "jellyfin" {
   vmid      = 105
   name      = "jellyfin"
   node_name = var.node_name
-  cores     = 4
-  memory    = 8192
-  disk_size = 25
+
+  bios          = "ovmf"
+  machine       = "q35"
+  scsi_hardware = "virtio-scsi-pci"
+  on_boot       = true
+  started       = true
+  memory        = 8192
+
+  cpu = {
+    cores = 4
+    type  = "qemu64"
+  }
+
+  efi_disk = {
+    datastore_id      = "local-lvm"
+    type              = "4m"
+    pre_enrolled_keys = false
+  }
+
+  disk = {
+    datastore_id = "local-lvm"
+    interface    = "virtio0"
+    size         = 25
+  }
+
+  network_device = {
+    bridge = "vmbr0"
+    model  = "virtio"
+  }
+
+  agent = {
+    enabled = true
+  }
 }
 
 module "caddy" {
@@ -63,9 +243,39 @@ module "caddy" {
   vmid      = 106
   name      = "caddy"
   node_name = var.node_name
-  cores     = 2
-  memory    = 1024
-  disk_size = 25
+
+  bios          = "ovmf"
+  machine       = "q35"
+  scsi_hardware = "virtio-scsi-pci"
+  on_boot       = true
+  started       = true
+  memory        = 1024
+
+  cpu = {
+    cores = 2
+    type  = "qemu64"
+  }
+
+  efi_disk = {
+    datastore_id      = "local-lvm"
+    type              = "4m"
+    pre_enrolled_keys = false
+  }
+
+  disk = {
+    datastore_id = "local-lvm"
+    interface    = "virtio0"
+    size         = 25
+  }
+
+  network_device = {
+    bridge = "vmbr0"
+    model  = "virtio"
+  }
+
+  agent = {
+    enabled = true
+  }
 }
 
 module "prowlarr" {
@@ -73,9 +283,39 @@ module "prowlarr" {
   vmid      = 107
   name      = "prowlarr"
   node_name = var.node_name
-  cores     = 2
-  memory    = 1024
-  disk_size = 25
+
+  bios          = "ovmf"
+  machine       = "q35"
+  scsi_hardware = "virtio-scsi-pci"
+  on_boot       = true
+  started       = true
+  memory        = 1024
+
+  cpu = {
+    cores = 2
+    type  = "qemu64"
+  }
+
+  efi_disk = {
+    datastore_id      = "local-lvm"
+    type              = "4m"
+    pre_enrolled_keys = false
+  }
+
+  disk = {
+    datastore_id = "local-lvm"
+    interface    = "virtio0"
+    size         = 25
+  }
+
+  network_device = {
+    bridge = "vmbr0"
+    model  = "virtio"
+  }
+
+  agent = {
+    enabled = true
+  }
 }
 
 module "arr" {
@@ -83,9 +323,39 @@ module "arr" {
   vmid      = 108
   name      = "arr"
   node_name = var.node_name
-  cores     = 2
-  memory    = 2048
-  disk_size = 25
+
+  bios          = "ovmf"
+  machine       = "q35"
+  scsi_hardware = "virtio-scsi-pci"
+  on_boot       = true
+  started       = true
+  memory        = 2048
+
+  cpu = {
+    cores = 2
+    type  = "qemu64"
+  }
+
+  efi_disk = {
+    datastore_id      = "local-lvm"
+    type              = "4m"
+    pre_enrolled_keys = false
+  }
+
+  disk = {
+    datastore_id = "local-lvm"
+    interface    = "virtio0"
+    size         = 25
+  }
+
+  network_device = {
+    bridge = "vmbr0"
+    model  = "virtio"
+  }
+
+  agent = {
+    enabled = true
+  }
 }
 
 module "downloads" {
@@ -93,9 +363,39 @@ module "downloads" {
   vmid      = 109
   name      = "downloads"
   node_name = var.node_name
-  cores     = 4
-  memory    = 4096
-  disk_size = 25
+
+  bios          = "ovmf"
+  machine       = "q35"
+  scsi_hardware = "virtio-scsi-pci"
+  on_boot       = true
+  started       = true
+  memory        = 4096
+
+  cpu = {
+    cores = 4
+    type  = "qemu64"
+  }
+
+  efi_disk = {
+    datastore_id      = "local-lvm"
+    type              = "4m"
+    pre_enrolled_keys = false
+  }
+
+  disk = {
+    datastore_id = "local-lvm"
+    interface    = "virtio0"
+    size         = 25
+  }
+
+  network_device = {
+    bridge = "vmbr0"
+    model  = "virtio"
+  }
+
+  agent = {
+    enabled = true
+  }
 }
 
 module "rustdesk" {
@@ -103,9 +403,39 @@ module "rustdesk" {
   vmid      = 110
   name      = "rustdesk"
   node_name = var.node_name
-  cores     = 2
-  memory    = 2048
-  disk_size = 25
+
+  bios          = "ovmf"
+  machine       = "q35"
+  scsi_hardware = "virtio-scsi-pci"
+  on_boot       = false
+  started       = true
+  memory        = 2048
+
+  cpu = {
+    cores = 2
+    type  = "qemu64"
+  }
+
+  efi_disk = {
+    datastore_id      = "local-lvm"
+    type              = "4m"
+    pre_enrolled_keys = false
+  }
+
+  disk = {
+    datastore_id = "local-lvm"
+    interface    = "virtio0"
+    size         = 25
+  }
+
+  network_device = {
+    bridge = "vmbr0"
+    model  = "virtio"
+  }
+
+  agent = {
+    enabled = true
+  }
 }
 
 module "concourse-db" {
@@ -113,9 +443,39 @@ module "concourse-db" {
   vmid      = 111
   name      = "concourse-db"
   node_name = var.node_name
-  cores     = 2
-  memory    = 2048
-  disk_size = 25
+
+  bios          = "ovmf"
+  machine       = "q35"
+  scsi_hardware = "virtio-scsi-pci"
+  on_boot       = false
+  started       = true
+  memory        = 2048
+
+  cpu = {
+    cores = 2
+    type  = "qemu64"
+  }
+
+  efi_disk = {
+    datastore_id      = "local-lvm"
+    type              = "4m"
+    pre_enrolled_keys = false
+  }
+
+  disk = {
+    datastore_id = "local-lvm"
+    interface    = "virtio0"
+    size         = 25
+  }
+
+  network_device = {
+    bridge = "vmbr0"
+    model  = "virtio"
+  }
+
+  agent = {
+    enabled = true
+  }
 }
 
 module "concourse-web01" {
@@ -123,9 +483,39 @@ module "concourse-web01" {
   vmid      = 112
   name      = "concourse-web01"
   node_name = var.node_name
-  cores     = 2
-  memory    = 2048
-  disk_size = 25
+
+  bios          = "ovmf"
+  machine       = "q35"
+  scsi_hardware = "virtio-scsi-pci"
+  on_boot       = false
+  started       = true
+  memory        = 2048
+
+  cpu = {
+    cores = 2
+    type  = "qemu64"
+  }
+
+  efi_disk = {
+    datastore_id      = "local-lvm"
+    type              = "4m"
+    pre_enrolled_keys = false
+  }
+
+  disk = {
+    datastore_id = "local-lvm"
+    interface    = "virtio0"
+    size         = 25
+  }
+
+  network_device = {
+    bridge = "vmbr0"
+    model  = "virtio"
+  }
+
+  agent = {
+    enabled = true
+  }
 }
 
 module "concourse-worker01" {
@@ -133,9 +523,39 @@ module "concourse-worker01" {
   vmid      = 113
   name      = "concourse-worker01"
   node_name = var.node_name
-  cores     = 2
-  memory    = 2048
-  disk_size = 25
+
+  bios          = "ovmf"
+  machine       = "q35"
+  scsi_hardware = "virtio-scsi-pci"
+  on_boot       = false
+  started       = true
+  memory        = 2048
+
+  cpu = {
+    cores = 2
+    type  = "host"
+  }
+
+  efi_disk = {
+    datastore_id      = "local-lvm"
+    type              = "4m"
+    pre_enrolled_keys = false
+  }
+
+  disk = {
+    datastore_id = "local-lvm"
+    interface    = "virtio0"
+    size         = 25
+  }
+
+  network_device = {
+    bridge = "vmbr0"
+    model  = "virtio"
+  }
+
+  agent = {
+    enabled = true
+  }
 }
 
 module "vault" {
@@ -143,7 +563,37 @@ module "vault" {
   vmid      = 114
   name      = "vault"
   node_name = var.node_name
-  cores     = 2
-  memory    = 2048
-  disk_size = 25
+
+  bios          = "ovmf"
+  machine       = "q35"
+  scsi_hardware = "virtio-scsi-pci"
+  on_boot       = false
+  started       = true
+  memory        = 2048
+
+  cpu = {
+    cores = 2
+    type  = "qemu64"
+  }
+
+  efi_disk = {
+    datastore_id      = "local-lvm"
+    type              = "4m"
+    pre_enrolled_keys = false
+  }
+
+  disk = {
+    datastore_id = "local-lvm"
+    interface    = "virtio0"
+    size         = 25
+  }
+
+  network_device = {
+    bridge = "vmbr0"
+    model  = "virtio"
+  }
+
+  agent = {
+    enabled = true
+  }
 }
