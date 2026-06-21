@@ -653,3 +653,60 @@ module "critical-grind-campaign" {
     ]
   }
 }
+
+module "critical-grind-outline" {
+  source    = "./modules/proxmox-vm"
+  vmid      = 116
+  name      = "critical-grind-outline"
+  node_name = var.node_name
+
+  bios          = "ovmf"
+  machine       = "q35"
+  scsi_hardware = "virtio-scsi-pci"
+  on_boot       = true
+  started       = true
+  memory        = 2048
+
+  cpu = {
+    cores = 2
+    type  = "qemu64"
+  }
+
+  efi_disk = {
+    datastore_id      = "local-lvm"
+    type              = "4m"
+    pre_enrolled_keys = false
+  }
+
+  disk = {
+    datastore_id = "local-lvm"
+    interface    = "virtio0"
+    size         = 30
+  }
+
+  network_device = {
+    bridge = "vmbr0"
+    model  = "virtio"
+  }
+
+  agent = {
+    enabled = true
+  }
+
+  cloud_init = {
+    datastore_id = "local-lvm"
+    interface    = "ide0"
+
+    ipv4_address = "192.168.51.203/23"
+    ipv4_gateway = "192.168.50.1"
+
+    ipv6_address = "2a10:d582:ef59::110/64"
+    ipv6_gateway = "2a10:d582:ef59::1"
+
+    dns_servers = [
+      "192.168.51.189",
+      "2a10:d582:ef59::101"
+    ]
+  }
+}
+
