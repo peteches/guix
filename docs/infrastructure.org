@@ -1,0 +1,104 @@
+#+title: Infrastructure Management
+#+author: Pete 'Peteches' McCabe
+
+* Overview
+
+VM lifecycle is split across two tools:
+
+| Tool      | Responsibility                                              |
+|-----------+-------------------------------------------------------------|
+| Terraform | Create / destroy Proxmox VMs (hardware config, VMIDs, NICs)|
+| Guix      | Declare and deploy the OS + services running inside each VM |
+
+Terraform provisions the VM shell; =guix deploy= installs and maintains the OS.
+
+* Terraform (=infra/terraform/=)
+
+#+begin_example
+infra/terraform/
+  main.tf           ← one module block per VM
+  providers.tf      ← Proxmox provider (bpg/proxmox ~0.73) + S3 backend
+  variables.tf      ← proxmox_endpoint, proxmox_api_token, node_name
+  modules/
+    proxmox-vm/     ← reusable module: QEMU VM with EFI, disk, NIC, agent
+#+end_example
+
+** State backend
+
+Terraform state is stored in MinIO (S3-compatible) at
+=https://minio.ts.peteches.co.uk=, bucket =terraform-state=,
+key =proxmox-vms/terraform.tfstate=.
+
+Credentials are supplied via environment variables at =terraform init= / =plan= /
+=apply= time:
+
+#+begin_src bash
+export AWS_ACCESS_KEY_ID=<minio-access-key>
+export AWS_SECRET_ACCESS_KEY=<minio-secret-key>
+export TF_VAR_proxmox_api_token='user@pam!tokenid=secret'
+#+end_src
+
+** proxmox-vm module
+
+Each VM in =main.tf= is a =module= block that calls =./modules/proxmox-vm= with:
+
+- =vmid= — unique Proxmox VMID (matches =proxmox-vms.org=)
+- =name= — VM hostname
+- =memory= / =cpu.cores= — resource allocation
+- =disk.size= — root disk in GiB (minimum 25)
+- =bios= / =machine= — always =ovmf= / =q35= for UEFI
+- =on_boot= / =started= — lifecycle flags
+- =agent= — QEMU guest agent (always enabled)
+
+** Adding a new VM via Terraform
+
+1. Add a =module "<name>"= block in =infra/terraform/main.tf= following the existing
+   pattern.  Assign the next available VMID from =proxmox-vms.org=.
+2. Run =terraform plan= locally (or push a branch — see CI below) to verify.
+3. Merge to =main= — CI applies automatically.
+4. After Terraform creates the VM, proceed with Guix steps from the "Adding a New
+   VM" section in =CLAUDE.md=.
+
+* Concourse CI (=ci/=)
+
+#+begin_example
+ci/
+  terraform-pipeline.yml   ← pipeline definition
+  tasks/
+    terraform-plan.yml         ← plan against main
+    terraform-plan-branch.yml  ← plan for a non-main branch
+    terraform-apply.yml        ← apply (main only, after plan passes)
+    proxmox-debug.yml          ← ad-hoc debug task
+#+end_example
+
+** Pipeline jobs
+
+| Job             | Trigger                        | Action                                      |
+|-----------------+--------------------------------+---------------------------------------------|
+| =plan-branches= | Push to any non-=main= branch  | =terraform plan= for each branch in parallel |
+| =plan-main=     | Push to =main=                 | =terraform plan=                            |
+| =apply-main=    | =plan-main= passes             | =terraform apply=                           |
+
+Secrets (MinIO credentials, Proxmox API token) are stored in Concourse as
+=((terraform.*))= vars and injected as environment variables at task runtime.
+
+** Deploying the pipeline
+
+#+begin_src bash
+fly -t <target> set-pipeline -p terraform -c ci/terraform-pipeline.yml
+fly -t <target> unpause-pipeline -p terraform
+#+end_src
+
+* Typical new VM workflow
+
+1. Add Terraform module block in =main.tf=, push branch → Concourse plans it.
+2. Merge to =main= → Concourse applies → Proxmox VM created.
+3. Follow the Guix "Adding a New VM" checklist in =CLAUDE.md=:
+   a. Add pihole custom-host entry.
+   b. Add SSH config entry in home-configs.
+   c. Add machine record in =machines.scm=.
+   d. Add node-exporter target in =monitored-hosts.scm=.
+   e. Add Prometheus scrape config if the service exposes metrics.
+   f. Add row to =proxmox-vms.org=.
+   g. Add age key to =age-keys/= and =.sops.yaml= entry after first boot.
+4. =guix deploy= to install and activate the OS.
