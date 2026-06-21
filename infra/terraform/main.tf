@@ -625,7 +625,7 @@ module "critical-grind-campaign" {
   disk = {
     datastore_id = "local-lvm"
     interface    = "virtio0"
-    size         = 25
+    size         = 30
   }
 
   network_device = {
