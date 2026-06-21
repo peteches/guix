@@ -50,7 +50,4 @@ resource "proxmox_virtual_environment_vm" "vm" {
   # Keeping an empty block avoids Terraform trying to remove it or set type=l26.
   operating_system {}
 
-  lifecycle {
-    prevent_destroy = true
-  }
 }
