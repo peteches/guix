@@ -42,6 +42,43 @@ resource "proxmox_virtual_environment_vm" "vm" {
     model  = var.network_device.model
   }
 
+  dynamic "initialization" {
+  for_each = var.cloud_init == null ? [] : [var.cloud_init]
+
+  content {
+    datastore_id = initialization.value.datastore_id
+    interface    = initialization.value.interface
+
+    dynamic "dns" {
+      for_each = length(initialization.value.dns_servers) == 0 ? [] : [initialization.value.dns_servers]
+
+      content {
+        servers = dns.value
+      }
+    }
+
+    ip_config {
+      dynamic "ipv4" {
+        for_each = initialization.value.ipv4_address == null ? [] : [initialization.value]
+
+        content {
+          address = ipv4.value.ipv4_address
+          gateway = ipv4.value.ipv4_gateway
+        }
+      }
+
+      dynamic "ipv6" {
+        for_each = initialization.value.ipv6_address == null ? [] : [initialization.value]
+
+        content {
+          address = ipv6.value.ipv6_address
+          gateway = ipv6.value.ipv6_gateway
+        }
+      }
+    }
+  }
+}
+
   agent {
     enabled = var.agent.enabled
   }

@@ -35,39 +35,13 @@ run:
         apk add --no-cache curl jq ca-certificates openssl bind-tools >/dev/null
       fi
 
-      echo
-      echo "== Provider lock =="
-      if [ -f .terraform.lock.hcl ]; then
-        grep -A20 'registry.terraform.io/bpg/proxmox' .terraform.lock.hcl || true
-      else
-        echo "No .terraform.lock.hcl yet"
-      fi
+      cd infra/terraform
 
-      echo
-      echo "== DNS from inside Concourse container =="
-      nslookup proxmox1.ts.peteches.co.uk || true
-      getent hosts proxmox1.ts.peteches.co.uk || true
 
-      echo
-      echo "== Test Proxmox API using configured endpoint =="
-      echo "Endpoint: proxmox1.ts.peteches.co.uk"
+      echo '=== setup ==='
+      terraform init -input=false
+      #    terraform state pull | tee tfstate.before.json
+      # cp tfstate.before.json "tfstate.backup.$(date +%Y%m%d-%H%M%S).json"
 
-      curl -sS \
-        -H "Authorization: PVEAPIToken=${TF_VAR_proxmox_api_token}" \
-        "https://proxmox1.ts.peteches.co.uk/api2/json/nodes/proxmox1/qemu/100/config" \
-        | jq .
-
-      echo
-      echo "== Test Proxmox API with normal TLS =="
-      curl -sS \
-        -H "Authorization: PVEAPIToken=${TF_VAR_proxmox_api_token}" \
-        "https://proxmox1.ts.peteches.co.uk/api2/json/nodes/proxmox1/qemu/100/config" 
-
-      # cd infra/terraform
-      # echo
-      # echo "== Terraform provider init =="
-      # terraform init -backend=false -upgrade
-
-      # echo
-      # echo "== Terraform providers =="
-      # terraform providers
+      echo "=== get current plan ==="
+      terraform plan

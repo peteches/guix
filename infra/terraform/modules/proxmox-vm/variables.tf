@@ -106,3 +106,30 @@ variable "agent" {
 
   description = "QEMU guest agent configuration"
 }
+
+variable "cloud_init" {
+  description = "Optional cloud-init network configuration for the VM."
+
+  type = object({
+    datastore_id = optional(string)
+    interface    = optional(string)
+
+    ipv4_address = optional(string)
+    ipv4_gateway = optional(string)
+
+    ipv6_address = optional(string)
+    ipv6_gateway = optional(string)
+
+    dns_servers = optional(list(string), [])
+  })
+
+  default = null
+
+  validation {
+    condition = var.cloud_init == null || try(
+      var.cloud_init.ipv4_address != null || var.cloud_init.ipv6_address != null,
+      false
+    )
+    error_message = "cloud_init must include ipv4_address, ipv6_address, or both."
+  }
+}
