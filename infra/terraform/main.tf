@@ -597,3 +597,43 @@ module "vault" {
     enabled = true
   }
 }
+
+module "critical-grind-campaign" {
+  source    = "./modules/proxmox-vm"
+  vmid      = 115
+  name      = "critical-grind-campaign"
+  node_name = var.node_name
+
+  bios          = "ovmf"
+  machine       = "q35"
+  scsi_hardware = "virtio-scsi-pci"
+  on_boot       = true
+  started       = true
+  memory        = 2048
+
+  cpu = {
+    cores = 2
+    type  = "qemu64"
+  }
+
+  efi_disk = {
+    datastore_id      = "local-lvm"
+    type              = "4m"
+    pre_enrolled_keys = false
+  }
+
+  disk = {
+    datastore_id = "local-lvm"
+    interface    = "virtio0"
+    size         = 25
+  }
+
+  network_device = {
+    bridge = "vmbr0"
+    model  = "virtio"
+  }
+
+  agent = {
+    enabled = true
+  }
+}
