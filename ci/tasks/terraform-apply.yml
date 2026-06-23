@@ -14,12 +14,16 @@ params:
   AWS_ACCESS_KEY_ID: ((terraform.minio_access_key))
   AWS_SECRET_ACCESS_KEY: ((terraform.minio_secret_key))
   TF_VAR_proxmox_api_token: ((terraform.proxmox_api_token))
+  PETECHES_SSH_PRIVATE_KEY: ((terraform.peteches_ssh_private_key))
 
 run:
   path: sh
   args:
   - -ec
   - |
+    mkdir -p /home/peteches/.ssh
+    printf '%s' "$PETECHES_SSH_PRIVATE_KEY" > /home/peteches/.ssh/id_ed25519
+    chmod 600 /home/peteches/.ssh/id_ed25519
     cd repo/infra/terraform
     terraform init
     terraform apply -auto-approve

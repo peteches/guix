@@ -78,6 +78,10 @@ creation_rules:
     pgp: "5FFB7006A36B0AEDE8D08E3753B1E002546A642A"
     age: "age14wrglclq4jcp5jx2vkz5evt0fmjl32zuzq86hmnt5hn6pcl02dyq9qhkew"
 
+  - path_regex: secrets/hosts/critical-grind-outline/.*\.yaml$
+    pgp: "5FFB7006A36B0AEDE8D08E3753B1E002546A642A"
+    age: "age1g3nsny7xdewga8eatwtapelwn058035s4jwa3lhehh2eu4zzpf3sjvqpsu"
+
   - path_regex: secrets/shared/.*\.yaml$
     pgp: "5FFB7006A36B0AEDE8D08E3753B1E002546A642A"
     age:
@@ -93,3 +97,4 @@ creation_rules:
       - age1ssely7qxd0yjrdukl6xjns2gal43nm3n3zulpxzgdsuzd8z85u5qguvlna  # downloads
       - age1fww7z7rv5rtm0e3jwd5scquaxkz28mwx53mu8e85etfwj7ssqp6qzc4n7r  # rustdesk
       - age14wrglclq4jcp5jx2vkz5evt0fmjl32zuzq86hmnt5hn6pcl02dyq9qhkew  # vault
+      - age1g3nsny7xdewga8eatwtapelwn058035s4jwa3lhehh2eu4zzpf3sjvqpsu  # critical-grind-outline

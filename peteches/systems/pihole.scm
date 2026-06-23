@@ -128,5 +128,7 @@
                                       (hostname "concourse-worker01.peteches.co.uk"))
                   (pihole-custom-host (address "192.168.51.201")
                                       (hostname "vault.peteches.co.uk")))))))))))
+                  (pihole-custom-host (address "192.168.51.203")
+                                      (hostname "critical-grind-outline.peteches.co.uk"))
 
 pihole-os

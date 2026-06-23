@@ -1,3 +1,18 @@
+locals {
+  _pn_list = var.provisioned_network != null ? [var.provisioned_network] : []
+
+  _ip_cmds = flatten([for pn in local._pn_list : compact(concat(
+    [
+      "sudo ip addr add ${pn.ipv4_address} dev ${pn.network_interface}",
+      "sudo ip route replace default via ${pn.ipv4_gateway}",
+    ],
+    pn.ipv6_address != null ? [
+      "sudo ip -6 addr add ${pn.ipv6_address} dev ${pn.network_interface}",
+      "sudo ip -6 route replace default via ${pn.ipv6_gateway}",
+    ] : []
+  ))])
+}
+
 resource "proxmox_virtual_environment_vm" "vm" {
   name      = var.name
   node_name = var.node_name
@@ -87,4 +102,23 @@ resource "proxmox_virtual_environment_vm" "vm" {
   # Keeping an empty block avoids Terraform trying to remove it or set type=l26.
   operating_system {}
 
+  provisioner "remote-exec" {
+    when = create
+
+    connection {
+      type = "ssh"
+      host = try(
+        self.ipv4_addresses[
+          index(self.network_interface_names,
+            coalesce(try(var.provisioned_network.network_interface, null), "eth0"))
+        ][0],
+        "0.0.0.0"
+      )
+      user        = "peteches"
+      private_key = file(coalesce(try(var.provisioned_network.ssh_private_key_path, null), "/home/peteches/.ssh/id_ed25519"))
+      timeout     = "3m"
+    }
+
+    inline = local._ip_cmds
+  }
 }

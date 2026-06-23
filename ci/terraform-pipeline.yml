@@ -42,6 +42,7 @@ jobs:
       AWS_ACCESS_KEY_ID: ((terraform.minio_access_key))
       AWS_SECRET_ACCESS_KEY: ((terraform.minio_secret_key))
       TF_VAR_proxmox_api_token: ((terraform.proxmox_api_token))
+      PETECHES_SSH_PRIVATE_KEY: ((terraform.peteches_ssh_private_key))
 
 resource_types:
 - name: git-branches

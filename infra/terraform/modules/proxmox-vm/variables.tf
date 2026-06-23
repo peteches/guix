@@ -107,6 +107,21 @@ variable "agent" {
   description = "QEMU guest agent configuration"
 }
 
+variable "provisioned_network" {
+  description = "Configure static IP via SSH provisioner at VM creation time. Requires QEMU guest agent and an SSH-accessible 'peteches' user with passwordless sudo. Only runs when the VM is first created."
+
+  type = object({
+    ipv4_address         = string
+    ipv4_gateway         = string
+    ipv6_address         = optional(string)
+    ipv6_gateway         = optional(string)
+    network_interface    = optional(string, "eth0")
+    ssh_private_key_path = optional(string, "/home/peteches/.ssh/id_ed25519")
+  })
+
+  default = null
+}
+
 variable "cloud_init" {
   description = "Optional cloud-init network configuration for the VM."
 

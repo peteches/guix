@@ -28,6 +28,7 @@ Current VMs (all use OVMF/EFI and =qcow2-gpt= images):
 | peteches/systems/concourse-web01.scm   | concourse-web01.peteches.co.uk   | Concourse ATC web on :8080, TSA on :2222 (192.168.51.199, 2 vCPU, 2048 MB) |
 | peteches/systems/concourse-worker01.scm | concourse-worker01.peteches.co.uk | Concourse CI worker → web01 TSA (192.168.51.200, 4 vCPU, 4096 MB)    |
 | peteches/systems/vault.scm              | vault.peteches.co.uk      | HashiCorp Vault secrets manager on :8200 (192.168.51.201, VMID 114, 2 vCPU, 2048 MB) |
+| peteches/systems/critical-grind-outline.scm | critical-grind-outline.peteches.co.uk | Outline wiki on :3000 (192.168.51.203, VMID 116, 2 vCPU, 2048 MB) |
 
 * Adding a New VM Config
 

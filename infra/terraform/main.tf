@@ -637,20 +637,11 @@ module "critical-grind-campaign" {
     enabled = true
   }
 
-  cloud_init = {
-    datastore_id = "local-lvm"
-    interface    = "ide0"
-
+  provisioned_network = {
     ipv4_address = "192.168.51.202/23"
     ipv4_gateway = "192.168.50.1"
-
     ipv6_address = "2a10:d582:ef59::109/64"
     ipv6_gateway = "2a10:d582:ef59::1"
-
-    dns_servers = [
-      "192.168.51.189",
-      "2a10:d582:ef59::101"
-    ]
   }
 }
 
@@ -693,20 +684,10 @@ module "critical-grind-outline" {
     enabled = true
   }
 
-  cloud_init = {
-    datastore_id = "local-lvm"
-    interface    = "ide0"
-
+  provisioned_network = {
     ipv4_address = "192.168.51.203/23"
     ipv4_gateway = "192.168.50.1"
-
     ipv6_address = "2a10:d582:ef59::110/64"
     ipv6_gateway = "2a10:d582:ef59::1"
-
-    dns_servers = [
-      "192.168.51.189",
-      "2a10:d582:ef59::101"
-    ]
   }
 }
-

@@ -340,6 +340,11 @@
 		     (openssh-host
 		      (name "vault.ts")
 		      (host-name "vault.spaniel-cordylus.ts.net"))))))
+		     (openssh-host
+		      (name "critical-grind-outline")
+		      (host-name "192.168.51.203")
+		      (user "peteches")
+		      (identity-file "~/.ssh/id_ed25519"))
 
    ;; GPG Agent
    (service home-gpg-agent-service-type
