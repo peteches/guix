@@ -23,7 +23,7 @@
   #:use-module (gnu services monitoring)
   #:use-module (gnu services sysctl)
 
-  #:use-module (guix-science-nonfree packages cuda)
+  #:use-module (guix-science-nonfree packages cuda-modules)
 
   #:use-module (gnu services ssh)        ; openssh-service-type
 
@@ -209,7 +209,7 @@
 (define %common-packages
   (map specification->package (list "hyprland" "bolt" "fprintd"  "font-terminus" "virt-manager" "qemu")))
 
-(define (without-gdm)
+(define* (without-gdm #:key (offload-builds? #t))
   (modify-services
    %desktop-services
    (delete gdm-service-type)
@@ -222,7 +222,7 @@
 	       (authorized-keys
 		(append (list (local-file "./nug-substitute-key.pub"))
 			%default-authorized-guix-keys))
-	       (build-machines (list %nug-build-machine))))))
+	       (build-machines (if offload-builds? (list %nug-build-machine) '()))))))
 
 (define (hyprland-launcher with-nvidia?)
   (if with-nvidia?
@@ -348,7 +348,8 @@
           (with-printing? #f)
           (with-bluetooth? #f)
           (with-nonguix? #f)
-          (with-nvidia? #f))
+          (with-nvidia? #f)
+          (offload-builds? #t))
   (let* ((firmware*
           (append firmware
                   (if intel-cpu? (list intel-microcode) '())))
@@ -397,7 +398,7 @@
          (printing-services (if with-printing? (list (service cups-service-type)) '()))
          (bluetooth-services (if with-bluetooth? (list (service bluetooth-service-type)) '()))
          (nonguix-services (if with-nonguix? (list (nonguix-substitute-service)) '()))
-         (desktop* (without-gdm))
+         (desktop* (without-gdm #:offload-builds? offload-builds?))
 	 (hyprland-session-command
           #~#$(hyprland-launcher with-nvidia?))
 	(hosts-entries

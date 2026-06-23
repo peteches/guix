@@ -26,36 +26,36 @@
 
 (define %fix-perms-hook
   (with-imported-modules
-      (source-module-closure '((ice-9 rdelim)
-                               (guix build utils)))
-    (program-file
-     "generate-cert-key-pem-file"
-     #~(begin
-         (use-modules (ice-9 rdelim)
-                      (guix build utils))
+   (source-module-closure '((ice-9 rdelim)
+                            (guix build utils)))
+   (program-file
+    "generate-cert-key-pem-file"
+    #~(begin
+        (use-modules (ice-9 rdelim)
+                     (guix build utils))
 
-         (define cert "/etc/letsencrypt/live/nug.peteches.co.uk/fullchain.pem")
-         (define key  "/etc/letsencrypt/live/nug.peteches.co.uk/privkey.pem")
-         (define dst-dir "/home/peteches/.local/share/certs")
-         (define dst (string-append dst-dir "/nug.peteches.co.uk.pem"))
+        (define cert "/etc/letsencrypt/live/nug.peteches.co.uk/fullchain.pem")
+        (define key  "/etc/letsencrypt/live/nug.peteches.co.uk/privkey.pem")
+        (define dst-dir "/home/peteches/.local/share/certs")
+        (define dst (string-append dst-dir "/nug.peteches.co.uk.pem"))
 
-         ;; absolute store paths, no PATH reliance
-         (define chown #$(file-append coreutils "/bin/chown"))
-         (define chmod #$(file-append coreutils "/bin/chmod"))
-	 (define cat #$(file-append coreutils "/bin/cat"))
+        ;; absolute store paths, no PATH reliance
+        (define chown #$(file-append coreutils "/bin/chown"))
+        (define chmod #$(file-append coreutils "/bin/chmod"))
+	(define cat #$(file-append coreutils "/bin/cat"))
 
-         (mkdir-p dst-dir)
+        (mkdir-p dst-dir)
 
-	 ;; Concatenate by streaming, no get-string-all, no invoke keywords
-	 (call-with-output-file dst
-           (lambda (out)
-             (call-with-input-file cert (lambda (in) (dump-port in out)))
-             (newline out)
-             (call-with-input-file key  (lambda (in) (dump-port in out)))))
+	;; Concatenate by streaming, no get-string-all, no invoke keywords
+	(call-with-output-file dst
+          (lambda (out)
+            (call-with-input-file cert (lambda (in) (dump-port in out)))
+            (newline out)
+            (call-with-input-file key  (lambda (in) (dump-port in out)))))
 
-         ;; owner only, no need to assume "users" group exists
-         (invoke chown "-R" "peteches:" dst-dir)
-         (invoke chmod "600" dst)))))
+        ;; owner only, no need to assume "users" group exists
+        (invoke chown "-R" "peteches:" dst-dir)
+        (invoke chmod "600" dst)))))
 
 
 (make-base-os
@@ -64,11 +64,11 @@
  ;; Base will append %base-file-systems — you only give machine-specific mounts here.
  #:firmware (list linux-firmware)
  #:users-extra (list (user-account
-		     (name "guix-offload")
-		     (comment "Build offload user")
-		     (group "users")
-		     (system? #t)
-		     (home-directory "/var/empty")))
+		      (name "guix-offload")
+		      (comment "Build offload user")
+		      (group "users")
+		      (system? #t)
+		      (home-directory "/var/empty")))
  #:mapped-devices
  (list
   (mapped-device
