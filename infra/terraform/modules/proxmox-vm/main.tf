@@ -57,48 +57,33 @@ resource "proxmox_virtual_environment_vm" "vm" {
     model  = var.network_device.model
   }
 
-  dynamic "initialization" {
-  for_each = var.cloud_init == null ? [] : [var.cloud_init]
-
-  content {
-    datastore_id = initialization.value.datastore_id
-    interface    = initialization.value.interface
-
-    dynamic "dns" {
-      for_each = length(initialization.value.dns_servers) == 0 ? [] : [initialization.value.dns_servers]
-
-      content {
-        servers = dns.value
-      }
-    }
-
-    ip_config {
-      dynamic "ipv4" {
-        for_each = initialization.value.ipv4_address == null ? [] : [initialization.value]
-
-        content {
-          address = ipv4.value.ipv4_address
-          gateway = ipv4.value.ipv4_gateway
-        }
-      }
-
-      dynamic "ipv6" {
-        for_each = initialization.value.ipv6_address == null ? [] : [initialization.value]
-
-        content {
-          address = ipv6.value.ipv6_address
-          gateway = ipv6.value.ipv6_gateway
-        }
-      }
-    }
-  }
-}
-
   agent {
-    enabled = var.agent.enabled
+    enabled = true
+
+    wait_for_ip {
+      ipv4 = true
+    }
   }
 
-  # Imported state contains an operating_system block, but no explicit type.
+  connection {
+    type        = "ssh"
+    host        = flatten(self.ipv4_addresses)[0]
+    user        = var.bootstrap_ssh_user
+    private_key = file(var.bootstrap_ssh_private_key_path)
+    timeout     = "10m"
+  }
+
+  provisioner "remote-exec" {
+    inline = [
+      "set -eu",
+      "export PATH=/run/current-system/profile/sbin:/run/current-system/profile/bin:/sbin:/bin:/usr/sbin:/usr/bin:$PATH",
+      "iface=$(ip -o -4 route show default | awk '{print $5; exit}')",
+      "test -n \"$iface\"",
+      "ip -4 addr show dev \"$iface\" | grep -q ' ${local.target_ipv4}/' || ip addr add ${local.target_ipv4_cidr} dev \"$iface\"",
+      "ip -4 addr show dev \"$iface\""
+    ]
+  }
+
   # Keeping an empty block avoids Terraform trying to remove it or set type=l26.
   operating_system {}
 
