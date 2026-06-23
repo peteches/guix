@@ -138,7 +138,10 @@
 		   (upstream "vault.spaniel-cordylus.ts.net:8200"))
 		  (caddy-reverse-proxy
 		   (domain "nas.ts.peteches.co.uk")
-		   (upstream "petechesnas.spaniel-cordylus.ts.net:5001"))))))
+		   (upstream "petechesnas.spaniel-cordylus.ts.net:5001"))
+		  (caddy-reverse-proxy
+		   (domain "outline.ts.peteches.co.uk")
+		   (upstream "critical-grind-outline.spaniel-cordylus.ts.net:3000"))))))
       (service alloy-service-type
                (alloy-configuration
                 (hostname "caddy.peteches.co.uk")

@@ -15,8 +15,8 @@
   #:use-module (peteches systems concourse-db)
   #:use-module (peteches systems concourse-web01)
   #:use-module (peteches systems concourse-worker01)
-  #:use-module (peteches systems vault))
-  #:use-module (peteches systems critical-grind-outline)
+  #:use-module (peteches systems vault)
+  #:use-module (peteches systems critical-grind-outline))
 
 (define-public prometheus-machine
   (machine
@@ -226,5 +226,5 @@
         concourse-db-machine
         concourse-web01-machine
         vault-machine
-        concourse-worker01-machine)
-        critical-grind-outline-machine)
+        concourse-worker01-machine
+        critical-grind-outline-machine))

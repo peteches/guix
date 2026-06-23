@@ -21,6 +21,7 @@
   #:use-module (peteches services firewall)
   #:use-module (peteches services outline)
   #:use-module (peteches services restic)
+  #:use-module (peteches services tailscale)
   #:use-module (sops secrets)
   #:export (critical-grind-outline-os))
 
@@ -109,6 +110,9 @@ host    outline outline  127.0.0.1/32   scram-sha-256\n"))
        (path "/run/secrets/redis-url-env")))
      #:extra-services
      (list
+      (service tailscale-service-type
+               (list (tailscale-instance-configuration
+                      (name "peteches"))))
       ;; Declare the cgroup group required by oci-service-type with Podman + root user.
       (simple-service 'cgroup-group
                       account-service-type
@@ -217,7 +221,7 @@ host    outline outline  127.0.0.1/32   scram-sha-256\n"))
       ;; postgres-roles completes, run: herd restart outline
       (service outline-service-type
                (outline-configuration
-                (url "http://critical-grind-outline.peteches.co.uk:3000")
+                (url "http://outline.ts.peteches.co.uk")
                 (port 3000)
                 (data-dir "/var/lib/outline")
                 (secret-key-file   "/run/secrets/outline-secret-key")
@@ -226,12 +230,13 @@ host    outline outline  127.0.0.1/32   scram-sha-256\n"))
                 (redis-url-file "/run/secrets/redis-url-env")
                 (smtp-host     "smtp.fastmail.com")
                 (smtp-port     587)
-                (smtp-username "criticalgrind@peteches.co.uk")
+                (smtp-username "pete@peteches.co.uk")
                 (smtp-password-file "/run/secrets/outline-smtp-password")
                 (smtp-from-email  "criticalgrind@peteches.co.uk")
                 (smtp-reply-email "criticalgrind@peteches.co.uk")
                 (extra-environment '("PGSSLMODE=disable"
-                                    "FORCE_HTTPS=false"))))
+                                    "FORCE_HTTPS=false"
+                                    "SMTP_SECURE=false"))))
 
       (service alloy-service-type
                (alloy-configuration
