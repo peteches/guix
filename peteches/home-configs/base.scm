@@ -67,18 +67,26 @@
   #:export (base-packages
             base-services))
 
-;; This file lives at:
-;;   <repo-root>/peteches/home-configs/base.scm
-;;
-;; Resolve paths relative to <repo-root>, regardless of where
-;; `guix home reconfigure' is run from.
-(define %repo-root
-  (canonicalize-path
-   (string-append (dirname (current-filename)) "/../..")))
+(define (source-path path)
+  (or (search-path %load-path path)
+      (error "could not find file in %load-path" %load-path path)))
 
-(define (repo-file path)
-  (string-append %repo-root "/" path))
+(define (directory-exists? path)
+  (and (file-exists? path)
+       (eq? 'directory (stat:type (stat path)))))
 
+(define (search-load-path-directory path)
+  (let loop ((dirs %load-path))
+    (if (null? dirs)
+        #f
+        (let ((candidate (string-append (car dirs) "/" path)))
+          (if (directory-exists? candidate)
+              candidate
+              (loop (cdr dirs)))))))
+
+(define (repo-directory path)
+  (or (search-load-path-directory path)
+      (error "could not find directory in %load-path" %load-path path)))
 
 ;; 1) Shared package set for all machines.
 (define-public base-packages
@@ -339,12 +347,12 @@
 		      (identity-file "~/.ssh/id_ed25519"))
 		     (openssh-host
 		      (name "vault.ts")
-		      (host-name "vault.spaniel-cordylus.ts.net"))))))
+		      (host-name "vault.spaniel-cordylus.ts.net"))
 		     (openssh-host
 		      (name "critical-grind-outline")
 		      (host-name "192.168.51.203")
 		      (user "peteches")
-		      (identity-file "~/.ssh/id_ed25519"))
+		      (identity-file "~/.ssh/id_ed25519"))))))
 
    ;; GPG Agent
    (service home-gpg-agent-service-type
@@ -398,7 +406,7 @@
 	     (key_down "Ctrl-n")))
    (service home-emacs-base-service-type
 	    (home-emacs-base-configuration
-	     (config-directory (repo-file "./configs/emacs"))
+	     (config-directory (repo-directory "configs/emacs"))
 	     (extra-packages (map specification->package
 				 '("emacs-forge"
 				   "emacs-olivetti"
