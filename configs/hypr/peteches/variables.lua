@@ -77,12 +77,12 @@ hl.config({
 
     blur = {
       enabled = true,
-      size = 8,
-      passes = 3,
+      size = 16,
+      passes = 5,
       new_optimizations = true,
       xray = false,
       ignore_opacity = true,
-      vibrancy = 0.18,
+      vibrancy = 0.40,
       vibrancy_darkness = 0.25,
       noise = 0.012,
       contrast = 0.9,
