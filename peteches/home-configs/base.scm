@@ -4,6 +4,7 @@
   #:use-module (gnu home services)
   #:use-module (gnu home services desktop)
   #:use-module (gnu home services gnupg)
+  #:use-module (gnu home services mcron)
   #:use-module (gnu home services ssh)
   #:use-module (gnu home services shells)
   #:use-module (gnu home services syncthing)
@@ -519,6 +520,13 @@
                    home-files-service-type
                    `((".local/bin/dms-random-wallpaper"
                       ,(local-file (source-path "configs/bin/dms-random-wallpaper")))))
+
+   (simple-service 'random-wallpaper-hourly
+                   home-mcron-service-type
+                   (list
+                    #~(job '(next-hour '(0 1 2 3 4 5 6 7 8 9 10 11
+                                         12 13 14 15 16 17 18 19 20 21 22 23))
+                           "state_dir=\"${XDG_STATE_HOME:-$HOME/.local/state}/peteches\"; mkdir -p \"$state_dir\"; script=\"$HOME/.local/bin/dms-random-wallpaper\"; test -x \"$script\" && \"$script\" >> \"$state_dir/dms-random-wallpaper-hourly.log\" 2>&1 || true")))
 
    (simple-service 'wofi-material-style
                    home-xdg-configuration-files-service-type
