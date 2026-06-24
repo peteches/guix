@@ -2,6 +2,7 @@ require("peteches.env")
 require("peteches.autostart")
 require("peteches.keybinds")
 require("peteches.variables")
+require("peteches.layer-rules")
 
 local locals = require("peteches.locals")
 

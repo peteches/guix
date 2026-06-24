@@ -1,0 +1,56 @@
+@import url("matugen-colors.css");
+
+* {
+  font-family: "JetBrainsMono Nerd Font", "JetBrains Mono", "Noto Sans", sans-serif;
+  font-size: 14px;
+}
+
+#window {
+  background-color: alpha(@surface, 0.72);
+  color: @on_surface;
+  border: 1px solid alpha(@outline, 0.45);
+  border-radius: 18px;
+  padding: 12px;
+}
+
+#outer-box,
+#inner-box,
+#scroll {
+  background-color: transparent;
+}
+
+#input {
+  background-color: alpha(@surface_container_high, 0.78);
+  color: @on_surface;
+  border: 1px solid alpha(@outline, 0.28);
+  border-radius: 999px;
+  margin: 0 0 10px 0;
+  padding: 10px 14px;
+}
+
+#input:focus {
+  border-color: alpha(@primary, 0.72);
+}
+
+#entry {
+  background-color: transparent;
+  border-radius: 12px;
+  margin: 2px 0;
+  padding: 8px 12px;
+}
+
+#entry:selected {
+  background-color: alpha(@primary, 0.24);
+}
+
+#entry:selected #text {
+  color: @on_surface;
+}
+
+#img {
+  margin-right: 10px;
+}
+
+#text {
+  color: @on_surface;
+}

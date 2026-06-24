@@ -64,7 +64,7 @@ hl.bind(mod .. " + b", hl.dsp.exec_cmd(Local.browser_cmd), {
   description = "Open browser",
 })
 
-hl.bind(mod .. " + d", hl.dsp.exec_cmd("wofi --show-run drun"), {
+hl.bind(mod .. " + d", hl.dsp.exec_cmd("wofi --show drun"), {
   description = "Open application launcher",
 })
 
@@ -80,8 +80,8 @@ hl.bind(mod .. " + SHIFT + s", hl.dsp.exec_cmd(Local.screenshot_cmd), {
   description = "Screenshot",
 })
 
-hl.bind(mod .. " + SHIFT + d", hl.dsp.exec_cmd("makoctl dismiss -a"), {
-  description = "Dismiss all notifications",
+hl.bind(mod .. " + SHIFT + d", hl.dsp.exec_cmd("dms ipc call notifications dismissAllPopups"), {
+  description = "Dismiss notification popups",
 })
 
 hl.bind(mod .. " + Tab", hl.dsp.focus({ last = true }), {

@@ -1,3 +1,34 @@
+local function load_matugen_theme()
+  local fallback = {
+    active_border = "rgba(89b4faff)",
+    inactive_border = "rgba(313244aa)",
+    group_active = "rgba(cba6f7ff)",
+    group_inactive = "rgba(313244aa)",
+    locked_active = "rgba(f38ba8ff)",
+    locked_inactive = "rgba(45475aaa)",
+    background = "rgba(11111bff)",
+  }
+
+  local home = os.getenv("HOME")
+  if not home then
+    return fallback
+  end
+
+  local chunk = loadfile(home .. "/.cache/matugen/hypr-colors.lua")
+  if not chunk then
+    return fallback
+  end
+
+  local ok, generated_theme = pcall(chunk)
+  if not ok or type(generated_theme) ~= "table" then
+    return fallback
+  end
+
+  return setmetatable(generated_theme, { __index = fallback })
+end
+
+local theme = load_matugen_theme()
+
 hl.config({
   input = {
     kb_layout = "us",
@@ -27,8 +58,8 @@ hl.config({
     hover_icon_on_border = true,
 
     col = {
-      active_border = "rgba(89b4faff)",
-      inactive_border = "rgba(313244aa)",
+      active_border = theme.active_border,
+      inactive_border = theme.inactive_border,
     },
   },
 
@@ -132,18 +163,18 @@ hl.config({
       scrolling = true,
 
       col = {
-        active = "rgba(89b4faff)",
-        inactive = "rgba(313244aa)",
-        locked_active = "rgba(f38ba8ff)",
-        locked_inactive = "rgba(45475aaa)",
+        active = theme.active_border,
+        inactive = theme.inactive_border,
+        locked_active = theme.locked_active,
+        locked_inactive = theme.locked_inactive,
       },
     },
 
     col = {
-      border_active = "rgba(cba6f7ff)",
-      border_inactive = "rgba(313244aa)",
-      border_locked_active = "rgba(f38ba8ff)",
-      border_locked_inactive = "rgba(45475aaa)",
+      border_active = theme.group_active,
+      border_inactive = theme.group_inactive,
+      border_locked_active = theme.locked_active,
+      border_locked_inactive = theme.locked_inactive,
     },
   },
 
@@ -163,7 +194,7 @@ hl.config({
     enable_swallow = false,
     swallow_regex = "^(kitty|foot|alacritty|wezterm)$",
 
-    background_color = "rgba(11111bff)",
+    background_color = theme.background,
 
     exit_window_retains_fullscreen = true,
 

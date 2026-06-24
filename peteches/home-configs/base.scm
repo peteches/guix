@@ -46,13 +46,11 @@
   #:use-module (peteches home services password-store)
   #:use-module (peteches home services firefox)
   #:use-module (peteches home services hyprland)
-  #:use-module (peteches home services mako)
   #:use-module (peteches home services wofi)
   #:use-module (peteches home services nyxt)
   ;; Your config fragments
   #:use-module (peteches home-configs scoreplay)
   #:use-module (peteches home-configs git)
-  #:use-module (peteches home-configs mako)
   #:use-module (peteches home-configs firefox)
   #:use-module (peteches packages gurps)
   #:use-module (peteches packages claude-code)
@@ -94,6 +92,17 @@
    claude-code
    rustdesk
    dank-material-shell
+   (specification->package "matugen")
+   (specification->package "qt5ct")
+   (specification->package "qt6ct")
+   (specification->package "adw-gtk3-theme")
+   (specification->package "adwaita-icon-theme")
+   (specification->package "font-nerd-symbols")
+   (specification->package "font-nerd-jetbrains-mono")
+   (specification->package "wl-clipboard")
+   (specification->package "playerctl")
+   (specification->package "ddcutil")
+   (specification->package "pavucontrol-qt")
    recutils
    eza
    fly
@@ -169,9 +178,7 @@
 			   (id "NONO6A6-UEOXJWK-JI5TWRF-5NDMD6H-N3BDTWI-JKRNQ5D-PHO4SSW-UDTHFAL")
 			   (auto-accept-folders? #t))))))))))))
 
-   ;; Notifications
-   (service home-mako-service-type
-            base-mako-config)
+   ;; Notifications are handled by Dank Material Shell.
 
    ;; Git config
    (service home-git-service-type
@@ -507,6 +514,66 @@
    ;; Desktop conveniences (terminals/aliases/env, etc.).  You already have a
    ;; home-desktop-service; keep it as the place to set common env/aliases.
    (service home-desktop-service-type)
+
+   (simple-service 'wofi-material-style
+                   home-xdg-configuration-files-service-type
+                   `(("wofi/style.css"
+                      ,(local-file (source-path "configs/wofi/style.css")))
+                     ("matugen/templates/wofi-colors.css"
+                      ,(local-file (source-path "configs/matugen/templates/wofi-colors.css")))
+                     ("matugen/templates/hypr-colors.lua"
+                      ,(local-file (source-path "configs/matugen/templates/hypr-colors.lua")))))
+
+   (simple-service 'matugen-dms-custom-templates
+                   home-activation-service-type
+                   #~(begin
+                       (use-modules (guix build utils))
+                       (let* ((home (getenv "HOME"))
+                            (matugen-dir (string-append home "/.config/matugen"))
+                            (wofi-dir (string-append home "/.config/wofi"))
+                            (hypr-cache-dir (string-append home "/.cache/matugen"))
+                            (config-file (string-append matugen-dir "/config.toml"))
+                            (wofi-colors (string-append wofi-dir "/matugen-colors.css"))
+                            (hypr-colors (string-append hypr-cache-dir "/hypr-colors.lua")))
+                       (mkdir-p matugen-dir)
+                       (mkdir-p wofi-dir)
+                       (mkdir-p hypr-cache-dir)
+                       (call-with-output-file config-file
+                         (lambda (port)
+                           (display "[config]\n\n" port)
+                           (display "[templates.wofi]\n" port)
+                           (display (string-append "input_path = '" home "/.config/matugen/templates/wofi-colors.css'\n") port)
+                           (display (string-append "output_path = '" home "/.config/wofi/matugen-colors.css'\n\n") port)
+                           (display "[templates.hyprland_lua]\n" port)
+                           (display (string-append "input_path = '" home "/.config/matugen/templates/hypr-colors.lua'\n") port)
+                           (display (string-append "output_path = '" home "/.cache/matugen/hypr-colors.lua'\n") port)))
+                       (unless (file-exists? wofi-colors)
+                         (call-with-output-file wofi-colors
+                           (lambda (port)
+                             (display "@define-color background #1e1e2e;\n" port)
+                             (display "@define-color on_background #cdd6f4;\n" port)
+                             (display "@define-color surface #1e1e2e;\n" port)
+                             (display "@define-color on_surface #cdd6f4;\n" port)
+                             (display "@define-color surface_container #313244;\n" port)
+                             (display "@define-color surface_container_high #45475a;\n" port)
+                             (display "@define-color surface_container_highest #585b70;\n" port)
+                             (display "@define-color primary #89b4fa;\n" port)
+                             (display "@define-color on_primary #11111b;\n" port)
+                             (display "@define-color secondary #94e2d5;\n" port)
+                             (display "@define-color tertiary #cba6f7;\n" port)
+                             (display "@define-color outline #6c7086;\n" port))))
+                       (unless (file-exists? hypr-colors)
+                         (call-with-output-file hypr-colors
+                           (lambda (port)
+                             (display "return {\n" port)
+                             (display "  active_border = \"rgba(89b4faff)\",\n" port)
+                             (display "  inactive_border = \"rgba(313244aa)\",\n" port)
+                             (display "  group_active = \"rgba(cba6f7ff)\",\n" port)
+                             (display "  group_inactive = \"rgba(313244aa)\",\n" port)
+                             (display "  locked_active = \"rgba(f38ba8ff)\",\n" port)
+                             (display "  locked_inactive = \"rgba(45475aaa)\",\n" port)
+                             (display "  background = \"rgba(11111bff)\",\n" port)
+                             (display "}\n" port)))))))
    (simple-service 'dms-submap-plugin
 		   home-xdg-configuration-files-service-type
 		   `(("DankMaterialShell/plugins/hyprSubmapHint"
