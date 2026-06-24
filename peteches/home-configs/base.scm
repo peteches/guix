@@ -94,6 +94,11 @@
    rustdesk
    dank-material-shell
    (specification->package "matugen")
+   (specification->package "hyprcursor")
+   (specification->package "xcur2png")
+   (specification->package "curl")
+   (specification->package "bzip2")
+   (specification->package "dconf")
    (specification->package "qt5ct")
    (specification->package "qt6ct")
    (specification->package "adw-gtk3-theme")
@@ -141,7 +146,11 @@
 		     ("GOMODCACHE" . "$HOME/.cache/go/mod")
 		     ("GOCACHE" . "$HOME/.cache/go/build")
 		     ("GOPATH" . "$HOME/state/go")
-		     ("GOBIN" . "$HOME/.local/bin")))
+		     ("GOBIN" . "$HOME/.local/bin")
+                     ("HYPRCURSOR_THEME" . "phinger-cursors-dark")
+                     ("HYPRCURSOR_SIZE" . "32")
+                     ("XCURSOR_THEME" . "phinger-cursors-dark")
+                     ("XCURSOR_SIZE" . "32")))
    (simple-service 'peteches-guile-load-path home-environment-variables-service-type
 		   `(("GUILE_LOAD_PATH" . "$HOME/area_51/guix:${HOME}/.config/guix/current/share/guile/site/3.0${GUILE_LOAD_PATH:+:$GUILE_LOAD_PATH}")
 		     ("GUILE_LOAD_COMPILED_PATH" . "$HOME/area_51/guix:${HOME}/.config/guix/current/share/guile/site/3.0${GUILE_LOAD_COMPILED_PATH:+:$GUILE_LOAD_COMPILED_PATH}")))
@@ -516,10 +525,23 @@
    ;; home-desktop-service; keep it as the place to set common env/aliases.
    (service home-desktop-service-type)
 
-   (simple-service 'random-wallpaper-tool
+   (simple-service 'desktop-helper-tools
                    home-files-service-type
                    `((".local/bin/dms-random-wallpaper"
-                      ,(local-file (source-path "configs/bin/dms-random-wallpaper")))))
+                      ,(local-file (source-path "configs/bin/dms-random-wallpaper")))
+                     (".local/bin/setup-phinger-cursors"
+                      ,(local-file (source-path "configs/bin/setup-phinger-cursors")))))
+
+   (simple-service 'phinger-cursor-theme
+                   home-activation-service-type
+                   #~(begin
+                       (use-modules (guix build utils))
+                       (let* ((home (getenv "HOME"))
+                              (state-dir (string-append home "/.local/state/peteches"))
+                              (script (string-append home "/.local/bin/setup-phinger-cursors")))
+                         (mkdir-p state-dir)
+                         (when (file-exists? script)
+                           (system* script "--variant" "dark" "--size" "32" "--best-effort")))))
 
    (simple-service 'random-wallpaper-hourly
                    home-mcron-service-type

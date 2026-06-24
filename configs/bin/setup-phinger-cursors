@@ -1,0 +1,196 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+variant="${PHINGER_CURSOR_VARIANT:-dark}"
+size="${PHINGER_CURSOR_SIZE:-32}"
+best_effort=0
+
+usage() {
+  cat <<'USAGE'
+Usage: setup-phinger-cursors [--variant dark|light|dark-left|light-left] [--size SIZE] [--best-effort]
+
+Install Phinger as both an XCursor theme and a Hyprcursor theme under
+~/.local/share/icons, then select it for Hyprland, XCursor and GTK.
+USAGE
+}
+
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    --variant)
+      variant="${2:?missing value for --variant}"
+      shift 2
+      ;;
+    --size)
+      size="${2:?missing value for --size}"
+      shift 2
+      ;;
+    --best-effort)
+      best_effort=1
+      shift
+      ;;
+    -h|--help)
+      usage
+      exit 0
+      ;;
+    *)
+      echo "setup-phinger-cursors: unknown argument: $1" >&2
+      usage >&2
+      exit 2
+      ;;
+  esac
+done
+
+case "$variant" in
+  dark|light|dark-left|light-left) ;;
+  *)
+    echo "setup-phinger-cursors: unsupported variant: $variant" >&2
+    exit 2
+    ;;
+esac
+
+fail() {
+  echo "setup-phinger-cursors: $*" >&2
+  if [ "$best_effort" -eq 1 ]; then
+    exit 0
+  fi
+  exit 1
+}
+
+have() {
+  command -v "$1" >/dev/null 2>&1
+}
+
+require() {
+  for cmd in "$@"; do
+    have "$cmd" || fail "missing required command '$cmd'"
+  done
+}
+
+xdg_data_home="${XDG_DATA_HOME:-$HOME/.local/share}"
+xdg_cache_home="${XDG_CACHE_HOME:-$HOME/.cache}"
+xdg_config_home="${XDG_CONFIG_HOME:-$HOME/.config}"
+icons_dir="$xdg_data_home/icons"
+cache_dir="$xdg_cache_home/phinger-cursors"
+xcursor_theme="phinger-cursors-$variant"
+hyprcursor_theme="$xcursor_theme"
+xcursor_dir="$icons_dir/$xcursor_theme"
+hyprcursor_dir="$icons_dir/theme_$hyprcursor_theme"
+
+mkdir -p "$icons_dir" "$cache_dir"
+
+install_xcursor() {
+  if [ -d "$xcursor_dir/cursors" ]; then
+    return 0
+  fi
+
+  require curl tar bzip2
+
+  local archive="$cache_dir/phinger-cursors-variants.tar.bz2"
+  echo "Installing Phinger XCursor variants into $icons_dir"
+  curl -fL --retry 3 --connect-timeout 20 \
+    -o "$archive" \
+    "https://github.com/phisch/phinger-cursors/releases/latest/download/phinger-cursors-variants.tar.bz2" \
+    || fail "could not download Phinger cursor release"
+
+  tar -xjf "$archive" -C "$icons_dir" \
+    || fail "could not extract Phinger cursor release"
+
+  [ -d "$xcursor_dir/cursors" ] \
+    || fail "expected cursor theme directory not found after extraction: $xcursor_dir"
+}
+
+install_hyprcursor() {
+  if [ -f "$hyprcursor_dir/manifest.hl" ]; then
+    return 0
+  fi
+
+  require hyprcursor-util xcur2png
+
+  install_xcursor
+
+  local work="$cache_dir/hyprcursor-build-$variant"
+  rm -rf "$work"
+  mkdir -p "$work/extract" "$work/create"
+
+  echo "Converting $xcursor_theme to Hyprcursor format"
+  hyprcursor-util --extract "$xcursor_dir" --output "$work/extract" \
+    || fail "hyprcursor-util could not extract $xcursor_dir"
+
+  local extracted
+  extracted="$(find "$work/extract" -mindepth 1 -maxdepth 1 -type d | head -n 1)"
+  [ -n "$extracted" ] || fail "hyprcursor-util did not produce an extracted theme"
+
+  hyprcursor-util --create "$extracted" --output "$icons_dir" \
+    || fail "hyprcursor-util could not create a Hyprcursor theme"
+
+  if [ ! -f "$hyprcursor_dir/manifest.hl" ]; then
+    # hyprcursor-util uses the manifest name to create theme_<name>.  If it
+    # normalised the output name differently, keep a stable user-facing alias.
+    local generated
+    generated="$(find "$icons_dir" -mindepth 1 -maxdepth 1 -type d -name 'theme_*' -newer "$work" | head -n 1)"
+    if [ -n "$generated" ] && [ -f "$generated/manifest.hl" ]; then
+      ln -sfn "$generated" "$hyprcursor_dir"
+    fi
+  fi
+
+  [ -f "$hyprcursor_dir/manifest.hl" ] \
+    || fail "expected Hyprcursor theme not found after conversion: $hyprcursor_dir"
+}
+
+write_default_index() {
+  local default_dir="$1"
+  mkdir -p "$default_dir"
+  cat > "$default_dir/index.theme" <<INDEX
+[Icon Theme]
+Name=Default
+Comment=Default cursor theme selected by Guix Home
+Inherits=$xcursor_theme
+INDEX
+}
+
+write_gtk_settings() {
+  local dir="$1"
+  local file="$dir/settings.ini"
+  local tmp="$file.tmp"
+
+  mkdir -p "$dir"
+  if [ -f "$file" ]; then
+    awk '!/^(gtk-cursor-theme-name|gtk-cursor-theme-size)=/' "$file" > "$tmp"
+  else
+    printf '[Settings]\n' > "$tmp"
+  fi
+
+  grep -q '^\[Settings\]' "$tmp" || sed -i '1i[Settings]' "$tmp"
+  cat >> "$tmp" <<GTK
+gtk-cursor-theme-name=$xcursor_theme
+gtk-cursor-theme-size=$size
+GTK
+  mv "$tmp" "$file"
+}
+
+select_cursor() {
+  write_default_index "$icons_dir/default"
+  write_default_index "$HOME/.icons/default"
+  write_gtk_settings "$xdg_config_home/gtk-3.0"
+  write_gtk_settings "$xdg_config_home/gtk-4.0"
+
+  if have gsettings; then
+    gsettings set org.gnome.desktop.interface cursor-theme "$xcursor_theme" >/dev/null 2>&1 || true
+    gsettings set org.gnome.desktop.interface cursor-size "$size" >/dev/null 2>&1 || true
+  elif have dconf; then
+    dconf write /org/gnome/desktop/interface/cursor-theme "'$xcursor_theme'" >/dev/null 2>&1 || true
+    dconf write /org/gnome/desktop/interface/cursor-size "uint32 $size" >/dev/null 2>&1 || true
+  fi
+
+  if have hyprctl && [ -n "${HYPRLAND_INSTANCE_SIGNATURE:-}" ]; then
+    hyprctl setcursor "$hyprcursor_theme" "$size" >/dev/null 2>&1 || true
+  fi
+}
+
+install_xcursor
+install_hyprcursor
+select_cursor
+
+echo "Selected Phinger cursor theme: $xcursor_theme, size $size"
+echo "XCursor theme: $xcursor_dir"
+echo "Hyprcursor theme: $hyprcursor_dir"
