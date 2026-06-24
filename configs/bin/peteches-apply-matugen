@@ -1,0 +1,87 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+program=${0##*/}
+state_dir=${XDG_STATE_HOME:-$HOME/.local/state}/peteches
+log_file=$state_dir/matugen-apply.log
+
+usage() {
+  cat <<USAGE
+Usage: $program IMAGE
+
+Generate matugen colours from IMAGE using ~/.config/matugen/config.toml.
+This is intended to run after the wallpaper has changed, independent of DMS'
+internal theme worker.
+
+Environment:
+  PETECHES_MATUGEN_MODE             Matugen mode, default: dark
+  PETECHES_MATUGEN_TYPE             Matugen scheme type, default: scheme-tonal-spot
+  PETECHES_MATUGEN_RELOAD_HYPRLAND  Reload Hyprland after generation, default: 1
+  MATUGEN_BIN                       Override matugen executable
+USAGE
+}
+
+log() {
+  mkdir -p "$state_dir"
+  printf '[%(%Y-%m-%dT%H:%M:%S%z)T] %s\n' -1 "$*" >> "$log_file"
+}
+
+die() {
+  printf '%s: %s\n' "$program" "$*" >&2
+  log "ERROR: $*"
+  exit 1
+}
+
+resolve_matugen_bin() {
+  if [[ -n ${MATUGEN_BIN:-} ]]; then
+    printf '%s\n' "$MATUGEN_BIN"
+    return 0
+  fi
+
+  if [[ -x $HOME/.guix-home/profile/bin/matugen ]]; then
+    printf '%s\n' "$HOME/.guix-home/profile/bin/matugen"
+    return 0
+  fi
+
+  command -v matugen 2>/dev/null || return 1
+}
+
+reload_hyprland() {
+  [[ ${PETECHES_MATUGEN_RELOAD_HYPRLAND:-1} != 0 ]] || return 0
+  [[ -n ${HYPRLAND_INSTANCE_SIGNATURE:-} ]] || return 0
+
+  if command -v hyprctl >/dev/null 2>&1; then
+    hyprctl reload >> "$log_file" 2>&1 || log "WARN: hyprctl reload failed"
+  fi
+}
+
+if [[ ${1:-} == "-h" || ${1:-} == "--help" ]]; then
+  usage
+  exit 0
+fi
+
+[[ $# -eq 1 ]] || die "expected exactly one image path"
+image=$1
+
+case $image in
+  '~') image=$HOME ;;
+  '~/'*) image=$HOME/${image#~/} ;;
+esac
+
+[[ -f $image ]] || die "not a file: $image"
+image=$(cd "$(dirname "$image")" && printf '%s/%s\n' "$(pwd -P)" "$(basename "$image")")
+
+config_file=${XDG_CONFIG_HOME:-$HOME/.config}/matugen/config.toml
+[[ -r $config_file ]] || die "matugen config not readable: $config_file"
+
+matugen_bin=$(resolve_matugen_bin) || die "matugen not found; expected $HOME/.guix-home/profile/bin/matugen or a matugen in PATH"
+mode=${PETECHES_MATUGEN_MODE:-dark}
+type=${PETECHES_MATUGEN_TYPE:-scheme-tonal-spot}
+
+log "generating colours from: $image"
+log "command: $matugen_bin image <image> -m $mode -t $type"
+
+"$matugen_bin" image "$image" -m "$mode" -t "$type" >> "$log_file" 2>&1 || die "matugen generation failed; see $log_file"
+
+reload_hyprland
+log "completed: $image"

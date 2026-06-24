@@ -8,6 +8,21 @@ config_file=$config_dir/random-wallpaper-dir
 last_file=$state_dir/random-wallpaper-last
 default_wallpaper_dir=$HOME/Pictures/Wallpapers
 
+
+resolve_apply_matugen_bin() {
+  if [[ -n ${PETECHES_APPLY_MATUGEN_BIN:-} ]]; then
+    printf '%s\n' "$PETECHES_APPLY_MATUGEN_BIN"
+    return 0
+  fi
+
+  if [[ -x $HOME/.guix-home/profile/bin/peteches-apply-matugen ]]; then
+    printf '%s\n' "$HOME/.guix-home/profile/bin/peteches-apply-matugen"
+    return 0
+  fi
+
+  command -v peteches-apply-matugen 2>/dev/null || return 1
+}
+
 resolve_dms_bin() {
   if [[ -n ${DMS_BIN:-} ]]; then
     printf '%s\n' "$DMS_BIN"
@@ -36,11 +51,13 @@ Options:
   -n, --no-save         Do not remember DIRECTORY for future runs
   -m, --monitor NAME    Set wallpaper only for a DMS monitor/output
       --global          Use DMS global wallpaper mode, ignoring monitor env
+      --no-matugen      Do not run the explicit matugen generation step
   -h, --help            Show this help
 
 Environment:
   DMS_RANDOM_WALLPAPER_DIR      Override wallpaper directory, before remembered/default path
   DMS_RANDOM_WALLPAPER_MONITOR  Default monitor for per-output wallpaper mode
+  DMS_RANDOM_WALLPAPER_MATUGEN  Set to 0 to skip explicit matugen generation
 
 Examples:
   $program ~/Pictures/Wallpapers
@@ -57,6 +74,7 @@ die() {
 wallpaper_dir=${DMS_RANDOM_WALLPAPER_DIR:-}
 save_dir=true
 monitor=${DMS_RANDOM_WALLPAPER_MONITOR:-}
+run_matugen=${DMS_RANDOM_WALLPAPER_MATUGEN:-1}
 
 while (($#)); do
   case $1 in
@@ -76,6 +94,10 @@ while (($#)); do
       ;;
     --global)
       monitor=
+      shift
+      ;;
+    --no-matugen)
+      run_matugen=0
       shift
       ;;
     -h|--help)
@@ -149,6 +171,16 @@ fi
 
 mkdir -p "$state_dir"
 printf '%s\n' "$choice" > "$last_file"
+
+if [[ $run_matugen != 0 ]]; then
+  if apply_matugen_bin=$(resolve_apply_matugen_bin); then
+    "$apply_matugen_bin" "$choice" >> "$state_dir/dms-random-wallpaper-matugen.log" 2>&1 || {
+      printf '%s: warning: matugen generation failed; see %s\n' "$program" "$state_dir/dms-random-wallpaper-matugen.log" >&2
+    }
+  else
+    printf '%s: warning: peteches-apply-matugen not found; colours were not regenerated\n' "$program" >&2
+  fi
+fi
 
 if [[ $save_dir == true ]]; then
   mkdir -p "$config_dir"
