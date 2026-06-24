@@ -515,6 +515,11 @@
    ;; home-desktop-service; keep it as the place to set common env/aliases.
    (service home-desktop-service-type)
 
+   (simple-service 'random-wallpaper-tool
+                   home-files-service-type
+                   `((".local/bin/dms-random-wallpaper"
+                      ,(local-file (source-path "configs/bin/dms-random-wallpaper")))))
+
    (simple-service 'wofi-material-style
                    home-xdg-configuration-files-service-type
                    `(("wofi/style.css"

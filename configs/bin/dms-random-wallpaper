@@ -1,0 +1,137 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+program=${0##*/}
+config_dir=${XDG_CONFIG_HOME:-$HOME/.config}/peteches
+state_dir=${XDG_STATE_HOME:-$HOME/.local/state}/peteches
+config_file=$config_dir/random-wallpaper-dir
+last_file=$state_dir/random-wallpaper-last
+
+usage() {
+  cat <<USAGE
+Usage: $program [OPTIONS] [DIRECTORY]
+
+Choose a random wallpaper from DIRECTORY and set it through Dank Material Shell.
+When DIRECTORY is provided, it is remembered for future runs.
+
+Options:
+  -d, --dir DIRECTORY   Wallpaper directory to use and remember
+  -n, --no-save         Do not remember DIRECTORY for future runs
+  -m, --monitor NAME    Set wallpaper only for a DMS monitor/output
+      --global          Use DMS global wallpaper mode, ignoring monitor env
+  -h, --help            Show this help
+
+Environment:
+  DMS_RANDOM_WALLPAPER_DIR      Default wallpaper directory
+  DMS_RANDOM_WALLPAPER_MONITOR  Default monitor for per-output wallpaper mode
+
+Examples:
+  $program ~/Pictures/Wallpapers
+  $program
+  $program --monitor DP-2 ~/Pictures/Wallpapers
+USAGE
+}
+
+die() {
+  printf '%s: %s\n' "$program" "$*" >&2
+  exit 1
+}
+
+wallpaper_dir=${DMS_RANDOM_WALLPAPER_DIR:-}
+save_dir=true
+monitor=${DMS_RANDOM_WALLPAPER_MONITOR:-}
+
+while (($#)); do
+  case $1 in
+    -d|--dir)
+      [[ $# -ge 2 ]] || die "$1 needs a directory"
+      wallpaper_dir=$2
+      shift 2
+      ;;
+    -n|--no-save)
+      save_dir=false
+      shift
+      ;;
+    -m|--monitor)
+      [[ $# -ge 2 ]] || die "$1 needs a monitor name"
+      monitor=$2
+      shift 2
+      ;;
+    --global)
+      monitor=
+      shift
+      ;;
+    -h|--help)
+      usage
+      exit 0
+      ;;
+    --)
+      shift
+      break
+      ;;
+    -*)
+      die "unknown option: $1"
+      ;;
+    *)
+      [[ -z ${wallpaper_dir:-} ]] || die "unexpected extra argument: $1"
+      wallpaper_dir=$1
+      shift
+      ;;
+  esac
+done
+
+if [[ -z ${wallpaper_dir:-} && -r $config_file ]]; then
+  IFS= read -r wallpaper_dir < "$config_file"
+fi
+
+[[ -n ${wallpaper_dir:-} ]] || die "no wallpaper directory configured; run: $program /path/to/wallpapers"
+
+case $wallpaper_dir in
+  '~') wallpaper_dir=$HOME ;;
+  '~/'*) wallpaper_dir=$HOME/${wallpaper_dir#~/} ;;
+esac
+
+[[ -d $wallpaper_dir ]] || die "not a directory: $wallpaper_dir"
+wallpaper_dir=$(cd "$wallpaper_dir" && pwd -P)
+
+images=()
+while IFS= read -r -d '' image; do
+  images+=("$image")
+done < <(find "$wallpaper_dir" -type f \
+  \( -iname '*.avif' \
+  -o -iname '*.bmp' \
+  -o -iname '*.gif' \
+  -o -iname '*.jpeg' \
+  -o -iname '*.jpg' \
+  -o -iname '*.png' \
+  -o -iname '*.webp' \) \
+  -print0)
+
+count=${#images[@]}
+(( count > 0 )) || die "no supported image files found in: $wallpaper_dir"
+
+last=
+[[ -r $last_file ]] && IFS= read -r last < "$last_file"
+
+choice=
+for _ in 1 2 3 4 5; do
+  index=$(( ${SRANDOM:-$RANDOM} % count ))
+  choice=${images[$index]}
+  [[ $count -eq 1 || $choice != "$last" ]] && break
+done
+
+if [[ -n $monitor ]]; then
+  dms ipc call wallpaper setFor "$monitor" "$choice"
+else
+  dms ipc call wallpaper set "$choice"
+fi
+
+mkdir -p "$state_dir"
+printf '%s\n' "$choice" > "$last_file"
+
+if [[ $save_dir == true ]]; then
+  mkdir -p "$config_dir"
+  printf '%s\n' "$wallpaper_dir" > "$config_file"
+fi
+
+printf '%s\n' "$choice"

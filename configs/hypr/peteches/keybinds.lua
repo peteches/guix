@@ -84,6 +84,10 @@ hl.bind(mod .. " + SHIFT + d", hl.dsp.exec_cmd("dms ipc call notifications dismi
   description = "Dismiss notification popups",
 })
 
+hl.bind(mod .. " + SHIFT + w", hl.dsp.exec_cmd(Local.random_wallpaper_cmd), {
+  description = "Choose random wallpaper",
+})
+
 hl.bind(mod .. " + Tab", hl.dsp.focus({ last = true }), {
   description = "Focus last window",
 })
