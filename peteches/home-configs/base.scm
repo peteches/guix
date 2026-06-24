@@ -58,6 +58,7 @@
   #:use-module (peteches packages rustdesk)
   #:use-module (peteches packages concourse)
   #:use-module (peteches packages proxmox-scripts)
+  #:use-module (peteches packages desktop-scripts)
   ;; utilities
   #:use-module (ice-9 popen)
   #:use-module (ice-9 textual-ports)
@@ -89,6 +90,7 @@
 ;; 1) Shared package set for all machines.
 (define-public base-packages
   (list
+   peteches-desktop-scripts
    alacritty
    claude-code
    rustdesk
@@ -525,12 +527,23 @@
    ;; home-desktop-service; keep it as the place to set common env/aliases.
    (service home-desktop-service-type)
 
-   (simple-service 'desktop-helper-tools
-                   home-files-service-type
-                   `((".local/bin/dms-random-wallpaper"
-                      ,(local-file (source-path "configs/bin/dms-random-wallpaper")))
-                     (".local/bin/setup-phinger-cursors"
-                      ,(local-file (source-path "configs/bin/setup-phinger-cursors")))))
+   (simple-service 'remove-stale-local-helper-symlinks
+                   home-activation-service-type
+                   #~(let ((home (getenv "HOME")))
+                       (define (gnu-store-symlink? file)
+                         (catch 'system-error
+                           (lambda ()
+                             (and (eq? 'symlink (stat:type (lstat file)))
+                                  (let ((target (readlink file)))
+                                    (and (>= (string-length target) 11)
+                                         (string=? "/gnu/store/" (substring target 0 11))))))
+                           (lambda _ #f)))
+                       (for-each
+                        (lambda (name)
+                          (let ((file (string-append home "/.local/bin/" name)))
+                            (when (gnu-store-symlink? file)
+                              (delete-file file))))
+                        '("dms-random-wallpaper" "setup-phinger-cursors"))))
 
    (simple-service 'phinger-cursor-theme
                    home-activation-service-type
@@ -538,17 +551,16 @@
                        (use-modules (guix build utils))
                        (let* ((home (getenv "HOME"))
                               (state-dir (string-append home "/.local/state/peteches"))
-                              (script (string-append home "/.local/bin/setup-phinger-cursors")))
+                              (script #$(file-append peteches-desktop-scripts "/bin/setup-phinger-cursors")))
                          (mkdir-p state-dir)
-                         (when (file-exists? script)
-                           (system* script "--variant" "dark" "--size" "32" "--best-effort")))))
+                         (system* script "--variant" "dark" "--size" "32" "--best-effort"))))
 
    (simple-service 'random-wallpaper-hourly
                    home-mcron-service-type
                    (list
                     #~(job '(next-hour '(0 1 2 3 4 5 6 7 8 9 10 11
                                          12 13 14 15 16 17 18 19 20 21 22 23))
-                           "state_dir=\"${XDG_STATE_HOME:-$HOME/.local/state}/peteches\"; mkdir -p \"$state_dir\"; script=\"$HOME/.local/bin/dms-random-wallpaper\"; test -x \"$script\" && \"$script\" >> \"$state_dir/dms-random-wallpaper-hourly.log\" 2>&1 || true")))
+                           "state_dir=\"${XDG_STATE_HOME:-$HOME/.local/state}/peteches\"; mkdir -p \"$state_dir\"; script=\"$HOME/.guix-home/profile/bin/dms-random-wallpaper\"; test -x \"$script\" && \"$script\" >> \"$state_dir/dms-random-wallpaper-hourly.log\" 2>&1 || true")))
 
    (simple-service 'matugen-material-style
                    home-xdg-configuration-files-service-type
