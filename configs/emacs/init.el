@@ -71,7 +71,7 @@
 ;; package management, though prefer guix packages where possible
 					;(load (locate-user-emacs-file "package-management.el"))
 
-(load-theme 'modus-vivendi-tinted t)
+(require 'peteches-theme)
 
 (add-to-list 'default-frame-alist '(font . "Noto Sans Mono-14"))
 (set-face-attribute 'default t :font "Noto Sans Mono-14")
