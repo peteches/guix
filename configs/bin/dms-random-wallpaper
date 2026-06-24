@@ -8,6 +8,20 @@ config_file=$config_dir/random-wallpaper-dir
 last_file=$state_dir/random-wallpaper-last
 default_wallpaper_dir=$HOME/Pictures/Wallpapers
 
+resolve_dms_bin() {
+  if [[ -n ${DMS_BIN:-} ]]; then
+    printf '%s\n' "$DMS_BIN"
+    return 0
+  fi
+
+  if [[ -x $HOME/.guix-home/profile/bin/dms ]]; then
+    printf '%s\n' "$HOME/.guix-home/profile/bin/dms"
+    return 0
+  fi
+
+  command -v dms 2>/dev/null || return 1
+}
+
 usage() {
   cat <<USAGE
 Usage: $program [OPTIONS] [DIRECTORY]
@@ -125,10 +139,12 @@ for _ in 1 2 3 4 5; do
   [[ $count -eq 1 || $choice != "$last" ]] && break
 done
 
+dms_bin=$(resolve_dms_bin) || die "dms not found; expected $HOME/.guix-home/profile/bin/dms or a dms in PATH"
+
 if [[ -n $monitor ]]; then
-  dms ipc call wallpaper setFor "$monitor" "$choice"
+  "$dms_bin" ipc call wallpaper setFor "$monitor" "$choice"
 else
-  dms ipc call wallpaper set "$choice"
+  "$dms_bin" ipc call wallpaper set "$choice"
 fi
 
 mkdir -p "$state_dir"
