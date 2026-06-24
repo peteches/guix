@@ -6,6 +6,7 @@ config_dir=${XDG_CONFIG_HOME:-$HOME/.config}/peteches
 state_dir=${XDG_STATE_HOME:-$HOME/.local/state}/peteches
 config_file=$config_dir/random-wallpaper-dir
 last_file=$state_dir/random-wallpaper-last
+default_wallpaper_dir=$HOME/Pictures/Wallpapers
 
 usage() {
   cat <<USAGE
@@ -13,6 +14,8 @@ Usage: $program [OPTIONS] [DIRECTORY]
 
 Choose a random wallpaper from DIRECTORY and set it through Dank Material Shell.
 When DIRECTORY is provided, it is remembered for future runs.
+If no directory is configured, defaults to ~/Pictures/Wallpapers.
+Subdirectories are searched recursively.
 
 Options:
   -d, --dir DIRECTORY   Wallpaper directory to use and remember
@@ -22,7 +25,7 @@ Options:
   -h, --help            Show this help
 
 Environment:
-  DMS_RANDOM_WALLPAPER_DIR      Default wallpaper directory
+  DMS_RANDOM_WALLPAPER_DIR      Override wallpaper directory, before remembered/default path
   DMS_RANDOM_WALLPAPER_MONITOR  Default monitor for per-output wallpaper mode
 
 Examples:
@@ -84,14 +87,16 @@ if [[ -z ${wallpaper_dir:-} && -r $config_file ]]; then
   IFS= read -r wallpaper_dir < "$config_file"
 fi
 
-[[ -n ${wallpaper_dir:-} ]] || die "no wallpaper directory configured; run: $program /path/to/wallpapers"
+if [[ -z ${wallpaper_dir:-} ]]; then
+  wallpaper_dir=$default_wallpaper_dir
+fi
 
 case $wallpaper_dir in
   '~') wallpaper_dir=$HOME ;;
   '~/'*) wallpaper_dir=$HOME/${wallpaper_dir#~/} ;;
 esac
 
-[[ -d $wallpaper_dir ]] || die "not a directory: $wallpaper_dir"
+[[ -d $wallpaper_dir ]] || die "not a directory: $wallpaper_dir; create it or run: $program /path/to/wallpapers"
 wallpaper_dir=$(cd "$wallpaper_dir" && pwd -P)
 
 images=()
