@@ -57,11 +57,4 @@
 
      (service home-channels-service-type
 	      %base-channels))
-    base-services)
-  (home-hyprland-service-type config =>
-			      (home-hyprland-configuration
-			       (inherit config)
-			       (monitors (list
-					  (monitor
-					   (name "eDP-1")
-					   (scale 1)))))))))
+    base-services))))

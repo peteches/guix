@@ -54,7 +54,6 @@
   #:use-module (peteches home-configs git)
   #:use-module (peteches home-configs mako)
   #:use-module (peteches home-configs firefox)
-  #:use-module (peteches home-configs hyprland)
   #:use-module (peteches packages gurps)
   #:use-module (peteches packages claude-code)
   #:use-module (peteches packages rustdesk)
@@ -367,35 +366,10 @@
 
 
    ;; HyprLand
-   (service home-hyprland-service-type (home-hyprland-configuration
-					(monitors (list
-	     					   (monitor
-						    (name "DP-3")
-						    (position "0x0")
-						    (scale 1))
-						   (monitor
-						    (name "DP-2")
-						    (position "auto-up"))))
-					(window-rules-v2
-					 '("float on, match:class ^(xdg-desktop-portal-.*)$, match:title ^(File Upload)$"))
-					(env-vars base-hyprland-env-vars)
-					(variables base-hyprland-variables)
-					(binds (append
-						base-hyprland-default-application-launcher-binds
-						(base-hyprland-window-workspace-binds 9)
-					base-hyprland-multimedia-binds))
-					(command-execution
-					 (hyprland-execs
-					  (exec-once (list #~(string-append
-							      #$(file-append dank-material-shell "/bin/dms")
-							      " run -c "
-							      #$(file-append dank-material-shell "/share/quickshell"))
-							   #~(string-append #$(file-append bash "/bin/bash")
-								      " -c \"mkdir -p ${XDG_LOG_HOME:-$HOME/.local/var/log} && exec "
-								      #$(file-append emacs "/bin/emacs")
-								      " --fg-daemon >> ${XDG_LOG_HOME:-$HOME/.local/var/log}/emacs-daemon.log 2>&1\"")
-							   #~#$(file-append mako "/bin/mako")
-							   #~(string-append #$(file-append libcanberra "/bin/canberra-gtk-play") " -i desktop-login")))))))
+   (service home-hyprland-service-type
+       	    (home-hyprland-configuration
+	     (extra-packages '())
+	     (config-directory (repo-directory "configs/hypr"))))
 
    (service wofi-service-type
 	    (wofi-config
@@ -462,6 +436,9 @@
 				   "tree-sitter-go"
 				   "tree-sitter-gomod"
 
+				   "tree-sitter-lua"
+				   "tree-sitter-luadoc"
+
 				   "tree-sitter-scheme"
 
 				   "tree-sitter-python"
@@ -497,6 +474,7 @@
 
 				   ;; language servers
 				   "guile-lsp-server"
+				   "lua-language-server"
 				   "go"
 				   "gopls"
 				   "sqls"
@@ -529,6 +507,11 @@
    ;; Desktop conveniences (terminals/aliases/env, etc.).  You already have a
    ;; home-desktop-service; keep it as the place to set common env/aliases.
    (service home-desktop-service-type)
+   (simple-service 'dms-submap-plugin
+		   home-xdg-configuration-files-service-type
+		   `(("DankMaterialShell/plugins/hyprSubmapHint"
+		      ,(local-file (repo-directory "configs/dms/plugins/hyprSubmapHint")
+				   #:recursive? #t))))
 
    ;; Configure MCP servers for both Claude Code CLI and ECA.
    ;; The MCP server JSON block is built once and reused for both
@@ -540,7 +523,7 @@
                        (let* ((home        (getenv "HOME"))
                               (bash-path   #$(file-append bash "/bin/bash"))
                               (script-path (string-append home
-                                             "/.config/emacs/straight/repos/anvil.el/anvil-stdio.sh"))
+							  "/.config/emacs/straight/repos/anvil.el/anvil-stdio.sh"))
                               (mcp-json
                                (string-append
                                 "{"

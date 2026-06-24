@@ -213,19 +213,4 @@
   (packages
    (append nug-extra-packages base-packages))
   (services
-   (modify-services (append nug-extra-services base-services)
-     (home-hyprland-service-type
-      config =>
-      (let* ((vars  (home-hyprland-configuration-variables config))
-             (input (home-hyprland-variable-configuration-input vars)))
-        (home-hyprland-configuration
-         (inherit config)
-         (variables
-          (home-hyprland-variable-configuration
-           (inherit vars)
-           (input
-            (input-category
-             (inherit input)
-             (tablet
-              (input-tablet-category
-               (output "DP-3")))))))))))))
+   (modify-services (append nug-extra-services base-services))))

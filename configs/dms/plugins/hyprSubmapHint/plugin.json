@@ -1,0 +1,13 @@
+{
+  "id": "submapHint",
+  "name": "Submap Hint",
+  "description": "Shows the active Hyprland submap's binds by reading hyprctl -j binds. Descriptions come from Hyprland bind descriptions, not a duplicated table.",
+  "version": "0.1.0",
+  "author": "Pete McCabe / ChatGPT",
+  "icon": "keyboard",
+  "type": "daemon",
+  "component": "./SubmapHint.qml",
+  "compositors": ["hyprland"],
+  "dependencies": ["hyprctl"],
+  "permissions": ["process"]
+}
