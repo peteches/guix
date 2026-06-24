@@ -550,16 +550,20 @@
                                          12 13 14 15 16 17 18 19 20 21 22 23))
                            "state_dir=\"${XDG_STATE_HOME:-$HOME/.local/state}/peteches\"; mkdir -p \"$state_dir\"; script=\"$HOME/.local/bin/dms-random-wallpaper\"; test -x \"$script\" && \"$script\" >> \"$state_dir/dms-random-wallpaper-hourly.log\" 2>&1 || true")))
 
-   (simple-service 'wofi-material-style
+   (simple-service 'matugen-material-style
                    home-xdg-configuration-files-service-type
-                   `(("wofi/style.css"
+                   `(("alacritty/alacritty.toml"
+                      ,(local-file (source-path "configs/alacritty/alacritty.toml")))
+                     ("wofi/style.css"
                       ,(local-file (source-path "configs/wofi/style.css")))
                      ("matugen/templates/wofi-colors.css"
                       ,(local-file (source-path "configs/matugen/templates/wofi-colors.css")))
                      ("matugen/templates/hypr-colors.lua"
                       ,(local-file (source-path "configs/matugen/templates/hypr-colors.lua")))
                      ("matugen/templates/emacs-theme.el"
-                      ,(local-file (source-path "configs/matugen/templates/emacs-theme.el")))))
+                      ,(local-file (source-path "configs/matugen/templates/emacs-theme.el")))
+                     ("matugen/templates/alacritty-colors.toml"
+                      ,(local-file (source-path "configs/matugen/templates/alacritty-colors.toml")))))
 
    (simple-service 'matugen-dms-custom-templates
                    home-activation-service-type
@@ -570,14 +574,17 @@
                             (wofi-dir (string-append home "/.config/wofi"))
                             (hypr-cache-dir (string-append home "/.cache/matugen"))
                             (emacs-theme-dir (string-append home "/.cache/matugen/emacs"))
+                            (alacritty-theme-dir (string-append home "/.cache/matugen/alacritty"))
                             (config-file (string-append matugen-dir "/config.toml"))
                             (wofi-colors (string-append wofi-dir "/matugen-colors.css"))
                             (hypr-colors (string-append hypr-cache-dir "/hypr-colors.lua"))
-                            (emacs-theme (string-append emacs-theme-dir "/matugen-theme.el")))
+                            (emacs-theme (string-append emacs-theme-dir "/matugen-theme.el"))
+                            (alacritty-colors (string-append alacritty-theme-dir "/colors.toml")))
                        (mkdir-p matugen-dir)
                        (mkdir-p wofi-dir)
                        (mkdir-p hypr-cache-dir)
                        (mkdir-p emacs-theme-dir)
+                       (mkdir-p alacritty-theme-dir)
                        (call-with-output-file config-file
                          (lambda (port)
                            (display "[config]\n\n" port)
@@ -589,7 +596,10 @@
                            (display (string-append "output_path = '" home "/.cache/matugen/hypr-colors.lua'\n\n") port)
                            (display "[templates.emacs]\n" port)
                            (display (string-append "input_path = '" home "/.config/matugen/templates/emacs-theme.el'\n") port)
-                           (display (string-append "output_path = '" home "/.cache/matugen/emacs/matugen-theme.el'\n") port)))
+                           (display (string-append "output_path = '" home "/.cache/matugen/emacs/matugen-theme.el'\n\n") port)
+                           (display "[templates.alacritty]\n" port)
+                           (display (string-append "input_path = '" home "/.config/matugen/templates/alacritty-colors.toml'\n") port)
+                           (display (string-append "output_path = '" home "/.cache/matugen/alacritty/colors.toml'\n") port)))
                        (unless (file-exists? wofi-colors)
                          (call-with-output-file wofi-colors
                            (lambda (port)
@@ -634,7 +644,32 @@
                              (display "   `(font-lock-string-face ((,class (:foreground \"#94e2d5\"))))\n" port)
                              (display "   `(font-lock-comment-face ((,class (:foreground \"#6c7086\" :slant italic))))\n" port)
                              (display "   `(font-lock-function-name-face ((,class (:foreground \"#cba6f7\"))))))\n" port)
-                             (display "(provide-theme 'matugen)\n" port)))))))
+                             (display "(provide-theme 'matugen)\n" port))))
+                       (unless (file-exists? alacritty-colors)
+                         (call-with-output-file alacritty-colors
+                           (lambda (port)
+                             (display "# Fallback Alacritty colours used before matugen runs.\n" port)
+                             (display "[colors]\n" port)
+                             (display "draw_bold_text_with_bright_colors = true\n" port)
+                             (display "transparent_background_colors = false\n\n" port)
+                             (display "[colors.primary]\n" port)
+                             (display "background = \"#1e1e2e\"\n" port)
+                             (display "foreground = \"#cdd6f4\"\n" port)
+                             (display "dim_foreground = \"#6c7086\"\n" port)
+                             (display "bright_foreground = \"#ffffff\"\n\n" port)
+                             (display "[colors.cursor]\n" port)
+                             (display "text = \"#1e1e2e\"\n" port)
+                             (display "cursor = \"#89b4fa\"\n\n" port)
+                             (display "[colors.vi_mode_cursor]\n" port)
+                             (display "text = \"#1e1e2e\"\n" port)
+                             (display "cursor = \"#cba6f7\"\n\n" port)
+                             (display "[colors.selection]\n" port)
+                             (display "text = \"#cdd6f4\"\n" port)
+                             (display "background = \"#313244\"\n\n" port)
+                             (display "[colors.normal]\n" port)
+                             (display "black = \"#45475a\"\nred = \"#f38ba8\"\ngreen = \"#94e2d5\"\nyellow = \"#f9e2af\"\nblue = \"#89b4fa\"\nmagenta = \"#cba6f7\"\ncyan = \"#94e2d5\"\nwhite = \"#cdd6f4\"\n\n" port)
+                             (display "[colors.bright]\n" port)
+                             (display "black = \"#6c7086\"\nred = \"#f38ba8\"\ngreen = \"#94e2d5\"\nyellow = \"#f9e2af\"\nblue = \"#89b4fa\"\nmagenta = \"#cba6f7\"\ncyan = \"#94e2d5\"\nwhite = \"#ffffff\"\n" port)))))))
    (simple-service 'dms-submap-plugin
 		   home-xdg-configuration-files-service-type
 		   `(("DankMaterialShell/plugins/hyprSubmapHint"
