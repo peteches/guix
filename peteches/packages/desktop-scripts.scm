@@ -3,17 +3,14 @@
   #:use-module (guix packages)
   #:use-module (guix build-system copy)
   #:use-module ((guix licenses) #:prefix license:)
+  #:use-module (peteches repository)
   #:export (peteches-desktop-scripts))
-
-(define (source-path path)
-  (or (search-path %load-path path)
-      (error "could not find file in %load-path" %load-path path)))
 
 (define-public peteches-desktop-scripts
   (package
     (name "peteches-desktop-scripts")
     (version "0.1")
-    (source (local-file (source-path "configs/bin")
+    (source (local-file (repo-directory "configs/bin")
                         #:recursive? #t))
     (build-system copy-build-system)
     (arguments

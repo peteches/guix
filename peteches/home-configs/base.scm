@@ -59,33 +59,13 @@
   #:use-module (peteches packages concourse)
   #:use-module (peteches packages proxmox-scripts)
   #:use-module (peteches packages desktop-scripts)
+  #:use-module (peteches repository)
   ;; utilities
   #:use-module (ice-9 popen)
   #:use-module (ice-9 textual-ports)
   ;; Export
   #:export (base-packages
             base-services))
-
-(define (source-path path)
-  (or (search-path %load-path path)
-      (error "could not find file in %load-path" %load-path path)))
-
-(define (directory-exists? path)
-  (and (file-exists? path)
-       (eq? 'directory (stat:type (stat path)))))
-
-(define (search-load-path-directory path)
-  (let loop ((dirs %load-path))
-    (if (null? dirs)
-        #f
-        (let ((candidate (string-append (car dirs) "/" path)))
-          (if (directory-exists? candidate)
-              candidate
-              (loop (cdr dirs)))))))
-
-(define (repo-directory path)
-  (or (search-load-path-directory path)
-      (error "could not find directory in %load-path" %load-path path)))
 
 ;; 1) Shared package set for all machines.
 (define-public base-packages
