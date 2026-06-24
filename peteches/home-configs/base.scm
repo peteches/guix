@@ -507,24 +507,6 @@
    ;; home-desktop-service; keep it as the place to set common env/aliases.
    (service home-desktop-service-type)
 
-   (simple-service 'remove-stale-local-helper-symlinks
-                   home-activation-service-type
-                   #~(let ((home (getenv "HOME")))
-                       (define (gnu-store-symlink? file)
-                         (catch 'system-error
-                           (lambda ()
-                             (and (eq? 'symlink (stat:type (lstat file)))
-                                  (let ((target (readlink file)))
-                                    (and (>= (string-length target) 11)
-                                         (string=? "/gnu/store/" (substring target 0 11))))))
-                           (lambda _ #f)))
-                       (for-each
-                        (lambda (name)
-                          (let ((file (string-append home "/.local/bin/" name)))
-                            (when (gnu-store-symlink? file)
-                              (delete-file file))))
-                        '("dms-random-wallpaper" "setup-phinger-cursors"))))
-
    (simple-service 'phinger-cursor-theme
                    home-activation-service-type
                    #~(begin
