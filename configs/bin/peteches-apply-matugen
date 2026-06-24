@@ -16,6 +16,9 @@ internal theme worker.
 Environment:
   PETECHES_MATUGEN_MODE             Matugen mode, default: dark
   PETECHES_MATUGEN_TYPE             Matugen scheme type, default: scheme-tonal-spot
+  PETECHES_MATUGEN_SOURCE_COLOR_INDEX
+                                      Source-colour candidate index, default: 0.
+                                      Set empty to let matugen prompt interactively.
   PETECHES_MATUGEN_RELOAD_HYPRLAND  Reload Hyprland after generation, default: 1
   MATUGEN_BIN                       Override matugen executable
 USAGE
@@ -77,11 +80,17 @@ config_file=${XDG_CONFIG_HOME:-$HOME/.config}/matugen/config.toml
 matugen_bin=$(resolve_matugen_bin) || die "matugen not found; expected $HOME/.guix-home/profile/bin/matugen or a matugen in PATH"
 mode=${PETECHES_MATUGEN_MODE:-dark}
 type=${PETECHES_MATUGEN_TYPE:-scheme-tonal-spot}
+source_color_index=${PETECHES_MATUGEN_SOURCE_COLOR_INDEX-0}
+
+matugen_args=(image "$image" -m "$mode" -t "$type")
+if [[ -n $source_color_index ]]; then
+  matugen_args+=(--source-color-index "$source_color_index")
+fi
 
 log "generating colours from: $image"
-log "command: $matugen_bin image <image> -m $mode -t $type"
+log "command: $matugen_bin image <image> -m $mode -t $type${source_color_index:+ --source-color-index $source_color_index}"
 
-"$matugen_bin" image "$image" -m "$mode" -t "$type" >> "$log_file" 2>&1 || die "matugen generation failed; see $log_file"
+"$matugen_bin" "${matugen_args[@]}" >> "$log_file" 2>&1 || die "matugen generation failed; see $log_file"
 
 reload_hyprland
 log "completed: $image"
