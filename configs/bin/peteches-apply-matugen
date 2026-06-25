@@ -3,7 +3,14 @@ set -euo pipefail
 
 program=${0##*/}
 state_dir=${XDG_STATE_HOME:-$HOME/.local/state}/peteches
+cache_dir=${XDG_CACHE_HOME:-$HOME/.cache}
+config_dir=${XDG_CONFIG_HOME:-$HOME/.config}
 log_file=$state_dir/matugen-apply.log
+
+dms_theme_dir=$cache_dir/matugen/dms
+dms_theme_file=$dms_theme_dir/dynamic-theme.json
+dms_template_file=$state_dir/dms-theme-template.json
+dms_config_file=$state_dir/matugen-dms-theme.toml
 
 usage() {
   cat <<USAGE
@@ -20,7 +27,10 @@ Environment:
                                       Source-colour candidate index, default: 0.
                                       Set empty to let matugen prompt interactively.
   PETECHES_MATUGEN_RELOAD_HYPRLAND  Reload Hyprland after generation, default: 1
+  PETECHES_MATUGEN_RELOAD_EMACS     Reload Emacs daemon theme, default: 1
+  PETECHES_MATUGEN_UPDATE_DMS       Update DMS custom theme file, default: 1
   MATUGEN_BIN                       Override matugen executable
+  DMS_BIN                           Override DMS executable
 USAGE
 }
 
@@ -49,12 +59,94 @@ resolve_matugen_bin() {
   command -v matugen 2>/dev/null || return 1
 }
 
+resolve_dms_bin() {
+  if [[ -n ${DMS_BIN:-} ]]; then
+    printf '%s\n' "$DMS_BIN"
+    return 0
+  fi
+
+  if [[ -x $HOME/.guix-home/profile/bin/dms ]]; then
+    printf '%s\n' "$HOME/.guix-home/profile/bin/dms"
+    return 0
+  fi
+
+  command -v dms 2>/dev/null || return 1
+}
+
 reload_hyprland() {
   [[ ${PETECHES_MATUGEN_RELOAD_HYPRLAND:-1} != 0 ]] || return 0
   [[ -n ${HYPRLAND_INSTANCE_SIGNATURE:-} ]] || return 0
 
   if command -v hyprctl >/dev/null 2>&1; then
     hyprctl reload >> "$log_file" 2>&1 || log "WARN: hyprctl reload failed"
+  fi
+}
+
+reload_emacs() {
+  [[ ${PETECHES_MATUGEN_RELOAD_EMACS:-1} != 0 ]] || return 0
+
+  if command -v emacsclient >/dev/null 2>&1; then
+    emacsclient --eval "(when (fboundp 'peteches/load-matugen-theme) (peteches/load-matugen-theme t))" >> "$log_file" 2>&1 \
+      || log "WARN: emacsclient theme reload failed"
+  fi
+}
+
+write_dms_theme_template() {
+  mkdir -p "$state_dir" "$dms_theme_dir"
+  cat > "$dms_template_file" <<'TEMPLATE'
+{
+  "name": "Peteches Matugen Dynamic",
+  "primary": "{{colors.primary.default.hex}}",
+  "primaryText": "{{colors.on_primary.default.hex}}",
+  "primaryContainer": "{{colors.primary_container.default.hex}}",
+  "secondary": "{{colors.secondary.default.hex}}",
+  "surface": "{{colors.surface.default.hex}}",
+  "surfaceText": "{{colors.on_surface.default.hex}}",
+  "surfaceVariant": "{{colors.surface_variant.default.hex}}",
+  "surfaceVariantText": "{{colors.on_surface_variant.default.hex}}",
+  "surfaceTint": "{{colors.primary.default.hex}}",
+  "background": "{{colors.background.default.hex}}",
+  "backgroundText": "{{colors.on_background.default.hex}}",
+  "outline": "{{colors.outline.default.hex}}",
+  "surfaceContainer": "{{colors.surface_container.default.hex}}",
+  "surfaceContainerHigh": "{{colors.surface_container_high.default.hex}}",
+  "surfaceContainerHighest": "{{colors.surface_container_highest.default.hex}}",
+  "error": "{{colors.error.default.hex}}",
+  "warning": "{{colors.tertiary.default.hex}}",
+  "info": "{{colors.secondary.default.hex}}",
+  "matugen_type": "scheme-tonal-spot"
+}
+TEMPLATE
+
+  cat > "$dms_config_file" <<EOF2
+[config]
+
+[templates.peteches_dms_custom_theme]
+input_path = '$dms_template_file'
+output_path = '$dms_theme_file'
+EOF2
+}
+
+generate_dms_theme() {
+  [[ ${PETECHES_MATUGEN_UPDATE_DMS:-1} != 0 ]] || return 0
+
+  write_dms_theme_template
+
+  local dms_args=(image "$image" -c "$dms_config_file" -m "$mode" -t "$type")
+  if [[ -n $source_color_index ]]; then
+    dms_args+=(--source-color-index "$source_color_index")
+  fi
+
+  log "generating DMS custom theme: $dms_theme_file"
+  "$matugen_bin" "${dms_args[@]}" >> "$log_file" 2>&1 || {
+    log "WARN: DMS custom theme generation failed"
+    return 0
+  }
+
+  if [[ -s $dms_theme_file ]] && dms_bin=$(resolve_dms_bin); then
+    "$dms_bin" ipc call settings set currentThemeName custom >> "$log_file" 2>&1 || log "WARN: could not set DMS currentThemeName"
+    "$dms_bin" ipc call settings set customThemeFile "$dms_theme_file" >> "$log_file" 2>&1 || log "WARN: could not set DMS customThemeFile"
+    "$dms_bin" ipc call theme "$mode" >> "$log_file" 2>&1 || log "WARN: could not refresh DMS theme mode"
   fi
 }
 
@@ -74,7 +166,7 @@ esac
 [[ -f $image ]] || die "not a file: $image"
 image=$(cd "$(dirname "$image")" && printf '%s/%s\n' "$(pwd -P)" "$(basename "$image")")
 
-config_file=${XDG_CONFIG_HOME:-$HOME/.config}/matugen/config.toml
+config_file=$config_dir/matugen/config.toml
 [[ -r $config_file ]] || die "matugen config not readable: $config_file"
 
 matugen_bin=$(resolve_matugen_bin) || die "matugen not found; expected $HOME/.guix-home/profile/bin/matugen or a matugen in PATH"
@@ -92,6 +184,8 @@ log "command: $matugen_bin image <image> -m $mode -t $type${source_color_index:+
 
 "$matugen_bin" "${matugen_args[@]}" >> "$log_file" 2>&1 || die "matugen generation failed; see $log_file"
 
+generate_dms_theme
+reload_emacs
 reload_hyprland
 emacsclient --eval "(when (fboundp 'peteches/load-matugen-theme) (peteches/load-matugen-theme t))"
 log "completed: $image"
