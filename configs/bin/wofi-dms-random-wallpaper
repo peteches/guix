@@ -1,0 +1,18 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+WALLPAPER_ROOT="$HOME/Pictures/"
+NO_PATH="Use remembered directory"
+
+choice="$(
+  {
+    printf '%s\n' "$NO_PATH"
+    find "${WALLPAPER_ROOT}" -type d | sort
+  } | sort | wofi --dmenu --prompt "Wallpaper dir"
+)" || exit 0
+
+if [[ "$choice" == "$NO_PATH" || -z "$choice" ]]; then
+  exec dms-random-wallpaper
+else
+  exec dms-random-wallpaper "$choice"
+fi

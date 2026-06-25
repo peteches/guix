@@ -16,6 +16,7 @@
     (arguments
      (list
       #:install-plan #~'(("dms-random-wallpaper" "bin/")
+			 ("wofi-dms-random-wallpaper" "bin/")
                          ("peteches-apply-matugen" "bin/")
                          ("setup-phinger-cursors" "bin/"))
       #:phases
