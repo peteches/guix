@@ -44,6 +44,8 @@
 When QUIET is non-nil, suppress status messages."
   (interactive)
   (add-to-list 'custom-theme-load-path peteches/matugen-theme-directory)
+  (put 'matugen 'theme-settings nil)
+  (put 'matugen 'theme-feature nil)
   (peteches/disable-enabled-themes)
   (condition-case err
       (if (file-readable-p peteches/matugen-theme-file)
@@ -56,12 +58,14 @@ When QUIET is non-nil, suppress status messages."
               (message "Loaded generated matugen theme")))
         (load-theme peteches/theme-fallback t)
         (unless quiet
-          (message "Matugen theme missing; loaded %s" peteches/theme-fallback)))
+          (message "Matugen theme missing; loaded %s"
+                   peteches/theme-fallback)))
     (error
      (load-theme peteches/theme-fallback t)
-     (message "Could not load matugen theme (%s); loaded %s"
-              (error-message-string err)
-              peteches/theme-fallback))))
+     (unless quiet
+       (message "Could not load matugen theme (%s); loaded %s"
+                (error-message-string err)
+                peteches/theme-fallback)))))
 
 (defun peteches/reload-matugen-theme ()
   "Reload the generated matugen theme."

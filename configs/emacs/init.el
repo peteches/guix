@@ -122,6 +122,7 @@
 (require 'peteches-sops)
 (require 'peteches-sql)
 (require 'peteches-tramp)
+(require 'peteches-treesit-fold)
 (require 'peteches-ui-toys)
 (require 'peteches-vertico)
 (require 'peteches-which-key)
