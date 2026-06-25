@@ -93,4 +93,5 @@ log "command: $matugen_bin image <image> -m $mode -t $type${source_color_index:+
 "$matugen_bin" "${matugen_args[@]}" >> "$log_file" 2>&1 || die "matugen generation failed; see $log_file"
 
 reload_hyprland
+emacsclient --eval "(when (fboundp 'peteches/load-matugen-theme) (peteches/load-matugen-theme t))"
 log "completed: $image"

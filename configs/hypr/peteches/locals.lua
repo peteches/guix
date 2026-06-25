@@ -1,7 +1,7 @@
 local locals = {}
 
-locals.term_cmd = "alacritty"
-locals.editor_cmd = "emacsclient -c"
+locals.term_cmd = "emacsclient --create-frame --eval '(ghostel)'"
+locals.editor_cmd = "emacsclient --create-frame"
 locals.screenshot_cmd = "wofi-screenshot.sh"
 locals.browser_cmd = "firefox-profile-launcher"
 locals.password_lookup_cmd = "wofi-password.sh"
