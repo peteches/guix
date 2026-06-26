@@ -392,7 +392,7 @@
 				   "emacs-emojify"
 				   "emacs-geiser-guile"
 				   "emacs-org-present"
-				   "gcc-toolchain" ; to compile vterm / treesitter grammers
+				   "gcc-toolchain" ; to compile vterm / tree-sitter grammars
 				   "emacs-vterm"
 				   "emacs-eat"
 
@@ -427,7 +427,9 @@
 
 				   "emacs-rainbow-delimiters"
 
-				   ;; language support
+				   ;; Language support.  Keep native tree-sitter grammars
+				   ;; Guix-managed; use straight.el for faster-moving
+				   ;; Emacs Lisp packages.
 				   "tree-sitter"
 
 				   "tree-sitter-yaml"

@@ -27,7 +27,7 @@
 
 (require 'cl-lib)
 (require 'compile)
-(require 'peteches-go-ts)
+(require 'peteches-treesit)
 ;;;; Customization -----------------------------------------------------------
 
 (defgroup peteches-go nil
@@ -123,6 +123,12 @@
 
 (add-hook 'go-ts-mode-hook #'peteches/enable-operator-display)
 
+(defun peteches/go-load-ts-helpers ()
+  "Load Go tree-sitter helper functions for `go-ts-mode' buffers."
+  (require 'peteches-go-ts nil t))
+
+(add-hook 'go-ts-mode-hook #'peteches/go-load-ts-helpers)
+
 ;;;; Utilities ---------------------------------------------------------------
 
 (defun peteches-go--executable-p (name)
@@ -155,58 +161,30 @@
 
 ;;;; Treesit / go-ts-mode ----------------------------------------------------
 
-;; (defun peteches-go-install-treesit-grammars ()
-;;   "Install Go-related tree-sitter grammars if Emacs supports treesit."
-;;   (interactive)
-;;   (unless (fboundp 'treesit-install-language-grammar)
-;;     (user-error "Your Emacs doesn't have built-in tree-sitter (treesit) support"))
-;;   (let* ((alist (or (bound-and-true-p treesit-language-source-alist) '()))
-;;          (sources '((go     . ("https://github.com/tree-sitter/tree-sitter-go"))
-;;                     (gomod  . ("https://github.com/camdencheek/tree-sitter-go-mod"))
-;;                     (gowork . ("https://github.com/omertuc/tree-sitter-go-work"))))
-;;          (merged (cl-loop for (lang . src) in sources
-;;                           do (setf (alist-get lang alist) src)
-;;                           finally return alist)))
-;;     (setq treesit-language-source-alist merged)
-;;     (dolist (lang '(go gomod gowork))
-;;       (treesit-install-language-grammar lang))))
-
-;;;; File associations (prefer -ts modes) --------------------------------
-;; Ensure .go / go.mod / go.work open in a Go mode (ts if available).
-;; Without this, remapping go-mode→go-ts-mode never triggers and buffers
-;; can end up in Fundamental.
 (defun peteches-go--treesit-ready-p ()
-  "Return non-nil if \"go-ts-mode\" is available (grammar present if required)."
-  (and (fboundp 'go-ts-mode)
-       (cond
-        ((fboundp 'treesit-available-p) (treesit-available-p))
-        (t t))
-       (or (not (fboundp 'treesit-language-available-p))
-           (treesit-language-available-p 'go))))
+  "Return non-nil when `go-ts-mode' and the Go grammar are available."
+  (peteches/treesit-mode-ready-p 'go-ts-mode 'go))
 
 (defun peteches-go--associate-modes ()
   "Associate Go-related filenames with appropriate major modes.
 Prefers tree-sitter modes when available; otherwise falls back."
-  (let ((ts (peteches-go--treesit-ready-p)))
-    (if ts
-        (progn
-          (add-to-list 'auto-mode-alist '("\\.go\\'"     . go-ts-mode))
-          (add-to-list 'auto-mode-alist '("go\\.mod\\'"  . go-mod-ts-mode))
-          (add-to-list 'auto-mode-alist '("go\\.work\\'" . go-mod-ts-mode)))
-      (progn
-        (add-to-list 'auto-mode-alist '("\\.go\\'"     . go-mode))
-        (add-to-list 'auto-mode-alist '("go\\.mod\\'"  . go-mod-mode))
-        (add-to-list 'auto-mode-alist '("go\\.work\\'" . go-mod-mode))))
-    ;; Handle templated names like foo.tmpl.go to still enter Go mode
+  (let ((go-mode-symbol (if (peteches-go--treesit-ready-p)
+                            'go-ts-mode
+                          'go-mode))
+        (go-mod-mode-symbol (if (peteches/treesit-mode-ready-p 'go-mod-ts-mode 'gomod)
+                                'go-mod-ts-mode
+                              'go-mod-mode)))
+    (add-to-list 'auto-mode-alist `("\\.go\\'" . ,go-mode-symbol))
+    (add-to-list 'auto-mode-alist `("go\\.mod\\'" . ,go-mod-mode-symbol))
+    (add-to-list 'auto-mode-alist `("go\\.work\\'" . ,go-mod-mode-symbol))
+    ;; Handle templated names like foo.tmpl.go to still enter Go mode.
     (add-to-list 'auto-mode-alist
                  '("\\.go\\.[^/]+\\'" . (lambda ()
-                                          (if (peteches-go--treesit-ready-p)
-                                              (go-ts-mode)
-                                            (go-mode)))))))
-
-(when (boundp 'major-mode-remap-alist)
-  ;; Prefer treesit modes when available.
-  (add-to-list 'major-mode-remap-alist '(go-mode . go-ts-mode)))
+                                             (if (peteches-go--treesit-ready-p)
+                                                 (go-ts-mode)
+                                               (go-mode))))))
+  (peteches/treesit-add-remap 'go-mode 'go-ts-mode 'go)
+  (peteches/treesit-add-remap 'go-mod-mode 'go-mod-ts-mode 'gomod))
 
 ;;;; Formatting & save -------------------------------------------------------
 
@@ -816,7 +794,7 @@ Tools: %s" root mod fmt tools))
      ("s" "switch src⇄test" peteches-go-switch-file-test)
      ("n" "gotests internal" peteches-go-create-tests-internal)
      ("N" "gotests external" peteches-go-create-tests-external)
-     ("T" "treesit grammars" peteches-go-install-treesit-grammars)
+     ("T" "treesit grammars" peteches/treesit-install-go-grammars)
      ("I" "install tools"    peteches-go-ensure-tools)
      ("U" "upgrade tools"    peteches-go-upgrade-tools)
      ("S" "tools status"     peteches-go-tools-status)
@@ -834,17 +812,13 @@ Tools: %s" root mod fmt tools))
 (defun peteches-go-activate ()
   "Activate the peteches Go kit in go-mode/go-ts-mode and optimize Projectile."
   (interactive)
-  ;; Prefer treesit mode when available
-  (when (boundp 'major-mode-remap-alist)
-    (add-to-list 'major-mode-remap-alist '(go-mode . go-ts-mode)))
   ;; Ensure files actually enter a Go mode automatically
   (peteches-go--associate-modes)
   ;; Optional: richer highlighting when using treesit
   (when (boundp 'treesit-font-lock-level) (setq treesit-font-lock-level 4))
   ;; Hooks
   (add-hook 'go-mode-hook #'peteches-go--buffer-setup)
-  (when (fboundp 'go-ts-mode)
-    (add-hook 'go-ts-mode-hook #'peteches-go--buffer-setup))
+  (add-hook 'go-ts-mode-hook #'peteches-go--buffer-setup)
   ;; Projectile speed-ups
   (peteches-go--projectile-optimize)
   (message "peteches-golang: activated"))
@@ -854,8 +828,7 @@ Tools: %s" root mod fmt tools))
   "Remove our hooks from go-mode and go-ts-mode."
   (interactive)
   (remove-hook 'go-mode-hook #'peteches-go--buffer-setup)
-  (when (fboundp 'go-ts-mode)
-    (remove-hook 'go-ts-mode-hook #'peteches-go--buffer-setup))
+  (remove-hook 'go-ts-mode-hook #'peteches-go--buffer-setup)
   (message "peteches-golang: deactivated"))
 
 (provide 'peteches-golang)
