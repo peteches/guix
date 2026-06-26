@@ -473,7 +473,8 @@
 				   "emacs-company-org-block"
 				   "emacs-company-emoji"
 
-				   ;; language servers
+				   ;; Language server binaries.  Keep these Guix-managed;
+				   ;; Emacs only starts servers already present on exec-path.
 				   "guile-lsp-server"
 				   "lua-language-server"
 				   "go"

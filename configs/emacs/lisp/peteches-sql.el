@@ -6,6 +6,7 @@
 ;;; Code:
 
 (require 'subr-x) ;; for `string-trim`
+(require 'peteches-lsp)
 
 ;; Alist mapping SQL connection names to SSM tunnel configs.
 
@@ -236,6 +237,21 @@ When needed passing ARGS if supplied."
                         "127.0.0.1" localport))
           ;; Temporarily ensure this connection exists for `sql-connect`.
           (apply orig-fun conn-name args))))))
+
+(defun peteches/sql-maybe-start-lsp ()
+  "Start SQL LSP when `sqls' is available."
+  (peteches/lsp-maybe-start 'sql))
+
+(add-hook 'sql-mode-hook #'peteches/sql-maybe-start-lsp)
+
+(with-eval-after-load 'lsp-mode
+  (add-to-list 'lsp-language-id-configuration '(".*\\.sql$" . "sql"))
+  (lsp-register-client
+   (make-lsp-client
+    :new-connection (lsp-stdio-connection
+                     (lambda () (peteches/lsp-server-command 'sql)))
+    :activation-fn (lsp-activate-on "sql")
+    :server-id 'peteches/sqls)))
 
 (with-eval-after-load 'sql
   (peteches/sql-register-ssm-connections)

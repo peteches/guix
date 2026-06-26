@@ -87,6 +87,8 @@
 ;; https://github.com/emacs-lsp/lsp-mode/issues/4371
 (setq shell-file-name "/bin/sh")
 
+(require 'peteches-lsp)
+
 (setq custom-file (locate-user-emacs-file "custom-vars.el"))
 (load custom-file 'noerror 'nomessage)
 

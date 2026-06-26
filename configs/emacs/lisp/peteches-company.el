@@ -8,12 +8,6 @@
 ;; auto-completion experience.
 
 ;;; Code:
-
-(provide 'peteches-company)
-;;; peteches-company.el ends here
-
-
-;;; Code:
 (require 'company)
 
 ;; Core behavior: manual trigger, early prefix, slim UI
@@ -41,10 +35,7 @@
   (define-key company-active-map (kbd "C-n")   #'company-select-next)
   (define-key company-active-map (kbd "C-p")   #'company-select-previous))
 
-;; --- LSP completion via CAPF (recommended path) ----------------------------
-(with-eval-after-load 'lsp-mode
-  ;; Use CAPF (company-capf will read from this).
-  (setq lsp-completion-provider :capf)) ; lsp-mode recommends CAPF
+;; LSP completion is exposed through CAPF by `peteches-lsp'.
 
 ;; Backends per context
 (defun peteches/company-backends-prog ()
@@ -94,7 +85,7 @@
 
 ;; Make LSP/CAPF expose extra info (e.g., kind) so it shows up in the UI.
 (with-eval-after-load 'lsp-mode
-  (setq lsp-completion-show-kind t))  ; metadata in the candidate list
+  (setq lsp-completion-show-kind t))
 
 ;;;; --- Quickhelp: manual docs popup (no auto-show) -------------------------
 (when (require 'company-quickhelp nil t)

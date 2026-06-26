@@ -2,12 +2,13 @@
 ;;; Commentary:
 ;;;
 ;;; Lua LSP and mode selection.  Grammar discovery and manual grammar install
-;;; commands live in `peteches-treesit'.
+;;; commands live in `peteches-treesit'.  `lua-language-server' is expected to be
+;;; installed by Guix and found via `exec-path'.
 ;;;
 ;;; Code:
 
 (require 'peteches-treesit)
-(require 'peteches-lsp nil t)
+(require 'peteches-lsp)
 
 (defun peteches/lua-mode ()
   "Open the current buffer with the best available Lua major mode."
@@ -21,14 +22,13 @@
     (prog-mode)
     (message "No Lua major mode is available"))))
 
-(defun peteches/lua-start-lsp ()
-  "Start LSP in Lua buffers when `lsp-mode' is available."
-  (when (fboundp 'lsp)
-    (lsp)))
+(defun peteches/lua-maybe-start-lsp ()
+  "Start Lua LSP when `lua-language-server' is available."
+  (peteches/lsp-maybe-start 'lua))
 
 (add-to-list 'auto-mode-alist '("\\.lua\\'" . peteches/lua-mode))
 (dolist (hook '(lua-mode-hook lua-ts-mode-hook))
-  (add-hook hook #'peteches/lua-start-lsp))
+  (add-hook hook #'peteches/lua-maybe-start-lsp))
 
 (with-eval-after-load 'lsp-mode
   ;; Map Lua files to the LSP language id "lua".  lsp-mode may already do this,
@@ -40,7 +40,7 @@
    (make-lsp-client
     :new-connection
     (lsp-stdio-connection
-     '("/home/peteches/.guix-home/profile/bin/lua-language-server"))
+     (lambda () (peteches/lsp-server-command 'lua)))
     :activation-fn
     (lsp-activate-on "lua")
     ;; Higher than the built-in lua-language-server priority you saw: -2.

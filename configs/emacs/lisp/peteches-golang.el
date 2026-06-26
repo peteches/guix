@@ -14,7 +14,7 @@
 ;; Highlights
 ;; - Works with go-mode or go-ts-mode (treesit).
 ;; - Projectile-first project awareness (falls back to project.el / VC).
-;; - Manual-only Company completion; LSP-aware (company-lsp + CAPF).
+;; - Manual-only Company completion through CAPF, including LSP.
 ;; - Format-on-save: gofumpt -> goimports -> gofmt (first found wins).
 ;; - Test helpers: nearest/pkg/all, bench, coverage, dlv debug, gotests.
 ;; - Test switching matches your convention: prefer `int_test.go` for internal,
@@ -28,6 +28,7 @@
 (require 'cl-lib)
 (require 'compile)
 (require 'peteches-treesit)
+(require 'peteches-lsp)
 ;;;; Customization -----------------------------------------------------------
 
 (defgroup peteches-go nil
@@ -66,10 +67,6 @@
 
 (defcustom peteches-go-set-compile-command t
   "If non-nil, set a sensible `compile-command` in Go buffers."
-  :type 'boolean :group 'peteches-go)
-
-(defcustom peteches-go-company-use-lsp t
-  "If non-nil and company is present, add LSP backend to Go buffers."
   :type 'boolean :group 'peteches-go)
 
 (defcustom peteches-go-auto-organize-imports t
@@ -275,33 +272,32 @@ Prefers tree-sitter modes when available; otherwise falls back."
     (when peteches-go-completion-manual-only
       (setq-local company-idle-delay nil)
       (setq-local company-minimum-prefix-length 1))
-    (let* ((have-lsp (and peteches-go-company-use-lsp
-                           (require 'company-lsp nil t)))
-           (group (delq nil (list (and have-lsp 'company-lsp)
-                                  'company-capf 'company-dabbrev-code 'company-files))))
-      (set (make-local-variable 'company-backends) (list group)))))
+    ;; LSP completion flows through CAPF, matching the global Company setup.
+    (setq-local company-backends
+                '((company-capf
+                   :with company-yasnippet company-files company-keywords company-dabbrev-code)
+                  company-dabbrev))))
 
 ;;;; LSP (gopls) -------------------------------------------------------------
 
 (defun peteches-go--maybe-start-lsp ()
-  "Start LSP in this buffer when available and enabled."
-  (when (and peteches-go-enable-lsp (require 'lsp-mode nil t))
-    (when (fboundp 'lsp-deferred) (lsp-deferred))))
+  "Start Go LSP in this buffer when `gopls' is available and enabled."
+  (when peteches-go-enable-lsp
+    (peteches/lsp-maybe-start 'go)))
 
-(ignore-errors
-  (when (require 'lsp-mode nil t)
-    (when (fboundp 'lsp-register-custom-settings)
-      (lsp-register-custom-settings
-       '(("gopls.usePlaceholders" t t)
-         ("gopls.staticcheck" t t)
-         ("gopls.gofumpt" t t)
-         ("gopls.hints.assignVariableTypes" t t)
-         ("gopls.hints.compositeLiteralFields" t t)
-         ("gopls.hints.compositeLiteralTypes" t t)
-         ("gopls.hints.parameterNames" t t)
-         ("gopls.hints.rangeVariableTypes" t t)
-         ("gopls.codelenses.generate" t t)
-         ("gopls.directoryFilters" ["-**/vendor" "+"]))))))
+(with-eval-after-load 'lsp-mode
+  (when (fboundp 'lsp-register-custom-settings)
+    (lsp-register-custom-settings
+     '(("gopls.usePlaceholders" t t)
+       ("gopls.staticcheck" t t)
+       ("gopls.gofumpt" t t)
+       ("gopls.hints.assignVariableTypes" t t)
+       ("gopls.hints.compositeLiteralFields" t t)
+       ("gopls.hints.compositeLiteralTypes" t t)
+       ("gopls.hints.parameterNames" t t)
+       ("gopls.hints.rangeVariableTypes" t t)
+       ("gopls.codelenses.generate" t t)
+       ("gopls.directoryFilters" ["-**/vendor" "+"])))))
 
 ;;;; Tests / Bench / Coverage / Lint / Vuln / DLV ----------------------------
 
@@ -589,8 +585,7 @@ Prefers tree-sitter modes when available; otherwise falls back."
 ;;;; Tool management ---------------------------------------------------------
 
 (defcustom peteches-go-tool-specs
-  '((:exe "gopls"          :go "golang.org/x/tools/gopls@latest"                     :desc "LSP server")
-    (:exe "dlv"            :go "github.com/go-delve/delve/cmd/dlv@latest"           :desc "Delve debugger")
+  '((:exe "dlv"            :go "github.com/go-delve/delve/cmd/dlv@latest"           :desc "Delve debugger")
     (:exe "gofumpt"        :go "mvdan.cc/gofumpt@latest"                             :desc "Formatter (gofumpt)")
     (:exe "goimports"      :go "golang.org/x/tools/cmd/goimports@latest"             :desc "Imports formatter")
     (:exe "golangci-lint"  :go "github.com/golangci/golangci-lint/cmd/golangci-lint@latest" :desc "Meta linter")
@@ -599,7 +594,10 @@ Prefers tree-sitter modes when available; otherwise falls back."
     (:exe "gotests"        :go "github.com/cweill/gotests/...@latest"                :desc "Table test generator")
     (:exe "gomodifytags"   :go "github.com/fatih/gomodifytags@latest"                :desc "Struct tag editor")
     (:exe "impl"           :go "github.com/josharian/impl@latest"                    :desc "Interface impl stubs"))
-  "Specification of Go tools to check/install. Each entry is a plist with :exe, :go, :desc."
+  "Specification of Go tools to check/install.
+
+Language servers, including gopls, are intentionally excluded from this list and
+should be installed with Guix.  Each entry is a plist with :exe, :go, :desc."
   :type '(repeat plist)
   :group 'peteches-go)
 
@@ -761,12 +759,14 @@ With prefix arg ONLY-INSTALLED, limit to tools currently on PATH; otherwise upgr
     (let* ((root (abbreviate-file-name (peteches-go--project-root)))
            (mod  (or (peteches-go--read-module-name) "(no go.mod)"))
            (fmt  (file-name-nondirectory (peteches-go-choose-formatter)))
-           (tools (mapconcat #'identity (cl-loop for it in '("gopls" "dlv" "golangci-lint")
+           (lsp (or (peteches/lsp-server-executable 'go) "missing"))
+           (tools (mapconcat #'identity (cl-loop for it in '("dlv" "golangci-lint")
                                                  collect (propertize it 'face (if (peteches-go--executable-p it) 'success 'shadow))) ", ")))
       (format "Root: %s
 Module: %s
 Formatter: %s
-Tools: %s" root mod fmt tools))
+LSP: %s
+Tools: %s" root mod fmt lsp tools))
 
   (transient-define-prefix peteches-go-menu ()
     "Go toolbox"
@@ -795,6 +795,7 @@ Tools: %s" root mod fmt tools))
      ("n" "gotests internal" peteches-go-create-tests-internal)
      ("N" "gotests external" peteches-go-create-tests-external)
      ("T" "treesit grammars" peteches/treesit-install-go-grammars)
+     ("L" "lsp status"       peteches/lsp-status)
      ("I" "install tools"    peteches-go-ensure-tools)
      ("U" "upgrade tools"    peteches-go-upgrade-tools)
      ("S" "tools status"     peteches-go-tools-status)
