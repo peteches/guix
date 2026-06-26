@@ -1,4 +1,4 @@
-lib = require("peteches.keybinds.lib")
+Lib = require("peteches.keybinds.lib")
 -- -----------------------------------------------------------------------------
 -- Monitor command mode: SUPER + Space, m
 --
@@ -8,19 +8,19 @@ lib = require("peteches.keybinds.lib")
 -- -----------------------------------------------------------------------------
 
 hl.define_submap("leader_monitor", function()
-  hl.bind("n", lib.dispatch_and_reset(hl.dsp.focus({ monitor = "+1" })), {
+  hl.bind("n", Lib.dispatch_and_reset(hl.dsp.focus({ monitor = "+1" })), {
     description = "Focus next monitor",
   })
 
-  hl.bind("p", lib.dispatch_and_reset(hl.dsp.focus({ monitor = "-1" })), {
+  hl.bind("p", Lib.dispatch_and_reset(hl.dsp.focus({ monitor = "-1" })), {
     description = "Focus previous monitor",
   })
 
-  hl.bind("f", lib.dispatch_and_reset(hl.dsp.window.move({ monitor = "+1", follow = true })), {
+  hl.bind("f", Lib.dispatch_and_reset(hl.dsp.window.move({ monitor = "+1", follow = true })), {
     description = "Move window to next monitor and follow",
   })
 
-  hl.bind("b", lib.dispatch_and_reset(hl.dsp.window.move({ monitor = "-1", follow = true })), {
+  hl.bind("b", Lib.dispatch_and_reset(hl.dsp.window.move({ monitor = "-1", follow = true })), {
     description = "Move window to previous monitor and follow",
   })
 

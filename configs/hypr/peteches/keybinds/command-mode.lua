@@ -1,5 +1,5 @@
-lib = require("peteches.keybinds.lib")
-core = require("peteches.keybinds.core")
+Lib = require("peteches.keybinds.lib")
+Core = require("peteches.keybinds.core")
 require("peteches.keybinds.submaps.window")
 require("peteches.keybinds.submaps.monitor")
 require("peteches.keybinds.submaps.scratchpad")
@@ -15,7 +15,7 @@ require("peteches.keybinds.submaps.ai")
 -- awkward global chords.
 -- -----------------------------------------------------------------------------
 
-hl.bind(core.leader, hl.dsp.submap("leader"), {
+hl.bind(Core.leader, hl.dsp.submap("leader"), {
   description = "Enter Hyprland command mode",
 })
 

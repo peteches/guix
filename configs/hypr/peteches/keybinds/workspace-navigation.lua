@@ -1,4 +1,4 @@
-core = require("peteches.keybinds.core")
+Core = require("peteches.keybinds.core")
 -- -----------------------------------------------------------------------------
 -- Workspaces
 --
@@ -7,14 +7,14 @@ core = require("peteches.keybinds.core")
 -- -----------------------------------------------------------------------------
 
 function bind_workspace(key, workspace)
-  hl.bind(core.mod .. " + " .. key, hl.dsp.focus({
+  hl.bind(Core.mod .. " + " .. key, hl.dsp.focus({
     workspace = workspace,
     on_current_monitor = true,
   }), {
     description = "Focus workspace " .. workspace .. " on current monitor",
   })
 
-  hl.bind(core.mod .. " + SHIFT + " .. key, hl.dsp.window.move({
+  hl.bind(Core.mod .. " + SHIFT + " .. key, hl.dsp.window.move({
     workspace = workspace,
     follow = true,
   }), {

@@ -1,5 +1,5 @@
 Local = require("peteches.locals")
-lib = require("peteches.keybinds.lib")
+Lib = require("peteches.keybinds.lib")
 
 M = {}
 

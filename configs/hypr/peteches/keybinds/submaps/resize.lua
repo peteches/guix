@@ -1,4 +1,4 @@
-lib = require("peteches.keybinds.lib")
+Lib = require("peteches.keybinds.lib")
 -- -----------------------------------------------------------------------------
 -- Resize mode: SUPER + Space, r
 --

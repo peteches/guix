@@ -1,30 +1,30 @@
-lib = require("peteches.keybinds.lib")
+Lib = require("peteches.keybinds.lib")
 -- -----------------------------------------------------------------------------
 -- Window command mode: SUPER + Space, w
 -- -----------------------------------------------------------------------------
 
 hl.define_submap("leader_window", function()
-  hl.bind("f", lib.dispatch_and_reset(hl.dsp.window.fullscreen("fullscreen", "toggle")), {
+  hl.bind("f", Lib.dispatch_and_reset(hl.dsp.window.fullscreen("fullscreen", "toggle")), {
     description = "Toggle fullscreen",
   })
 
-  hl.bind("SHIFT + f", lib.dispatch_and_reset(hl.dsp.window.float({ action = "toggle" })), {
+  hl.bind("SHIFT + f", Lib.dispatch_and_reset(hl.dsp.window.float({ action = "toggle" })), {
     description = "Toggle floating",
   })
 
-  hl.bind("p", lib.dispatch_and_reset(hl.dsp.window.pseudo({ action = "toggle" })), {
+  hl.bind("p", Lib.dispatch_and_reset(hl.dsp.window.pseudo({ action = "toggle" })), {
     description = "Toggle pseudo-tiling",
   })
 
-  hl.bind("c", lib.dispatch_and_reset(hl.dsp.window.center()), {
+  hl.bind("c", Lib.dispatch_and_reset(hl.dsp.window.center()), {
     description = "Center active window",
   })
 
-  hl.bind("t", lib.dispatch_and_reset(hl.dsp.window.alter_zorder({ mode = "top" })), {
+  hl.bind("t", Lib.dispatch_and_reset(hl.dsp.window.alter_zorder({ mode = "top" })), {
     description = "Put active window on top",
   })
 
-  hl.bind("q", lib.dispatch_and_reset(hl.dsp.window.close()), {
+  hl.bind("q", Lib.dispatch_and_reset(hl.dsp.window.close()), {
     description = "Close active window",
   })
 

@@ -1,4 +1,4 @@
-lib = require("peteches.keybinds.lib")
+Lib = require("peteches.keybinds.lib")
 Local = require("peteches.locals")
 -- -----------------------------------------------------------------------------
 -- AI Mode, all my ai related stuff
@@ -7,7 +7,7 @@ Local = require("peteches.locals")
 -- -----------------------------------------------------------------------------
 
 hl.define_submap("leader_resize", function()
-  hl.bind("s", lib.dispatch_and_reset(hl.dsp.exec_cmd(Local.ai_switch_cmd)), {
+  hl.bind("s", Lib.dispatch_and_reset(hl.dsp.exec_cmd(Local.ai_switch_cmd)), {
     description = "Switch AI model on server",
   })
 
