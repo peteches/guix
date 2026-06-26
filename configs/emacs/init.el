@@ -7,6 +7,56 @@
 (message "Loading base emacs config")
 (add-to-list 'load-path "~/.config/emacs/lisp")
 
+;;; backups-and-auto-save.el --- Keep Emacs backup files out of project dirs -*- lexical-binding: t; -*-
+
+(defvar peteches/emacs-state-directory
+  (expand-file-name "emacs/"
+                    (or (getenv "XDG_STATE_HOME")
+                        (expand-file-name "~/.local/state/")))
+  "Directory for persistent Emacs state files.")
+
+(defvar peteches/backup-directory
+  (expand-file-name "backups/" peteches/emacs-state-directory)
+  "Directory for Emacs backup files.")
+
+(defvar peteches/auto-save-directory
+  (expand-file-name "auto-save/" peteches/emacs-state-directory)
+  "Directory for Emacs auto-save files.")
+
+;; Ensure the directories exist before Emacs tries to write into them.
+(dolist (dir (list peteches/backup-directory
+                   peteches/auto-save-directory))
+  (make-directory dir t))
+
+;; Move `file~' backups into `peteches/backup-directory'.
+;;
+;; Because the destination is an absolute directory, Emacs uniquifies backup
+;; names using the original absolute file name, replacing directory separators
+;; with `!'. This avoids clashes between files with the same basename.
+;;
+;; Example:
+;;
+;;   /home/peteches/foo/config.scm
+;;   /home/peteches/bar/config.scm
+;;
+;; become distinct backup names in the central backup directory.
+(setq backup-directory-alist
+      `(("." . ,peteches/backup-directory)))
+
+;; Move `#file#' auto-save files into `peteches/auto-save-directory'.
+;;
+;; The final `t' enables Emacs' built-in uniquification, so auto-save files are
+;; also based on the original absolute path rather than only the basename.
+(setq auto-save-file-name-transforms
+      `((".*" ,peteches/auto-save-directory t)))
+
+;; Keep Emacs' auto-save session list files with the auto-save files too.
+;;
+;; These are not the `#file#' files themselves, but they are used by recovery
+;; commands such as `recover-session'.
+(setq auto-save-list-file-prefix
+      (expand-file-name ".saves-" peteches/auto-save-directory))
+
 (let ((guix-elisp-dir "~/.guix-home/profile/share/emacs/site-lisp/"))
   (when (file-directory-p guix-elisp-dir)
     (dolist (dir (directory-files guix-elisp-dir t "\\`[^.]"))
