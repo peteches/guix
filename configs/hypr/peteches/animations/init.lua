@@ -1,0 +1,1 @@
+require("peteches.animations.defaults")
