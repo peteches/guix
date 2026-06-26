@@ -21,6 +21,9 @@ PluginComponent {
     // Human-readable diagnostic if hyprctl fails or the JSON shape changes.
     property string errorText: ""
 
+    property int hintTitleFontSize: Theme.fontSizeLarge
+    property int hintTextFontSize: Theme.fontSizeMedium	
+
     // Show only while inside a non-default submap.
     readonly property bool hintVisible: activeSubmap !== "" && (activeBindings.length > 0 || errorText !== "")
 
@@ -275,7 +278,7 @@ PluginComponent {
                         StyledText {
                             text: root.activeSubmap
                             color: Theme.primary
-                            font.pixelSize: Theme.fontSizeMedium
+                            font.pixelSize: root.hintTitleFontSize
                             font.weight: Font.Bold
                             Layout.alignment: Qt.AlignVCenter
                         }
@@ -310,20 +313,20 @@ PluginComponent {
                                         text: modelData.chord
                                         color: Theme.primary
                                         font.family: "monospace"
-                                        font.pixelSize: Theme.fontSizeSmall
+                                        font.pixelSize: root.fontSizeMedium
                                         font.weight: Font.Bold
                                     }
 
                                     StyledText {
                                         text: "—"
                                         color: Theme.surfaceVariantText
-                                        font.pixelSize: Theme.fontSizeSmall
+                                        font.pixelSize: root.fontSizeMedium
                                     }
 
                                     StyledText {
                                         text: modelData.description
                                         color: Theme.surfaceText
-                                        font.pixelSize: Theme.fontSizeSmall
+                                        font.pixelSize: root.fontSizeMedium
                                     }
                                 }
                             }
@@ -334,7 +337,7 @@ PluginComponent {
                         visible: root.errorText !== ""
                         text: root.errorText
                         color: Theme.error
-                        font.pixelSize: Theme.fontSizeSmall
+                        font.pixelSize: root.fontSizeMedium
                         wrapMode: Text.WordWrap
                         Layout.maximumWidth: hintWindow.width - 64
                         Layout.alignment: Qt.AlignHCenter

@@ -21,7 +21,7 @@ hl.bind(core.leader, hl.dsp.submap("leader"), {
 
 hl.define_submap("leader", function()
   hl.bind("w", hl.dsp.submap("leader_window"), {
---    description = "Window commands",
+    description = "Window commands",
   })
 
   hl.bind("m", hl.dsp.submap("leader_monitor"), {
