@@ -18,6 +18,7 @@ hl.env("PATH", path_prepend(guix_home_profile .. "/bin", path_prepend(guix_curre
 hl.env("XDG_DATA_DIRS", path_prepend(guix_home_profile .. "/share", path_prepend(guix_current_profile .. "/share", current_xdg_data_dirs)))
 
 hl.env("QT_QPA_PLATFORMTHEME", "qt6ct")
+hl.env("QT_QPA_PLATFORMTHEME_QT6", "qt6ct")
 hl.env("NVD_BACKEND", "direct+")
 hl.env("XDG_CURRENT_DESKTOP", "Hyprland")
 hl.env("XDG_SESSION_TYPE", "wayland")
