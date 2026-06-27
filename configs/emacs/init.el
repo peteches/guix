@@ -150,6 +150,7 @@
 (require 'peteches-treesit-fold)
 (require 'peteches-ui-toys)
 (require 'peteches-vertico)
+(require 'peteches-view-mode)
 (require 'peteches-which-key)
 (require 'peteches-yasnippet)
 ; (require 'peteches-slack)
