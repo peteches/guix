@@ -34,6 +34,8 @@ Like normal Emacs `C-k'.  Kill to end of line and put content in kill-ring."
   (add-to-list 'project-switch-commands '(ghostel-project "Ghostel") t)
   (add-to-list 'project-switch-commands '(ghostel-project-list-buffers "Ghostel buffers") t)
   (add-to-list 'ghostel-eval-cmds '("magit-status-setup-buffer" magit-status-setup-buffer)))
-
+  
+(require 'ghostel-compile)
+(ghostel-compile-global-mode 1)
 (provide 'peteches-ghostel)
 ;;; peteches-ghostel.el ends here
