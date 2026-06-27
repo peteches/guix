@@ -221,7 +221,7 @@ host    outline outline  127.0.0.1/32   scram-sha-256\n"))
       ;; postgres-roles completes, run: herd restart outline
       (service outline-service-type
                (outline-configuration
-                (url "http://outline.ts.peteches.co.uk")
+                (url "https://outline.ts.peteches.co.uk")
                 (port 3000)
                 (data-dir "/var/lib/outline")
                 (secret-key-file   "/run/secrets/outline-secret-key")
