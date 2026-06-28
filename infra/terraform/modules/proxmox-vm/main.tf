@@ -73,17 +73,6 @@ resource "proxmox_virtual_environment_vm" "vm" {
     timeout     = "10m"
   }
 
-  provisioner "remote-exec" {
-    inline = [
-      "set -eu",
-      "export PATH=/run/current-system/profile/sbin:/run/current-system/profile/bin:/sbin:/bin:/usr/sbin:/usr/bin:$PATH",
-      "iface=$(ip -o -4 route show default | awk '{print $5; exit}')",
-      "test -n \"$iface\"",
-      "ip -4 addr show dev \"$iface\" | grep -q ' ${local.target_ipv4}/' || ip addr add ${local.target_ipv4_cidr} dev \"$iface\"",
-      "ip -4 addr show dev \"$iface\""
-    ]
-  }
-
   # Keeping an empty block avoids Terraform trying to remove it or set type=l26.
   operating_system {}
 
