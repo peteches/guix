@@ -139,8 +139,7 @@
                      ("XCURSOR_THEME" . "phinger-cursors-dark")
                      ("XCURSOR_SIZE" . "32")))
    (simple-service 'peteches-guile-load-path home-environment-variables-service-type
-		   `(("GUILE_LOAD_PATH" . "$HOME/area_51/guix:${HOME}/.config/guix/current/share/guile/site/3.0${GUILE_LOAD_PATH:+:$GUILE_LOAD_PATH}")
-		     ("GUILE_LOAD_COMPILED_PATH" . "$HOME/area_51/guix:${HOME}/.config/guix/current/share/guile/site/3.0${GUILE_LOAD_COMPILED_PATH:+:$GUILE_LOAD_COMPILED_PATH}")))
+		   `(("GUILE_LOAD_PATH" . "$HOME/area_51/guix:${HOME}/area_51/codeberg.org/peteches/guix-channel_main:${GUILE_LOAD_PATH:+:$GUILE_LOAD_PATH}")))
 
    ;; Dbus
    (service home-dbus-service-type)
