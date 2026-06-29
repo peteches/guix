@@ -55,6 +55,46 @@ local binds = {
 		},
 		table = { repeating = true },
 	},
+	{
+		from = "CONTROL + v",
+		to = {
+			mods = "",
+			key = "pagedown",
+		},
+		table = { repeating = true },
+	},
+	{
+		from = "CONTROL + ALT + v",
+		to = {
+			mods = "",
+			key = "pageup",
+		},
+		table = { repeating = true },
+	},
+	{
+		from = "CONTROL + y",
+		to = {
+			mods = "CONTROL",
+			key = "v",
+		},
+		table = {},
+	},
+	{
+		from = "ALT + w",
+		to = {
+			mods = "CONTROL",
+			key = "c",
+		},
+		table = {},
+	},
+	{
+		from = "CONTROL + w",
+		to = {
+			mods = "CONTROL",
+			key = "x",
+		},
+		table = {},
+	},
 }
 local function firefox_only_remap(from_keys, shortcut, bind_table)
 	hl.bind(from_keys, function()
