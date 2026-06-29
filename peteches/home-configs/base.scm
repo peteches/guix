@@ -76,6 +76,7 @@
    claude-code
    rustdesk
    dank-material-shell
+   (specification->package "gsettings-desktop-schemas")
    (specification->package "beeper-bin")
    (specification->package "matugen")
    (specification->package "hyprcursor")
