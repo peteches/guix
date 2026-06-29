@@ -7,6 +7,7 @@ require("peteches.keybinds.submaps.resize")
 require("peteches.keybinds.submaps.groups")
 require("peteches.keybinds.submaps.workspaces")
 require("peteches.keybinds.submaps.ai")
+require("peteches.keybinds.submaps.notifications")
 
 -- -----------------------------------------------------------------------------
 -- Command mode
@@ -38,6 +39,10 @@ hl.define_submap("leader", function()
 
 	hl.bind("r", hl.dsp.submap("leader_resize"), {
 		description = "Resize mode",
+	})
+
+	hl.bind("n", hl.dsp.submap("leader_notifications"), {
+		description = "Notification commands",
 	})
 
 	hl.bind("g", hl.dsp.submap("leader_group"), {

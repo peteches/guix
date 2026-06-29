@@ -1,21 +1,25 @@
 (define-module (peteches home-configs mako)
-  #:use-module (peteches home services mako))
+  #:use-module (gnu services)
+  #:use-module (peteches home services mako)
+  #:export (base-mako-config
+            base-mako-service))
 
 (define-public base-mako-config
   (mako-config
    (max-history 10)
    (sort "-time")
    (on-button-left "invoke-default-action")
-   (on-button-middle "none")
+   (on-button-middle "exec makoctl menu -n \"$id\" -- wofi -d -p 'Notification action: '")
    (on-button-right "dismiss")
    (on-touch "dismiss")
    (on-notify "exec canberra-gtk-play -i message-new-instant")
    (font "JetBrains Mono 11")
-   ;; Core colors from Modus Vivendi
-   (background-color "#1e1e1eFF")   ; bg-dim
-   (text-color "#FFFFFFFF")          ; fg-main
-   (border-color "#646464FF")        ; border
-   (progress-color "over #2FAFFFEE") ; blue accent (slight translucency)
+   ;; Fallback colors. Matugen writes the included color fragment at
+   ;; ~/.cache/matugen/mako/colors.conf during activation and wallpaper changes.
+   (background-color "#1e1e1eFF")
+   (text-color "#FFFFFFFF")
+   (border-color "#646464FF")
+   (progress-color "over #2FAFFFEE")
    ;; Layout
    (width 360)
    (height 160)
@@ -42,4 +46,15 @@
    ;; Placement
    (output "")
    (layer "top")
-   (anchor "top-right")))
+   ;; Keep the service module external and unchanged.  The current
+   ;; home-mako-service-type serializes only known fields, so append the
+   ;; Mako-native include and mode criteria through the final string field.
+   (anchor (string-append
+            "top-right\n"
+            "include=~/.cache/matugen/mako/colors.conf\n"
+            "\n"
+            "[mode=do-not-disturb]\n"
+            "invisible=1"))))
+
+(define-public base-mako-service
+  (service home-mako-service-type base-mako-config))

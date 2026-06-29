@@ -53,6 +53,7 @@
   #:use-module (peteches home-configs scoreplay)
   #:use-module (peteches home-configs git)
   #:use-module (peteches home-configs firefox)
+  #:use-module (peteches home-configs mako)
   #:use-module (peteches packages gurps)
   #:use-module (peteches packages claude-code)
   #:use-module (peteches packages rustdesk)
@@ -76,6 +77,7 @@
    claude-code
    rustdesk
    dank-material-shell
+   mako
    (specification->package "gsettings-desktop-schemas")
    (specification->package "beeper-bin")
    (specification->package "matugen")
@@ -173,7 +175,9 @@
 			   (id "NONO6A6-UEOXJWK-JI5TWRF-5NDMD6H-N3BDTWI-JKRNQ5D-PHO4SSW-UDTHFAL")
 			   (auto-accept-folders? #t))))))))))))
 
-   ;; Notifications are handled by Dank Material Shell.
+   ;; Notifications are handled by Mako. DMS still provides the shell,
+   ;; wallpaper IPC, and the Hyprland submap hint plugin.
+   base-mako-service
 
    ;; Git config
    (service home-git-service-type
@@ -543,7 +547,9 @@
                      ("matugen/templates/emacs-theme.el"
                       ,(local-file (source-path "configs/matugen/templates/emacs-theme.el")))
                      ("matugen/templates/alacritty-colors.toml"
-                      ,(local-file (source-path "configs/matugen/templates/alacritty-colors.toml")))))
+                      ,(local-file (source-path "configs/matugen/templates/alacritty-colors.toml")))
+                     ("matugen/templates/mako-colors.conf"
+                      ,(local-file (source-path "configs/matugen/templates/mako-colors.conf")))))
 
    (simple-service 'matugen-dms-custom-templates
                    home-activation-service-type
@@ -555,16 +561,19 @@
                             (hypr-cache-dir (string-append home "/.cache/matugen"))
                             (emacs-theme-dir (string-append home "/.cache/matugen/emacs"))
                             (alacritty-theme-dir (string-append home "/.cache/matugen/alacritty"))
+                            (mako-theme-dir (string-append home "/.cache/matugen/mako"))
                             (config-file (string-append matugen-dir "/config.toml"))
                             (wofi-colors (string-append wofi-dir "/matugen-colors.css"))
                             (hypr-colors (string-append hypr-cache-dir "/hypr-colors.lua"))
                             (emacs-theme (string-append emacs-theme-dir "/matugen-theme.el"))
-                            (alacritty-colors (string-append alacritty-theme-dir "/colors.toml")))
+                            (alacritty-colors (string-append alacritty-theme-dir "/colors.toml"))
+                            (mako-colors (string-append mako-theme-dir "/colors.conf")))
                        (mkdir-p matugen-dir)
                        (mkdir-p wofi-dir)
                        (mkdir-p hypr-cache-dir)
                        (mkdir-p emacs-theme-dir)
                        (mkdir-p alacritty-theme-dir)
+                       (mkdir-p mako-theme-dir)
                        (call-with-output-file config-file
                          (lambda (port)
                            (display "[config]\n\n" port)
@@ -579,7 +588,10 @@
                            (display (string-append "output_path = '" home "/.cache/matugen/emacs/matugen-theme.el'\n\n") port)
                            (display "[templates.alacritty]\n" port)
                            (display (string-append "input_path = '" home "/.config/matugen/templates/alacritty-colors.toml'\n") port)
-                           (display (string-append "output_path = '" home "/.cache/matugen/alacritty/colors.toml'\n") port)))
+                           (display (string-append "output_path = '" home "/.cache/matugen/alacritty/colors.toml'\n\n") port)
+                           (display "[templates.mako]\n" port)
+                           (display (string-append "input_path = '" home "/.config/matugen/templates/mako-colors.conf'\n") port)
+                           (display (string-append "output_path = '" home "/.cache/matugen/mako/colors.conf'\n") port)))
                        (unless (file-exists? wofi-colors)
                          (call-with-output-file wofi-colors
                            (lambda (port)
@@ -649,7 +661,21 @@
                              (display "[colors.normal]\n" port)
                              (display "black = \"#45475a\"\nred = \"#f38ba8\"\ngreen = \"#94e2d5\"\nyellow = \"#f9e2af\"\nblue = \"#89b4fa\"\nmagenta = \"#cba6f7\"\ncyan = \"#94e2d5\"\nwhite = \"#cdd6f4\"\n\n" port)
                              (display "[colors.bright]\n" port)
-                             (display "black = \"#6c7086\"\nred = \"#f38ba8\"\ngreen = \"#94e2d5\"\nyellow = \"#f9e2af\"\nblue = \"#89b4fa\"\nmagenta = \"#cba6f7\"\ncyan = \"#94e2d5\"\nwhite = \"#ffffff\"\n" port)))))))
+                             (display "black = \"#6c7086\"\nred = \"#f38ba8\"\ngreen = \"#94e2d5\"\nyellow = \"#f9e2af\"\nblue = \"#89b4fa\"\nmagenta = \"#cba6f7\"\ncyan = \"#94e2d5\"\nwhite = \"#ffffff\"\n" port))))
+                       (unless (file-exists? mako-colors)
+                         (call-with-output-file mako-colors
+                           (lambda (port)
+                             (display "# Fallback Mako colours used before matugen runs.\n" port)
+                             (display "background-color=#1e1e2eF2\n" port)
+                             (display "text-color=#cdd6f4FF\n" port)
+                             (display "border-color=#89b4faFF\n" port)
+                             (display "progress-color=over #89b4faFF\n\n" port)
+                             (display "[actionable]\n" port)
+                             (display "border-color=#cba6f7FF\n\n" port)
+                             (display "[urgency=critical]\n" port)
+                             (display "background-color=#f38ba8F2\n" port)
+                             (display "text-color=#11111bFF\n" port)
+                             (display "border-color=#f38ba8FF\n" port)))))))
    (simple-service 'dms-submap-plugin
 		   home-xdg-configuration-files-service-type
 		   `(("DankMaterialShell/plugins/hyprSubmapHint"

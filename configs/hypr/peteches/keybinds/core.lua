@@ -38,8 +38,8 @@ hl.bind(M.mod .. " + SHIFT + s", hl.dsp.exec_cmd(Local.screenshot_cmd), {
   description = "Screenshot",
 })
 
-hl.bind(M.mod .. " + SHIFT + d", hl.dsp.exec_cmd("dms ipc call notifications dismissAllPopups"), {
-  description = "Dismiss notification popups",
+hl.bind(M.mod .. " + SHIFT + d", hl.dsp.exec_cmd("makoctl dismiss"), {
+  description = "Dismiss current notification",
 })
 
 hl.bind(M.mod .. " + SHIFT + w", hl.dsp.exec_cmd(Local.random_wallpaper_cmd), {

@@ -2,7 +2,7 @@
 set -euo pipefail
 
 program=${0##*/}
-script_version=2026-06-25-dms-direct-settings-run-restart
+script_version=2026-06-29-mako-matugen-reload
 state_dir=${XDG_STATE_HOME:-$HOME/.local/state}/peteches
 cache_dir=${XDG_CACHE_HOME:-$HOME/.cache}
 config_dir=${XDG_CONFIG_HOME:-$HOME/.config}
@@ -29,6 +29,7 @@ Environment:
                                       Set empty to let matugen prompt interactively.
   PETECHES_MATUGEN_RELOAD_HYPRLAND  Reload Hyprland after generation, default: 1
   PETECHES_MATUGEN_RELOAD_EMACS     Reload Emacs daemon theme, default: 1
+  PETECHES_MATUGEN_RELOAD_MAKO      Reload Mako after generating colours, default: 1
   PETECHES_MATUGEN_UPDATE_DMS       Update DMS custom theme file, default: 1
   PETECHES_MATUGEN_DMS_RESTART      Restart DMS after switching theme, default: 0
   DMS_QUICKSHELL_CONFIG_DIR         DMS quickshell config dir, default: ~/.guix-home/profile/share/quickshell
@@ -91,6 +92,16 @@ reload_emacs() {
   if command -v emacsclient >/dev/null 2>&1; then
     emacsclient --eval "(when (fboundp 'peteches/load-matugen-theme) (peteches/load-matugen-theme t))" >> "$log_file" 2>&1 \
       || log "WARN: emacsclient theme reload failed"
+  fi
+}
+
+reload_mako() {
+  [[ ${PETECHES_MATUGEN_RELOAD_MAKO:-1} != 0 ]] || return 0
+
+  if command -v makoctl >/dev/null 2>&1; then
+    makoctl reload >> "$log_file" 2>&1 || log "WARN: makoctl reload failed"
+  elif [[ -x $HOME/.guix-home/profile/bin/makoctl ]]; then
+    "$HOME/.guix-home/profile/bin/makoctl" reload >> "$log_file" 2>&1 || log "WARN: makoctl reload failed"
   fi
 }
 
@@ -273,6 +284,7 @@ log "command: $matugen_bin image <image> -m $mode -t $type${source_color_index:+
 "$matugen_bin" "${matugen_args[@]}" >> "$log_file" 2>&1 || die "matugen generation failed; see $log_file"
 
 generate_dms_theme
+reload_mako
 reload_emacs
 reload_hyprland
 emacsclient --eval "(when (fboundp 'peteches/load-matugen-theme) (peteches/load-matugen-theme t))"
