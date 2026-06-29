@@ -59,6 +59,7 @@
   #:use-module (peteches packages concourse)
   #:use-module (peteches packages proxmox-scripts)
   #:use-module (peteches packages desktop-scripts)
+
   #:use-module (peteches repository)
   ;; utilities
   #:use-module (ice-9 popen)
@@ -75,6 +76,7 @@
    claude-code
    rustdesk
    dank-material-shell
+   (specification->package "beeper-bin")
    (specification->package "matugen")
    (specification->package "hyprcursor")
    (specification->package "xcur2png")

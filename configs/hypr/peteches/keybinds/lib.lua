@@ -1,5 +1,5 @@
-M = {}
 
+M = {}
 function M.dispatch_and_reset(dispatcher)
   return function()
     hl.dispatch(dispatcher)

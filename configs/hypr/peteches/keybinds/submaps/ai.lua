@@ -6,7 +6,7 @@ Local = require("peteches.locals")
 -- s - switch ai model on nug
 -- -----------------------------------------------------------------------------
 
-hl.define_submap("leader_resize", function()
+hl.define_submap("leader_ai", function()
   hl.bind("s", Lib.dispatch_and_reset(hl.dsp.exec_cmd(Local.ai_switch_cmd)), {
     description = "Switch AI model on server",
   })
