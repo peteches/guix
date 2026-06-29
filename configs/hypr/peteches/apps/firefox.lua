@@ -1,53 +1,79 @@
 local binds = {
-	ctrln = hl.bind("CONTROL + n", hl.dsp.send_shortcut({
-		mods = "",
-		key = "down",
-		window = "activewindow",
-	})),
-	ctrlp = hl.bind("CONTROL + p", hl.dsp.send_shortcut({
-		mods = "",
-		key = "up",
-		window = "activewindow",
-	})),
-	ctrls = hl.bind("CONTROL + s", hl.dsp.send_shortcut({
-		mods = "CONTROL",
-		key = "f",
-		window = "activewindow",
-	})),
-	ctrla = hl.bind("CONTROL + a", hl.dsp.send_shortcut({
-		mods = "",
-		key = "home",
-		window = "activewindow",
-	})),
-	ctrle = hl.bind("CONTROL + e", hl.dsp.send_shortcut({
-		mods = "",
-		key = "end",
-		window = "activewindow",
-	})),
-	altb = hl.bind("ALT + b", hl.dsp.send_shortcut({
-		mods = "CONTROL",
-		key = "left",
-		window = "activewindow",
-	})),
-	altf = hl.bind("ALT + f", hl.dsp.send_shortcut({
-		mods = "CONTROL",
-		key = "right",
-		window = "activewindow",
-	})),
-
+	{
+		from = "CONTROL + n",
+		to = {
+			mods = "",
+			key = "down",
+		},
+		table = { repeating = true },
+	},
+	{
+		from = "CONTROL + p",
+		to = {
+			mods = "",
+			key = "up",
+		},
+		table = { repeating = true },
+	},
+	{
+		from = "CONTROL + s",
+		to = {
+			mods = "CONTROL",
+			key = "f",
+		},
+		table = {},
+	},
+	{
+		from = "CONTROL + a",
+		to = {
+			mods = "",
+			key = "home",
+		},
+		table = {},
+	},
+	{
+		from = "CONTROL + e",
+		to = {
+			mods = "",
+			key = "end",
+		},
+		table = {},
+	},
+	{
+		from = "ALT + b",
+		to = {
+			mods = "CONTROL",
+			key = "left",
+		},
+		table = { repeating = true },
+	},
+	{
+		from = "ALT + f",
+		to = {
+			mods = "CONTROL",
+			key = "right",
+		},
+		table = { repeating = true },
+	},
 }
-
-local set_bind_enabled_state = function(state)
-	for _, bind in ipairs(binds) do
-		bind:set_enabled(state)
-	end
+local function firefox_only_remap(from_keys, shortcut, bind_table)
+	hl.bind(from_keys, function()
+		local w = hl.get_active_window()
+		if w ~= nil and w.class == "Firefox" then
+			hl.dispatch(
+				hl.dsp.send_shortcut({
+					mods = shortcut.mods,
+					key = shortcut.key,
+					window = "activewindow",
+				})
+			)
+		else
+			-- Preserve the real shortcut in every non-Firefox app.
+			hl.dispatch(hl.dsp.pass({ window = "activewindow" }))
+		end
+	end, bind_table)
 end
 
-set_bind_enabled_state(false)
-
-hl.on("window.active",
-	function(w)
-		if w.class == "Firefox" then
-			set_bind_enabled_state(true)
-		end
-	end)
+for _, bind in ipairs(binds) do
+	firefox_only_remap(bind.from, bind.to, bind.table)
+end
