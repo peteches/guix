@@ -1,26 +1,36 @@
 ;;; peteches-tramp --- my tramp setup
 
 ;;; Commentary:
-
+;;; TRAMP setup for Guix / Guix Home hosts.
 
 ;;; Code:
+
 (require 'tramp)
+
 (message "loading tramp config")
 
 (setq tramp-remote-path
-      (append tramp-remote-path
-              (list
-	       "tramp-own-remote-path"
-	       "/run/privileged/bin"
-               "~/.config/guix/current/bin"
-               "~/.guix-home/profile/bin"
-               "~/.guix-home/profile/sbin"
-               "/run/current-system/profile/bin"
-               "/run/current-system/profile/sbin")))
+      '(tramp-own-remote-path
+        "~/.guix-home/profile/bin"
+        "~/.guix-home/profile/sbin"
+        "~/.guix-profile/bin"
+        "~/.guix-profile/sbin"
+        "~/.config/guix/current/bin"
+        "/run/current-system/profile/bin"
+        "/run/current-system/profile/sbin"
+        "/run/privileged/bin"
+        tramp-default-remote-path))
 
-;; TRAMP does not use default ssh ControlPath
-;; TRAMP overwrites ControlPath settings when initiating ssh sessions. TRAMP does this to fend off a stall if a master session opened outside the Emacs session is no longer open. That is why TRAMP prompts for the password again even if there is an ssh already open.
-;; Some ssh versions support a ControlPersist option, which allows to set the ControlPath provided the variable tramp-ssh-controlmaster-options is customized as follows:
+;; Prevent local Guix store paths from leaking into remote Git processes.
+;; These are set locally in early-init.el, but they should be recomputed
+;; by the remote Git/Guix environment, not inherited from local Emacs.
+(dolist (env '("GIT_EXEC_PATH="
+               "GIT_SSL_CAINFO="
+               "GIT_SSL_CAPATH="
+               "CURL_CA_BUNDLE="
+               "SSL_CERT_FILE="
+               "SSL_CERT_DIR="))
+  (add-to-list 'tramp-remote-process-environment env))
 
 (setq tramp-ssh-controlmaster-options
       (concat
@@ -28,4 +38,5 @@
        "-o ControlMaster=auto -o ControlPersist=yes"))
 
 (provide 'peteches-tramp)
+
 ;;; peteches-tramp.el ends here
