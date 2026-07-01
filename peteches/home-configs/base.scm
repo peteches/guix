@@ -360,9 +360,9 @@
    (service home-gpg-agent-service-type
 	    (home-gpg-agent-configuration
 	     ;; Pick a pinentry implementation using PINENTRY_USER_DATA.  Local
-	     ;; Emacs sets USE_EMACS=1, while TRAMP remote processes set
-	     ;; MAGIT_TRAMP=1 so remote Git/GPG prompts stay line-oriented and
-	     ;; do not try to use the remote host's Emacs pinentry socket.
+	     ;; Emacs sets USE_EMACS=1.  Magit/TRAMP signing uses loopback mode
+	     ;; through git's gpg.program wrapper, so this pinentry wrapper remains
+	     ;; for direct/local GPG operations.
 	     (pinentry-program
 	      (program-file
 	       "pinentry-peteches"
@@ -400,7 +400,8 @@
 			     "log-file ${HOME}/.local/var/log/gpg-agent.log\n"
 			     "verbose\n"
 			     "disable-scdaemon\n"
-			     "allow-emacs-pinentry\n"))
+			     "allow-emacs-pinentry\n"
+			     "allow-loopback-pinentry\n"))
 	     (ssh-support? #t)))
 
 

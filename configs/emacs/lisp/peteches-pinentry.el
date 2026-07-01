@@ -11,8 +11,7 @@
 ;; Remote Magit/Git commit signing runs GPG on the remote host.  Do not
 ;; ask the remote gpg-agent to use pinentry-emacs: the remote process cannot
 ;; reach this Emacs' pinentry socket over TRAMP.  Instead mark those processes
-;; so the Guix Home pinentry wrapper below selects pinentry-tty, whose prompt
-;; Magit can handle through the TRAMP process stream.
+;; so the Guix Home Git GPG wrapper uses GnuPG loopback pinentry.
 (with-eval-after-load 'tramp
   (add-to-list 'tramp-remote-process-environment
                "PINENTRY_USER_DATA=MAGIT_TRAMP=1"))

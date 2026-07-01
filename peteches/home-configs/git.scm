@@ -1,5 +1,28 @@
 (define-module (peteches home-configs git)
+  #:use-module (guix gexp)
+  #:use-module (gnu packages gnupg)
   #:use-module (peteches home services git))
+
+(define-public peteches-gpg-for-git
+  (program-file
+   "gpg-for-git-peteches"
+   #~(begin
+       (use-modules (srfi srfi-13))
+
+       (define user-data
+         (or (getenv "PINENTRY_USER_DATA") ""))
+
+       (if (string-contains user-data "MAGIT_TRAMP=1")
+           (apply execl
+                  #$(file-append gnupg "/bin/gpg")
+                  "gpg"
+                  "--pinentry-mode"
+                  "loopback"
+                  (cdr (command-line)))
+           (apply execl
+                  #$(file-append gnupg "/bin/gpg")
+                  "gpg"
+                  (cdr (command-line)))))))
 
 (define-public git-config
   (list (git-section
@@ -29,6 +52,9 @@
 	(git-section
 	 (name "commit")
 	 (config '(("gpgSign" . "true"))))
+	(git-section
+	 (name "gpg")
+	 (config `(("program" . ,peteches-gpg-for-git))))
 	(git-section
 	 (name "github")
 	 (config '(("user" . "peteches"))))))
