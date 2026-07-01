@@ -367,23 +367,10 @@
 	      (program-file
 	       "pinentry-peteches"
 	       #~(begin
-		   (use-modules (srfi srfi-13)
-				(ice-9 posix))
+		   (use-modules (srfi srfi-13))
 
 		   (define user-data
 		     (or (getenv "PINENTRY_USER_DATA") ""))
-
-		   (define uid
-		     (number->string (getuid)))
-
-		   (define tmpdir
-		     (or (getenv "TMPDIR") "/tmp"))
-
-		   (define emacs-pinentry-socket
-		     (string-append tmpdir "/emacs" uid "/pinentry"))
-
-		   (define have-emacs-pinentry?
-		     (file-exists? emacs-pinentry-socket))
 
 		   (define have-gui?
 		     (or (getenv "WAYLAND_DISPLAY")
@@ -396,8 +383,7 @@
 		       (values #$(file-append pinentry-tty "/bin/pinentry-tty")
 			       "pinentry-tty"))
 
-		      ((or (string-contains user-data "USE_EMACS=1")
-			   have-emacs-pinentry?)
+		      ((string-contains user-data "USE_EMACS=1")
 		       (values #$(file-append pinentry-emacs "/bin/pinentry-emacs")
 			       "pinentry-emacs"))
 
