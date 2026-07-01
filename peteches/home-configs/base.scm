@@ -77,6 +77,7 @@
    rustdesk
    dank-material-shell
    mako
+   (specification->package "hyprlock")
    (specification->package "gsettings-desktop-schemas")
    (specification->package "beeper-bin")
    (specification->package "matugen")
@@ -569,12 +570,18 @@
                                            12 13 14 15 16 17 18 19 20 21 22 23))
                            "state_dir=\"${XDG_STATE_HOME:-$HOME/.local/state}/peteches\"; mkdir -p \"$state_dir\"; script=\"$HOME/.guix-home/profile/bin/dms-random-wallpaper\"; test -x \"$script\" && \"$script\" >> \"$state_dir/dms-random-wallpaper-hourly.log\" 2>&1 || true")))
 
+   (simple-service 'hyprlock
+		   home-xdg-configuration-files-service-type
+		   `(("hypr/hyprlock.conf"
+		      ,(local-file (source-path "configs/hypr/hyprlock.config")))))
    (simple-service 'matugen-material-style
                    home-xdg-configuration-files-service-type
                    `(("alacritty/alacritty.toml"
                       ,(local-file (source-path "configs/alacritty/alacritty.toml")))
                      ("wofi/style.css"
                       ,(local-file (source-path "configs/wofi/style.css")))
+		     ("matugen/templates/hyprlock-colours.config"
+                      ,(local-file (source-path "configs/matugen/templates/hyprlock-colours.config")))
                      ("matugen/templates/wofi-colors.css"
                       ,(local-file (source-path "configs/matugen/templates/wofi-colors.css")))
                      ("matugen/templates/hypr-colors.lua"
@@ -600,6 +607,7 @@
                               (config-file (string-append matugen-dir "/config.toml"))
                               (wofi-colors (string-append wofi-dir "/matugen-colors.css"))
                               (hypr-colors (string-append hypr-cache-dir "/hypr-colors.lua"))
+			      (hyprlock-colours (string-append hypr-cache-dir "hyprlock-colours.config"))
                               (emacs-theme (string-append emacs-theme-dir "/matugen-theme.el"))
                               (alacritty-colors (string-append alacritty-theme-dir "/colors.toml"))
                               (mako-colors (string-append mako-theme-dir "/colors.conf")))
@@ -615,6 +623,9 @@
                              (display "[templates.wofi]\n" port)
                              (display (string-append "input_path = '" home "/.config/matugen/templates/wofi-colors.css'\n") port)
                              (display (string-append "output_path = '" home "/.config/wofi/matugen-colors.css'\n\n") port)
+			     (display "[templates.hyprlock-colours]\n" port)
+			     (display (string-append "input_path = '" home "/.config/matugen/templates/hyprlock-colours.config'\n") port)
+			     (display (string-append "output_path = '" home "/.cache/matugen/hyprlock-colours.config'\n\n") port)
                              (display "[templates.hyprland_lua]\n" port)
                              (display (string-append "input_path = '" home "/.config/matugen/templates/hypr-colors.lua'\n") port)
                              (display (string-append "output_path = '" home "/.cache/matugen/hypr-colors.lua'\n\n") port)
