@@ -35,7 +35,6 @@
   #:use-module (gnu packages aidc)
   #:use-module (gnu packages video)
   #:use-module (nongnu packages mozilla)
-  #:use-module (peteches packages gpg)
   #:use-module (peteches packages go-tools)
   #:use-module (peteches packages terraform)
   #:use-module (gnu packages libcanberra)
@@ -117,7 +116,6 @@
    ripgrep
    pinentry-qt
    pinentry-tty
-   peteches-pinentry-switch
    bibata-cursor-theme
    qtwayland
    unzip
@@ -217,12 +215,6 @@
 				      "    ControlPath ~/.ssh/ctrl-%C\n"
 				      "    ControlPersist 10m\n"
 				      "    CanonicalizeHostname always\n")))
-		     (openssh-host
-		      (name "nug.* nyarlothotep.*")
-		      (extra-content
-		       "    StreamLocalBindUnlink yes
-    RemoteForward /tmp/emacs1000/pinentry /tmp/emacs1000/pinentry
-"))
 		     (openssh-host
 		      (name "proxmox1")
 		      (host-name "proxmox1.spaniel-cordylus.ts.net")
@@ -359,7 +351,30 @@
    ;; GPG Agent
    (service home-gpg-agent-service-type
 	    (home-gpg-agent-configuration
-	     (pinentry-program (file-append peteches-pinentry-switch "/bin/pinentry-switch"))
+	     ;; Pick a pinentry implementation using PINENTRY_USER_DATA.  Local
+	     ;; Emacs sets USE_EMACS=1, while TRAMP remote processes set
+	     ;; MAGIT_TRAMP=1 so remote Git/GPG prompts stay line-oriented and
+	     ;; do not try to use the remote host's Emacs pinentry socket.
+	     (pinentry-program
+	      (program-file
+	       "pinentry-peteches"
+	       #~(begin
+		   (use-modules (srfi srfi-13))
+		   (define user-data
+		     (or (getenv "PINENTRY_USER_DATA") ""))
+		   (define-values (program argv0)
+		     (cond
+		      ((or (string-contains user-data "MAGIT_TRAMP=1")
+			   (string-contains user-data "USE_TTY=1"))
+		       (values #$(file-append pinentry-tty "/bin/pinentry-tty")
+			       "pinentry-tty"))
+		      ((string-contains user-data "USE_EMACS=1")
+		       (values #$(file-append pinentry-emacs "/bin/pinentry-emacs")
+			       "pinentry-emacs"))
+		      (else
+		       (values #$(file-append pinentry-qt "/bin/pinentry-qt")
+			       "pinentry-qt"))))
+		   (apply execl program argv0 (cdr (command-line))))))
 	     (extra-content (string-append
 			     "log-file ${HOME}/.local/var/log/gpg-agent.log\n"
 			     "verbose\n"
