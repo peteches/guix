@@ -21,6 +21,7 @@
           ;; Keep the builder self-contained so it also works in minimal
           ;; offloaded build environments where Guix build modules are not in
           ;; Guile's load path.
+          (mkdir #$output)
           (mkdir bin)
           (call-with-output-file program
             (lambda (port)
