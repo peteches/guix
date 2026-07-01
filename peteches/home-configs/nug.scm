@@ -3,11 +3,20 @@
   #:use-module (guix channels)
   #:use-module (gnu packages base)
   #:use-module (gnu packages video)
+  #:use-module (gnu packages vulkan)
+  #:use-module (gnu packages gl)
+
+
   #:use-module (gnu packages graphics)
   #:use-module (gnu packages node)
   #:use-module (gnu packages xdisorg)
   #:use-module (gnu packages version-control)
   #:use-module (gnu services)
+
+  #:use-module (nongnu packages game-client)
+  #:use-module (nongnu packages nvidia)
+
+
 
   ;; services
   #:use-module (gnu home)
@@ -39,7 +48,19 @@
 
 ;; Packages unique to nug (examples you had: locales, node, pre-commit, etc.)
 (define nug-extra-packages
-  (list lycheeslicer-7.6.2 blender libwacom glibc-locales v4l-utils node pre-commit))
+  (list lycheeslicer-7.6.2
+	steam-nvidia
+	nvda
+	nvidia-prime
+	protonup
+	vulkan-tools
+	mesa-utils
+	blender
+	libwacom
+	glibc-locales
+	v4l-utils
+	node
+	pre-commit))
 
 ;; Services unique to nug (AI stacks, AGiXT bots, etc.)
 (define nug-extra-services
