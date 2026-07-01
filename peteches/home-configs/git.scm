@@ -16,23 +16,27 @@
     (arguments
      (list
       #:builder
-      #~(begin
-          (use-modules (guix build utils))
-          (let* ((bin (string-append #$output "/bin"))
-                 (program (string-append bin "/gpg-for-git-peteches")))
-            (mkdir-p bin)
-            (call-with-output-file program
-              (lambda (port)
-                (format port "#!~a
+      #~(let* ((bin (string-append #$output "/bin"))
+               (program (string-append bin "/gpg-for-git-peteches")))
+          ;; Keep the builder self-contained so it also works in minimal
+          ;; offloaded build environments where Guix build modules are not in
+          ;; Guile's load path.
+          (mkdir bin)
+          (call-with-output-file program
+            (lambda (port)
+              (display "#!" port)
+              (display #$(file-append bash-minimal "/bin/sh") port)
+              (display "
 case \"${PINENTRY_USER_DATA:-}\" in
-  *MAGIT_TRAMP=1*) exec ~a --pinentry-mode loopback \"$@\" ;;
-  *) exec ~a \"$@\" ;;
+  *MAGIT_TRAMP=1*) exec " port)
+              (display #$(file-append gnupg "/bin/gpg") port)
+              (display " --pinentry-mode loopback \"$@\" ;;
+  *) exec " port)
+              (display #$(file-append gnupg "/bin/gpg") port)
+              (display " \"$@\" ;;
 esac
-"
-                        #$(file-append bash-minimal "/bin/sh")
-                        #$(file-append gnupg "/bin/gpg")
-                        #$(file-append gnupg "/bin/gpg"))))
-            (chmod program #o555)))))
+" port)))
+          (chmod program #o555))))
     (home-page "https://peteches.co.uk")
     (synopsis "GPG wrapper for Git signing from Magit over TRAMP")
     (description
