@@ -204,13 +204,6 @@
             (firefox-configuration (profiles base-firefox-profiles)))
    (service nyxt-service-type)
 
-   (simple-service 'ssh-proxy-fragment
-                   home-files-service-type
-                   `((".ssh/config.d/peteches-ts-proxy.conf"   ,(mixed-text-file "guix-proxy.conf"
-										 "Host *.spaniel-cordylus.ts.net\n"
-										 "  ProxyCommand netns-peteches "
-										 (file-append netcat "/bin/nc")
-										 " -w 10 %h %p\n"))))
    ;; SSH
    (service home-openssh-service-type
             (home-openssh-configuration
@@ -223,8 +216,13 @@
 				      "    ControlMaster auto\n"
 				      "    ControlPath ~/.ssh/ctrl-%C\n"
 				      "    ControlPersist 10m\n"
-				      "    CanonicalizeHostname always\n"
-				      "    Include ~/.ssh/config.d/peteches-ts-proxy.conf\n")))
+				      "    CanonicalizeHostname always\n")))
+		     (openssh-host
+		      (name "nug.* nyarlothotep.*")
+		      (extra-content
+		       "    StreamLocalBindUnlink yes
+    RemoteForward /tmp/emacs1000/pinentry /tmp/emacs1000/pinentry
+"))
 		     (openssh-host
 		      (name "proxmox1")
 		      (host-name "proxmox1.spaniel-cordylus.ts.net")

@@ -6,8 +6,11 @@
 (setenv "PINENTRY_USER_DATA" "USE_EMACS=1")
 (setq epg-pinentry-mode 'nil)
 (pinentry-start)
-(provide 'peteches-pinentry)
 
+
+(with-eval-after-load 'tramp
+  (add-to-list 'tramp-remote-process-environment
+               "PINENTRY_USER_DATA=USE_EMACS=1"))
 
 (getenv "INSIDE_EMACS")
 
@@ -39,3 +42,5 @@ already present in the current environment."
                                 process-environment))))
       (apply orig args)))
   (advice-add 'term-exec-1 :around #'peteches--term-inside-emacs-advice))
+
+(provide 'peteches-pinentry)
