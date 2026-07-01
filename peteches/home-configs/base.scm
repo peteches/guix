@@ -104,6 +104,7 @@
    (list isc-bind "utils")
    bluez
    git
+   peteches-gpg-for-git
    gurpscharactersheet
    gnupg
    jq

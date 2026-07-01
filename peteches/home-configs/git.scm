@@ -1,28 +1,45 @@
 (define-module (peteches home-configs git)
-  #:use-module (guix gexp)
+  #:use-module (gnu packages bash)
   #:use-module (gnu packages gnupg)
+  #:use-module (guix build-system trivial)
+  #:use-module (guix gexp)
+  #:use-module ((guix licenses) #:prefix license:)
+  #:use-module (guix packages)
   #:use-module (peteches home services git))
 
 (define-public peteches-gpg-for-git
-  (program-file
-   "gpg-for-git-peteches"
-   #~(begin
-       (use-modules (srfi srfi-13))
-
-       (define user-data
-         (or (getenv "PINENTRY_USER_DATA") ""))
-
-       (if (string-contains user-data "MAGIT_TRAMP=1")
-           (apply execl
-                  #$(file-append gnupg "/bin/gpg")
-                  "gpg"
-                  "--pinentry-mode"
-                  "loopback"
-                  (cdr (command-line)))
-           (apply execl
-                  #$(file-append gnupg "/bin/gpg")
-                  "gpg"
-                  (cdr (command-line)))))))
+  (package
+    (name "peteches-gpg-for-git")
+    (version "0")
+    (source #f)
+    (build-system trivial-build-system)
+    (arguments
+     (list
+      #:builder
+      #~(begin
+          (use-modules (guix build utils))
+          (let* ((bin (string-append #$output "/bin"))
+                 (program (string-append bin "/gpg-for-git-peteches")))
+            (mkdir-p bin)
+            (call-with-output-file program
+              (lambda (port)
+                (format port "#!~a
+case \"${PINENTRY_USER_DATA:-}\" in
+  *MAGIT_TRAMP=1*) exec ~a --pinentry-mode loopback \"$@\" ;;
+  *) exec ~a \"$@\" ;;
+esac
+"
+                        #$(file-append bash-minimal "/bin/sh")
+                        #$(file-append gnupg "/bin/gpg")
+                        #$(file-append gnupg "/bin/gpg"))))
+            (chmod program #o555)))))
+    (home-page "https://peteches.co.uk")
+    (synopsis "GPG wrapper for Git signing from Magit over TRAMP")
+    (description
+     "Wrap GnuPG for Git signing.  When Magit marks a remote TRAMP process
+with PINENTRY_USER_DATA=MAGIT_TRAMP=1, run gpg with --pinentry-mode loopback;
+otherwise execute gpg normally.")
+    (license license:gpl3+)))
 
 (define-public git-config
   (list (git-section
@@ -54,7 +71,7 @@
 	 (config '(("gpgSign" . "true"))))
 	(git-section
 	 (name "gpg")
-	 (config `(("program" . ,peteches-gpg-for-git))))
+	 (config '(("program" . "gpg-for-git-peteches"))))
 	(git-section
 	 (name "github")
 	 (config '(("user" . "peteches"))))))
