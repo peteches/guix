@@ -691,3 +691,48 @@ module "critical-grind-outline" {
     ipv6_gateway = "2a10:d582:ef59::1"
   }
 }
+
+module "plane" {
+  source    = "./modules/proxmox-vm"
+  vmid      = 117
+  name      = "plane"
+  node_name = var.node_name
+
+  bios          = "ovmf"
+  machine       = "q35"
+  scsi_hardware = "virtio-scsi-pci"
+  on_boot       = true
+  started       = true
+  memory        = 8192
+
+  cpu = {
+    cores = 4
+    type  = "qemu64"
+  }
+
+  efi_disk = {
+    datastore_id      = "local-lvm"
+    type              = "4m"
+    pre_enrolled_keys = false
+  }
+
+  disk = {
+    datastore_id = "local-lvm"
+    interface    = "virtio0"
+    size         = 50
+  }
+
+  network_device = {
+    bridge = "vmbr0"
+    model  = "virtio"
+  }
+
+  agent = {
+    enabled = true
+  }
+
+  provisioned_network = {
+    ipv4_address = "192.168.51.204/23"
+    ipv4_gateway = "192.168.50.1"
+  }
+}

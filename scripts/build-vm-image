@@ -1,0 +1,97 @@
+#!/usr/bin/env bash
+# build-vm-image — Build a Guix qcow2-gpt VM image and inject an age private key.
+#
+# Usage: scripts/build-vm-image [OPTIONS] <system-file> <age-key-file>
+#
+#   <system-file>      Path to the Guix system config (.scm)
+#   <age-key-file>     Path to the age private key to inject at /etc/age/keys.txt
+#
+# Options:
+#   --image-size SIZE  Disk image size passed to guix system image (default: 30G)
+#   --output PATH      Write finished image to PATH (default: ./<name>.qcow2)
+#   --load-path PATH   Use a single load path instead of auto-detected repo+channel
+#
+# The age key is injected at /etc/age/keys.txt (mode 0600) inside the root
+# partition so the VM can decrypt SOPS secrets on first boot without a
+# separate key-generation step.
+#
+# Run from the repo root. Requires guix, qemu (for qemu-nbd), and sudo.
+#
+# Example:
+#   age-keygen -o /dev/shm/plane-age.txt
+#   scripts/build-vm-image peteches/systems/plane.scm /dev/shm/plane-age.txt
+#   shred -u /dev/shm/plane-age.txt
+
+set -euo pipefail
+
+IMAGE_SIZE="30G"
+OUTPUT=""
+# Build -L flags for guix system image.  Each path needs its own -L argument.
+# Auto-detect the peteches channel checkout next to the repo root.
+SCRIPT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+CHANNEL_DIR="$(cd "$SCRIPT_DIR/../codeberg.org/peteches/guix-channel.git_main" 2>/dev/null && pwd || true)"
+LOAD_PATH_ARGS=(-L "$SCRIPT_DIR")
+[[ -n "$CHANNEL_DIR" ]] && LOAD_PATH_ARGS+=(-L "$CHANNEL_DIR")
+
+usage() {
+  sed -n '2,/^$/p' "$0" | sed 's/^# \{0,1\}//'
+  exit 1
+}
+
+SYSTEM_FILE="${1:-}"
+AGE_KEY_FILE="${2:-}"
+[[ -n "$SYSTEM_FILE" && -n "$AGE_KEY_FILE" ]] || usage
+shift 2
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --image-size) IMAGE_SIZE="$2"; shift 2 ;;
+    --output)     OUTPUT="$2";     shift 2 ;;
+    --load-path)  LOAD_PATH_ARGS=(-L "$2"); shift 2 ;;
+    *) echo "Unknown option: $1" >&2; usage ;;
+  esac
+done
+
+[[ -f "$SYSTEM_FILE" ]] || { echo "ERROR: system file not found: $SYSTEM_FILE" >&2; exit 1; }
+[[ -f "$AGE_KEY_FILE" ]] || { echo "ERROR: age key file not found: $AGE_KEY_FILE" >&2; exit 1; }
+
+BASENAME=$(basename "$SYSTEM_FILE" .scm)
+OUTPUT="${OUTPUT:-./${BASENAME}.qcow2}"
+[[ -e "$OUTPUT" ]] && { echo "ERROR: output file already exists: $OUTPUT (remove it or use --output)" >&2; exit 1; }
+
+echo "==> Building Guix image for $BASENAME (size: $IMAGE_SIZE)..."
+STORE_IMAGE=$(guix system image \
+  "${LOAD_PATH_ARGS[@]}" \
+  -t qcow2-gpt \
+  --image-size="$IMAGE_SIZE" \
+  "$SYSTEM_FILE")
+echo "    Store image: $STORE_IMAGE"
+
+echo "==> Copying to $OUTPUT..."
+cp "$STORE_IMAGE" "$OUTPUT"
+chmod u+w "$OUTPUT"
+
+# qcow2-gpt layout: partition 1 = EFI ESP (vfat), partition 2 = root (ext4).
+# Use qemu-nbd + mount to inject the key without needing a libguestfs appliance.
+echo "==> Injecting age key at /etc/age/keys.txt (partition 2)..."
+MOUNT_DIR=$(mktemp -d)
+_cleanup() {
+  sudo umount "$MOUNT_DIR" 2>/dev/null || true
+  sudo qemu-nbd -d /dev/nbd0 2>/dev/null || true
+  rmdir "$MOUNT_DIR" 2>/dev/null || true
+}
+trap _cleanup EXIT
+sudo -v  # cache credentials upfront; all subsequent sudo calls reuse the ticket
+sudo modprobe nbd max_part=16
+sudo qemu-nbd -c /dev/nbd0 "$OUTPUT"
+sleep 1  # wait for kernel to register partition devices
+sudo mount /dev/nbd0p2 "$MOUNT_DIR"
+sudo mkdir -p "$MOUNT_DIR/etc/age"
+sudo install -m 0600 "$AGE_KEY_FILE" "$MOUNT_DIR/etc/age/keys.txt"
+_cleanup
+trap - EXIT
+
+echo ""
+echo "Done: $OUTPUT"
+echo "Next: shred the source key, then import the image to Proxmox."
+echo "      See proxmox-vms.org — Bootstrap: Approach A"

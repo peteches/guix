@@ -135,7 +135,8 @@ For bare patterns (no KEY= prefix), tries both 'name' and 'host-name'."
     (,concourse-web01-machine    . "concourse-web01-machine")
     (,concourse-worker01-machine . "concourse-worker01-machine")
     (,vault-machine              . "vault-machine")
-    (,critical-grind-outline-machine . "critical-grind-outline-machine")))
+    (,critical-grind-outline-machine . "critical-grind-outline-machine")
+    (,plane-machine                  . "plane-machine")))
 
 (define (machine-name m)
   (let ((entry (assq m %machine-names)))

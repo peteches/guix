@@ -29,6 +29,7 @@ Current VMs (all use OVMF/EFI and =qcow2-gpt= images):
 | peteches/systems/concourse-worker01.scm | concourse-worker01.peteches.co.uk | Concourse CI worker → web01 TSA (192.168.51.200, 4 vCPU, 4096 MB)    |
 | peteches/systems/vault.scm              | vault.peteches.co.uk      | HashiCorp Vault secrets manager on :8200 (192.168.51.201, VMID 114, 2 vCPU, 2048 MB) |
 | peteches/systems/critical-grind-outline.scm | critical-grind-outline.peteches.co.uk | Outline wiki on :3000 (192.168.51.203, VMID 116, 2 vCPU, 2048 MB) |
+| peteches/systems/plane.scm              | plane.peteches.co.uk      | Plane PM on :80 (192.168.51.204, VMID 117, 4 vCPU, 8192 MB) |
 
 * Adding a New VM Config
 
@@ -110,6 +111,48 @@ set a larger disk. Recommended sizes:
 
 The QCOW2 format is sparse — the file on disk only grows as space is actually
 used, so allocating generously has no cost at rest.
+
+*** Step 1a: Inject age key (VMs with SOPS secrets)
+
+If the system uses =#:sops-secrets= (i.e. =make-vm-os= with secrets
+populated), the VM needs its age private key at =/etc/age/keys.txt= before it
+can decrypt secrets on first boot.
+
+By default, =sops-key-generator-service-type= generates a fresh key on first
+boot — but that key is unknown in advance, so you cannot create SOPS-encrypted
+secrets for the VM before it boots. The solution is to pre-generate the key,
+enroll it in =.sops.yaml=, create the encrypted secrets, and then inject the
+private key into the built image before importing it to Proxmox.
+
+Use =scripts/build-vm-image= instead of running =guix system image= directly.
+It builds the image and injects the key in one step:
+
+#+begin_src shell
+# Generate the age key into /dev/shm (never write key material to /tmp or disk)
+age-keygen -o /dev/shm/<name>-age.txt
+# age-keygen prints the public key to stdout:
+#   Public key: age1xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+
+# 1. Add the public key to age-keys/<name>.pub
+# 2. Add a recipient entry for <name> to .sops.yaml
+# 3. Create and encrypt the SOPS secrets files
+#    See docs/secrets-management.org for the full workflow.
+
+# Build image and inject the private key
+scripts/build-vm-image peteches/systems/<name>.scm /dev/shm/<name>-age.txt
+
+# Destroy the private key — it now lives only inside the image
+shred -u /dev/shm/<name>-age.txt
+#+end_src
+
+The script outputs =<name>.qcow2= in the current directory. Use
+=--image-size SIZE= or =--output PATH= to override defaults (the script
+default is 30G; see =scripts/build-vm-image --help= for all options).
+The injection step uses =qemu-nbd= and =sudo mount= — no libguestfs appliance needed.
+
+*Important:* Complete the SOPS secrets setup (=.sops.yaml= entry and
+encrypted secret files) /before/ first boot. If secrets are missing the VM
+will boot but services that depend on them will not start.
 
 *** Step 2: Import into Proxmox
 

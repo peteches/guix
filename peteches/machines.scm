@@ -16,7 +16,9 @@
   #:use-module (peteches systems concourse-web01)
   #:use-module (peteches systems concourse-worker01)
   #:use-module (peteches systems vault)
-  #:use-module (peteches systems critical-grind-outline))
+  #:use-module (peteches systems critical-grind-outline)
+  #:use-module (peteches systems plane)
+  )
 
 (define-public prometheus-machine
   (machine
@@ -211,6 +213,18 @@
      (user "peteches")
      (identity "/home/peteches/.ssh/id_ed25519")))))
 
+(define-public plane-machine
+  (machine
+   (operating-system plane-os)
+   (environment managed-host-environment-type)
+   (configuration
+    (machine-ssh-configuration
+     (host-name "192.168.51.204")
+     (host-key "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIHB4zbOzy5fOWq/js8TgZGi1CIXPOAHMkR4imLhKBYYt")
+     (system "x86_64-linux")
+     (user "peteches")
+     (identity "/home/peteches/.ssh/id_ed25519")))))
+
 (define-public %all-machines
   (list prometheus-machine
         grafana-machine
@@ -227,4 +241,6 @@
         concourse-web01-machine
         vault-machine
         concourse-worker01-machine
-        critical-grind-outline-machine))
+        critical-grind-outline-machine
+        plane-machine
+        ))

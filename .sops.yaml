@@ -1,5 +1,9 @@
 
 creation_rules:
+  - path_regex: secrets/hosts/plane/.*\.yaml$
+    pgp: "5FFB7006A36B0AEDE8D08E3753B1E002546A642A"
+    age: "age1zypwnpyq3pywjnr0kegs8uejn82zcj2ydyayaqjv70vrh69mp5fstmglsn"
+
   - path_regex: secrets/hosts/prometheus/.*\.yaml$
     pgp: "5FFB7006A36B0AEDE8D08E3753B1E002546A642A"
     age: "age15pfq0a37378fv4s2htwyzsdavksjyfq2mvmz62sk65fxpt4qqu4s7xyjpz"
@@ -98,3 +102,4 @@ creation_rules:
       - age1fww7z7rv5rtm0e3jwd5scquaxkz28mwx53mu8e85etfwj7ssqp6qzc4n7r  # rustdesk
       - age14wrglclq4jcp5jx2vkz5evt0fmjl32zuzq86hmnt5hn6pcl02dyq9qhkew  # vault
       - age1g3nsny7xdewga8eatwtapelwn058035s4jwa3lhehh2eu4zzpf3sjvqpsu  # critical-grind-outline
+      - age1zypwnpyq3pywjnr0kegs8uejn82zcj2ydyayaqjv70vrh69mp5fstmglsn  # plane
