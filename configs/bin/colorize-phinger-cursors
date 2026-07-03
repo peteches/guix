@@ -1,0 +1,417 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+program=${0##*/}
+state_dir=${XDG_STATE_HOME:-$HOME/.local/state}/peteches
+cache_dir=${XDG_CACHE_HOME:-$HOME/.cache}
+data_dir=${XDG_DATA_HOME:-$HOME/.local/share}
+log_file=$state_dir/colorize-phinger-cursors.log
+best_effort=0
+cursor_size=${PHINGER_CURSOR_SIZE:-32}
+theme_name=phinger-matugen
+phinger_cache=$cache_dir/phinger-cursors
+source_cache=$phinger_cache/source
+icons_dir=$data_dir/icons
+theme_dir=$icons_dir/theme_$theme_name
+colours_file=$cache_dir/matugen/colours.sh
+
+SOURCE_URL=https://github.com/phisch/phinger-cursors/archive/refs/heads/master.tar.gz
+SOURCE_ARCHIVE=$phinger_cache/phinger-cursors-master.tar.gz
+
+usage() {
+  cat <<USAGE
+Usage: $program [--best-effort] [--size SIZE]
+
+Recolour phinger cursor SVG sources using colours from matugen and build a
+hyprcursor theme named '$theme_name'.
+
+Options:
+  --best-effort   Exit 0 on non-fatal errors instead of failing
+  --size SIZE     Cursor size hint (default: 32)
+  -h, --help      Show this help
+
+Environment:
+  PHINGER_CURSOR_SIZE     Override cursor size (default: 32)
+USAGE
+}
+
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    --best-effort)
+      best_effort=1
+      shift
+      ;;
+    --size)
+      cursor_size="${2:?missing value for --size}"
+      shift 2
+      ;;
+    -h|--help)
+      usage
+      exit 0
+      ;;
+    *)
+      printf '%s: unknown argument: %s\n' "$program" "$1" >&2
+      usage >&2
+      exit 2
+      ;;
+  esac
+done
+
+log() {
+  mkdir -p "$state_dir"
+  printf '[%(%Y-%m-%dT%H:%M:%S%z)T] %s\n' -1 "$*" >> "$log_file"
+}
+
+die() {
+  printf '%s: %s\n' "$program" "$*" >&2
+  log "ERROR: $*"
+  exit 1
+}
+
+warn() {
+  log "WARN: $*"
+}
+
+fail() {
+  if [ "$best_effort" -eq 1 ]; then
+    log "WARN (best-effort): $*"
+    exit 0
+  fi
+  die "$*"
+}
+
+have() {
+  command -v "$1" >/dev/null 2>&1
+}
+
+load_colours() {
+  if [[ ! -f $colours_file ]]; then
+    warn "colours file not found: $colours_file; using Catppuccin Mocha fallback"
+    MATUGEN_PRIMARY=89b4fa
+    MATUGEN_ON_PRIMARY=11111b
+    return 0
+  fi
+  # shellcheck source=/dev/null
+  source "$colours_file"
+  log "loaded colours: primary=#$MATUGEN_PRIMARY on_primary=#$MATUGEN_ON_PRIMARY"
+}
+
+download_source() {
+  mkdir -p "$phinger_cache"
+
+  if [[ -d $source_cache/theme ]]; then
+    log "phinger source already cached at $source_cache"
+    return 0
+  fi
+
+  have curl || fail "curl is required to download phinger source"
+
+  log "downloading phinger source archive from $SOURCE_URL"
+  curl -fL --retry 3 --connect-timeout 20 \
+    -o "$SOURCE_ARCHIVE" \
+    "$SOURCE_URL" \
+    || fail "could not download phinger source archive"
+
+  mkdir -p "$source_cache"
+  tar -xzf "$SOURCE_ARCHIVE" --strip-components=1 -C "$source_cache" \
+    || fail "could not extract phinger source archive"
+
+  [[ -d $source_cache/theme ]] \
+    || fail "expected theme/ directory not found in phinger source archive"
+
+  log "phinger source extracted to $source_cache"
+}
+
+recolor_svgs() {
+  local work_dir=$phinger_cache/recolor-work
+  rm -rf "$work_dir"
+  mkdir -p "$work_dir"
+
+  # SVGs live in theme/dark/ with size suffix: default_32.svg, alias_24.svg etc.
+  local svg_dir=$source_cache/theme/dark
+  [[ -d $svg_dir ]] || fail "phinger dark SVG directory not found: $svg_dir"
+
+  # Prefer size matching cursor_size; fall back to 32
+  local target_size=$cursor_size
+  local svg_count
+  svg_count=$(ls "$svg_dir"/*_${target_size}.svg 2>/dev/null | wc -l)
+  if [[ $svg_count -eq 0 ]]; then
+    warn "no ${target_size}px SVGs found; trying 32px"
+    target_size=32
+    svg_count=$(ls "$svg_dir"/*_32.svg 2>/dev/null | wc -l)
+  fi
+  [[ $svg_count -gt 0 ]] || fail "no SVGs found in $svg_dir"
+  log "found $svg_count ${target_size}px SVGs to recolour"
+
+  # phinger dark SVGs use fill="#0D0D0D" (body) and stroke="white" (outline)
+  local new_body="#$MATUGEN_PRIMARY"
+  local new_outline="#$MATUGEN_ON_PRIMARY"
+  local substitution_count=0
+
+  for svg in "$svg_dir"/*_${target_size}.svg; do
+    [[ -f $svg ]] || continue
+    # Strip size suffix: default_32.svg -> default.svg
+    local base name dest
+    base=$(basename "$svg")
+    name=${base%_${target_size}.svg}
+    dest=$work_dir/$name.svg
+    sed \
+      -e "s|fill=\"#0D0D0D\"|fill=\"$new_body\"|g" \
+      -e "s|fill=\"#0d0d0d\"|fill=\"$new_body\"|g" \
+      -e "s|stroke=\"white\"|stroke=\"$new_outline\"|g" \
+      "$svg" > "$dest"
+    local hit
+    hit=$(grep -c "fill=\"$new_body\"\|stroke=\"$new_outline\"" "$dest" 2>/dev/null || true)
+    if [[ $hit -gt 0 ]]; then
+      substitution_count=$((substitution_count + 1))
+    fi
+  done
+
+  log "colour substitution applied to $substitution_count / $svg_count SVGs"
+  if [[ $substitution_count -eq 0 ]]; then
+    warn "zero SVGs matched phinger colour values; theme will use original colours"
+    warn "check fill/stroke values in: $svg_dir"
+  fi
+
+  printf '%s\n' "$work_dir"
+}
+
+build_hyprcursor_theme() {
+  local svg_dir=$1
+  local hyprcursor_src=$phinger_cache/hyprcursor-src-matugen
+
+  have rsvg-convert || fail "rsvg-convert is required to rasterize SVGs (part of librsvg)"
+  have hyprcursor-util || fail "hyprcursor-util is required"
+
+  rm -rf "$hyprcursor_src"
+  mkdir -p "$hyprcursor_src/hyprcursor"
+
+  cat > "$hyprcursor_src/manifest.hl" <<'MANIFEST'
+name = phinger-matugen
+description = Phinger cursors recoloured with matugen Material You palette
+version = 1
+cursors_directory = hyprcursor
+MANIFEST
+
+  local cursor_count=0
+  local theme_json=$source_cache/theme/cursor-theme.json
+  local sizes=(24 32 48 64 72 96 128)
+
+  for svg in "$svg_dir"/*.svg; do
+    [[ -f $svg ]] || continue
+    local base name cursor_dir
+    base=$(basename "$svg")
+    name=${base%.svg}
+    cursor_dir=$hyprcursor_src/hyprcursor/$name
+    mkdir -p "$cursor_dir"
+
+    local size_lines=()
+    local idx=0
+    for size in "${sizes[@]}"; do
+      local png_file
+      png_file=$(printf '%s_%03d.png' "$name" "$idx")
+      if rsvg-convert -w "$size" -h "$size" "$svg" -o "$cursor_dir/$png_file" 2>/dev/null; then
+        size_lines+=("define_size = $size, $png_file, 0")
+        idx=$((idx + 1))
+      else
+        warn "rsvg-convert failed for $name at ${size}px"
+      fi
+    done
+
+    {
+      printf 'resize_algorithm = none\n'
+      printf 'hotspot_x = 0.00\n'
+      printf 'hotspot_y = 0.00\n'
+      printf '\n'
+      for line in "${size_lines[@]}"; do
+        printf '%s\n' "$line"
+      done
+      if have jq && [[ -f $theme_json ]]; then
+        local overrides
+        overrides=$(jq -r --arg n "$name" '
+          [.variants[].cursors[] | select(.name == $n) | .aliases[]?]
+          | unique[]
+          | "define_override = " + .
+        ' "$theme_json" 2>/dev/null || true)
+        if [[ -n $overrides ]]; then
+          printf '\n%s\n' "$overrides"
+        fi
+      fi
+    } > "$cursor_dir/meta.hl"
+    cursor_count=$((cursor_count + 1))
+  done
+
+  log "created hyprcursor source with $cursor_count cursor entries"
+  [[ $cursor_count -gt 0 ]] || warn "no SVGs copied — resulting theme will be empty"
+
+  mkdir -p "$icons_dir"
+  rm -rf "$theme_dir"
+  hyprcursor-util --create "$hyprcursor_src" --output "$icons_dir" \
+    >> "$log_file" 2>&1 \
+    || fail "hyprcursor-util --create failed; see $log_file"
+
+  if [[ ! -f $theme_dir/manifest.hl ]]; then
+    local generated
+    generated=$(ls -td "$icons_dir"/theme_* 2>/dev/null | head -1 || true)
+    if [[ -n $generated && -f $generated/manifest.hl ]]; then
+      ln -sfn "$generated" "$theme_dir"
+      log "created symlink: $theme_dir -> $generated"
+    else
+      fail "hyprcursor-util did not produce expected theme at $theme_dir"
+    fi
+  fi
+
+  log "hyprcursor theme ready: $theme_dir"
+}
+
+build_xcursor_theme() {
+  local hyprcursor_src=$phinger_cache/hyprcursor-src-matugen
+  local xcursor_dir=$icons_dir/phinger-matugen
+  local cursors_dir=$xcursor_dir/cursors
+  local phinger_dark=$icons_dir/phinger-cursors-dark/cursors
+  local sizes=(24 32 48 64 72 96 128)
+
+  rm -rf "$xcursor_dir"
+  mkdir -p "$cursors_dir"
+
+  printf '[Icon Theme]\nName=Phinger Matugen\nInherits=phinger-cursors-dark\n' > "$xcursor_dir/index.theme"
+
+  local py_tmp
+  py_tmp=$(mktemp /tmp/xcursor_gen_XXXXXX.py)
+  cat > "$py_tmp" <<'PYEOF'
+import struct, zlib, sys
+
+def read_png_rgba(path):
+    with open(path, 'rb') as f:
+        assert f.read(8) == b'\x89PNG\r\n\x1a\n', f"not a PNG: {path}"
+        width = height = None
+        idat = []
+        while True:
+            length = struct.unpack('>I', f.read(4))[0]
+            ctype = f.read(4)
+            data = f.read(length)
+            f.read(4)
+            if ctype == b'IHDR':
+                width, height = struct.unpack('>II', data[:8])
+            elif ctype == b'IDAT':
+                idat.append(data)
+            elif ctype == b'IEND':
+                break
+    raw = zlib.decompress(b''.join(idat))
+    stride = width * 4
+    prev = bytes(stride)
+    rows = []
+    pos = 0
+    for _ in range(height):
+        ft = raw[pos]; pos += 1
+        row = bytearray(raw[pos:pos+stride]); pos += stride
+        if ft == 1:
+            for i in range(4, stride): row[i] = (row[i] + row[i-4]) & 0xFF
+        elif ft == 2:
+            for i in range(stride): row[i] = (row[i] + prev[i]) & 0xFF
+        elif ft == 3:
+            for i in range(stride):
+                row[i] = (row[i] + ((row[i-4] if i>=4 else 0) + prev[i]) // 2) & 0xFF
+        elif ft == 4:
+            for i in range(stride):
+                a = row[i-4] if i>=4 else 0; b = prev[i]; c = prev[i-4] if i>=4 else 0
+                p = a+b-c; pa = abs(p-a); pb = abs(p-b); pc = abs(p-c)
+                row[i] = (row[i] + (a if pa<=pb and pa<=pc else b if pb<=pc else c)) & 0xFF
+        rows.append(bytes(row))
+        prev = bytes(row)
+    return width, height, b''.join(rows)
+
+def write_xcursor(path, frames):
+    n = len(frames)
+    img_hdr = 36; toc_start = 16; data_start = toc_start + n * 12
+    positions = []; p = data_start
+    for sz, w, h, *_ in frames:
+        positions.append(p); p += img_hdr + w * h * 4
+    with open(path, 'wb') as f:
+        f.write(b'Xcur')
+        f.write(struct.pack('<III', 16, 0x00010000, n))
+        for i, (sz, w, h, xhot, yhot, _) in enumerate(frames):
+            f.write(struct.pack('<III', 0xFFFD0002, sz, positions[i]))
+        for sz, w, h, xhot, yhot, rgba in frames:
+            f.write(struct.pack('<IIIIIIIII', img_hdr, 0xFFFD0002, sz, 1, w, h, xhot, yhot, 50))
+            buf = bytearray(w * h * 4)
+            for i in range(w * h):
+                r, g, b, a = rgba[i*4], rgba[i*4+1], rgba[i*4+2], rgba[i*4+3]
+                buf[i*4:i*4+4] = bytes([b, g, r, a])
+            f.write(bytes(buf))
+
+out = sys.argv[1]
+frames = []
+for arg in sys.argv[2:]:
+    sz, png = arg.split(':', 1)
+    w, h, rgba = read_png_rgba(png)
+    frames.append((int(sz), w, h, 0, 0, rgba))
+write_xcursor(out, frames)
+PYEOF
+
+  local cursor_count=0
+  for cursor_src_dir in "$hyprcursor_src/hyprcursor"/*/; do
+    [[ -d $cursor_src_dir ]] || continue
+    local name
+    name=$(basename "$cursor_src_dir")
+
+    local png_args=()
+    local idx=0
+    for size in "${sizes[@]}"; do
+      local png_file
+      png_file=$(printf '%s%s_%03d.png' "$cursor_src_dir" "$name" "$idx")
+      if [[ -f $png_file ]]; then
+        png_args+=("$size:$png_file")
+      fi
+      idx=$((idx + 1))
+    done
+
+    [[ ${#png_args[@]} -gt 0 ]] || continue
+
+    python3 "$py_tmp" "$cursors_dir/$name" "${png_args[@]}" \
+      || { warn "xcursor generation failed for $name"; continue; }
+    cursor_count=$((cursor_count + 1))
+  done
+
+  rm -f "$py_tmp"
+
+  # Re-use alias symlinks from phinger-cursors-dark for full X11 cursor name coverage
+  if [[ -d $phinger_dark ]]; then
+    for link in "$phinger_dark"/*; do
+      [[ -L $link ]] || continue
+      local link_name target
+      link_name=$(basename "$link")
+      target=$(readlink "$link")
+      [[ -f $cursors_dir/$target ]] && [[ ! -e $cursors_dir/$link_name ]] \
+        && ln -s "$target" "$cursors_dir/$link_name"
+    done
+  fi
+
+  log "xcursor theme ready: $xcursor_dir ($cursor_count cursors)"
+}
+
+apply_theme() {
+  if [[ -z ${HYPRLAND_INSTANCE_SIGNATURE:-} ]]; then
+    log "Hyprland not running; skipping hyprctl setcursor"
+    return 0
+  fi
+  # Point ~/.icons/default at our recoloured theme so XWayland picks it up
+  local default_icons=$HOME/.icons/default
+  mkdir -p "$default_icons"
+  printf '[Icon Theme]\nInherits=phinger-matugen\n' > "$default_icons/index.theme"
+  if have hyprctl; then
+    hyprctl setcursor "$theme_name" "$cursor_size" >> "$log_file" 2>&1 \
+      || warn "hyprctl setcursor failed; cursor will apply on next Hyprland start"
+    log "applied cursor theme: $theme_name size $cursor_size (xcursor: phinger-matugen)"
+  fi
+}
+
+mkdir -p "$state_dir"
+log "starting $program"
+load_colours
+download_source
+svg_work_dir=$(recolor_svgs)
+build_hyprcursor_theme "$svg_work_dir"
+build_xcursor_theme
+apply_theme
+log "done: $theme_name"

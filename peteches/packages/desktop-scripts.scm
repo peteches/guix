@@ -18,7 +18,8 @@
       #:install-plan #~'(("dms-random-wallpaper" "bin/")
 			 ("wofi-dms-random-wallpaper" "bin/")
                          ("peteches-apply-matugen" "bin/")
-                         ("setup-phinger-cursors" "bin/"))
+                         ("setup-phinger-cursors" "bin/")
+                         ("colorize-phinger-cursors" "bin/"))
       #:phases
       #~(modify-phases %standard-phases
           (add-after 'install 'make-executable

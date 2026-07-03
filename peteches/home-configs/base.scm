@@ -134,9 +134,9 @@
 		     ("GOCACHE" . "$HOME/.cache/go/build")
 		     ("GOPATH" . "$HOME/state/go")
 		     ("GOBIN" . "$HOME/.local/bin")
-                     ("HYPRCURSOR_THEME" . "phinger-cursors-dark")
+                     ("HYPRCURSOR_THEME" . "phinger-matugen")
                      ("HYPRCURSOR_SIZE" . "32")
-                     ("XCURSOR_THEME" . "phinger-cursors-dark")
+                     ("XCURSOR_THEME" . "phinger-matugen")
                      ("XCURSOR_SIZE" . "32")))
    (simple-service 'peteches-guile-load-path home-environment-variables-service-type
 		   `(("GUILE_LOAD_PATH" . "$HOME/area_51/guix:${HOME}/area_51/codeberg.org/peteches/guix-channel.git_main:${GUILE_LOAD_PATH:+:$GUILE_LOAD_PATH}")))
@@ -559,9 +559,13 @@
                        (use-modules (guix build utils))
                        (let* ((home (getenv "HOME"))
                               (state-dir (string-append home "/.local/state/peteches"))
-                              (script #$(file-append peteches-desktop-scripts "/bin/setup-phinger-cursors")))
+                              (colours-file (string-append home "/.cache/matugen/colours.sh"))
+                              (setup #$(file-append peteches-desktop-scripts "/bin/setup-phinger-cursors"))
+                              (colorize #$(file-append peteches-desktop-scripts "/bin/colorize-phinger-cursors")))
                          (mkdir-p state-dir)
-                         (system* script "--variant" "dark" "--size" "32" "--best-effort"))))
+                         (system* setup "--variant" "dark" "--size" "32" "--best-effort")
+                         (when (file-exists? colours-file)
+                           (system* colorize "--best-effort" "--size" "32")))))
 
    (simple-service 'random-wallpaper-hourly
                    home-mcron-service-type
@@ -591,7 +595,9 @@
                      ("matugen/templates/alacritty-colors.toml"
                       ,(local-file (source-path "configs/matugen/templates/alacritty-colors.toml")))
                      ("matugen/templates/mako-colors.conf"
-                      ,(local-file (source-path "configs/matugen/templates/mako-colors.conf")))))
+                      ,(local-file (source-path "configs/matugen/templates/mako-colors.conf")))
+                     ("matugen/templates/colours.sh"
+                      ,(local-file (source-path "configs/matugen/templates/colours.sh")))))
 
    (simple-service 'matugen-dms-custom-templates
                    home-activation-service-type
@@ -610,7 +616,8 @@
 			      (hyprlock-colours (string-append hypr-cache-dir "hyprlock-colours.config"))
                               (emacs-theme (string-append emacs-theme-dir "/matugen-theme.el"))
                               (alacritty-colors (string-append alacritty-theme-dir "/colors.toml"))
-                              (mako-colors (string-append mako-theme-dir "/colors.conf")))
+                              (mako-colors (string-append mako-theme-dir "/colors.conf"))
+                              (colours-file (string-append hypr-cache-dir "/colours.sh")))
 			 (mkdir-p matugen-dir)
 			 (mkdir-p wofi-dir)
 			 (mkdir-p hypr-cache-dir)
@@ -637,7 +644,10 @@
                              (display (string-append "output_path = '" home "/.cache/matugen/alacritty/colors.toml'\n\n") port)
                              (display "[templates.mako]\n" port)
                              (display (string-append "input_path = '" home "/.config/matugen/templates/mako-colors.conf'\n") port)
-                             (display (string-append "output_path = '" home "/.cache/matugen/mako/colors.conf'\n") port)))
+                             (display (string-append "output_path = '" home "/.cache/matugen/mako/colors.conf'\n") port
+                             (display "\n[templates.colours]\n" port)
+                             (display (string-append "input_path = '" home "/.config/matugen/templates/colours.sh'\n") port)
+                             (display (string-append "output_path = '" home "/.cache/matugen/colours.sh'\n") port))))
 			 (unless (file-exists? wofi-colors)
                            (call-with-output-file wofi-colors
                              (lambda (port)
@@ -721,7 +731,23 @@
                                (display "[urgency=critical]\n" port)
                                (display "background-color=#f38ba8F2\n" port)
                                (display "text-color=#11111bFF\n" port)
-                               (display "border-color=#f38ba8FF\n" port)))))))
+                               (display "border-color=#f38ba8FF\n" port))))
+			 (unless (file-exists? colours-file)
+                           (call-with-output-file colours-file
+                             (lambda (port)
+                               (display "# Fallback colours — replaced by matugen on first wallpaper change.\n" port)
+                               (display "MATUGEN_PRIMARY=89b4fa\n" port)
+                               (display "MATUGEN_ON_PRIMARY=11111b\n" port)
+                               (display "MATUGEN_PRIMARY_CONTAINER=002457\n" port)
+                               (display "MATUGEN_ON_PRIMARY_CONTAINER=d8e2ff\n" port)
+                               (display "MATUGEN_SECONDARY=bac3dc\n" port)
+                               (display "MATUGEN_ON_SECONDARY=243048\n" port)
+                               (display "MATUGEN_BACKGROUND=11111b\n" port)
+                               (display "MATUGEN_ON_BACKGROUND=cdd6f4\n" port)
+                               (display "MATUGEN_SURFACE=11111b\n" port)
+                               (display "MATUGEN_ON_SURFACE=cdd6f4\n" port)
+                               (display "MATUGEN_OUTLINE=6c7086\n" port))))
+			 )))
    (simple-service 'dms-submap-plugin
 		   home-xdg-configuration-files-service-type
 		   `(("DankMaterialShell/plugins/hyprSubmapHint"

@@ -32,6 +32,7 @@ Environment:
   PETECHES_MATUGEN_RELOAD_MAKO      Reload Mako after generating colours, default: 1
   PETECHES_MATUGEN_UPDATE_DMS       Update DMS custom theme file, default: 1
   PETECHES_MATUGEN_DMS_RESTART      Restart DMS after switching theme, default: 0
+  PETECHES_MATUGEN_COLORIZE_CURSORS Recolour phinger cursor theme after generation, default: 1
   DMS_QUICKSHELL_CONFIG_DIR         DMS quickshell config dir, default: ~/.guix-home/profile/share/quickshell
   MATUGEN_BIN                       Override matugen executable
   DMS_BIN                           Override DMS executable
@@ -248,6 +249,25 @@ generate_dms_theme() {
   set_dms_custom_theme
 }
 
+colorize_cursors() {
+  [[ ${PETECHES_MATUGEN_COLORIZE_CURSORS:-1} != 0 ]] || return 0
+
+  local colorize_bin
+  if [[ -x $HOME/.guix-home/profile/bin/colorize-phinger-cursors ]]; then
+    colorize_bin=$HOME/.guix-home/profile/bin/colorize-phinger-cursors
+  elif command -v colorize-phinger-cursors >/dev/null 2>&1; then
+    colorize_bin=$(command -v colorize-phinger-cursors)
+  else
+    log "WARN: colorize-phinger-cursors not found; skipping cursor recolour"
+    return 0
+  fi
+
+  log "colorizing phinger cursors"
+  "$colorize_bin" --best-effort --size "${PHINGER_CURSOR_SIZE:-32}" \
+    >> "$log_file" 2>&1 \
+    || log "WARN: colorize-phinger-cursors failed; see $log_file"
+}
+
 if [[ ${1:-} == "-h" || ${1:-} == "--help" ]]; then
   usage
   exit 0
@@ -284,6 +304,7 @@ log "command: $matugen_bin image <image> -m $mode -t $type${source_color_index:+
 "$matugen_bin" "${matugen_args[@]}" >> "$log_file" 2>&1 || die "matugen generation failed; see $log_file"
 
 generate_dms_theme
+colorize_cursors
 reload_mako
 reload_emacs
 reload_hyprland
