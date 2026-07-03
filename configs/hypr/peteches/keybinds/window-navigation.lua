@@ -2,22 +2,22 @@ Core = require("peteches.keybinds.core")
 -- -----------------------------------------------------------------------------
 -- Emacs-style direct window navigation
 -- -----------------------------------------------------------------------------
+local binds = {
+    [Core.mod .. " + CONTROL + b"] = "left",
+    [Core.mod .. " + CONTROL + f"] = "right",
+    [Core.mod .. " + CONTROL + p"] = "up",
+    [Core.mod .. " + CONTROL + n"] = "down",
+    [Core.mod .. " + left"] = "left",
+    [Core.mod .. " + right"] = "right",
+    [Core.mod .. " + up"] = "up",
+    [Core.mod .. " + down"] = "down",
+}
 
-hl.bind(Core.mod .. " + CONTROL + b", hl.dsp.focus({ direction = "left" }), {
-  description = "Focus window left",
-})
-
-hl.bind(Core.mod .. " + CONTROL + f", hl.dsp.focus({ direction = "right" }), {
-  description = "Focus window right",
-})
-
-hl.bind(Core.mod .. " + CONTROL + p", hl.dsp.focus({ direction = "up" }), {
-  description = "Focus window up",
-})
-
-hl.bind(Core.mod .. " + CONTROL + n", hl.dsp.focus({ direction = "down" }), {
-  description = "Focus window down",
-})
+for bind, direction in pairs(binds) do
+    hl.bind(bind, hl.dsp.focus({ direction = direction }), {
+	description = "Focus window " .. direction
+    })
+end
 
 -- Mouse support is especially useful once floating windows enter the workflow.
 hl.bind(Core.mod .. " + mouse:272", hl.dsp.window.drag(), {
