@@ -644,10 +644,10 @@
                              (display (string-append "output_path = '" home "/.cache/matugen/alacritty/colors.toml'\n\n") port)
                              (display "[templates.mako]\n" port)
                              (display (string-append "input_path = '" home "/.config/matugen/templates/mako-colors.conf'\n") port)
-                             (display (string-append "output_path = '" home "/.cache/matugen/mako/colors.conf'\n") port
+                             (display (string-append "output_path = '" home "/.cache/matugen/mako/colors.conf'\n") port)
                              (display "\n[templates.colours]\n" port)
                              (display (string-append "input_path = '" home "/.config/matugen/templates/colours.sh'\n") port)
-                             (display (string-append "output_path = '" home "/.cache/matugen/colours.sh'\n") port))))
+                             (display (string-append "output_path = '" home "/.cache/matugen/colours.sh'\n") port)))
 			 (unless (file-exists? wofi-colors)
                            (call-with-output-file wofi-colors
                              (lambda (port)
