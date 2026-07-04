@@ -15,6 +15,7 @@
   #:use-module (peteches services firewall)
   #:use-module (peteches services tailscale)
   #:use-module (peteches services concourse)
+  #:use-module (gnu services linux)
   #:use-module (sops secrets)
   #:export (concourse-worker01-os))
 
@@ -69,6 +70,10 @@
       (file-system
        (mount-point "/")
        (device "/dev/vda2")
+       (type "ext4"))
+      (file-system
+       (device (uuid "7dc9f5e9-4563-4e68-b4f6-97027cc86bb7"))
+       (mount-point "/var/lib/concourse-worker")
        (type "ext4")))
      #:sops-secrets
      (list
@@ -106,6 +111,13 @@
       (simple-service 'concourse-worker-firewall
                 firewall-service-type
                 concourse-worker-firewall-rules)
+      (simple-service 'nbd-modprobe-options
+                etc-service-type
+                (list `("modprobe.d/nbd.conf"
+                        ,(plain-file "nbd.conf" "options nbd max_part=8\n"))))
+      (simple-service 'load-nbd-module
+                kernel-module-loader-service-type
+                '("nbd"))
       (service tailscale-service-type
                (list (tailscale-instance-configuration
                       (name "peteches")))))))))

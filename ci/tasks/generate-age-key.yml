@@ -1,0 +1,51 @@
+platform: linux
+
+image_resource:
+  type: registry-image
+  source:
+    repository: registry.ts.peteches.co.uk/guix-builder
+    tag: latest
+
+params:
+  VM_NAME:            ((VM_NAME))
+  VAULT_ADDR:         ((VAULT_ADDR))          # set per-job in pipeline
+  VAULT_TOKEN:        ((image-build.vault_write_token))  # token with create/update on secret/data/vms/*
+  TAILSCALE_AUTHKEY:  ((tailscale_authkey))   # ephemeral pre-auth key
+
+run:
+  # bash-static is statically linked — available before OS activation.
+  # If the container is rebuilt, update this path to match the new store hash:
+  #   docker inspect registry.ts.peteches.co.uk/guix-builder:latest \
+  #     | python3 -c "import json,sys; print(json.load(sys.stdin)[0]['Config']['Entrypoint'])"
+  path: /gnu/store/xrn61xr82qjnd2m1zwvzmpcnvms9jnbc-bash-static-5.2.37/bin/bash
+  args:
+  - -ce
+  - |
+    /gnu/store/dd9k76cxfa946g60y826zjx4ah5ar50c-system/activate
+    GUIX_SYSTEM=/gnu/store/dd9k76cxfa946g60y826zjx4ah5ar50c-system
+    export PATH=$GUIX_SYSTEM/profile/bin:$GUIX_SYSTEM/profile/sbin:$PATH
+    export SSL_CERT_FILE=$GUIX_SYSTEM/profile/etc/ssl/certs/ca-certificates.crt
+
+    # ── Tailscale ────────────────────────────────────────────────────────────
+    tailscaled --state=/dev/shm/tailscale-state --tun=userspace-networking &
+    TAILSCALED_PID=$!
+    tailscale up --authkey="$TAILSCALE_AUTHKEY" --hostname="concourse-generate-age-key"
+
+    age-keygen -o /dev/shm/age-key.txt
+    grep '^# public key:' /dev/shm/age-key.txt | awk '{print $NF}' > /dev/shm/age-pub.txt
+
+    # Build KV v2 payload without putting key material in shell variables.
+    jq -n \
+      --rawfile pk  /dev/shm/age-key.txt \
+      --rawfile pub /dev/shm/age-pub.txt \
+      '{data: {private_key: ($pk | rtrimstr("\n")), public_key: ($pub | rtrimstr("\n"))}}' \
+      > /dev/shm/vault-payload.json
+
+    # Write directly to the KV v2 data path — no mount-discovery request needed.
+    vault write "infra/data/vms/$VM_NAME/age" @/dev/shm/vault-payload.json
+    shred -u /dev/shm/vault-payload.json
+
+    shred -u /dev/shm/age-key.txt /dev/shm/age-pub.txt
+
+    tailscale down
+    kill "$TAILSCALED_PID"

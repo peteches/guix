@@ -1,0 +1,109 @@
+## Image build pipeline
+##
+## Builds a per-VM QCOW2 image using guix system image, injects the VM's age
+## private key (retrieved from Vault), and uploads the result to MinIO.
+##
+## Two job types per VM:
+##   generate-<name>-age-key  — run once to create the keypair in Vault.
+##                              Re-run only to rotate keys.
+##   build-<name>-image       — triggered automatically on system config changes.
+##                              Reads the age private key from Vault via
+##                              AGE_PRIVATE_KEY param.
+##
+## After a build completes:
+##   1. Retrieve the age public key:
+##        vault kv get -field=public_key secret/vms/<name>/age > age-keys/<name>.pub
+##   2. Commit it to age-keys/<name>.pub, update .sops.yaml, create secrets.
+##   3. Add image_url to the VM's module block in infra/terraform and push.
+
+resource_types: []
+
+resources:
+
+- name: repo
+  type: git
+  source:
+    uri: https://github.com/peteches/guix
+    branch: main
+
+# Per-VM path-filtered resources — only trigger when the system config changes.
+
+- name: repo-plane
+  type: git
+  source:
+    uri: https://github.com/peteches/guix
+    branch: main
+    paths:
+    - peteches/systems/plane.scm
+    - peteches/channels/channels-nug.scm
+    - ci/tasks/build-vm-image.yml
+    - ci/tasks/generate-age-key.yml
+
+- name: repo-prometheus
+  type: git
+  source:
+    uri: https://github.com/peteches/guix
+    branch: main
+    paths:
+    - peteches/systems/prometheus.scm
+    - peteches/channels/channels-nug.scm
+    - ci/tasks/build-vm-image.yml
+    - ci/tasks/generate-age-key.yml
+
+# Add one resource block per additional VM following the pattern above.
+
+jobs:
+
+- name: generate-plane-age-key
+  plan:
+  - get: repo
+  - task: generate-key
+    file: repo/ci/tasks/generate-age-key.yml
+    params:
+      VM_NAME: plane
+      VAULT_ADDR: https://vault.ts.peteches.co.uk
+
+- name: build-plane-image
+  plan:
+  - get: repo
+    resource: repo-plane
+    trigger: true
+  - task: build-image
+    privileged: true
+    file: repo/ci/tasks/build-vm-image.yml
+    input_mapping:
+      repo: repo
+    params:
+      VM_NAME: plane
+      SYSTEM_FILE: peteches/systems/plane.scm
+      IMAGE_SIZE: 50G
+      MINIO_ENDPOINT: https://minio.ts.peteches.co.uk
+      VAULT_ADDR: https://vault.ts.peteches.co.uk
+
+- name: generate-prometheus-age-key
+  plan:
+  - get: repo
+  - task: generate-key
+    file: repo/ci/tasks/generate-age-key.yml
+    params:
+      VM_NAME: prometheus
+      VAULT_ADDR: https://vault.ts.peteches.co.uk
+
+- name: build-prometheus-image
+  plan:
+  - get: repo
+    resource: repo-prometheus
+    trigger: true
+  - task: build-image
+    privileged: true
+    file: repo/ci/tasks/build-vm-image.yml
+    input_mapping:
+      repo: repo
+    params:
+      VM_NAME: prometheus
+      SYSTEM_FILE: peteches/systems/prometheus.scm
+      IMAGE_SIZE: 25G
+      MINIO_ENDPOINT: https://minio.ts.peteches.co.uk
+      VAULT_ADDR: https://vault.ts.peteches.co.uk
+
+# Add one generate + build job pair per additional VM following the pattern above.

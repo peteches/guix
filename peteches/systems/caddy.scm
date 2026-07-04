@@ -139,6 +139,9 @@
 		  (caddy-reverse-proxy
 		   (domain "nas.ts.peteches.co.uk")
 		   (upstream "petechesnas.spaniel-cordylus.ts.net:5001"))
+			  (caddy-reverse-proxy
+			   (domain "registry.ts.peteches.co.uk")
+			   (upstream "petechesnas.spaniel-cordylus.ts.net:5050"))
 		  (caddy-reverse-proxy
 		   (domain "outline.ts.peteches.co.uk")
 		   (upstream "critical-grind-outline.spaniel-cordylus.ts.net:3000"))

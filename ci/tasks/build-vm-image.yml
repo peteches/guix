@@ -1,0 +1,226 @@
+platform: linux
+
+image_resource:
+  type: registry-image
+  source:
+    repository: registry.ts.peteches.co.uk/guix-builder
+    tag: latest
+
+inputs:
+- name: repo
+
+outputs:
+- name: presigned-url # url — pass as TF_VAR_image_url to terraform apply
+
+params:
+  VM_NAME:               ((VM_NAME))
+  SYSTEM_FILE:           ((SYSTEM_FILE))           # relative to repo root, e.g. peteches/systems/plane.scm
+  IMAGE_SIZE:            ((IMAGE_SIZE))
+  MINIO_ENDPOINT:        ((MINIO_ENDPOINT))
+  AWS_ACCESS_KEY_ID:     ((image-build.minio_access_key))
+  AWS_SECRET_ACCESS_KEY: ((image-build.minio_secret_key))
+  MINIO_BUCKET:          vm-images
+  VAULT_ADDR:            ((VAULT_ADDR))
+  VAULT_TOKEN:           ((image-build.vault_write_token))
+  TAILSCALE_AUTHKEY:     ((tailscale_authkey))     # ephemeral pre-auth key
+
+run:
+  # bash-static is statically linked — available before OS activation.
+  # If the container is rebuilt, update this path to match the new store hash:
+  #   docker inspect registry.ts.peteches.co.uk/guix-builder:latest \
+  #     | python3 -c "import json,sys; print(json.load(sys.stdin)[0]['Config']['Entrypoint'])"
+  path: /gnu/store/xrn61xr82qjnd2m1zwvzmpcnvms9jnbc-bash-static-5.2.37/bin/bash
+  args:
+  - -ce
+  - |
+    # ── OS activation ────────────────────────────────────────────────────────
+    # Concourse bypasses the Docker entrypoint so OS activation never runs.
+    # Run it explicitly. If the container is rebuilt, update the system hash:
+    #   docker inspect registry.ts.peteches.co.uk/guix-builder:latest \
+    #     | python3 -c "import json,sys; print(json.load(sys.stdin)[0]['Config']['Entrypoint'][1])"
+    /gnu/store/dd9k76cxfa946g60y826zjx4ah5ar50c-system/activate
+
+    # In privileged Concourse containers /run is shared with the worker so
+    # /run/current-system resolves to the worker's system, not ours.
+    GUIX_SYSTEM=/gnu/store/dd9k76cxfa946g60y826zjx4ah5ar50c-system
+    export PATH=$GUIX_SYSTEM/profile/bin:$GUIX_SYSTEM/profile/sbin:$PATH
+    export SSL_CERT_FILE=$GUIX_SYSTEM/profile/etc/ssl/certs/ca-certificates.crt
+
+    # Point SSL_CERT_DIR at the profile's cert bundle so guix-daemon's GnuTLS
+    # can verify HTTPS substitute servers. Avoids touching /etc/ssl which is
+    # a broken symlink in the worker's /etc overlay.
+    export SSL_CERT_DIR=$GUIX_SYSTEM/profile/etc/ssl/certs
+
+    # ── Fix DNS, nsswitch, and services ──────────────────────────────────────
+    # Worker's nsswitch.conf references nscd (not running), causing EAI_SERVICE.
+    # Activation may create these as symlinks to read-only store paths; remove first.
+    rm -f /etc/nsswitch.conf
+    printf 'passwd: files\ngroup: files\nhosts: files dns\nservices: files\nnetworks: files\nprotocols: files\n' \
+      > /etc/nsswitch.conf
+    # services: files requires /etc/services. Create it from the store if absent.
+    if [ ! -f /etc/services ]; then
+      _svc=$(find /gnu/store -maxdepth 4 -name services -path '*/iana-etc*' 2>/dev/null | head -1)
+      if [ -n "$_svc" ]; then
+        cp "$_svc" /etc/services
+      else
+        printf 'ftp\t21/tcp\nssh\t22/tcp\nhttp\t80/tcp\nhttps\t443/tcp\n' > /etc/services
+      fi
+    fi
+    # /etc/resolv.conf is bind-mounted from the worker (Garden-RunC) and points to
+    # pihole (192.168.51.189). Ephemeral Tailscale nodes have pihole access so
+    # .ts.peteches.co.uk names resolve without overriding resolv.conf.
+
+    # ── Tailscale ────────────────────────────────────────────────────────────
+    tailscaled --state=/dev/shm/tailscale-state --tun=userspace-networking &
+    TAILSCALED_PID=$!
+    tailscale up --authkey="$TAILSCALE_AUTHKEY" --hostname="concourse-build-${VM_NAME}"
+
+    # ── Start local guix daemon ──────────────────────────────────────────────
+    # Concourse containers have their own PID namespace so /proc/1/root does
+    # not reach the worker host. Start a local daemon instead; it uses the
+    # worker's /gnu/store which is overlaid into privileged containers.
+    # Container writable layers live under /var/lib/concourse-worker, which is
+    # mounted from the worker's 100G /dev/vdb — no disk-space workarounds needed.
+    mkdir -p /var/guix/daemon-socket
+    guix-daemon --build-users-group=guixbuild --disable-chroot \
+      --substitute-urls="http://nug.spaniel-cordylus.ts.net:3000 https://bordeaux.guix.gnu.org https://ci.guix.gnu.org" &
+    GUIX_DAEMON_PID=$!
+    # Wait for the daemon socket to be ready before proceeding.
+    for i in $(seq 1 15); do
+      [ -S /var/guix/daemon-socket/socket ] && break
+      sleep 1
+    done
+
+    # Use the worker's guix binary: /run is shared with the worker in privileged
+    # containers, so /run/current-system is the worker's live system. The worker's
+    # guix binary computes the same derivation hashes as what it built, which are
+    # all present in the overlaid /gnu/store — no substitutes needed for them.
+    WORKER_GUIX=/run/current-system/profile/bin/guix
+    [ -x "$WORKER_GUIX" ] || WORKER_GUIX=$GUIX_SYSTEM/profile/bin/guix
+    echo "=== WORKER_GUIX=$WORKER_GUIX ==="
+    $WORKER_GUIX describe 2>&1 | head -5 || true
+
+    # Authorize the nug local substitute server.
+    mkdir -p /etc/guix
+    echo '(public-key (ecc (curve Ed25519) (q #89306B461D55FBB9F6A60C75463BA2AEE181FB3E8FA5F46CB2E1C29157ACA88A#)))' \
+      | $WORKER_GUIX archive --authorize
+
+    # ── Clone channel source (avoids guix pull bootstrap build failures) ─────
+    # The system config uses peteches channel modules and sops-guix.
+    # Find git in the overlaid worker store; fall back to guix build.
+    GIT=$(find /gnu/store -maxdepth 3 -name git -type f -executable 2>/dev/null \
+            | grep '/bin/git$' | head -1)
+    [ -z "$GIT" ] && GIT=$(guix build git --substitute-urls="http://nug.spaniel-cordylus.ts.net:3000 https://bordeaux.guix.gnu.org")/bin/git
+
+    export GIT_SSL_CAINFO=$SSL_CERT_FILE
+
+    $GIT clone https://codeberg.org/peteches/guix-channel /dev/shm/peteches-channel
+
+    $GIT clone https://github.com/fishinthecalculator/sops-guix.git /dev/shm/sops-guix
+    # Use the last commit that has: (1) binary trivial-build-system sops package
+    # (not Go source), and (2) optional config field in sops-service-configuration.
+    # Later commits (252aa05+) compile sops from Go source requiring packages not
+    # in the worker's guix at 520785e. c53e27e re-exports from (gnu packages
+    # password-utils) which also lacks sops at 520785e.
+    $GIT -C /dev/shm/sops-guix checkout a1e3e55175f6fffe8c3237aac5d0872d016be194
+    # Locate the guix module root inside sops-guix (per .guix-channel directory field).
+    SOPS_GUIX_L=$(find /dev/shm/sops-guix -name "secrets.scm" -path "*/sops/*" 2>/dev/null \
+                   | head -1 | xargs -I{} dirname {} | xargs -I{} dirname {})
+    [ -z "$SOPS_GUIX_L" ] && SOPS_GUIX_L=/dev/shm/sops-guix
+
+    # ── Age private key ──────────────────────────────────────────────────────
+    # Key was generated once via the generate-age-key job and stored in Vault.
+    # VAULT_ADDR resolves via Caddy (vault.ts.peteches.co.uk → 192.168.51.193 → Vault).
+    vault kv get -field=private_key "infra/vms/$VM_NAME/age" > /dev/shm/age-key.txt
+    chmod 600 /dev/shm/age-key.txt
+
+    # ── Diagnostics ─────────────────────────────────────────────────────────
+    echo "=== ACL key count ===" && grep -c '(public-key' /etc/guix/acl 2>/dev/null || echo "(ACL not found)"
+    echo "=== /etc/services https line ===" && grep https /etc/services 2>/dev/null || echo "(not found)"
+    echo "=== resolv.conf ===" && cat /etc/resolv.conf
+
+    # ── Build QCOW2 image ───────────────────────────────────────────────────
+    # guix system image prints the store path of the built image to stdout.
+    STORE_IMG=$($WORKER_GUIX system image \
+      -L repo \
+      -L /dev/shm/peteches-channel \
+      -L "$SOPS_GUIX_L" \
+      -t qcow2-gpt \
+      --no-grafts \
+      --image-size="$IMAGE_SIZE" \
+      --substitute-urls="http://nug.spaniel-cordylus.ts.net:3000 https://bordeaux.guix.gnu.org https://ci.guix.gnu.org" \
+      "repo/$SYSTEM_FILE")
+    # /dev/shm is a RAM-backed tmpfs; use /tmp (container overlay on 100G disk)
+    # for the image file which can be several gigabytes.
+    cp "$STORE_IMG" /tmp/"$VM_NAME".img
+
+    # ── Inject age private key into image ───────────────────────────────────
+    # Convert qcow2 → raw so we can extract the root partition with dd.
+    # GPT partition 2 is the ext4 root for qcow2-gpt images.
+    qemu-img convert -f qcow2 -O raw /tmp/"$VM_NAME".img /tmp/"$VM_NAME".raw
+    rm -f /tmp/"$VM_NAME".img
+
+    # Find debugfs from e2fsprogs in the overlaid worker store — no kernel
+    # module or loop device ioctl needed; debugfs writes directly to the
+    # ext4 partition image file entirely in userspace.
+    DEBUGFS=$(find /gnu/store -maxdepth 4 -name debugfs -type f -executable 2>/dev/null | head -1)
+    [ -z "$DEBUGFS" ] && DEBUGFS=$($WORKER_GUIX build e2fsprogs \
+      --substitute-urls="http://nug.spaniel-cordylus.ts.net:3000 https://bordeaux.guix.gnu.org")/sbin/debugfs
+    echo "=== DEBUGFS=$DEBUGFS ==="
+
+    # Locate the root (non-EFI) partition via sfdisk dump format.
+    # sfdisk -d prints: <dev> : start=N, size=N, type=<GUID>, ...
+    # Skip the EFI partition (type GUID C12A7328-...) and take the first remaining.
+    eval $(sfdisk -d /tmp/"$VM_NAME".raw | awk '
+      /type=/ && !/C12A7328/ {
+        for (i=1; i<=NF; i++) {
+          if ($i ~ /^start=/) {
+            v = substr($i, 7); gsub(/,/, "", v)
+            if (v == "") { i++; v = $i; gsub(/[^0-9]/, "", v) }
+            start = v
+          }
+          if ($i ~ /^size=/) {
+            v = substr($i, 6); gsub(/,/, "", v)
+            if (v == "") { i++; v = $i; gsub(/[^0-9]/, "", v) }
+            size = v
+          }
+        }
+        print "PART_START=" start; print "PART_SECTORS=" size
+      }
+    ')
+    echo "=== root partition: start=$PART_START sectors=$PART_SECTORS ==="
+
+    # Extract root partition to a separate file for debugfs manipulation.
+    dd if=/tmp/"$VM_NAME".raw of=/tmp/rootfs.ext4 bs=512 \
+       skip="$PART_START" count="$PART_SECTORS"
+
+    # Inject age key directly into ext4 partition — no mount, no loop device.
+    "$DEBUGFS" -w /tmp/rootfs.ext4 -R "mkdir /etc/age" 2>/dev/null || true
+    "$DEBUGFS" -w /tmp/rootfs.ext4 -R "write /dev/shm/age-key.txt /etc/age/keys.txt"
+    # debugfs 1.47.x has no chmod command; use set_inode_field instead.
+    # 0x8180 = 0100600 octal (regular file, user read+write only).
+    "$DEBUGFS" -w /tmp/rootfs.ext4 -R "set_inode_field /etc/age/keys.txt mode 0x8180"
+    shred -u /dev/shm/age-key.txt
+
+    # Write modified partition back into raw image.
+    dd if=/tmp/rootfs.ext4 of=/tmp/"$VM_NAME".raw bs=512 \
+       seek="$PART_START" conv=notrunc
+    rm -f /tmp/rootfs.ext4
+
+    # Convert back to qcow2 (sparse/compressed) for upload.
+    qemu-img convert -f raw -O qcow2 /tmp/"$VM_NAME".raw /tmp/"$VM_NAME".qcow2
+    rm -f /tmp/"$VM_NAME".raw
+
+    # ── Upload to MinIO ──────────────────────────────────────────────────────
+    aws --endpoint-url "$MINIO_ENDPOINT" \
+      s3 cp /tmp/"$VM_NAME".qcow2 s3://"$MINIO_BUCKET"/"$VM_NAME".qcow2
+    rm -f /tmp/"$VM_NAME".qcow2
+
+    # Generate a 24-hour pre-signed download URL for Terraform.
+    aws --endpoint-url "$MINIO_ENDPOINT" \
+      s3 presign s3://"$MINIO_BUCKET"/"$VM_NAME".qcow2 \
+      --expires-in 86400 > presigned-url/url
+
+    tailscale down
+    kill "$TAILSCALED_PID"
+    kill "$GUIX_DAEMON_PID" 2>/dev/null || true

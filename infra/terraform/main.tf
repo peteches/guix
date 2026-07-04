@@ -199,45 +199,6 @@ module "jellyfin" {
   }
 }
 
-module "caddy" {
-  source    = "./modules/proxmox-vm"
-  vmid      = 106
-  name      = "caddy"
-  node_name = var.node_name
-
-  bios          = "ovmf"
-  machine       = "q35"
-  scsi_hardware = "virtio-scsi-pci"
-  on_boot       = true
-  started       = true
-  memory        = 1024
-
-  cpu = {
-    cores = 2
-    type  = "qemu64"
-  }
-
-  efi_disk = {
-    datastore_id      = "local-lvm"
-    type              = "4m"
-    pre_enrolled_keys = false
-  }
-
-  disk = {
-    datastore_id = "local-lvm"
-    interface    = "virtio0"
-    size         = 25
-  }
-
-  network_device = {
-    bridge = "vmbr0"
-    model  = "virtio"
-  }
-
-  agent = {
-    enabled = true
-  }
-}
 
 module "prowlarr" {
   source    = "./modules/proxmox-vm"
@@ -400,46 +361,6 @@ module "rustdesk" {
 }
 
 
-module "vault" {
-  source    = "./modules/proxmox-vm"
-  vmid      = 114
-  name      = "vault"
-  node_name = var.node_name
-
-  bios          = "ovmf"
-  machine       = "q35"
-  scsi_hardware = "virtio-scsi-pci"
-  on_boot       = false
-  started       = true
-  memory        = 2048
-
-  cpu = {
-    cores = 2
-    type  = "qemu64"
-  }
-
-  efi_disk = {
-    datastore_id      = "local-lvm"
-    type              = "4m"
-    pre_enrolled_keys = false
-  }
-
-  disk = {
-    datastore_id = "local-lvm"
-    interface    = "virtio0"
-    size         = 25
-  }
-
-  network_device = {
-    bridge = "vmbr0"
-    model  = "virtio"
-  }
-
-  agent = {
-    enabled = true
-  }
-}
-
 module "critical-grind-campaign" {
   source    = "./modules/proxmox-vm"
   vmid      = 115
@@ -479,12 +400,6 @@ module "critical-grind-campaign" {
     enabled = true
   }
 
-  provisioned_network = {
-    ipv4_address = "192.168.51.202/23"
-    ipv4_gateway = "192.168.50.1"
-    ipv6_address = "2a10:d582:ef59::109/64"
-    ipv6_gateway = "2a10:d582:ef59::1"
-  }
 }
 
 module "critical-grind-outline" {
@@ -526,12 +441,6 @@ module "critical-grind-outline" {
     enabled = true
   }
 
-  provisioned_network = {
-    ipv4_address = "192.168.51.203/23"
-    ipv4_gateway = "192.168.50.1"
-    ipv6_address = "2a10:d582:ef59::110/64"
-    ipv6_gateway = "2a10:d582:ef59::1"
-  }
 }
 
 module "plane" {
@@ -573,8 +482,4 @@ module "plane" {
     enabled = true
   }
 
-  provisioned_network = {
-    ipv4_address = "192.168.51.204/23"
-    ipv4_gateway = "192.168.50.1"
-  }
 }
