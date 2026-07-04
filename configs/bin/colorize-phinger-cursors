@@ -391,14 +391,20 @@ PYEOF
 }
 
 apply_theme() {
+  local default_icons=$HOME/.icons/default
+  mkdir -p "$default_icons"
+  printf '[Icon Theme]\nInherits=phinger-matugen\n' > "$default_icons/index.theme"
+  # XCURSOR_PATH includes ~/.icons but not ~/.local/share/icons; symlink the theme
+  ln -sfn "$icons_dir/phinger-matugen" "$HOME/.icons/phinger-matugen"
+  if have gsettings; then
+    gsettings set org.gnome.desktop.interface cursor-theme "$theme_name" 2>/dev/null || true
+    gsettings set org.gnome.desktop.interface cursor-size  "$cursor_size"  2>/dev/null || true
+    log "updated GSettings: cursor-theme=$theme_name cursor-size=$cursor_size"
+  fi
   if [[ -z ${HYPRLAND_INSTANCE_SIGNATURE:-} ]]; then
     log "Hyprland not running; skipping hyprctl setcursor"
     return 0
   fi
-  # Point ~/.icons/default at our recoloured theme so XWayland picks it up
-  local default_icons=$HOME/.icons/default
-  mkdir -p "$default_icons"
-  printf '[Icon Theme]\nInherits=phinger-matugen\n' > "$default_icons/index.theme"
   if have hyprctl; then
     hyprctl setcursor "$theme_name" "$cursor_size" >> "$log_file" 2>&1 \
       || warn "hyprctl setcursor failed; cursor will apply on next Hyprland start"
