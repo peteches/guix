@@ -44,6 +44,37 @@ jobs:
       TF_VAR_proxmox_api_token: ((terraform.proxmox_api_token))
       PETECHES_SSH_PRIVATE_KEY: ((terraform.peteches_ssh_private_key))
 
+# Per-VM provision jobs — triggered by new image builds via the S3 URL trigger.
+# These run a targeted apply for a single VM, passing the fresh presigned URL.
+# After provisioning completes, commit a permanent image_url to infra/terraform/main.tf
+# so subsequent full applies don't oscillate the download resource.
+
+- name: provision-plane
+  plan:
+  - get: repo-main
+  - get: plane-image-url
+    trigger: true
+  - task: terraform-apply
+    file: repo-main/ci/tasks/terraform-apply-vm.yml
+    input_mapping:
+      image-url: plane-image-url
+    params:
+      VM_NAME: plane
+
+- name: provision-prometheus
+  plan:
+  - get: repo-main
+  - get: prometheus-image-url
+    trigger: true
+  - task: terraform-apply
+    file: repo-main/ci/tasks/terraform-apply-vm.yml
+    input_mapping:
+      image-url: prometheus-image-url
+    params:
+      VM_NAME: prometheus
+
+# Add one provision job per additional VM following the pattern above.
+
 resource_types:
 - name: git-branches
   source:
@@ -65,3 +96,28 @@ resources:
     - ci/tasks/*
     uri: https://github.com/peteches/guix
   type: git
+
+# Per-VM presigned URL trigger files — written by the image build pipeline after
+# a successful build. When a new version appears, the provision job triggers.
+# MinIO bucket versioning must be enabled on vm-images:
+#   mc version enable nas/vm-images
+
+- name: plane-image-url
+  type: s3
+  source:
+    endpoint: https://minio.ts.peteches.co.uk
+    bucket: vm-images
+    versioned_file: triggers/plane/url
+    access_key_id: ((image-build.minio_access_key))
+    secret_access_key: ((image-build.minio_secret_key))
+
+- name: prometheus-image-url
+  type: s3
+  source:
+    endpoint: https://minio.ts.peteches.co.uk
+    bucket: vm-images
+    versioned_file: triggers/prometheus/url
+    access_key_id: ((image-build.minio_access_key))
+    secret_access_key: ((image-build.minio_secret_key))
+
+# Add one S3 resource per additional VM following the pattern above.

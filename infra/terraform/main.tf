@@ -3,6 +3,7 @@ module "prometheus" {
   vmid      = 100
   name      = "prometheus"
   node_name = var.node_name
+  image_url = lookup(var.vm_image_urls, "prometheus", null)
 
   bios          = "ovmf"
   machine       = "q35"
@@ -481,5 +482,7 @@ module "plane" {
   agent = {
     enabled = true
   }
+
+  image_url = lookup(var.vm_image_urls, "plane", null)
 
 }

@@ -1,0 +1,33 @@
+platform: linux
+
+image_resource:
+  type: registry-image
+  source:
+    repository: hashicorp/terraform
+    tag: "1.10"
+
+inputs:
+- name: repo-main
+  path: repo
+- name: image-url
+
+params:
+  VM_NAME: ((VM_NAME))
+  AWS_ACCESS_KEY_ID: ((terraform.minio_access_key))
+  AWS_SECRET_ACCESS_KEY: ((terraform.minio_secret_key))
+  TF_VAR_proxmox_api_token: ((terraform.proxmox_api_token))
+  PETECHES_SSH_PRIVATE_KEY: ((terraform.peteches_ssh_private_key))
+
+run:
+  path: sh
+  args:
+  - -ec
+  - |
+    mkdir -p /home/peteches/.ssh
+    printf '%s' "$PETECHES_SSH_PRIVATE_KEY" > /home/peteches/.ssh/id_ed25519
+    chmod 600 /home/peteches/.ssh/id_ed25519
+    URL=$(cat image-url/url)
+    export TF_VAR_vm_image_urls="{\"${VM_NAME}\":\"${URL}\"}"
+    cd repo/infra/terraform
+    terraform init
+    terraform apply -auto-approve -target="module.${VM_NAME}"

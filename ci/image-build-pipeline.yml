@@ -50,7 +50,30 @@ resources:
     - ci/tasks/build-vm-image.yml
     - ci/tasks/generate-age-key.yml
 
-# Add one resource block per additional VM following the pattern above.
+# Per-VM S3 resources — written after a successful image build to trigger the
+# terraform pipeline's provision job. MinIO bucket versioning must be enabled
+# on vm-images so each put creates a new version:
+#   mc version enable nas/vm-images
+
+- name: plane-image-url
+  type: s3
+  source:
+    endpoint: https://minio.ts.peteches.co.uk
+    bucket: vm-images
+    versioned_file: triggers/plane/url
+    access_key_id: ((image-build.minio_access_key))
+    secret_access_key: ((image-build.minio_secret_key))
+
+- name: prometheus-image-url
+  type: s3
+  source:
+    endpoint: https://minio.ts.peteches.co.uk
+    bucket: vm-images
+    versioned_file: triggers/prometheus/url
+    access_key_id: ((image-build.minio_access_key))
+    secret_access_key: ((image-build.minio_secret_key))
+
+# Add one S3 resource block per additional VM following the pattern above.
 
 jobs:
 
@@ -79,6 +102,9 @@ jobs:
       IMAGE_SIZE: 50G
       MINIO_ENDPOINT: https://minio.ts.peteches.co.uk
       VAULT_ADDR: https://vault.ts.peteches.co.uk
+  - put: plane-image-url
+    params:
+      file: presigned-url/url
 
 - name: generate-prometheus-age-key
   plan:
@@ -105,5 +131,8 @@ jobs:
       IMAGE_SIZE: 25G
       MINIO_ENDPOINT: https://minio.ts.peteches.co.uk
       VAULT_ADDR: https://vault.ts.peteches.co.uk
+  - put: prometheus-image-url
+    params:
+      file: presigned-url/url
 
 # Add one generate + build job pair per additional VM following the pattern above.

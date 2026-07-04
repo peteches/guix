@@ -13,24 +13,6 @@ variable "node_name" {
   description = "Proxmox cluster node name"
 }
 
-variable "template_vmid" {
-  type        = number
-  default     = 9000
-  description = "VMID of the template to clone from when creating or recreating the VM"
-}
-
-variable "clone_full" {
-  type        = bool
-  default     = true
-  description = "Whether to perform a full clone"
-}
-
-variable "clone_retries" {
-  type        = number
-  default     = 1
-  description = "Clone retry count"
-}
-
 variable "bios" {
   type        = string
   description = "VM BIOS type, for example ovmf"

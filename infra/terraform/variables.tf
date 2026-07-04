@@ -15,3 +15,9 @@ variable "node_name" {
   default     = "proxmox1"
   description = "Proxmox cluster node name"
 }
+
+variable "vm_image_urls" {
+  type        = map(string)
+  default     = {}
+  description = "Map of VM name to pre-signed MinIO URL for its QCOW2 image. Passed via TF_VAR_vm_image_urls='{\"plane\":\"https://...\"}' during first provisioning only. After provisioning, commit a permanent image_url to main.tf for each VM."
+}
