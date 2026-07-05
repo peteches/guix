@@ -422,6 +422,7 @@
 	     (key_down "Ctrl-n")))
    (service home-emacs-base-service-type
 	    (home-emacs-base-configuration
+	     (emacs-package emacs-pgtk)
 	     (config-directory (repo-directory "configs/emacs"))
 	     (extra-packages (map specification->package
 				  '("emacs-forge"

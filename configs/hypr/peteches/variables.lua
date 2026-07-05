@@ -222,8 +222,6 @@ hl.config({
 		no_hardware_cursors = false,
 		use_cpu_buffer = false,
 		sync_gsettings_theme = true,
-		xcursor_theme = "phinger-matugen",
-		xcursor_size = 32,
 		hide_on_key_press = true,
 		hide_on_touch = true,
 		inactive_timeout = 6,
