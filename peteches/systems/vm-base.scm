@@ -27,6 +27,10 @@
   #:use-module (peteches services sops-key-generator)
   #:use-module (sops secrets)
   #:use-module (sops services sops)
+  #:use-module (gnu services linux)
+  #:use-module (nongnu services nvidia)
+  #:use-module (nongnu packages nvidia)
+  #:use-module (guix-science-nonfree packages cuda-modules)
   #:export (make-vm-os
             %vm-peteches-user))
 
@@ -94,7 +98,8 @@
           (restic-config #f)
           (nameservers %vm-nameservers)
           (sops-secrets '())
-          (with-nug-offload? #t))
+          (with-nug-offload? #t)
+          (with-nvidia? #f))
   (let* ((nonguix-services (if with-nonguix? (list (nonguix-substitute-service)) '()))
          (restic-services
           (if restic-config
@@ -106,6 +111,24 @@
                              (sops-service-configuration
                               (age-key-file "/etc/age/keys.txt")
                               (secrets sops-secrets))))
+              '()))
+         (nvidia-packages
+          (if with-nvidia?
+              (list nvidia-firmware nvidia-driver cuda-nvcc)
+              '()))
+         (nvidia-services
+          (if with-nvidia?
+              (list
+               (service nvidia-service-type)
+               (simple-service 'nvidia-runtime-state
+                               activation-service-type
+                               #~(begin
+                                   (use-modules (guix build utils))
+                                   (mkdir-p "/run/nvidia")))
+               (simple-service 'custom-udev-rules udev-service-type
+                               (list nvidia-driver))
+               (service kernel-module-loader-service-type
+                        '("nvidia" "nvidia_uvm")))
               '()))
          (final-services
           (append
@@ -151,10 +174,17 @@
            nonguix-services
            restic-services
            sops-services
+           nvidia-services
            extra-services)))
     (operating-system
       (kernel kernel)
-      (kernel-arguments %default-kernel-arguments)
+      (kernel-arguments (append (if with-nvidia?
+                                    (list "modprobe.blacklist=nouveau")
+                                    '())
+                                %default-kernel-arguments))
+      (kernel-loadable-modules (if with-nvidia?
+                                   (list nvidia-module)
+                                   '()))
       (firmware firmware)
       (locale "en_GB.utf8")
       (timezone "Europe/London")
@@ -172,16 +202,16 @@
        (name-service-switch
         (inherit %mdns-host-lookup-nss)
         (hosts (list %files %dns))))
-      (packages (append extra-packages %vm-base-packages))
+      (packages (append extra-packages nvidia-packages %vm-base-packages))
       (services
        (modify-services final-services
          (nscd-service-type cfg => (nscd-without-hosts-cache cfg))
          (guix-service-type cfg =>
-           (if with-nug-offload?
-               (guix-configuration
-                (inherit cfg)
-                (build-machines (list %nug-build-machine)))
-               cfg))))
+           (guix-configuration
+            (inherit cfg)
+            (build-accounts 20)
+            (extra-options '("--max-jobs=auto"))
+            (build-machines (if with-nug-offload? (list %nug-build-machine) '())))))
       (mapped-devices mapped-devices)
       (file-systems (append file-systems %base-file-systems))
       (bootloader bootloader))))

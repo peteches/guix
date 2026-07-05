@@ -216,6 +216,8 @@
    (guix-service-type
     config => (guix-configuration
 	       (inherit config)
+	       (build-accounts 20)
+	       (extra-options '("--max-jobs=auto"))
 	       (substitute-urls
 		(append (list "http://nug.peteches.co.uk:3000")
 			%default-substitute-urls))

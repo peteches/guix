@@ -79,6 +79,7 @@
        (file (local-file "../../secrets/hosts/jellyfin/guix-build.yaml"))
        (path "/run/secrets/guix-offload-key")
        (permissions #o400)))
+     #:with-nvidia? #t
      #:extra-services
      (list
       (service tailscale-service-type
