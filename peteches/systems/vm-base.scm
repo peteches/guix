@@ -210,8 +210,7 @@
            (guix-configuration
             (inherit cfg)
             (build-accounts 20)
-            (extra-options '("--max-jobs=auto"))
-            (build-machines (if with-nug-offload? (list %nug-build-machine) '())))))
+            (build-machines (if with-nug-offload? (list %nug-build-machine) '()))))))
       (mapped-devices mapped-devices)
       (file-systems (append file-systems %base-file-systems))
       (bootloader bootloader))))

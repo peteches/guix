@@ -88,7 +88,8 @@
       (service seerr-service-type
 	       (seerr-configuration))
       (service jellyfin-service-type
-               (jellyfin-configuration))
+               (jellyfin-configuration
+                (hardware-accel 'nvenc)))
       (service alloy-service-type
                (alloy-configuration
                 (hostname "jellyfin.peteches.co.uk")

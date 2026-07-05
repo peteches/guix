@@ -23,7 +23,7 @@
      (user "guix-offload")
      (private-key "/run/secrets/guix-offload-key")
      (host-key "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFV+RLdfvLSuCoedNwepqbEEHnHu363OQj6U0diCX+SR")
-     (max-builds 20)))
+     (parallel-builds 20)))
 
 ;; Authorize deploy coordinators (nug and nyarlothotep) to push store items to all VMs,
 ;; and register nug's guix-publish as a substitute server.
