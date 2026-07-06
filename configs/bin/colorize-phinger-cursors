@@ -12,7 +12,6 @@ theme_name=phinger-matugen
 phinger_cache=$cache_dir/phinger-cursors
 source_cache=$phinger_cache/source
 icons_dir=$data_dir/icons
-theme_dir=$icons_dir/theme_$theme_name
 colours_file=$cache_dir/matugen/colours.sh
 
 SOURCE_URL=https://github.com/phisch/phinger-cursors/archive/refs/heads/master.tar.gz
@@ -82,6 +81,12 @@ fail() {
 
 have() {
   command -v "$1" >/dev/null 2>&1
+}
+
+compute_theme_hash() {
+  printf '%s%s' "$MATUGEN_PRIMARY" "$MATUGEN_ON_PRIMARY" \
+    | sha256sum \
+    | cut -c1-8
 }
 
 load_colours() {
@@ -186,8 +191,8 @@ build_hyprcursor_theme() {
   rm -rf "$hyprcursor_src"
   mkdir -p "$hyprcursor_src/hyprcursor"
 
-  cat > "$hyprcursor_src/manifest.hl" <<'MANIFEST'
-name = phinger-matugen
+  cat > "$hyprcursor_src/manifest.hl" <<MANIFEST
+name = $theme_name
 description = Phinger cursors recoloured with matugen Material You palette
 version = 1
 cursors_directory = hyprcursor
@@ -266,7 +271,7 @@ MANIFEST
 
 build_xcursor_theme() {
   local hyprcursor_src=$phinger_cache/hyprcursor-src-matugen
-  local xcursor_dir=$icons_dir/phinger-matugen
+  local xcursor_dir=$icons_dir/$theme_name
   local cursors_dir=$xcursor_dir/cursors
   local phinger_dark=$icons_dir/phinger-cursors-dark/cursors
   local sizes=(24 32 48 64 72 96 128)
@@ -274,7 +279,7 @@ build_xcursor_theme() {
   rm -rf "$xcursor_dir"
   mkdir -p "$cursors_dir"
 
-  printf '[Icon Theme]\nName=Phinger Matugen\nInherits=phinger-cursors-dark\n' > "$xcursor_dir/index.theme"
+  printf '[Icon Theme]\nName=Phinger %s\nInherits=phinger-cursors-dark\n' "$theme_name" > "$xcursor_dir/index.theme"
 
   local py_tmp
   py_tmp=$(mktemp /tmp/xcursor_gen_XXXXXX.py)
@@ -393,11 +398,14 @@ PYEOF
 apply_theme() {
   local default_icons=$HOME/.icons/default
   mkdir -p "$default_icons"
-  printf '[Icon Theme]\nInherits=phinger-matugen\n' > "$default_icons/index.theme"
+  printf '[Icon Theme]\nInherits=%s\n' "$theme_name" > "$default_icons/index.theme"
   # XCURSOR_PATH includes ~/.icons but not ~/.local/share/icons; symlink the theme
-  ln -sfn "$icons_dir/phinger-matugen" "$HOME/.icons/phinger-matugen"
+  ln -sfn "$icons_dir/$theme_name" "$icons_dir/phinger-matugen"
+  ln -sfn "$icons_dir/$theme_name" "$HOME/.icons/$theme_name"
+  ln -sfn "$icons_dir/$theme_name" "$HOME/.icons/phinger-matugen"
+  ln -sfn "$theme_dir"             "$icons_dir/theme_phinger-matugen"
   if have gsettings; then
-    gsettings set org.gnome.desktop.interface cursor-theme "$theme_name" 2>/dev/null || true
+    gsettings set org.gnome.desktop.interface cursor-theme "$theme_name"   2>/dev/null || true
     gsettings set org.gnome.desktop.interface cursor-size  "$cursor_size"  2>/dev/null || true
     log "updated GSettings: cursor-theme=$theme_name cursor-size=$cursor_size"
   fi
@@ -408,16 +416,34 @@ apply_theme() {
   if have hyprctl; then
     hyprctl setcursor "$theme_name" "$cursor_size" >> "$log_file" 2>&1 \
       || warn "hyprctl setcursor failed; cursor will apply on next Hyprland start"
-    log "applied cursor theme: $theme_name size $cursor_size (xcursor: phinger-matugen)"
+    log "applied cursor theme: $theme_name size $cursor_size"
   fi
+}
+
+write_state_file() {
+  printf '%s\n' "$theme_name" > "$state_dir/cursor-theme-current"
+  log "wrote current theme to $state_dir/cursor-theme-current"
 }
 
 mkdir -p "$state_dir"
 log "starting $program"
 load_colours
+colour_hash=$(compute_theme_hash)
+theme_name="phinger-matugen-${colour_hash}"
+theme_dir=$icons_dir/theme_${theme_name}
+
+if [[ -f $theme_dir/manifest.hl && -d $icons_dir/$theme_name/cursors ]]; then
+  log "theme cached for hash $colour_hash; skipping rebuild"
+  apply_theme
+  write_state_file
+  log "done (cached): $theme_name"
+  exit 0
+fi
+
 download_source
 svg_work_dir=$(recolor_svgs)
 build_hyprcursor_theme "$svg_work_dir"
 build_xcursor_theme
 apply_theme
+write_state_file
 log "done: $theme_name"
