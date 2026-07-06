@@ -4,68 +4,57 @@ Lib = require("peteches.keybinds.lib")
 -- -----------------------------------------------------------------------------
 
 hl.define_submap("leader_window", function()
-  hl.bind("f", Lib.dispatch_and_reset(hl.dsp.window.fullscreen("fullscreen", "toggle")), {
-    description = "Toggle fullscreen",
-  })
+	hl.bind("f", Lib.dispatch_and_reset(hl.dsp.window.fullscreen("fullscreen", "toggle")), {
+		description = "Toggle fullscreen",
+	})
 
-  hl.bind("SHIFT + f", Lib.dispatch_and_reset(hl.dsp.window.float({ action = "toggle" })), {
-    description = "Toggle floating",
-  })
+	hl.bind("SHIFT + f", Lib.dispatch_and_reset(hl.dsp.window.float({ action = "toggle" })), {
+		description = "Toggle floating",
+	})
 
-  hl.bind("p", Lib.dispatch_and_reset(hl.dsp.window.pseudo({ action = "toggle" })), {
-    description = "Toggle pseudo-tiling",
-  })
+	hl.bind("p", Lib.dispatch_and_reset(hl.dsp.window.pseudo({ action = "toggle" })), {
+		description = "Toggle pseudo-tiling",
+	})
 
-  hl.bind("c", Lib.dispatch_and_reset(hl.dsp.window.center()), {
-    description = "Center active window",
-  })
+	hl.bind("c", Lib.dispatch_and_reset(hl.dsp.window.center()), {
+		description = "Center active window",
+	})
 
-  hl.bind("t", Lib.dispatch_and_reset(hl.dsp.window.alter_zorder({ mode = "top" })), {
-    description = "Put active window on top",
-  })
+	hl.bind("t", Lib.dispatch_and_reset(hl.dsp.window.alter_zorder({ mode = "top" })), {
+		description = "Put active window on top",
+	})
 
-  hl.bind("q", Lib.dispatch_and_reset(hl.dsp.window.close()), {
-    description = "Close active window",
-  })
+	hl.bind("q", Lib.dispatch_and_reset(hl.dsp.window.close()), {
+		description = "Close active window",
+	})
 
-  hl.bind("m", hl.dsp.submap("move_window"), {
-    description = "Move window submap",
-  })
-  
-  hl.bind("escape", hl.dsp.submap("reset"), {
-    description = "reset submaps",
-  })
+	hl.bind("m", hl.dsp.submap("move_window"), {
+		description = "Move window submap",
+	})
 
+	hl.bind("escape", hl.dsp.submap("reset"), {
+		description = "reset submaps",
+	})
 end)
 
 hl.define_submap("move_window",
-		 function()
-		     hl.bind("b", hl.dsp.window.move({ direction = "left" }), {
-			 description = "Move window left",
-		     })
-		     
-		     hl.bind("left", hl.dsp.window.move({ direction = "left" }), {
-			 description = "Move window left",
-		     })
+	function()
+		for k, v in pairs(Emacs.movement) do
+			hl.bind(k, hl.dsp.window.move({ direction = v }), {
+				description = "Move window " .. v,
+			})
+		end
 
-		     hl.bind("f", hl.dsp.window.move({ direction = "right" }), {
-			 description = "Move window right",
-		     })
-		     hl.bind("right", hl.dsp.window.move({ direction = "right" }), {
-			 description = "Move window right",
-		     })
+		hl.bind("s", hl.dsp.submap("swap"), {
+			description = "swap windows",
+		})
+	end)
 
-		     hl.bind("p", hl.dsp.window.move({ direction = "up" }), {
-			 description = "Move window up",
-		     })
-		     hl.bind("up", hl.dsp.window.move({ direction = "up" }), {
-			 description = "Move window up",
-		     })
-
-		     hl.bind("n", hl.dsp.window.move({ direction = "down" }), {
-			 description = "Move window down",
-		     })
-		     hl.bind("down", hl.dsp.window.move({ direction = "down" }), {
-			 description = "Move window down",
-		     })
-		 end)
+hl.define_submap("window_swap",
+	function()
+		for k, v in pairs(Emacs.movement) do
+			hl.bind(k, hl.dsp.window.swap({ direction = v }), {
+				description = "Swap with window in direction " .. v,
+			})
+		end
+	end)

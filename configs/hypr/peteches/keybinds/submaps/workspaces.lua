@@ -1,3 +1,4 @@
+require("peteches.keybinds.submaps.layout")
 Lib = require("peteches.keybinds.lib")
 
 hl.define_submap("leader_workspaces",
@@ -6,6 +7,10 @@ hl.define_submap("leader_workspaces",
 			hl.dsp.workspace.toggle_special("messaging")
 		), {
 			description = "Toggle messaging workspace",
+		})
+
+		hl.bind("l", hl.dsp.submap("leader_layout"), {
+			description = "layout workspace submap",
 		})
 
 		hl.bind("Return", hl.dsp.submap("reset"), {

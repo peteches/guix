@@ -1,17 +1,15 @@
 Core = require("peteches.keybinds.core")
+Emacs = require("peteches.keybinds.emacs")
+
 -- -----------------------------------------------------------------------------
 -- Emacs-style direct window navigation
 -- -----------------------------------------------------------------------------
-local binds = {
-    [Core.mod .. " + CONTROL + b"] = "left",
-    [Core.mod .. " + CONTROL + f"] = "right",
-    [Core.mod .. " + CONTROL + p"] = "up",
-    [Core.mod .. " + CONTROL + n"] = "down",
-    [Core.mod .. " + left"] = "left",
-    [Core.mod .. " + right"] = "right",
-    [Core.mod .. " + up"] = "up",
-    [Core.mod .. " + down"] = "down",
-}
+local binds = {b}
+
+for k,v in pairs(Emacs.movement) do 
+    binds[Core.mod .. " + CONTROL + " .. k] = v
+end
+
 
 for bind, direction in pairs(binds) do
     hl.bind(bind, hl.dsp.focus({ direction = direction }), {
