@@ -1,4 +1,4 @@
-(define-module (peteches home-configs mpv)
+(define-module (peteches home modules mpv)
   #:use-module (peteches home services mpv))
 
 (define-public %mpv-profiles

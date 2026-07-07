@@ -1,4 +1,4 @@
-(define-module (peteches home-configs firefox)
+(define-module (peteches home modules firefox)
   #:use-module (guix gexp)
   #:use-module (peteches home services firefox))
 
@@ -26,7 +26,7 @@
 			      ("network.proxy.socks_remote_dns"                       . #t) ; DNS through Tor
 			      ("network.proxy.no_proxies_on"                          . "")
 
-			      ;; Ensure DoH doesn’t bypass Tor
+			      ;; Ensure DoH doesn't bypass Tor
 			      ("network.trr.mode"                                     . 5)
 
 			      ;; WebRTC handling (disable or restrict to proxy only)

@@ -1,4 +1,4 @@
-(define-module (peteches home-configs scoreplay)
+(define-module (peteches home modules scoreplay)
   #:use-module (gnu home services ssh))
 
 

@@ -1,4 +1,4 @@
-(define-module (peteches home-configs mako)
+(define-module (peteches home modules mako)
   #:use-module (gnu services)
   #:use-module (peteches home services mako)
   #:export (base-mako-config

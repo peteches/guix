@@ -1,4 +1,4 @@
-(define-module (peteches home-configs nug)
+(define-module (peteches home configs nug)
   #:use-module (guix gexp)
   #:use-module (guix channels)
   #:use-module (gnu packages base)
@@ -24,8 +24,8 @@
   #:use-module (gnu home services guix)
 
   ;; base composer
-  #:use-module (peteches home-configs base)
-  #:use-module (peteches home-configs mpv)
+  #:use-module (peteches home modules base)
+  #:use-module (peteches home modules mpv)
 
   ;; my packages
   #:use-module (peteches home services koboldcpp)
@@ -66,19 +66,19 @@
 (define nug-extra-services
   (list
    (service home-mpv-service-type
-            (mpv-config
-             (hwdec "nvdec")
-             (demuxer-max-bytes "4096MiB")
-             (demuxer-max-back-bytes "1024MiB")
-             (demuxer-readahead-secs 1200)
-             (cache-secs 7200)
+	    (mpv-config
+	     (hwdec "nvdec")
+	     (demuxer-max-bytes "4096MiB")
+	     (demuxer-max-back-bytes "1024MiB")
+	     (demuxer-readahead-secs 1200)
+	     (cache-secs 7200)
 
-             (profiles %mpv-profiles)))
+	     (profiles %mpv-profiles)))
 
    (simple-service 'wireplumber-audio-device-names
-                   home-xdg-configuration-files-service-type
-                   `(("wireplumber/wireplumber.conf.d/51-audio-device-names.conf"
-                      ,(plain-file
+		   home-xdg-configuration-files-service-type
+		   `(("wireplumber/wireplumber.conf.d/51-audio-device-names.conf"
+		      ,(plain-file
 			"51-audio-device-names.conf"
 			(string-join
 			 (list
@@ -222,7 +222,7 @@
 	     (ssl-key  (home-abs-path ".local/share/certs/nug.peteches.co.uk.pem"))
 	     (extra-args (list "--usecuda"
 			       "--websearch"
-       			       "--gpulayers" "999"
+			       "--gpulayers" "999"
 			       "--contextsize" "16386"
 			       "--flashattention"
 			       "--quantkv" "1"))))

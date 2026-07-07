@@ -70,7 +70,8 @@ guile -L . -c '(use-modules (peteches systems vm-base))'
 | Path | Purpose |
 |---|---|
 | `peteches/systems/` | OS configurations per host |
-| `peteches/home-configs/` | Home environment configs per host/feature |
+| `peteches/home/configs/` | Host-specific home-environment files (`nug.scm`, `nyarlothotep.scm`) |
+| `peteches/home/modules/` | Shared home config fragments — `base.scm` plus focused modules (ssh, gpg, theming, ai, etc.) |
 | `peteches/monitoring/` | Guix gexp helpers for monitoring (e.g. Loki event sender) |
 | `peteches/channels/` | Channel lock files |
 | `peteches/utils.scm` | Shared utilities |
@@ -118,23 +119,36 @@ guile -L . -c '(use-modules (peteches systems vm-base))'
 | `vault.scm` | HashiCorp Vault secrets management VM (192.168.51.201, port 8200) |
 | `nug-substitute-key.pub` | SSH public key for nug's local Guix substitute server |
 
-#### `peteches/home-configs/`
+#### `peteches/home/configs/`
+
+Host-specific files only — each exports a complete `home-environment` record.
 
 | File | Purpose |
 |---|---|
-| `base.scm` | Main home environment — composes all feature home-services |
-| `nug.scm` | nug-specific home additions |
-| `nyarlothotep.scm` | nyarlothotep-specific home additions |
-| `scoreplay.scm` | scoreplay-specific home additions |
-| `mako.scm` | Mako notification daemon config fragment |
-| `firefox.scm` | Firefox config fragment |
-| `hyprland.scm` | Hyprland compositor config fragment |
-| `git.scm` | Git config fragment |
-| `waybar.scm` | Waybar status bar config fragment |
-| `mpv.scm` | MPV video player config (upscaler, YouTube, low-power profiles) |
-| `ssh-authorized-keys` | SSH authorized keys for the home environment |
+| `nug.scm` | nug home environment — `(peteches home configs nug)` |
+| `nyarlothotep.scm` | nyarlothotep home environment — `(peteches home configs nyarlothotep)` |
+
+#### `peteches/home/modules/`
+
+Shared fragments — imported by host configs and composed into `base-packages` / `base-services`.
+
+| File | Purpose |
+|---|---|
+| `base.scm` | `(peteches home modules base)` — orchestrator; exports `base-packages` and `base-services` |
+| `ssh.scm` | `(peteches home modules ssh)` — `base-ssh-service` with all SSH host entries |
+| `gpg.scm` | `(peteches home modules gpg)` — `base-gpg-service` with pinentry dispatch script |
+| `syncthing.scm` | `(peteches home modules syncthing)` — `base-syncthing-service` (org folder + devices) |
+| `theming.scm` | `(peteches home modules theming)` — `base-theming-services` list (cursor, wallpaper, matugen, DMS plugin) |
+| `ai.scm` | `(peteches home modules ai)` — `base-ai-service` (MCP config for Claude Code and ECA) |
+| `mako.scm` | `(peteches home modules mako)` — `base-mako-config` and `base-mako-service` |
+| `firefox.scm` | `(peteches home modules firefox)` — Firefox profiles and extensions |
+| `git.scm` | `(peteches home modules git)` — `peteches-gpg-for-git` package and `git-config` |
+| `scoreplay.scm` | `(peteches home modules scoreplay)` — `%scoreplay-ssh-hosts` |
+| `mpv.scm` | `(peteches home modules mpv)` — `%mpv-profiles` |
+| `ssh-authorized-keys` | SSH authorized keys (co-located with `ssh.scm` for `local-file`) |
 | `firefox-extensions/` | Firefox .xpi extensions (uBlock, DarkReader, PassFF, AWS SSO) |
 | `git-hooks/` | Git hook scripts (pre-commit) |
+| `git-ignore.txt` | Git global ignore patterns |
 
 #### `peteches/monitoring/`
 
@@ -221,7 +235,7 @@ When creating a new VM system config (`peteches/systems/<name>.scm`), always upd
 
 1. **`peteches/systems/pihole.scm`** — add a `pihole-custom-host` entry to the `custom-hosts` list mapping the VM's IP to its hostname (`<name>.peteches.co.uk`).
 
-2. **`peteches/home-configs/base.scm`** — add an `openssh-host` entry inside the `home-openssh-service-type` hosts list. At minimum a direct LAN entry:
+2. **`peteches/home/modules/ssh.scm`** — add an `openssh-host` entry inside the `home-openssh-service-type` hosts list in `base-ssh-service`. At minimum a direct LAN entry:
    ```scheme
    (openssh-host
     (name "<name>")

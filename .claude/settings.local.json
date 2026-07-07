@@ -39,7 +39,9 @@
       "mcp__anvil__emacs-eval-async",
       "mcp__anvil__emacs-eval-result",
       "mcp__anvil__emacs-eval-jobs",
-      "Bash(guix describe *)"
+      "Bash(guix describe *)",
+      "mcp__anvil-emacs-eval__file-outline",
+      "mcp__anvil__nelisp-eval"
     ]
   }
 }

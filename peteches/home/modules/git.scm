@@ -1,4 +1,4 @@
-(define-module (peteches home-configs git)
+(define-module (peteches home modules git)
   #:use-module (gnu packages bash)
   #:use-module (gnu packages gnupg)
   #:use-module (guix build-system trivial)
