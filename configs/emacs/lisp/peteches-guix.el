@@ -44,9 +44,8 @@ If PROFILES is nil, use a sensible default set."
 (defun peteches/guix-home-reconfigure ()
   "Run guix home reconfigure."
   (interactive)
-  (compile (format "guix home -L %s reconfigure %s.scm "
-		   (expand-file-name "~/area_51/guix/")
-		   (expand-file-name (format "~/area_51/guix/peteches/home-configs/%s" (system-name))))))
+  (compile (format "guix home reconfigure %s.scm "
+		   (expand-file-name (format "~/area_51/guix/peteches/home/configs/%s" (system-name))))))
 
 (defun peteches/guix-system-reconfigure ()
   "Run guix system reconfigure."
