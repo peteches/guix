@@ -2,7 +2,7 @@
 
 ;;; Code:
 
-(straight-use-package '(anvil :host github :repo "zawatton/anvil.el" :branch "master"))
+(straight-use-package '(anvil :host github :repo "zawatton/anvil.el" :tag "v1.3.0"))
 
 (require 'anvil)
 
