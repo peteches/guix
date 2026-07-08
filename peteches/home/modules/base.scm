@@ -35,6 +35,10 @@
   #:use-module (peteches packages go-tools)
   #:use-module (peteches packages terraform)
   #:use-module (gnu packages libcanberra)
+  #:use-module (gnu packages guile)
+  #:use-module (gnu packages guile-xyz)
+  #:use-module (guix packages)
+  #:use-module (guix utils)
   ;; Your feature modules
   #:use-module (peteches home services aws)
   #:use-module (peteches home services desktop)
@@ -69,6 +73,53 @@
   ;; Export
   #:export (base-packages
             base-services))
+
+;; guile-lsp-server@0.4.8 propagates guile-3.0 (3.0.9) but the Guix system
+;; profile is compiled with guile-3.0.11.  When both site-ccaches appear in
+;; GUILE_LOAD_COMPILED_PATH, loading any (gnu …) module fails with
+;; "incompatible bytecode version" causing a full recompile cascade.
+;; Override the full dependency chain so all .go files in the home profile
+;; are compiled with guile-3.0.11, matching the system profile.
+(define guile-srfi-145/3.0.11
+  (package/inherit guile-srfi-145
+    (native-inputs (modify-inputs (package-native-inputs guile-srfi-145)
+                    (replace "guile" guile-3.0.11)))))
+
+(define guile-srfi-180/3.0.11
+  (package/inherit guile-srfi-180
+    (native-inputs (modify-inputs (package-native-inputs guile-srfi-180)
+                    (replace "guile" guile-3.0.11)))
+    (propagated-inputs (modify-inputs (package-propagated-inputs guile-srfi-180)
+                         (replace "guile-srfi-145" guile-srfi-145/3.0.11)))))
+
+(define guile-irregex/3.0.11
+  (package/inherit guile-irregex
+    (native-inputs (modify-inputs (package-native-inputs guile-irregex)
+                    (replace "guile" guile-3.0.11)))
+    (arguments (substitute-keyword-arguments (package-arguments guile-irregex)
+                 ((#:phases phases)
+                  #~(modify-phases #$phases
+                      (delete 'check)
+                      (delete 'check-installed)))))))
+
+(define guile-scheme-json-rpc/3.0.11
+  (package/inherit guile-scheme-json-rpc
+    (inputs (modify-inputs (package-inputs guile-scheme-json-rpc)
+              (replace "guile" guile-3.0.11)))
+    (propagated-inputs (modify-inputs (package-propagated-inputs guile-scheme-json-rpc)
+                         (replace "guile-srfi-145" guile-srfi-145/3.0.11)
+                         (replace "guile-srfi-180" guile-srfi-180/3.0.11)))))
+
+(define guile-lsp-server/3.0.11
+  (package/inherit guile-lsp-server
+    (native-inputs (modify-inputs (package-native-inputs guile-lsp-server)
+                    (replace "guile" guile-3.0.11)))
+    (propagated-inputs (modify-inputs (package-propagated-inputs guile-lsp-server)
+                         (replace "guile" guile-3.0.11)
+                         (replace "guile-scheme-json-rpc" guile-scheme-json-rpc/3.0.11)
+                         (replace "guile-srfi-145" guile-srfi-145/3.0.11)
+                         (replace "guile-srfi-180" guile-srfi-180/3.0.11)
+                         (replace "guile-irregex" guile-irregex/3.0.11)))))
 
 ;; 1) Shared package set for all machines.
 (define-public base-packages
@@ -202,7 +253,7 @@
 	    (home-emacs-base-configuration
 	     (emacs-package emacs-pgtk)
 	     (config-directory (repo-directory "configs/emacs"))
-	     (extra-packages (map specification->package
+	     (extra-packages (cons guile-lsp-server/3.0.11 (map specification->package
 				  '("emacs-forge"
 				    "emacs-olivetti"
 				    "emacs-string-inflection"
@@ -297,7 +348,6 @@
 
 				    ;; Language server binaries.  Keep these Guix-managed;
 				    ;; Emacs only starts servers already present on exec-path.
-				    "guile-lsp-server"
 				    "lua-language-server"
 				    "go"
 				    "gopls"
@@ -318,7 +368,7 @@
 
 				    "font-google-noto"
 				    "font-google-noto-emoji"
-				    "font-iosevka@33.3.0")))))
+				    "font-iosevka@33.3.0"))))))
 
 
    (service home-bash-service-type
