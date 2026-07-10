@@ -58,6 +58,7 @@
   #:use-module (peteches home modules syncthing)
   #:use-module (peteches home modules theming)
   #:use-module (peteches home modules ai)
+  #:use-module (peteches home modules claude)
   ;; Your config fragments
   #:use-module (peteches packages gurps)
   #:use-module (peteches packages claude-code)
@@ -229,7 +230,9 @@
    ;; Browsers (Firefox profiles + Nyxt)
    (service firefox-service-type
 	    (firefox-configuration (profiles base-firefox-profiles)))
-   (service nyxt-service-type)
+   (service nyxt-service-type
+	    (home-nyxt-base-configuration
+	     (config-directory (repo-directory "configs/nyxt"))))
 
    base-ssh-service
 
@@ -381,6 +384,26 @@
    ;; Desktop conveniences (terminals/aliases/env, etc.).
    (service home-desktop-service-type)
 
-   base-ai-service)
+   base-ai-service
+
+   (service home-claude-service-type
+	    (home-claude-configuration
+	     (config-directory (repo-directory "configs/claude"))
+	     (mcp-servers
+	      (let* ((bash-path  (file-append bash "/bin/bash"))
+		     (script     (string-append (getenv "HOME")
+						"/.config/emacs/straight/repos/anvil.el/anvil-stdio.sh")))
+		(list
+		 (home-claude-mcp-server
+		  (name "anvil")
+		  (command bash-path)
+		  (args (list script
+			      "--server-id=anvil"
+			      "--init-function=anvil-enable"
+			      "--stop-function=anvil-disable")))
+		 (home-claude-mcp-server
+		  (name "anvil-emacs-eval")
+		  (command bash-path)
+		  (args (list script "--server-id=emacs-eval")))))))))
 
    base-theming-services))

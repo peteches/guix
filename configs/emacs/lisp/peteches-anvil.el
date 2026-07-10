@@ -3,6 +3,7 @@
 ;;; Code:
 
 (straight-use-package '(anvil :host github :repo "zawatton/anvil.el" :tag "v1.3.0"))
+(straight-use-package '(anvil-ide :host github :repo "zawatton/anvil-ide.el" :branch "main"))
 
 (require 'anvil)
 

@@ -1,15 +1,13 @@
 (define-module (peteches home modules ai)
   #:use-module (gnu home services)
   #:use-module (gnu packages bash)
-  #:use-module (gnu packages web)
   #:use-module (gnu services)
   #:use-module (guix gexp)
   #:export (base-ai-service))
 
 (define-public base-ai-service
-  ;; Configure MCP servers for both Claude Code CLI and ECA.
-  ;; The MCP server JSON block is built once and reused for both
-  ;; ~/.claude/settings.json and ~/.config/eca/config.json.
+  ;; Configure ECA with MCP servers pointing to anvil.
+  ;; Claude Code MCP servers are managed by home-claude-service-type.
   (simple-service 'ai-mcp-config
 		  home-activation-service-type
 		  #~(begin
@@ -36,21 +34,8 @@
 			       "\"--server-id=emacs-eval\"],"
 			       "\"env\":{}}"
 			       "}"))
-			     (claude-file (string-append home "/.claude/settings.json"))
-			     (claude-tmp  (string-append claude-file ".guix-tmp"))
 			     (eca-dir     (string-append home "/.config/eca"))
 			     (eca-file    (string-append eca-dir "/config.json")))
-			(when (file-exists? claude-file)
-			  (let* ((jq-filter (string-append ".mcpServers = " mcp-json))
-				 (pipe (open-pipe* OPEN_READ
-						   #$(file-append jq "/bin/jq")
-						   jq-filter
-						   claude-file))
-				 (output (get-string-all pipe)))
-			    (close-pipe pipe)
-			    (call-with-output-file claude-tmp
-			      (lambda (port) (display output port)))
-			    (rename-file claude-tmp claude-file)))
 			(unless (file-exists? eca-dir)
 			  (mkdir eca-dir))
 			(call-with-output-file eca-file
