@@ -29,6 +29,7 @@ Like normal Emacs `C-k'. Kill to end of line and put content in kill-ring."
 (global-set-key (kbd "C-x m") 'peteches-ghostel)
 
 (define-key peteches-ghostel (kbd "m") 'ghostel)
+(define-key peteches-ghostel (kbd "r") 'ghostel-force-redraw)
 (define-key peteches-ghostel (kbd "M") 'ghostel-project)
 (define-key peteches-ghostel (kbd "o") 'ghostel-other)
 (define-key peteches-ghostel (kbd "n") 'ghostel-next)
