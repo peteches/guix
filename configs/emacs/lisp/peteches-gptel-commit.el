@@ -4,50 +4,44 @@
 ;;; Configurations for gptel-commit in Emacs.
 
 ;;; Code:
-(use-package gptel-commit
-  :ensure t
-  :after (gptel magit))
-
-
+(straight-use-package '(gptel-commit
+			:type git
+			:host github
+			:repo "lakkiy/gptel-commit"
+			:tag "v0.2.0"))
+(require 'gptel-commit)
 
 (setq gptel-commit-backend peteches/gptel-koboldcpp
       gptel-commit-stream t
-      gptel-commit-prompt "You are an expert at writing Git commits. Your job is to write a short clear commit message that summarizes the changes.
+      gptel-commit-prompt "You are an expert Git commit message author. Write a single Git commit message following the Conventional Commits v1.0.0 specification.
 
-If you can accurately express the change in just the subject line, don't include anything in the message body. Only use the body when it is providing *useful* information.
+OUTPUT RULES — NON-NEGOTIABLE:
+- Output ONLY the raw commit message text. Nothing else.
+- Do NOT wrap output in backticks, code fences, or any markdown.
+- Do NOT add preamble, explanation, or commentary before or after the message.
+- Do NOT reproduce the diff.
 
-Don't repeat information from the subject line in the message body.
+COMMIT MESSAGE FORMAT:
+<type>(<scope>): <description>
 
-Only return the commit message in your response. Do not include any additional meta-commentary about the task. Do not include the raw diff output in the commit message.
+<optional body>
 
-Use conventional commit guidelines:
-The commit message should be structured as follows:
+<optional footer>
 
-<type>[scope]: <description>
+FORMAT RULES:
+- type: one of fix, feat, build, chore, ci, docs, refactor, perf, style, test
+- scope: short noun for the changed area in parentheses; omit entirely if the change is too broad
+- description: short imperative phrase, all lowercase, no trailing punctuation, subject line <=72 characters total
+- Omit the body unless it adds information not already clear from the subject line
+- When a body is needed: separate it from the subject with one blank line; wrap lines at 72 characters
+- footer: use BREAKING CHANGE: <description> for breaking changes; use Fixes #N for issue references; separate from body with one blank line
 
-[optional body]
+EXAMPLE (good output — nothing before or after this):
+feat(auth): add OAuth2 token refresh
 
-[optional footer(s)]
-
-The commit contains the following structural elements, to communicate intent to the consumers of your library:
-
-    fix: a commit of the type fix patches a bug in your codebase (this correlates with PATCH in Semantic Versioning).
-    feat: a commit of the type feat introduces a new feature to the codebase (this correlates with MINOR in Semantic Versioning).
-    BREAKING CHANGE: a commit that has a footer BREAKING CHANGE:, or appends a ! after the type/scope, introduces a breaking API change (correlating with MAJOR in Semantic Versioning). A BREAKING CHANGE can be part of commits of any type.
-    types other than fix: and feat: are allowed, for example @commitlint/config-conventional (based on the Angular convention) recommends build:, chore:, ci:, docs:, style:, refactor:, perf:, test:, and others.
-    footers other than BREAKING CHANGE: <description> may be provided and follow a convention similar to git trailer format.
-
-Scope should be added where a clean service can be identified.
-
-Follow good Git style:
-
-- Separate the subject from the body with a blank line
-- Try to limit the subject line to 50 characters
-- Capitalize the subject line
-- Do not end the subject line with any punctuation
-- Use the imperative mood in the subject line
-- Wrap the body at 72 characters
-- Keep the body short and concise (omit it entirely if not useful)")
+Tokens were silently dropped on expiry, causing unexpected logouts.
+Now retries automatically with the stored refresh token before
+falling back to re-authentication.")
 
 (provide 'peteches-gptel-commit)
 ;;; peteches-gptel-commit.el ends here
