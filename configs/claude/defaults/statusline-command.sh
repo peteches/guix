@@ -44,7 +44,12 @@ seven_d_str=""
 [ -n "$five_h_str" ] || [ -n "$seven_d_str" ] && \
     rate_suffix=" [${five_h_str}${five_h_str:+${seven_d_str:+ }}${seven_d_str}]"
 
-printf '%s@%s %s%s%s%s%s' \
-    "$(whoami)" "$(hostname -s)" "$cwd" \
+# Session name, exported by containers/claude.scm as CLAUDE_SESSION.
+# Blank when running claude outside the container wrapper.
+session_suffix=""
+[ -n "${CLAUDE_SESSION:-}" ] && session_suffix="/${CLAUDE_SESSION}"
+
+printf '%s@%s%s %s%s%s%s%s' \
+    "$(whoami)" "$(hostname -s)" "$session_suffix" "$cwd" \
     "${GUIX_ENVIRONMENT:+ [env]}" \
     "$ctx_suffix" "$cost_suffix" "$rate_suffix"

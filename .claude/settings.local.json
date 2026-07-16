@@ -41,7 +41,11 @@
       "mcp__anvil__emacs-eval-jobs",
       "Bash(guix describe *)",
       "mcp__anvil-emacs-eval__file-outline",
-      "mcp__anvil__nelisp-eval"
+      "mcp__anvil__nelisp-eval",
+      "WebFetch(domain:docs.comfy.org)",
+      "Bash(guile -L . -c '\\(use-modules \\(containers claude\\) \\(guix packages\\)\\) \\(display \\(package-name claude-container\\)\\) \\(newline\\)')",
+      "Read(//home/peteches/.claude/**)",
+      "Read(//home/peteches/**)"
     ]
   }
 }

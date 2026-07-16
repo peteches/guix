@@ -62,6 +62,7 @@
   ;; Your config fragments
   #:use-module (peteches packages gurps)
   #:use-module (peteches packages claude-code)
+  #:use-module (containers claude)
   #:use-module (peteches packages rustdesk)
   #:use-module (peteches packages concourse)
   #:use-module (peteches packages proxmox-scripts)
@@ -69,6 +70,7 @@
 
   #:use-module (peteches repository)
   ;; utilities
+  #:use-module (ice-9 ftw)
   #:use-module (ice-9 popen)
   #:use-module (ice-9 textual-ports)
   ;; Export
@@ -127,7 +129,8 @@
   (list
    peteches-desktop-scripts
    alacritty
-   claude-code
+   claude-container
+   emacs-anvil
    rustdesk
    dank-material-shell
    mako
@@ -176,7 +179,32 @@
    qtwayland
    unzip
    btop
-   proxmox-scripts))
+   proxmox-scripts
+   (specification->package "imagemagick")))
+
+;; Enumerate configs/claude/<session>/ contents so home-files-service
+;; can symlink them under ~/.claude-sessions/<session>/.  Called at
+;; module-load time; adding new files in the repo is picked up on the
+;; next `guix home reconfigure'.  `canonicalize-path' turns the
+;; %load-path-resolved dir into an absolute path so `local-file'
+;; doesn't warn about relative resolution.  Leaf filenames must not
+;; start with '.' — home-files-service-type rejects those.
+(define (claude-session-files sessions)
+  (apply append
+         (map (lambda (session)
+                (let ((session-dir
+                       (canonicalize-path
+                        (repo-directory
+                         (string-append "configs/claude/" session)))))
+                  (map (lambda (entry)
+                         (let* ((src (string-append session-dir "/" entry))
+                                (dst (string-append ".claude-sessions/"
+                                                    session "/" entry))
+                                (dir? (eq? 'directory (stat:type (stat src)))))
+                           `(,dst ,(local-file src #:recursive? dir?))))
+                       (filter (lambda (e) (not (member e '("." ".."))))
+                               (scandir session-dir)))))
+              sessions)))
 
 ;; 2) Shared services (with your existing configs).
 (define-public base-services
@@ -192,7 +220,9 @@
 		     ("HYPRCURSOR_THEME" . "phinger-matugen")
 		     ("HYPRCURSOR_SIZE" . "32")
 		     ("XCURSOR_THEME" . "phinger-matugen")
-		     ("XCURSOR_SIZE" . "32")))
+		     ("XCURSOR_SIZE" . "32")
+		     ("NUG_HOST" . "nug.spaniel-cordylus.ts.net")
+		     ("COMFYUI_URL" . "http://$NUG_HOST:8188")))
    (simple-service 'peteches-guile-load-path home-environment-variables-service-type
 		   `(("GUILE_LOAD_PATH" . "$HOME/area_51/guix:${HOME}/area_51/codeberg.org/peteches/guix-channel.git_main:${GUILE_LOAD_PATH:+:$GUILE_LOAD_PATH}")))
 
@@ -388,11 +418,13 @@
 
    (service home-claude-service-type
 	    (home-claude-configuration
-	     (config-directory (repo-directory "configs/claude"))
+	     (config-directory (repo-directory "configs/claude/defaults"))
 	     (mcp-servers
 	      (let* ((bash-path  (file-append bash "/bin/bash"))
-		     (script     (string-append (getenv "HOME")
-						"/.config/emacs/straight/repos/anvil.el/anvil-stdio.sh")))
+		     ;; Point at the packaged emacs-anvil launcher.  Old
+		     ;; setup used a straight.el checkout under
+		     ;; ~/.config/emacs which no longer exists.
+		     (script     (file-append emacs-anvil "/bin/anvil-stdio.sh")))
 		(list
 		 (home-claude-mcp-server
 		  (name "anvil")
@@ -404,6 +436,16 @@
 		 (home-claude-mcp-server
 		  (name "anvil-emacs-eval")
 		  (command bash-path)
-		  (args (list script "--server-id=emacs-eval")))))))))
+		  (args (list script "--server-id=emacs-eval")))
+		 (home-claude-mcp-server
+		  (name "comfyui")
+		  (command "npx")
+		  (args (list "-y" "comfyui-mcp")))))))))
+
+   (list
+    (simple-service 'claude-sessions
+		    home-files-service-type
+		    (claude-session-files
+		     '("guix" "critical-grind" "peteches"))))
 
    base-theming-services))
