@@ -54,7 +54,9 @@
 		     ("matugen/templates/mako-colors.conf"
 		      ,(local-file (source-path "configs/matugen/templates/mako-colors.conf")))
 		     ("matugen/templates/colours.sh"
-		      ,(local-file (source-path "configs/matugen/templates/colours.sh")))))
+		      ,(local-file (source-path "configs/matugen/templates/colours.sh")))
+		     ("matugen/templates/nyxt-theme.lisp"
+		      ,(local-file (source-path "configs/matugen/templates/nyxt-theme.lisp")))))
 
    (simple-service 'matugen-dms-custom-templates
 		   home-activation-service-type
@@ -67,6 +69,7 @@
 			      (emacs-theme-dir (string-append home "/.cache/matugen/emacs"))
 			      (alacritty-theme-dir (string-append home "/.cache/matugen/alacritty"))
 			      (mako-theme-dir (string-append home "/.cache/matugen/mako"))
+		      (nyxt-theme-dir (string-append home "/.cache/matugen/nyxt"))
 			      (config-file (string-append matugen-dir "/config.toml"))
 			      (wofi-colors (string-append wofi-dir "/matugen-colors.css"))
 			      (hypr-colors (string-append hypr-cache-dir "/hypr-colors.lua"))
@@ -74,6 +77,7 @@
 			      (emacs-theme (string-append emacs-theme-dir "/matugen-theme.el"))
 			      (alacritty-colors (string-append alacritty-theme-dir "/colors.toml"))
 			      (mako-colors (string-append mako-theme-dir "/colors.conf"))
+		      (nyxt-theme (string-append nyxt-theme-dir "/theme.lisp"))
 			      (colours-file (string-append hypr-cache-dir "/colours.sh")))
 			 (mkdir-p matugen-dir)
 			 (mkdir-p wofi-dir)
@@ -81,6 +85,7 @@
 			 (mkdir-p emacs-theme-dir)
 			 (mkdir-p alacritty-theme-dir)
 			 (mkdir-p mako-theme-dir)
+			 (mkdir-p nyxt-theme-dir)
 			 (call-with-output-file config-file
 			   (lambda (port)
 			     (display "[config]\n\n" port)
@@ -104,7 +109,11 @@
 			     (display (string-append "output_path = '" home "/.cache/matugen/mako/colors.conf'\n") port)
 			     (display "\n[templates.colours]\n" port)
 			     (display (string-append "input_path = '" home "/.config/matugen/templates/colours.sh'\n") port)
-			     (display (string-append "output_path = '" home "/.cache/matugen/colours.sh'\n") port)))
+			     (display (string-append "output_path = '" home "/.cache/matugen/colours.sh'\n") port)
+			     (display "\n[templates.nyxt]\n" port)
+			     (display (string-append "input_path = '" home "/.config/matugen/templates/nyxt-theme.lisp'\n") port)
+			     (display (string-append "output_path = '" home "/.cache/matugen/nyxt/theme.lisp'\n") port)
+			     (display "post_hook = \"nyxt --remote --quit --eval '(load (uiop:xdg-cache-home \\\"matugen/nyxt/theme.lisp\\\"))' 2>/dev/null || true\"\n\n" port)))
 			 (unless (file-exists? wofi-colors)
 			   (call-with-output-file wofi-colors
 			     (lambda (port)
@@ -203,7 +212,24 @@
 			       (display "MATUGEN_ON_BACKGROUND=cdd6f4\n" port)
 			       (display "MATUGEN_SURFACE=11111b\n" port)
 			       (display "MATUGEN_ON_SURFACE=cdd6f4\n" port)
-			       (display "MATUGEN_OUTLINE=6c7086\n" port)))))))
+			       (display "MATUGEN_OUTLINE=6c7086\n" port))))
+			 (unless (file-exists? nyxt-theme)
+			   (call-with-output-file nyxt-theme
+			     (lambda (port)
+			       (display ";; Fallback Nyxt theme — replaced by matugen on first wallpaper change.\n" port)
+			       (display "(let ((theme (make-instance 'theme:theme\n" port)
+			       (display "               :background-color \"#1e1e2e\"\n" port)
+			       (display "               :on-background-color \"#cdd6f4\"\n" port)
+			       (display "               :primary-color \"#89b4fa\"\n" port)
+			       (display "               :on-primary-color \"#11111b\"\n" port)
+			       (display "               :secondary-color \"#313244\"\n" port)
+			       (display "               :on-secondary-color \"#cdd6f4\"\n" port)
+			       (display "               :action-color \"#89b4fa\"\n" port)
+			       (display "               :highlight-color \"#cba6f7\")))\n" port)
+			       (display "  (define-configuration browser ((theme theme)))\n" port)
+			       (display "  (when (and (boundp 'nyxt:*browser*) nyxt:*browser*\n" port)
+			       (display "             (slot-value nyxt:*browser* 'nyxt::ready-p))\n" port)
+			       (display "    (setf (theme nyxt:*browser*) theme)))\n" port)))))))
 
    (simple-service 'dms-submap-plugin
 		   home-xdg-configuration-files-service-type
