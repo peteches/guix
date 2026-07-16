@@ -12,8 +12,31 @@
   (when (file-exists-p script)
     (set-file-modes script (logior (file-modes script) #o111))))
 
-(setq anvil-modules
-      '(worker eval org file host git proc fs emacs text clipboard data net))
+(setq anvil-org-allowed-files-enabled nil
+      anvil-modules
+      '(
+	browser
+	claude-watchdog
+	clipboard
+	data
+	elisp
+	emacs
+	eval
+	file
+	fs
+	git
+	host
+	http
+	ide
+	net
+	org
+	proc
+	sexp-cst
+	state
+	text
+	treesit
+	worker
+	))
 
 (anvil-server-start)
 (anvil-enable)
