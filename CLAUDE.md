@@ -61,9 +61,87 @@ scripts/deploy.scm -h "prometheus,loki" --dry-run  # multiple patterns
 guix describe
 ```
 
-To validate that a module loads without errors, load it in guile:
+## Validating changes
+
+Read this before trusting a "it loads fine" claim — several of the obvious
+checks give **false positives**.
+
+**1. Bare `guile` cannot read these files.** Anything with a gexp (`#~`, `#$`)
+fails with `Unknown # object: "#~"`. That is a reader limitation, *not* a
+problem with the file. Use `guix repl` instead, which has the gexp reader:
+
 ```bash
-guile -L . -c '(use-modules (peteches systems vm-base))'
+guix repl -- /path/to/script.scm       # runs a Guile script with gexps available
+```
+
+**2. Parsing is not loading.** A parse check catches unbalanced parens but
+happily accepts a file with two `(define-module ...)` forms. Both checks are
+needed.
+
+**3. Load-check ONE MODULE PER PROCESS.** When a module fails to load, Guile
+can leave a stub registered under its name; a later `resolve-interface` on that
+name in the *same process* then succeeds spuriously. Batching load checks in
+one `guix repl` therefore reports green for modules that are actually broken:
+
+```bash
+# WRONG — later modules can report OK because of stubs from earlier failures
+guix repl -L . -- /dev/stdin <<'EOF'
+(for-each resolve-interface '((peteches systems vm-base) (peteches machines)))
+EOF
+
+# RIGHT — fresh process per module
+for m in "(peteches systems vm-base)" "(peteches machines)"; do
+  printf '%-36s ' "$m"
+  guix repl -L . -L "$CHANNEL" -- /dev/stdin <<EOF >/dev/null 2>&1 && echo OK || echo FAIL
+(resolve-interface '$m)
+EOF
+done
+```
+
+**4. Channel modules need `-L`, or the pulled guix.** Most modules here import
+`(peteches services ...)` from the external channel, which in turn imports
+`(nongnu ...)`, `(sops ...)`, `(guix-science-nonfree ...)`. Point `-L` at a
+channel checkout for the `peteches` half:
+
+```bash
+guix repl -L . -L ~/area_51/codeberg.org/peteches/guix-channel_main -- …
+```
+
+The third-party channels are only available via the **pulled** guix
+(`~/.config/guix/current`), which needs container nesting — see below.
+
+**5. Real builds need the guix daemon.** `guix build` / `guix system build`
+cannot even compute a derivation without a store connection, so `--dry-run`
+does not help.
+
+```bash
+guix system build -L . --dry-run peteches/systems/<host>.scm
+guix build -L . -L "$CHANNEL" peteches/packages/<pkg>.scm:<name>
+```
+
+### Container nesting (required for builds)
+
+A plain `guix shell --container` has **no `/var/guix`** and only the manifest
+closure in `/gnu/store` (~200 items), so guix cannot work inside it. The
+`claude-container` wrapper therefore supports `--nesting` (alias `--guix`),
+which passes `guix shell -W` — mapping the full store read-only, the daemon
+socket, and guix's caches — and exposes `~/.config/guix/current` so channel
+modules resolve.
+
+It is **off by default** (a reachable daemon can build and install arbitrary
+derivations on the host). The `guix` session opts in permanently via an empty
+`nesting` file in its session dir (`~/.claude-sessions/guix/nesting`); use
+`--nesting` ad hoc, or `--no-nesting` to force it off.
+
+Nesting also makes store-symlinked host config resolve — notably
+`~/.config/git/config`, which otherwise dangles, taking `user.name`/`user.email`
+and `commit.gpgSign` with it and producing unsigned commits.
+
+Check whether you have it:
+
+```bash
+ls /var/guix/daemon-socket/socket   # present => builds work
+guix describe                       # lists channels => pulled guix in use
 ```
 
 The plain-list channel files (`manual.scm`, `channels-nug.scm`) have no
