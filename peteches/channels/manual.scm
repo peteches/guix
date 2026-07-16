@@ -25,7 +25,7 @@
   (name 'guix-science-nonfree)
   (url "https://codeberg.org/guix-science/guix-science-nonfree.git")
   (branch "master")
-  (commit "46f8fc30ac5f5fd37009efd8051e64cf3a8bd882")
+  (commit "f30ef0318dd1c26bcb9d952a50cfa777429ab4e9")
   (introduction
    (make-channel-introduction
     "58661b110325fd5d9b40e6f0177cc486a615817e"
@@ -36,7 +36,7 @@
   (name 'nonguix)
   (url "https://gitlab.com/nonguix/nonguix.git")
   (branch "master")
-  (commit "3b66965566fe8c96edb5a41fd39a9e5a90ad9b61")
+  (commit "bf39542ca537fde8839b209ac21d6f3254469b15")
   (introduction
    (make-channel-introduction
     "897c1a470da759236cc11798f4e0a5f7d4d59fbc"
@@ -47,7 +47,7 @@
   (name 'guix)
   (url "https://codeberg.org/guix/guix.git")
   (branch "master")
-  (commit "04ad0bdc76b9d93b8277e288b94223661742b71d")
+  (commit "dd3e59ad40f480ae330e0814a7ab5bf32fa4ef9e")
   (introduction
    (make-channel-introduction
     "199fd26ab268d4f26cebcb39e844fe4ff9bea9bc"
@@ -58,7 +58,7 @@
   (name 'peteches)
   (url "https://codeberg.org/peteches/guix-channel")
   (branch "main")
-  (commit "59888a542607e38a788e487028f4acd1bb6ab7a8")
+  (commit "0f072b6a6733d0a249d543424daac5a758562f51")
   (introduction
    (make-channel-introduction
     "ff4b8a08276932c10cf6ca8cf726d78a86c17588"
