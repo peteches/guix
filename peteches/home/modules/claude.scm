@@ -1,3 +1,27 @@
+;;; peteches/home/modules/claude.scm — home service type for Claude Code.
+;;;
+;;; Unlike its siblings this module defines a *service type*, not just
+;;; configuration values.  It does two things:
+;;;
+;;;   1. Symlinks each child of `config-directory' into ~/.claude/ via
+;;;      home-files-service-type.  Called with configs/claude/defaults in
+;;;      (peteches home modules base).
+;;;   2. Registers `mcp-servers' by shelling out to `claude mcp add' during
+;;;      home activation — removing then re-adding each one so the entry
+;;;      always reflects current config.  The `remove' is expected to fail
+;;;      on first run; its exit status is deliberately ignored.
+;;;
+;;; Why (2) shells out rather than writing ~/.claude.json directly: that
+;;; file is also written by Claude Code itself at runtime (project history,
+;;; auth state), so hand-generating it would clobber live state.
+;;;
+;;; The service type is `extend'-able — extensions are appended to
+;;; mcp-servers — though nothing currently extends it.
+;;;
+;;; Note the split: this covers the *host* Claude Code install.  The
+;;; containerised launcher is a separate package in (containers claude),
+;;; which does its own MCP registration inside the container.
+
 (define-module (peteches home modules claude)
   #:use-module (gnu home services)
   #:use-module (gnu services)

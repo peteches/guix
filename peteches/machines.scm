@@ -1,3 +1,30 @@
+;;; peteches/machines.scm — `guix deploy' targets for every managed VM.
+;;;
+;;; Single source of truth for deployment: each VM's operating-system
+;;; record (from (peteches systems …)) is paired with the SSH details
+;;; needed to reach it.  %all-machines is what `scripts/deploy.scm' filters
+;;; and what `guix deploy -e' ultimately evaluates.
+;;;
+;;; Conventions:
+;;;   - One `define-public <name>-machine' per VM, added to %all-machines.
+;;;   - `host-name' is the static LAN IP (see proxmox-vms.org for the
+;;;     authoritative inventory).  VMs are addressed by IP, not DNS, so a
+;;;     pihole outage cannot break deploys.
+;;;   - `user' is always "peteches", who has passwordless sudo via the
+;;;     sudoers-file set in (peteches systems vm-base).
+;;;   - `host-key' can only be filled in after the VM's first boot:
+;;;         ssh-keyscan <ip>
+;;;     Use a TODO placeholder until then; `guix deploy' verifies it and
+;;;     refuses to connect on a mismatch.
+;;;
+;;; Desktops (nug, nyarlothotep) are deliberately absent — they are
+;;; reconfigured locally with `guix system reconfigure', not deployed.
+;;;
+;;; scripts/deploy.scm keeps its own %machine-names alist mapping these
+;;; records back to their variable names.  Adding a machine here means
+;;; adding it there too, or --hosts filtering will error with
+;;; "Unknown machine".
+
 (define-module (peteches machines)
   #:use-module (gnu machine)
   #:use-module (gnu machine ssh)

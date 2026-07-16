@@ -1,3 +1,21 @@
+;;; peteches/deploy.scm — LEGACY.  Do not edit; do not deploy with this.
+;;;
+;;; This is a superseded `guix deploy' manifest.  It predates
+;;; (peteches machines) and lists only 5 of the machines that exist today
+;;; (prometheus, grafana, loki, pihole, git), with the machine records
+;;; duplicated verbatim.  Deploying it would leave every other VM
+;;; untouched while silently succeeding, which is why it is kept inert
+;;; rather than wired into anything.
+;;;
+;;; The supported entry points are:
+;;;   scripts/deploy.scm            — wrapper with --hosts filtering
+;;;   (peteches machines)           — %all-machines, the single source of truth
+;;;
+;;; NOTE: docs/backups.org and proxmox-vms.org still tell you to run
+;;; `guix deploy -L . peteches/deploy.scm'.  That guidance is stale —
+;;; use scripts/deploy.scm instead.  This file is a deletion candidate
+;;; once those docs are corrected.
+
 (define-module (peteches deploy))
 
 (use-modules (gnu machine)

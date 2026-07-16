@@ -1,3 +1,43 @@
+;;; peteches/channels/base.scm — %base-channels, the pinned channel set.
+;;;
+;;; THE FOUR CHANNEL FILES.  Pinned commits are duplicated across four files
+;;; in this directory, and nothing enforces agreement between them.  Update
+;;; all four together — the `/update-channels' skill (.claude/skills/) exists
+;;; to do exactly this, and is the preferred route.
+;;;
+;;;   base.scm         (this file)  %base-channels.  Module; used by
+;;;                    nyarlothotep's home config and by nug.scm below.
+;;;                    THE REFERENCE — update here first.
+;;;   nug.scm          %nug-channels = %base-channels + guix-hpc-non-free.
+;;;                    Module; used by nug's home config.
+;;;   manual.scm       Plain list mirroring %nug-channels (all 7 channels).
+;;;                    No define-module, so it works with `guix pull -C'.
+;;;   channels-nug.scm Plain list, but only the `peteches' channel — NOT a
+;;;                    mirror of the above despite the name.  Pulling with
+;;;                    it leaves guix itself unpinned.
+;;;
+;;; The `channels-nug.scm' / `manual.scm' naming is misleading: manual.scm is
+;;; the full plain list you probably want for `guix pull -C' or for
+;;; symlinking to ~/.config/guix/channels.scm.  (CLAUDE.md's instruction to
+;;; use channels-nug.scm for this predates the split.)
+;;;
+;;; Channels are pinned by commit + verified by channel introduction
+;;; (an OpenPGP fingerprint + the first signed commit).  The introduction is
+;;; a property of the channel, not of the pin — change the commit on an
+;;; update, never the introduction.
+;;;
+;;; `guix' is pinned here too, so `guix pull' with these channels replaces
+;;; the default guix channel rather than adding to it.
+;;;
+;;; The `peteches' channel carries the custom packages, home services and
+;;; system services this repo consumes as (peteches packages …),
+;;; (peteches home services …) and (peteches services …).  Those live in
+;;; codeberg.org/peteches/guix-channel, NOT in this repo — editing a service
+;;; type means editing that channel and re-pinning its commit here.
+;;;
+;;; The trailing bare `%base-channels' lets the file double as a plain
+;;; channels list for `guix pull -C peteches/channels/base.scm'.
+
 (define-module (peteches channels base)
   #:use-module (gnu)
   #:use-module (guix channels)

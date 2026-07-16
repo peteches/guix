@@ -1,3 +1,19 @@
+;;; peteches/packages/desktop-scripts.scm — the desktop helper scripts.
+;;;
+;;; The only package defined in this repo's peteches/packages/ directory —
+;;; everything else under (peteches packages …) comes from the external
+;;; peteches guix channel.  It lives here because its source is configs/bin/
+;;; in this repo.
+;;;
+;;; Consumed by (peteches home modules base) [base-packages] and by
+;;; (peteches home modules theming), which file-appends the cursor scripts
+;;; and runs dms-random-wallpaper hourly from mcron.
+;;;
+;;; The #:install-plan lists scripts EXPLICITLY.  Adding a file to
+;;; configs/bin/ is not enough — it must be named here or it will not be
+;;; installed, silently.  The `make-executable' phase then chmods everything
+;;; in bin/, since copy-build-system does not preserve the +x bit.
+
 (define-module (peteches packages desktop-scripts)
   #:use-module (guix gexp)
   #:use-module (guix packages)

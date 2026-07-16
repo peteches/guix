@@ -1,3 +1,26 @@
+;;; peteches/channels/manual.scm — plain channel list for `guix pull -C'.
+;;;
+;;; Mirrors %nug-channels from (peteches channels nug) — i.e. %base-channels
+;;; plus guix-hpc-non-free — as a bare list with no define-module, so it can
+;;; be used directly:
+;;;
+;;;   guix pull -C peteches/channels/manual.scm
+;;;
+;;; or symlinked to ~/.config/guix/channels.scm.  This is the full list;
+;;; channels-nug.scm in this directory holds only the `peteches' channel
+;;; despite its name.
+;;;
+;;; Kept in sync BY HAND with base.scm / nug.scm — see the header in
+;;; base.scm for the full picture, and prefer the `/update-channels' skill
+;;; over editing pins here directly.
+;;;
+;;; Because this file has no module, it cannot be loaded by bare `guile'
+;;; for validation (the `channel' and `make-channel-introduction' macros
+;;; need a full Guix environment).  Validate it with a read-only parse:
+;;;
+;;;   guile -c '(call-with-input-file "peteches/channels/manual.scm"
+;;;               (lambda (p) (let loop () (unless (eof-object? (read p)) (loop)))))'
+
 (list
  (channel
   (name 'sops-guix)

@@ -1,3 +1,13 @@
+;;; peteches/channels/nug.scm — %nug-channels: %base-channels + HPC non-free.
+;;;
+;;; nug's home config uses this; nyarlothotep uses %base-channels directly.
+;;; The only addition is guix-hpc-non-free, for nug's CUDA/GPU work.  Note
+;;; it has no channel introduction, so its commits are not signature-verified
+;;; the way every channel in base.scm is.
+;;;
+;;; Kept in sync by hand with base.scm / manual.scm / channels-nug.scm — see
+;;; the header in base.scm, and prefer the `/update-channels' skill.
+
 (define-module (peteches channels nug)
   #:use-module (guix channels)
   #:use-module (peteches channels base)

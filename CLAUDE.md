@@ -45,8 +45,11 @@ guix system build -L . --dry-run peteches/systems/<host>.scm
 # Build a QCOW2 disk image for a VM
 guix system image -L . -t qcow2 peteches/systems/<vm>.scm
 
-# Pull channels (updates all pinned channels including peteches channel)
-guix pull -C peteches/channels/channels-nug.scm
+# Pull channels (updates all pinned channels including peteches channel).
+# Use manual.scm — it is the full plain list. Despite its name,
+# channels-nug.scm contains ONLY the peteches channel and would leave
+# guix itself unpinned. See "Channels" below.
+guix pull -C peteches/channels/manual.scm
 
 # Deploy to all VMs (or filter with --hosts)
 scripts/deploy.scm
@@ -63,7 +66,49 @@ To validate that a module loads without errors, load it in guile:
 guile -L . -c '(use-modules (peteches systems vm-base))'
 ```
 
+The plain-list channel files (`manual.scm`, `channels-nug.scm`) have no
+`define-module` and use Guix record macros, so bare `guile` cannot load them.
+Validate with a read-only parse instead:
+```bash
+guile -c '(call-with-input-file "peteches/channels/manual.scm"
+            (lambda (p) (let loop () (unless (eof-object? (read p)) (loop)))))'
+```
+
 ## Architecture
+
+### Where code actually lives
+
+Three sources are easy to confuse when reading a `#:use-module` line:
+
+| Module prefix | Where it lives |
+|---|---|
+| `(gnu ...)`, `(guix ...)` | upstream Guix |
+| `(peteches services ...)`, `(peteches home services ...)`, `(peteches packages ...)` | the **external `peteches` channel** (codeberg.org/peteches/guix-channel), pinned in `peteches/channels/base.scm` — **not in this repo** |
+| `(peteches systems ...)`, `(peteches home modules ...)`, `(peteches home configs ...)`, `(peteches channels ...)`, `(containers ...)` | this repo |
+
+So `alloy-service-type`, `restic-vm-backup-service-type`, `firewall-service-type`,
+`tailscale-service-type`, `home-git-service-type` and friends are **defined in the
+channel**. This repo only supplies configuration *values* for them. Changing a
+service type means editing that channel and re-pinning its commit here.
+
+`peteches/packages/desktop-scripts.scm` is the one exception — a package defined
+in this repo, because its source (`configs/bin/`) is here.
+
+### Two OS constructors
+
+| Constructor | Module | Used by |
+|---|---|---|
+| `make-vm-os` | `peteches/systems/vm-base.scm` | every headless Proxmox VM |
+| `make-base-os` | `peteches/systems/base.scm` | the two desktops (nug, nyarlothotep) |
+
+Each system file ends with a **bare expression** naming its OS record
+(e.g. `loki-os`). `guix system build FILE` uses that last value; `guix deploy`
+imports the module and reads the exported variable. Omit it and `guix system
+build` breaks. VMs are deployed via `scripts/deploy.scm`; the desktops are
+reconfigured locally and are deliberately absent from `peteches/machines.scm`.
+
+Each module's header comment documents its keyword arguments — read
+`vm-base.scm` before adding or changing a VM.
 
 ### Directory Layout
 
@@ -72,21 +117,24 @@ guile -L . -c '(use-modules (peteches systems vm-base))'
 | `peteches/systems/` | OS configurations per host |
 | `peteches/home/configs/` | Host-specific home-environment files (`nug.scm`, `nyarlothotep.scm`) |
 | `peteches/home/modules/` | Shared home config fragments — `base.scm` plus focused modules (ssh, gpg, theming, ai, etc.) |
-| `peteches/monitoring/` | Guix gexp helpers for monitoring (e.g. Loki event sender) |
-| `peteches/channels/` | Channel lock files |
-| `peteches/utils.scm` | Shared utilities |
+| `peteches/monitoring/` | Loki gexp helper — **dead code**, not exported, not called |
+| `peteches/channels/` | Channel lock files (four of them — see "Channels") |
+| `peteches/packages/` | `desktop-scripts.scm` — the only package defined in this repo |
+| `peteches/repository.scm` | `repo-directory` / `source-path` — resolve repo assets via `%load-path` |
+| `peteches/utils.scm` | **Legacy**, unused; `gather-manifest-packages` reads a `manifests/` dir that no longer exists |
+| `peteches/deploy.scm` | **Legacy** `guix deploy` manifest, superseded by `machines.scm` — do not use |
 | `peteches/machines.scm` | Named `machine` records + `%all-machines` list |
 | `peteches/grafana-dashboards/` | Grafana dashboard JSON definitions |
+| `configs/` | Non-Scheme assets (emacs, hypr, matugen, nyxt, wofi, alacritty, bin, claude, dms) referenced via `repo-directory` |
 | `age-keys/` | SOPS age public keys, one per VM |
 | `secrets/` | SOPS-encrypted secrets per host/group/shared — see `docs/secrets-management.org` |
 | `infra/` | Terraform infrastructure-as-code for Proxmox VM provisioning |
 | `ci/` | Concourse CI pipeline and task definitions |
 | `containers/` | Container definitions |
-| `scripts/deploy.scm` | `guix deploy` wrapper with `--hosts` filtering |
-| `channels.scm` | Plain channels list for `guix pull -C` (mirrors `channels-nug.scm`) |
-| `proxmox-vms.org` | VM inventory and IP reference table |
+| `scripts/deploy.scm` | `guix deploy` wrapper with `--hosts` filtering — **the supported deploy entry point** |
+| `proxmox-vms.org` | VM inventory and IP reference table — **authoritative** for IPs |
 | `docs/` | Architecture documentation |
-| `skills/` | Claude Code automation skills |
+| `.claude/skills/` | Claude Code automation skills (`update-channels`) |
 
 ### Complete File Map
 
@@ -116,7 +164,9 @@ guile -L . -c '(use-modules (peteches systems vm-base))'
 | `concourse-db.scm` | Concourse CI database VM — PostgreSQL (192.168.51.198) |
 | `concourse-web01.scm` | Concourse CI web frontend — ATC (:8080), TSA (:2222) (192.168.51.199) |
 | `concourse-worker01.scm` | Concourse CI worker VM (192.168.51.200) |
-| `vault.scm` | HashiCorp Vault secrets management VM (192.168.51.201, port 8200) |
+| `vault.scm` | HashiCorp Vault secrets management VM (192.168.51.201, port 8200) — does not auto-unseal |
+| `critical-grind-outline.scm` | Outline wiki VM — Podman container + local PostgreSQL/Redis (192.168.51.203, :3000) |
+| `plane.scm` | Plane project management VM — Podman containers + PostgreSQL/Redis/RabbitMQ (192.168.51.204, :80) |
 | `nug-substitute-key.pub` | SSH public key for nug's local Guix substitute server |
 
 #### `peteches/home/configs/`
@@ -139,11 +189,12 @@ Shared fragments — imported by host configs and composed into `base-packages` 
 | `gpg.scm` | `(peteches home modules gpg)` — `base-gpg-service` with pinentry dispatch script |
 | `syncthing.scm` | `(peteches home modules syncthing)` — `base-syncthing-service` (org folder + devices) |
 | `theming.scm` | `(peteches home modules theming)` — `base-theming-services` list (cursor, wallpaper, matugen, DMS plugin) |
-| `ai.scm` | `(peteches home modules ai)` — `base-ai-service` (MCP config for Claude Code and ECA) |
+| `ai.scm` | `(peteches home modules ai)` — `base-ai-service`: ECA config **only**. Claude Code's MCP servers live in `claude.scm`. Its anvil path is stale/broken |
+| `claude.scm` | `(peteches home modules claude)` — defines `home-claude-service-type`: symlinks `configs/claude/defaults` into `~/.claude/` and registers MCP servers via `claude mcp add` |
 | `mako.scm` | `(peteches home modules mako)` — `base-mako-config` and `base-mako-service` |
-| `firefox.scm` | `(peteches home modules firefox)` — Firefox profiles and extensions |
+| `firefox.scm` | `(peteches home modules firefox)` — Firefox profiles. `base-firefox-global-prefs`/`-extensions` are **unused**, so uBlock/DarkReader/PassFF are not installed |
 | `git.scm` | `(peteches home modules git)` — `peteches-gpg-for-git` package and `git-config` |
-| `scoreplay.scm` | `(peteches home modules scoreplay)` — `%scoreplay-ssh-hosts` |
+| `scoreplay.scm` | `(peteches home modules scoreplay)` — `%scoreplay-ssh-hosts`. **Unused**: `ssh.scm` never splices it in, so these hosts are absent from `~/.ssh/config` |
 | `mpv.scm` | `(peteches home modules mpv)` — `%mpv-profiles` |
 | `ssh-authorized-keys` | SSH authorized keys (co-located with `ssh.scm` for `local-file`) |
 | `firefox-extensions/` | Firefox .xpi extensions (uBlock, DarkReader, PassFF, AWS SSO) |
@@ -154,27 +205,35 @@ Shared fragments — imported by host configs and composed into `base-packages` 
 
 | File | Purpose |
 |---|---|
-| `loki.scm` | `loki-event-gexp` — gexp helper for sending log events to Loki from G-expressions |
+| `loki.scm` | `loki-event-gexp` — **dead code**: not exported and never called. Routine log shipping is done by the Alloy service on each VM, not this |
 
 #### `peteches/channels/`
 
+Four files carrying duplicated pinned commits, kept in sync **by hand**.
+Prefer the `/update-channels` skill over editing pins directly.
+
 | File | Purpose |
 |---|---|
-| `base.scm` | `%base-channels` — pinned: sops-guix, guix-science, nonguix, simendsjo, peteches |
-| `nug.scm` | Guile module exporting `%nug-channels` (extends `%base-channels`) |
-| `channels-nug.scm` | Plain channels list for `guix pull -C` — no `define-module`, safe to symlink to `~/.config/guix/channels.scm` |
+| `base.scm` | `%base-channels` — the reference. Module. Pinned: sops-guix, guix-science, guix-science-nonfree, nonguix, guix, peteches |
+| `nug.scm` | Module exporting `%nug-channels` = `%base-channels` + guix-hpc-non-free |
+| `manual.scm` | **Full** plain channels list (all 7) for `guix pull -C` / symlinking to `~/.config/guix/channels.scm` |
+| `channels-nug.scm` | Plain list with **only** the `peteches` channel — *not* a mirror of the above, despite the name. Pulling with it leaves guix unpinned |
 
 #### Other notable files
 
 | File | Purpose |
 |---|---|
 | `peteches/machines.scm` | Named `machine` records + `%all-machines` list |
-| `peteches/utils.scm` | `gather-manifest-packages`, `apply-template-file` |
-| `scripts/deploy.scm` | `guix deploy` wrapper — parses `--hosts` patterns, filters `%all-machines`, passes result via `-e` |
+| `peteches/repository.scm` | `repo-directory` / `source-path` — resolve repo assets through `%load-path` |
+| `peteches/utils.scm` | **Legacy/unused**: `gather-manifest-packages` (reads a nonexistent `manifests/` dir, hard-codes an absolute path), `apply-template-file` |
+| `peteches/deploy.scm` | **Legacy** `guix deploy` manifest listing only 5 of 17 machines. Superseded by `machines.scm` + `scripts/deploy.scm`. `docs/backups.org` and `proxmox-vms.org` still reference it — that guidance is stale |
+| `peteches/packages/desktop-scripts.scm` | `peteches-desktop-scripts` — packages `configs/bin/`. Scripts must be listed explicitly in `#:install-plan` |
+| `scripts/deploy.scm` | `guix deploy` wrapper — parses `--hosts` patterns, filters `%all-machines`, passes result via `-e`. Keeps its own `%machine-names` alist that must be updated alongside `machines.scm` |
 | `scripts/sync-restic-keys.sh` | Syncs restic backup keys to all VMs |
 | `proxmox-vms.org` | VM inventory: IPs, VMIDs, purpose — authoritative IP reference |
-| `channels.scm` | Root-level plain channels list (mirrors `peteches/channels/channels-nug.scm`) |
-| `containers/postgres.scm` | PostgreSQL container definition |
+| `containers/claude.scm` | `claude-container` (runs claude-code in `guix shell --container`), `emacs-anvil`, `comfyui-mcp` packages |
+| `containers/guix-builder.scm` | Docker image for Concourse CI tasks — `registry.ts.peteches.co.uk/guix-builder`, referenced by `ci/tasks/*.yml` |
+| `containers/postgres.scm` | Throwaway PostgreSQL test container — not deployed, nothing imports it |
 | `peteches/grafana-dashboards/node-exporter.json` | Node Exporter Grafana dashboard |
 | `peteches/grafana-dashboards/pihole.json` | Pi-hole Grafana dashboard |
 | `peteches/grafana-dashboards/proxmox.json` | Proxmox Grafana dashboard |
@@ -183,7 +242,7 @@ Shared fragments — imported by host configs and composed into `base-packages` 
 | `docs/backups.org` | Backup strategy documentation |
 | `docs/secrets-management.org` | SOPS + age keys workflow |
 | `docs/infrastructure.org` | Terraform + Concourse CI overview |
-| `skills/guix-update/` | Claude Code skill for updating pinned channel commits |
+| `.claude/skills/update-channels/` | Claude Code skill for updating pinned channel commits across all four channel files |
 
 ### System Configurations (`peteches/systems/`)
 
@@ -213,21 +272,44 @@ Key `make-vm-os` parameters:
 - `restic-config` — attach restic backup service
 - `sops-secrets` — list of SOPS secret files to decrypt at boot
 - `with-nonguix?` — registers nonguix substitute server
-- `with-nug-offload?` — enable build offload to nug
+- `with-nvidia?` — nonguix NVIDIA driver + CUDA (used by `jellyfin.scm` for NVENC)
+- `with-nug-offload?` (default `#t`) — enable build offload to nug. **Requires both** a `guix-offload-key` sops-secret on the VM *and* its `guix-offload` public key in `nug.scm`'s authorized-keys. Several VMs have only one half; offload then fails and falls back to local builds
 
 VM system files should `(define-public <name>-os ...)` and end with `<name>-os` as the final expression so both `guix system build FILE` and `guix deploy` (via module import) work.
 
-All VMs use `/dev/vda` as the root disk. See `proxmox-vms.org` for IPs and VMIDs, and `docs/infrastructure.org` for the Terraform provisioning workflow.
+All VMs use `/dev/vda` as the root disk. The LAN is a **/23** (`192.168.50.0/23`), so VM addresses are written `192.168.51.x/23` — the gateway is `192.168.50.1`. See `proxmox-vms.org` for IPs and VMIDs, and `docs/infrastructure.org` for the Terraform provisioning workflow.
 
-### Home Configurations (`peteches/home-configs/`)
+The base firewall (`%vm-base-firewall`) has a **drop** input policy and opens only ssh (22), node-exporter (9100) and ICMP. A service that starts but is unreachable is usually a missing `simple-service … firewall-service-type` extension — see `git.scm` or `rustdesk.scm` for the pattern.
 
-`base.scm` is the main home environment. It composes feature modules from the external `peteches` guix channel (imported as `(peteches home services ...)`) — covering emacs, git, hyprland, waybar, aws, ai tools, and more. Host-specific config fragments (mako.scm, firefox.scm, hyprland.scm, etc.) remain in this directory and are composed into host-specific configs like `nug.scm`.
+### Home Configurations (`peteches/home/`)
+
+`peteches/home/modules/base.scm` is the orchestrator: it exports `base-packages`
+and `base-services`, composing feature modules from the external `peteches` guix
+channel (imported as `(peteches home services ...)`) — emacs, git, hyprland, aws,
+nyxt, wofi, and more. The focused modules alongside it (`ssh.scm`, `gpg.scm`,
+`theming.scm`, `mako.scm`, `ai.scm`, `claude.scm`, …) supply configuration values.
+
+`peteches/home/configs/nug.scm` and `nyarlothotep.scm` append host-specific
+extras and each evaluate to a bare `home-environment` record.
+
+Non-Scheme assets under `configs/` are located via `repo-directory` /
+`source-path` from `(peteches repository)`, which searches `%load-path` —
+never by relative path, which would break under `-L .` and in worktrees.
 
 ### Channels (`peteches/channels/`)
 
-`base.scm` exports `%base-channels` — a pinned list including: `sops-guix`, `guix-science`, `nonguix`, `simendsjo`, and the `peteches` channel (which provides custom packages, home services, and system services). Update commits here to upgrade channels.
+`base.scm` exports `%base-channels` — pinned: `sops-guix`, `guix-science`,
+`guix-science-nonfree`, `nonguix`, `guix` itself, and the `peteches` channel
+(which provides the custom packages, home services and system services this repo
+consumes). `nug.scm` adds `guix-hpc-non-free` on top.
 
-Use `channels-nug.scm` (plain list, no `define-module`) with `guix pull -C` or symlink it to `~/.config/guix/channels.scm`.
+**Pins are duplicated across four files** (`base.scm`, `nug.scm`, `manual.scm`,
+`channels-nug.scm`) with nothing enforcing agreement. Update them together —
+use the `/update-channels` skill.
+
+For `guix pull -C` or symlinking to `~/.config/guix/channels.scm`, use
+**`manual.scm`** (the full plain list). `channels-nug.scm` holds only the
+`peteches` channel despite its name.
 
 ### Adding a New VM
 
@@ -252,20 +334,39 @@ When creating a new VM system config (`peteches/systems/<name>.scm`), always upd
 
 3. **`peteches/machines.scm`** — add a `define-public <name>-machine` entry and include it in `%all-machines`. The SSH `host-key` can only be filled in after the VM's first boot (`ssh-keyscan <ip>`); use a `TODO` placeholder until then.
 
-4. **`peteches/systems/monitored-hosts.scm`** — add the VM's node-exporter endpoint so Prometheus scrapes it automatically. The `node` scrape job in prometheus.scm reads this list dynamically; no change to prometheus.scm is needed for node-exporter coverage.
+4. **`scripts/deploy.scm`** — add the machine to the `%machine-names` alist. It maps machine records back to variable names for the `-e` expression; omitting it makes `--hosts` filtering fail with `Unknown machine`.
 
-5. **`peteches/systems/prometheus.scm`** — if the VM's service exposes Prometheus metrics on a service-specific port (beyond node-exporter's 9100), add a dedicated `prometheus-scrape-config` entry. Examples: Loki on `:3100`, Grafana on `:3000`. Node-exporter coverage is already automatic via `monitored-hosts.scm`.
+5. **`peteches/systems/monitored-hosts.scm`** — add the VM's node-exporter endpoint so Prometheus scrapes it automatically. The `node` scrape job in prometheus.scm reads this list dynamically; no change to prometheus.scm is needed for node-exporter coverage.
 
-6. **`proxmox-vms.org`** — add a row to the VM table in the Overview section.
+6. **`peteches/systems/prometheus.scm`** — two separate things:
+   - Add the VM's Alloy endpoint (`<ip>:12345`) to the hand-written `alloy` job. This is **not** generated from `monitored-hosts.scm` and is the usual omission.
+   - If the VM's service exposes metrics on a service-specific port (beyond node-exporter's 9100), add a dedicated `prometheus-scrape-config`. Examples: Loki on `:3100`, Grafana on `:3000`.
 
-7. **`infra/terraform/main.tf`** — add a `module "<name>"` block using the `proxmox-vm` module. See `docs/infrastructure.org` for the full provisioning workflow (Terraform creates the VM; Guix deploys the OS).
+7. **`proxmox-vms.org`** — add a row to the VM table in the Overview section.
 
-8. **`age-keys/<name>.pub`** — after first boot, retrieve the VM's age public key and commit it. Add the corresponding entry to `.sops.yaml`. See `docs/secrets-management.org`.
+8. **`infra/terraform/main.tf`** — add a `module "<name>"` block using the `proxmox-vm` module. See `docs/infrastructure.org` for the full provisioning workflow (Terraform creates the VM; Guix deploys the OS).
 
-### Utilities (`peteches/utils.scm`)
+9. **`age-keys/<name>.pub`** — after first boot, retrieve the VM's age public key and commit it. Add the corresponding entry to `.sops.yaml`. See `docs/secrets-management.org`.
 
-- `gather-manifest-packages` — reads manifest `.scm` files from `manifests/` directory and converts them to package+output pairs for inclusion in home/system package lists.
-- `apply-template-file` — reads a file and substitutes `${KEY}` placeholders from an alist; used for generating config files from templates.
+10. **Build offload** — `make-vm-os` enables it by default. Either add a `guix-offload-key` sops-secret (from `secrets/hosts/<name>/guix-build.yaml`) **and** the VM's `guix-offload` public key to `nug.scm`'s authorized-keys, or pass `#:with-nug-offload? #f`. Half-wiring it fails silently.
+
+Pick a free IPv6 suffix too, if the VM needs one. The `2a10:d582:ef59::`
+addresses are assigned by hand and tracked **only** in the `#:ipv6-address`
+lines of `peteches/systems/*.scm` — `proxmox-vms.org` records IPv4 only, so
+nothing checks for collisions. Check the current allocation first:
+
+```bash
+command grep -rn '#:ipv6-address' peteches/systems/
+```
+
+### Utilities (`peteches/utils.scm`) — legacy
+
+Both exports are unreferenced and should be treated as dead code:
+
+- `gather-manifest-packages` — reads manifest `.scm` files from a `manifests/` directory that **no longer exists**, and hard-codes the absolute path `/home/peteches/area_51/guix`, so it cannot work from a worktree.
+- `apply-template-file` — substitutes `${KEY}` placeholders from an alist. Unused.
+
+For resolving repo-relative paths, use `(peteches repository)` instead.
 
 ## Editing Lisp / Scheme / Guile Code
 

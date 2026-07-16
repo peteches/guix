@@ -1,4 +1,37 @@
-;; base.scm — reusable base with grouped flags, gtkgreet greeter, and sane defaults
+;; base.scm — desktop/laptop base OS: grouped feature flags, gtkgreet
+;; greeter, libvirt, Tor, Tailscale.  The counterpart to make-vm-os in
+;; (peteches systems vm-base), which serves the headless Proxmox VMs.
+;;
+;; Used by exactly two hosts: nug.scm (desktop, NVIDIA, build server) and
+;; nyarlothotep.scm (laptop, AMD).  Unlike the VMs these are reconfigured
+;; locally (`guix system reconfigure'), not deployed — they are not in
+;; (peteches machines).
+;;
+;; make-base-os keyword arguments
+;; ------------------------------
+;;   #:host-name #:bootloader #:file-systems  (required)
+;;   #:mapped-devices   LUKS/LVM mappings — both hosts have encrypted roots.
+;;   #:kernel           defaults to `linux' (nonguix), not linux-libre.
+;;   #:firmware         both hosts pass (list linux-firmware).
+;;   #:users-extra #:extra-services #:extra-packages   composition points.
+;;   #:laptop?          adds TLP, and thermald when intel-cpu? too.
+;;   #:intel-cpu?       DEFAULT #t — adds intel-microcode and the
+;;                      intel_iommu=on / iommu=pt kernel args.  nyarlothotep
+;;                      is AMD and must pass #f.
+;;   #:with-nvidia?     nonguix driver + CUDA, blacklists nouveau, and swaps
+;;                      the Hyprland launcher for the GLVND-prefixed variant.
+;;   #:with-docker?     containerd + docker, and adds peteches to the docker
+;;                      group.  Combined with with-nvidia? it also pulls in
+;;                      the nvidia container toolkit.
+;;   #:with-printing? #:with-bluetooth?   optional services.
+;;   #:with-nonguix?    register the nonguix substitute server.
+;;   #:offload-builds?  DEFAULT #t — offload to nug.  nug itself passes #f
+;;                      (it would otherwise offload to itself).
+;;
+;; Display stack: `without-gdm' strips GDM out of %desktop-services and
+;; points guix at nug's local substitute server.  greetd runs gtkgreet inside
+;; cage on VT7, launching a Hyprland session.  There is deliberately no
+;; dbus-run-session wrapper — user sessions get DBus from dbus-service-type.
 
 (define-module (peteches systems base)
   ;; Core Guix/Guile
@@ -60,6 +93,12 @@
   #:use-module (peteches services tailscale)
   #:use-module (peteches packages nvidia-container-runtime)
   #:use-module (peteches packages hyprland)
+  ;; NOTE: `greetd-gtkgreet-service' (singular) is exported but no such
+  ;; variable is defined below — the actual definition is
+  ;; `greetd-gtkgreet-services' (plural).  Guile only reports this as a
+  ;; warning at compile time and errors at the point of use, so nothing has
+  ;; noticed: make-base-os calls the plural name internally and no other
+  ;; module imports the singular one.  Importing it will fail.
   #:export (make-base-os
             %peteches-user
             %common-services

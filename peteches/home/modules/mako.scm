@@ -1,3 +1,18 @@
+;;; peteches/home/modules/mako.scm — mako notification daemon config.
+;;;
+;;; The colours set here are only fallbacks; the live palette comes from
+;;; ~/.cache/matugen/mako/colors.conf, regenerated on every wallpaper change
+;;; — see (peteches home modules theming) for the pipeline.
+;;;
+;;; The `anchor' field is abused, deliberately: the peteches channel's
+;;; home-mako-service-type serializes only the fields it knows about, and
+;;; offers no escape hatch for Mako-native directives.  `anchor' is the last
+;;; string field written to the config, so appending an `include=' line and
+;;; the [mode=do-not-disturb] section to its value is the only way to get
+;;; them in.  If the service type ever grows an `extra-content' field, move
+;;; them there — this will silently keep working, which is why it has not
+;;; been noticed.
+
 (define-module (peteches home modules mako)
   #:use-module (gnu services)
   #:use-module (peteches home services mako)

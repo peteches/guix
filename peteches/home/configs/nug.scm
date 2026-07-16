@@ -1,3 +1,32 @@
+;;; peteches/home/configs/nug.scm — home-environment for nug (desktop).
+;;;
+;;;   guix home -L . reconfigure peteches/home/configs/nug.scm
+;;;
+;;; Composes base-packages / base-services from (peteches home modules base)
+;;; with nug-only extras.  The file evaluates to a bare `home-environment'
+;;; record as its last expression — that is what `guix home' consumes.
+;;;
+;;; nug-specific:
+;;;   - NVIDIA/Steam/CUDA userspace, Blender, 3D-printing (lycheeslicer).
+;;;   - Three koboldcpp instances, one per model/port:
+;;;       5001 qwen2.5-coder  — the coding model; ECA points here
+;;;                             (see (peteches home modules ai)) and
+;;;                             $COMFYUI_URL/KoboldCpp ports are opened in
+;;;                             the firewall in (peteches systems base).
+;;;       5002 dolphin + SD   — chat + image gen
+;;;       5003 dolphin        — chat + image gen
+;;;     All bind host "::" (all interfaces) and serve HTTPS using the
+;;;     certbot-issued cert that peteches/systems/nug.scm's %fix-perms-hook
+;;;     concatenates into ~/.local/share/certs/nug.peteches.co.uk.pem.
+;;;     That deploy hook must run before these services can start.
+;;;   - wireplumber rules renaming two USB audio interfaces, matched on
+;;;     their PCI/USB topology path (api.alsa.card.longname).  These match a
+;;;     specific physical port; moving the device to another port silently
+;;;     stops the rule from applying.
+;;;   - %nug-channels (adds guix-hpc-non-free on top of %base-channels).
+;;;
+;;; nyarlothotep is the sibling config and stays deliberately lean.
+
 (define-module (peteches home configs nug)
   #:use-module (guix gexp)
   #:use-module (guix channels)

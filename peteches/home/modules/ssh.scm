@@ -1,3 +1,24 @@
+;;; peteches/home/modules/ssh.scm — ~/.ssh/config for every managed host.
+;;;
+;;; Two entries per VM by convention:
+;;;   "<name>"     → the static LAN IP, with user + identity-file.  Works
+;;;                  on the LAN and is what `guix deploy' effectively uses.
+;;;   "<name>.ts"  → <name>.spaniel-cordylus.ts.net, the Tailscale name.
+;;;                  Works from anywhere; no user/identity needed because
+;;;                  the "*" block and the agent cover it.
+;;;
+;;; Add both when provisioning a VM (see CLAUDE.md "Adding a New VM").
+;;; The IPs here duplicate peteches/machines.scm and proxmox-vms.org —
+;;; proxmox-vms.org is the authoritative inventory.
+;;;
+;;; Known gaps: `critical-grind-outline' has no .ts alias, and `pihole' has
+;;; no .ts alias, though both VMs run Tailscale.
+;;;
+;;; `authorized-keys' here populates ~/.ssh/authorized_keys on the *desktops*
+;;; from the co-located ssh-authorized-keys file (kept next to this module so
+;;; `local-file' can find it).  The VMs' authorized keys are set separately,
+;;; inline in (peteches systems vm-base).
+
 (define-module (peteches home modules ssh)
   #:use-module (gnu home services ssh)
   #:use-module (gnu services)
