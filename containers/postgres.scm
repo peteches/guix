@@ -1,3 +1,18 @@
+;;; containers/postgres.scm — throwaway PostgreSQL test container.
+;;;
+;;; A scratch operating-system for `guix system container' experiments, not
+;;; part of any deployment:
+;;;
+;;;   guix system container -L . containers/postgres.scm
+;;;
+;;; Nothing imports it and no machine in (peteches machines) uses it.  The
+;;; bootloader targets /dev/sdX and the root file-system label is
+;;; "does-not-matter" — both are placeholders required by the
+;;; operating-system record but ignored for containers.  pg_hba trusts
+;;; everything; do not repurpose this for anything reachable.
+;;;
+;;; The real Concourse database is peteches/systems/concourse-db.scm.
+
 (define-module (containers postgres))
 
 (use-modules (gnu))

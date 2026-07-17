@@ -1,3 +1,13 @@
+;;; peteches/utils.scm — assorted helpers.
+;;;
+;;; STATUS: both exports are currently unreferenced by the rest of the repo.
+;;; `gather-manifest-packages' additionally reads from a `manifests/'
+;;; directory that no longer exists, and hard-codes the absolute path
+;;; /home/peteches/area_51/guix, so it cannot work from a worktree or from
+;;; a checkout elsewhere.  Treat both as legacy: do not build on them
+;;; without first re-testing.  See (peteches repository) for the supported
+;;; way to resolve repo-relative paths.
+
 (define-module (peteches utils)
   #:use-module (gnu packages)
   #:use-module (gnu services)

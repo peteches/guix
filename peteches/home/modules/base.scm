@@ -1,3 +1,28 @@
+;;; peteches/home/modules/base.scm — the home-environment orchestrator.
+;;;
+;;; Exports `base-packages' and `base-services', which the two host configs
+;;; in peteches/home/configs/ append their own extras onto.  Everything
+;;; shared between nug and nyarlothotep belongs here or in one of the
+;;; focused sibling modules (ssh, gpg, theming, ai, claude, mako, …), which
+;;; this module composes.
+;;;
+;;; Three distinct sources of code, easy to confuse:
+;;;   (gnu home services …)      — upstream Guix.
+;;;   (peteches home services …) — the external `peteches' guix channel
+;;;                                (pinned in peteches/channels/base.scm).
+;;;                                NOT in this repo; to change a service
+;;;                                type you must edit the channel and
+;;;                                re-pin its commit.
+;;;   (peteches home modules …)  — this directory: configuration *values*
+;;;                                for those service types.
+;;;
+;;; Non-Scheme assets (configs/emacs, configs/hypr, configs/bin, …) are
+;;; located through (peteches repository)'s `repo-directory' / `source-path'
+;;; rather than relative paths.  See that module for why.
+;;;
+;;; Reconfigure with the `grhome' alias defined below, or:
+;;;   guix home -L . reconfigure peteches/home/configs/$(hostname).scm
+
 (define-module (peteches home modules base)
   ;; Guix / Home
   #:use-module (gnu home)

@@ -1,3 +1,25 @@
+;;; peteches/home/modules/ai.scm — ~/.config/eca/config.json for ECA.
+;;;
+;;; Scope: ECA only.  Claude Code's own MCP servers are registered by
+;;; `home-claude-service-type' in (peteches home modules claude); the two
+;;; are independent and both must be updated when an MCP server changes.
+;;;
+;;; Points ECA's code and chat agents at the local KoboldCpp instance on
+;;; nug (see the koboldcpp services in peteches/home/configs/nug.scm; port
+;;; 5001 is the qwen coder model).
+;;;
+;;; KNOWN STALE: `script-path' below points at
+;;; ~/.config/emacs/straight/repos/anvil.el/anvil-stdio.sh, a straight.el
+;;; checkout that no longer exists — anvil is now the `emacs-anvil' Guix
+;;; package (see the comment in (peteches home modules base) where
+;;; home-claude-service-type resolves it via file-append).  ECA's anvil MCP
+;;; servers are therefore broken; fix by substituting
+;;; #$(file-append emacs-anvil "/bin/anvil-stdio.sh") the way base.scm does.
+;;;
+;;; The JSON is assembled by string-append rather than a JSON writer, so
+;;; quoting mistakes here surface as an unparseable config at runtime, not
+;;; at reconfigure time.
+
 (define-module (peteches home modules ai)
   #:use-module (gnu home services)
   #:use-module (gnu packages bash)

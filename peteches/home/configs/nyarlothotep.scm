@@ -1,3 +1,19 @@
+;;; peteches/home/configs/nyarlothotep.scm — home-environment for the laptop.
+;;;
+;;;   guix home -L . reconfigure peteches/home/configs/nyarlothotep.scm
+;;;
+;;; Composes base-packages / base-services from (peteches home modules base)
+;;; with laptop-only extras, and evaluates to a bare `home-environment'
+;;; record as its last expression — that is what `guix home' consumes.
+;;;
+;;; Deliberately minimal next to nug.scm: the only real host-specific
+;;; content is the mpv config, tuned for the AMD iGPU (VAAPI + Vulkan via
+;;; gpu-next) and a 16 GiB RAM budget rather than nug's NVIDIA/nvdec setup
+;;; and multi-GiB caches.  Shared mpv profiles come from
+;;; (peteches home modules mpv).
+;;;
+;;; Channels: %base-channels, i.e. without nug's guix-hpc-non-free.
+
 (define-module (peteches home configs nyarlothotep)
   #:use-module (gnu services)
   #:use-module (gnu home)

@@ -1,5 +1,16 @@
-;; Plain channels file for nug — suitable for `guix pull -C` and symlinking
-;; to ~/.config/guix/channels.scm.  No define-module; evaluates to a channel list.
+;; Plain channels file — no define-module; evaluates to a channel list, so
+;; it works with `guix pull -C' and can be symlinked to
+;; ~/.config/guix/channels.scm.
+;;
+;; SCOPE: despite the name, this holds ONLY the `peteches' channel — it is
+;; not the nug channel set and not a mirror of (peteches channels nug).
+;; Pulling with it leaves guix itself, nonguix, sops-guix and the rest
+;; unpinned (guix falls back to its built-in default channel).  For the full
+;; pinned set use manual.scm in this directory instead.
+;;
+;; Kept in sync by hand with base.scm / nug.scm / manual.scm — see the header
+;; in base.scm, and prefer the `/update-channels' skill over editing the pin
+;; here directly.
 (list
  (channel
   (name 'peteches)

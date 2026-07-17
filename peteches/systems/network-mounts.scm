@@ -1,3 +1,20 @@
+;;; peteches/systems/network-mounts.scm — shared network filesystem mounts.
+;;;
+;;; `scoreplay-cifs-mount' is included in the #:file-systems list of both
+;;; desktops (nug.scm, nyarlothotep.scm).  It is NOT auto-mounted:
+;;; (mount? #f) means the entry is declared in /etc/fstab but left for
+;;; `mount /media/ScorePlay' on demand.  mount-may-fail? and (check? #f)
+;;; keep a missing NAS or absent credentials from blocking boot.
+;;;
+;;; The credentials file (/etc/samba/creds/nas-peteches-scoreplay) is
+;;; managed OUTSIDE Guix — it is not a SOPS secret and not in this repo, so
+;;; it must be placed by hand on a rebuilt machine or the mount fails with
+;;; EACCES.  This differs from the VMs' media mounts (jellyfin, arr,
+;;; downloads), which take credentials from /run/secrets via sops.
+;;;
+;;; uid/gid 1000 hard-codes the peteches user; `noperm' disables client-side
+;;; permission checks in favour of those uid/gid + mode options.
+
 (define-module (peteches systems network-mounts)
   #:use-module (gnu))
 

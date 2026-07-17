@@ -1,3 +1,21 @@
+;;; peteches/home/modules/git.scm — git config + the git-signing gpg wrapper.
+;;;
+;;; Two exports, both consumed by (peteches home modules base):
+;;;
+;;;   peteches-gpg-for-git — a package providing `gpg-for-git-peteches',
+;;;     referenced by the gpg.program setting in `git-config' below.  It
+;;;     execs gpg with --pinentry-mode loopback when Magit marks a remote
+;;;     TRAMP process with PINENTRY_USER_DATA=MAGIT_TRAMP=1, and plain gpg
+;;;     otherwise.  See (peteches home modules gpg) for the other half.
+;;;
+;;;   git-config — the `git-section' list rendered into ~/.config/git/config
+;;;     by the peteches channel's home-git-service-type.  Note commit.gpgSign
+;;;     is on globally, so a broken gpg wrapper blocks all commits.
+;;;
+;;; The trivial-build-system builder writes the script with `display' calls
+;;; rather than using (guix build utils), deliberately: it must also work in
+;;; the minimal build environments used when offloading to nug.
+
 (define-module (peteches home modules git)
   #:use-module (gnu packages bash)
   #:use-module (gnu packages gnupg)

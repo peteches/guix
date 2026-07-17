@@ -1,5 +1,27 @@
 ;; pihole.scm — Pi-hole DNS ad-blocking server on a Proxmox QEMU/KVM VM.
 ;; EFI bootloader, virtio root on vda2 with ESP on vda1, static networking.
+;;
+;; This VM is %vm-nameservers in (peteches systems vm-base) — every other VM
+;; resolves through it, so a broken deploy here breaks DNS fleet-wide.  That
+;; is why deploys address hosts by IP.  Upstream resolution is unbound
+;; (dns-upstreams is empty), with *.ts.net forwarded to Tailscale's
+;; MagicDNS at 100.100.100.100.
+;;
+;; `custom-hosts' is the LAN's forward DNS.  Add an entry here for each new
+;; VM (see CLAUDE.md "Adding a New VM"); it duplicates the IP list in
+;; peteches/machines.scm and peteches/home/modules/ssh.scm, with
+;; proxmox-vms.org as the authoritative inventory.
+;;
+;; IPv6 suffixes are assigned by hand and tracked nowhere but the
+;; #:ipv6-address lines in peteches/systems/*.scm — proxmox-vms.org records
+;; IPv4 only.  Before assigning one, check the current allocation:
+;;
+;;   command grep -rn '#:ipv6-address' peteches/systems/
+;;
+;; In use: ::1 gateway, ::100 prometheus, ::101 grafana, ::102 loki,
+;; ::103 git, ::104 jellyfin, ::105 pihole, ::106 caddy, ::107 rustdesk,
+;; ::108 vault, ::110 critical-grind-outline.  Free: ::109, ::111+.
+;; (prowlarr, arr, downloads, concourse-*, plane are IPv4-only.)
 
 (define-module (peteches systems pihole)
   #:use-module (guix gexp)
@@ -23,7 +45,7 @@
     (make-vm-os
      #:host-name "pihole.peteches.co.uk"
      #:ipv4-address "192.168.51.189/23"
-     #:ipv6-address "2a10:d582:ef59::101/64"
+     #:ipv6-address "2a10:d582:ef59::105/64"
      #:bootloader
      (bootloader-configuration
       (bootloader grub-efi-removable-bootloader)

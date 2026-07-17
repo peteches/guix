@@ -1,3 +1,27 @@
+;;; peteches/systems/common.scm — bindings shared by both OS constructors.
+;;;
+;;; Imported by (peteches systems base) and (peteches systems vm-base):
+;;;
+;;;   %nug-build-machine        build-machine record for offloading to nug.
+;;;                             It is a *gexp* (#~(build-machine …)), not a
+;;;                             record, because guix-configuration's
+;;;                             build-machines field is staged into
+;;;                             /etc/guix/machines.scm on the target host —
+;;;                             (guix scripts offload) is not available at
+;;;                             config-evaluation time.
+;;;   %authorize-coordinator-key  trusts nug + nyarlothotep to push signed
+;;;                             store items to a host, and registers nug's
+;;;                             guix-publish (port 3000) as a substitute
+;;;                             server.  Every VM gets this via make-vm-os;
+;;;                             without it `guix deploy' has to rebuild
+;;;                             everything on the target.
+;;;
+;;; `common-home-services' is a leftover: nothing imports it.  The live home
+;;; configuration is assembled in (peteches home modules base) instead, and
+;;; the two have drifted (this one still sets a pinentry-emacs gpg-agent,
+;;; whereas the home module uses the dispatching wrapper in
+;;; (peteches home modules gpg)).  Prefer the home module; do not add here.
+
 (define-module (peteches systems common)
    #:use-module (peteches utils)
    #:use-module (peteches home services desktop)

@@ -1,3 +1,25 @@
+;;; peteches/home/modules/firefox.scm — Firefox profiles.
+;;;
+;;; `base-firefox-profiles' is the live export, consumed by the
+;;; firefox-service-type in (peteches home modules base).  Three profiles:
+;;;   Default   — blank homepage.
+;;;   ScorePlay — work; AWS SSO container extension, Google apps as homepage.
+;;;   Other     — routed through the local Tor SOCKS proxy (127.0.0.1:9050,
+;;;               provided by tor-service-type in (peteches systems base)).
+;;;               DoH is forced off (network.trr.mode 5) and WebRTC disabled
+;;;               so neither can leak around the proxy.
+;;;
+;;; STATUS: `base-firefox-global-prefs' and `base-firefox-global-extensions'
+;;; are unused — nothing imports them, and base-firefox-global-prefs is
+;;; entirely commented out besides.  The .xpi files they reference
+;;; (DarkReader, uBlock Origin, PassFF) are therefore NOT installed into any
+;;; profile; only ScorePlay's AWS SSO extension is.  Wire them into the
+;;; firefox-configuration if you want them back.
+;;;
+;;; Extensions are pinned .xpi files under firefox-extensions/, keyed by
+;;; addon ID.  Updating one means replacing the file and its version in the
+;;; name — there is no automatic update path.
+
 (define-module (peteches home modules firefox)
   #:use-module (guix gexp)
   #:use-module (peteches home services firefox))

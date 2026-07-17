@@ -1,3 +1,22 @@
+;;; peteches/home/modules/gpg.scm — gpg-agent with a dispatching pinentry.
+;;;
+;;; `pinentry-peteches' is a generated program that picks a real pinentry at
+;;; runtime by inspecting $PINENTRY_USER_DATA, because one static choice
+;;; cannot serve both a Wayland session and a headless TRAMP connection:
+;;;
+;;;   MAGIT_TRAMP=1 / USE_TTY=1  → pinentry-tty
+;;;   USE_EMACS=1                → pinentry-emacs
+;;;   $WAYLAND_DISPLAY or $DISPLAY set → pinentry-qt
+;;;   otherwise                  → pinentry-tty
+;;;
+;;; Related but separate: git signing goes through the `gpg-for-git-peteches'
+;;; wrapper package in (peteches home modules git), which switches gpg to
+;;; --pinentry-mode loopback under MAGIT_TRAMP=1.  Both halves are needed —
+;;; this one picks the pinentry, that one bypasses it for remote signing.
+;;; `allow-loopback-pinentry' in extra-content is what permits the latter.
+;;;
+;;; ssh-support? #t means gpg-agent also serves as the SSH agent.
+
 (define-module (peteches home modules gpg)
   #:use-module (gnu home services gnupg)
   #:use-module (gnu packages gnupg)

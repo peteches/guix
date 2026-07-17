@@ -1,3 +1,25 @@
+;; nyarlothotep.scm — nyarlothotep.peteches.co.uk, the laptop.
+;;
+;;   sudo guix system -L . reconfigure peteches/systems/nyarlothotep.scm
+;;
+;; Reconfigured locally, not deployed — desktops are absent from
+;; (peteches machines) by design.  Built on make-base-os from
+;; (peteches systems base); see that module for what each flag does.
+;;
+;; Host specifics:
+;;   - AMD, so #:intel-cpu? #f — this drops intel-microcode and the
+;;     intel_iommu kernel args, which nug takes by default.
+;;   - #:laptop? #t enables TLP (thermald is Intel-only and stays off).
+;;   - LUKS container → LVM (guix-root + guix-swap).  `mapped-devices' is
+;;     bound once and reused: the file-systems and swap-space records both
+;;     need it in their `dependencies' so Shepherd unlocks before mounting.
+;;   - Unlike nug it runs the sops key generator + sops-secrets, giving it a
+;;     guix-offload key so it can act as a deploy coordinator alongside nug
+;;     (both are trusted by %authorize-coordinator-key).
+;;
+;; The file evaluates to a bare `operating-system' record as its last
+;; expression, which is what `guix system' consumes.
+
 (define-module (peteches systems nyarlothotep)
   #:use-module (gnu)
   #:use-module (guix gexp)

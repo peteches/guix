@@ -1,3 +1,28 @@
+;;; containers/guix-builder.scm — the Docker image Concourse CI tasks run in.
+;;;
+;;; Built and pushed as registry.ts.peteches.co.uk/guix-builder, referenced
+;;; by ci/tasks/*.yml (build-vm-image, generate-age-key):
+;;;
+;;;   guix system docker-image -L . containers/guix-builder.scm
+;;;
+;;; This is a *live* artifact, unlike containers/postgres.scm.  Adding a tool
+;;; a CI task needs means adding it to %extra-packages or the `packages'
+;;; list here and rebuilding/pushing the image.
+;;;
+;;; Why the pieces are as they are:
+;;;   - bootloader/file-systems are placeholders; `guix system docker-image'
+;;;     requires the fields but ignores them.
+;;;   - %base-services is kept solely for two side effects: guix-service-type
+;;;     creates the guixbuild group and guixbuilder accounts during image
+;;;     activation (so tasks can start guix-daemon with
+;;;     --build-users-group=guixbuild even though shepherd is not PID 1),
+;;;     and special-files-service-type provides /bin/sh.  Shepherd never runs.
+;;;   - qemu-minimal, not qemu: it supplies qemu-nbd/qemu-img for VM image
+;;;     work without dragging in LLVM.
+;;;   - %extra-packages goes through specification->package because those
+;;;     packages' module paths (golang-xyz, python-xyz, …) move between Guix
+;;;     versions, and a stale #:use-module would break the build.
+
 (define-module (containers guix-builder))
 
 (use-modules (gnu)

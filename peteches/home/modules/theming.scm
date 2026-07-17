@@ -1,3 +1,42 @@
+;;; peteches/home/modules/theming.scm — matugen wallpaper-derived theming.
+;;;
+;;; How the pipeline fits together:
+;;;
+;;;   wallpaper change (dms-random-wallpaper, hourly via mcron below)
+;;;     → matugen extracts a Material palette from the image
+;;;     → matugen renders each template in ~/.config/matugen/templates/
+;;;       to its output path under ~/.cache/matugen/
+;;;     → each app reads its generated fragment:
+;;;         wofi       ~/.config/wofi/matugen-colors.css
+;;;         hyprlock   ~/.cache/matugen/hyprlock-colours.config
+;;;         hyprland   ~/.cache/matugen/hypr-colors.lua
+;;;         emacs      ~/.cache/matugen/emacs/matugen-theme.el
+;;;         alacritty  ~/.cache/matugen/alacritty/colors.toml
+;;;         mako       ~/.cache/matugen/mako/colors.conf  (included via
+;;;                    the `anchor' hack in (peteches home modules mako))
+;;;         nyxt       ~/.cache/matugen/nyxt/theme.lisp   (+ a post_hook that
+;;;                    live-reloads it over nyxt --remote)
+;;;         shell      ~/.cache/matugen/colours.sh        (MATUGEN_* vars)
+;;;
+;;; The `matugen-dms-custom-templates' activation service writes
+;;; ~/.config/matugen/config.toml itself — it is generated, not a
+;;; local-file, because every path must be absolute and $HOME is only known
+;;; at activation time.  It then seeds a Catppuccin-ish *fallback* for each
+;;; output, guarded by `unless (file-exists? …)', so a fresh machine has
+;;; usable colours before the first wallpaper change and existing generated
+;;; themes are never overwritten.
+;;;
+;;; Templates themselves live in configs/matugen/templates/ and are
+;;; installed read-only from the store; the generated outputs are writable
+;;; files under ~/.cache.  Editing a theme means editing the template.
+;;;
+;;; KNOWN BUG: `hyprlock-colours' below builds
+;;;   (string-append hypr-cache-dir "hyprlock-colours.config")
+;;; with no "/" separator, yielding ~/.cache/matugenhyprlock-colours.config.
+;;; It is only used for the fallback-seeding existence check, so the effect
+;;; is a stray file and a fallback that never seeds — matugen itself writes
+;;; the correct path from config.toml.
+
 (define-module (peteches home modules theming)
   #:use-module (gnu home services)
   #:use-module (gnu home services mcron)
