@@ -11,6 +11,15 @@
 ;; Kept in sync by hand with base.scm / nug.scm / manual.scm — see the header
 ;; in base.scm, and prefer the `/update-channels' skill over editing the pin
 ;; here directly.
+;;
+;; A `define-module' header (matching this file's path) makes guix load it
+;; cleanly when it scans the `-L .' load path — `guix home'/`guix system'
+;; load every module under `-L .', and a plain list without a module header
+;; fails that load ("no code for module ...").  The trailing bare `(list ...)'
+;; still lets the file double as a plain channels list for `guix pull -C'.
+(define-module (peteches channels channels-nug)
+  #:use-module (guix channels))
+
 (list
  (channel
   (name 'peteches)

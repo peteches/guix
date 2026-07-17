@@ -10,11 +10,12 @@
 ;;;                    THE REFERENCE — update here first.
 ;;;   nug.scm          %nug-channels = %base-channels + guix-hpc-non-free.
 ;;;                    Module; used by nug's home config.
-;;;   manual.scm       Plain list mirroring %nug-channels (all 7 channels).
-;;;                    No define-module, so it works with `guix pull -C'.
-;;;   channels-nug.scm Plain list, but only the `peteches' channel — NOT a
-;;;                    mirror of the above despite the name.  Pulling with
-;;;                    it leaves guix itself unpinned.
+;;;   manual.scm       Mirrors %nug-channels (all 7 channels).  Module with a
+;;;                    define-module header but ending in a bare `(list ...)',
+;;;                    so it still works with `guix pull -C'.
+;;;   channels-nug.scm Only the `peteches' channel — NOT a mirror of the
+;;;                    above despite the name.  Pulling with it leaves guix
+;;;                    itself unpinned.  Also a module + trailing bare list.
 ;;;
 ;;; The `channels-nug.scm' / `manual.scm' naming is misleading: manual.scm is
 ;;; the full plain list you probably want for `guix pull -C' or for

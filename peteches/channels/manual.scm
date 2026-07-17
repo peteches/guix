@@ -1,8 +1,8 @@
 ;;; peteches/channels/manual.scm — plain channel list for `guix pull -C'.
 ;;;
 ;;; Mirrors %nug-channels from (peteches channels nug) — i.e. %base-channels
-;;; plus guix-hpc-non-free — as a bare list with no define-module, so it can
-;;; be used directly:
+;;; plus guix-hpc-non-free.  It has a `define-module' header but ends in a
+;;; bare `(list ...)', so it still doubles as a plain channels list:
 ;;;
 ;;;   guix pull -C peteches/channels/manual.scm
 ;;;
@@ -14,12 +14,15 @@
 ;;; base.scm for the full picture, and prefer the `/update-channels' skill
 ;;; over editing pins here directly.
 ;;;
-;;; Because this file has no module, it cannot be loaded by bare `guile'
-;;; for validation (the `channel' and `make-channel-introduction' macros
-;;; need a full Guix environment).  Validate it with a read-only parse:
-;;;
-;;;   guile -c '(call-with-input-file "peteches/channels/manual.scm"
-;;;               (lambda (p) (let loop () (unless (eof-object? (read p)) (loop)))))'
+;;; A `define-module' header (matching this file's path) makes guix load it
+;;; cleanly when it scans the `-L .' load path — `guix home'/`guix system'
+;;; load every module under `-L .', and a plain list without a module header
+;;; fails that load ("no code for module ...").  The trailing bare
+;;; `(list ...)' still lets the file double as a plain channels list for
+;;; `guix pull -C peteches/channels/manual.scm', exactly like base.scm.
+
+(define-module (peteches channels manual)
+  #:use-module (guix channels))
 
 (list
  (channel

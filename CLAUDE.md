@@ -144,9 +144,13 @@ ls /var/guix/daemon-socket/socket   # present => builds work
 guix describe                       # lists channels => pulled guix in use
 ```
 
-The plain-list channel files (`manual.scm`, `channels-nug.scm`) have no
-`define-module` and use Guix record macros, so bare `guile` cannot load them.
-Validate with a read-only parse instead:
+The `manual.scm` / `channels-nug.scm` channel files each carry a
+`define-module` header (matching their path) but end in a bare `(list …)`, so
+they double as plain channel lists for `guix pull -C` while still loading
+cleanly when `guix home`/`guix system` scan every module under `-L .` (a plain
+list with no module header fails that scan with `no code for module …`). They
+use Guix record macros, so bare `guile` still cannot load them — validate with
+a read-only parse instead:
 ```bash
 guile -c '(call-with-input-file "peteches/channels/manual.scm"
             (lambda (p) (let loop () (unless (eof-object? (read p)) (loop)))))'
