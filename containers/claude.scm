@@ -44,6 +44,7 @@
     "jq"
     "less"
     "make"
+    "mcp-outline"
     "moreutils"
     "netcat-openbsd"
     "node"
@@ -273,12 +274,14 @@ by the @code{node} entry in the container manifest.")
    "    --arg cmd \"$bash_bin\" \\\n"
    "    --arg script \"$script\" \\\n"
    "    '(.mcpServers //= {})\n"
+   ;; No --init-function/--stop-function: enabling and starting the
+   ;; server is done once, daemon-side, by anvil_bootstrap.  A per-bridge
+   ;; stop function would disable anvil for every other connected bridge
+   ;; when any one of them exits.
    "     | .mcpServers.anvil = {\n"
    "         type: \"stdio\",\n"
    "         command: $cmd,\n"
-   "         args: [$script, \"--server-id=anvil\",\n"
-   "                \"--init-function=anvil-enable\",\n"
-   "                \"--stop-function=anvil-disable\"],\n"
+   "         args: [$script, \"--server-id=anvil\"],\n"
    "         env: {}\n"
    "       }\n"
    "     | .mcpServers[\"anvil-emacs-eval\"] = {\n"
@@ -290,10 +293,21 @@ by the @code{node} entry in the container manifest.")
    "  printf '%s\\n' \"$new_content\" > \"$HOME/.claude.json\"\n"
    "}\n"
    "\n"
+   ;; anvil.el >= 1.3 splits module loading (anvil-enable) from request
+   ;; handling (anvil-server-start); bridges error with \"No active MCP
+   ;; server\" unless the server is started.  Run both idempotently so
+   ;; sessions whose seeded init.el predates the split still work.
+   "anvil_bootstrap() {\n"
+   ;; anvil-server-start lives in anvil-server-commands.el, which nothing
+   ;; on the (require (quote anvil)) path loads — require it explicitly.
+   "  emacsclient -e '(progn (unless (bound-and-true-p anvil--enabled) (anvil-enable)) (require (quote anvil-server-commands) nil t) (when (and (fboundp (quote anvil-server-start)) (not (bound-and-true-p anvil-server--running))) (anvil-server-start)) t)' >/dev/null 2>&1 \\\n"
+   "    || log \"anvil server bootstrap failed\"\n"
+   "}\n"
+   "\n"
    "start_anvil_daemon() {\n"
    "  [ \"${CLAUDE_CONTAINER_NO_ANVIL:-0}\" = 1 ] && { log \"anvil disabled (--no-anvil)\"; return 0; }\n"
    "  command -v emacs >/dev/null 2>&1 || return 0\n"
-   "  emacsclient -e t >/dev/null 2>&1 && return 0\n"
+   "  emacsclient -e t >/dev/null 2>&1 && { anvil_bootstrap; return 0; }\n"
    "  local log_file=\"$HOME/.config/emacs/daemon.log\"\n"
    "  mkdir -p \"$(dirname \"$log_file\")\"\n"
    "  if ! emacs --daemon >>\"$log_file\" 2>&1; then\n"
@@ -304,6 +318,7 @@ by the @code{node} entry in the container manifest.")
    "  while [ \"$waited\" -lt 60 ]; do\n"
    "    if emacsclient -e '(fboundp (quote anvil-enable))' 2>/dev/null \\\n"
    "         | grep -q 't$'; then\n"
+   "      anvil_bootstrap\n"
    "      return 0\n"
    "    fi\n"
    "    sleep 1\n"
@@ -515,11 +530,23 @@ by the @code{node} entry in the container manifest.")
    "# session's copy so newly-registered MCP servers (like comfyui via\n"
    "# guix home reconfigure) reach existing sessions.  Other session\n"
    "# state (project history, per-project settings) is preserved.\n"
+   ;; Per-session servers come from claude-overrides.json's mcpServers
+   ;; and must land in .claude.json (user scope): Claude Code ignores
+   ;; mcpServers in settings.json, so the settings merge below is not
+   ;; enough.  Session entries win over host ones on name clashes.
    "if [ -f \"$HOME/.claude.json\" ] && command -v jq >/dev/null 2>&1; then\n"
    "  session_claude_json=\"$session_dir/.claude.json\"\n"
-   "  new_content=$(jq -s '.[0] * {mcpServers: .[1].mcpServers}' \\\n"
-   "                    \"$session_claude_json\" \"$HOME/.claude.json\") \\\n"
-   "    && printf '%s\\n' \"$new_content\" > \"$session_claude_json\"\n"
+   "  session_overrides=\"$session_dir/claude-overrides.json\"\n"
+   "  if [ -f \"$session_overrides\" ]; then\n"
+   "    new_content=$(jq -s '.[0] * {mcpServers: ((.[1].mcpServers // {}) * (.[2].mcpServers // {}))}' \\\n"
+   "                      \"$session_claude_json\" \"$HOME/.claude.json\" \\\n"
+   "                      \"$session_overrides\") \\\n"
+   "      && printf '%s\\n' \"$new_content\" > \"$session_claude_json\"\n"
+   "  else\n"
+   "    new_content=$(jq -s '.[0] * {mcpServers: (.[1].mcpServers // {})}' \\\n"
+   "                      \"$session_claude_json\" \"$HOME/.claude.json\") \\\n"
+   "      && printf '%s\\n' \"$new_content\" > \"$session_claude_json\"\n"
+   "  fi\n"
    "fi\n"
    "\n"
    "# Merge host ~/.claude/settings.json with per-session overrides on\n"

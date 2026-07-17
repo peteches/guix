@@ -5,6 +5,14 @@
       "command": "plane-mcp-server",
       "args": ["stdio"],
       "env": {}
+    },
+    "outline": {
+      "type": "stdio",
+      "command": "mcp-outline",
+      "args": [],
+      "env": {
+        "OUTLINE_API_URL": "https://critical-grind-outline.peteches.co.uk/api"
+      }
     }
   }
 }
