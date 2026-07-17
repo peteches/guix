@@ -51,6 +51,7 @@
     "openssh"
     "openssl"
     "perl"
+    "plane-mcp-server"
     "procps"
     "psmisc"
     "python-wrapper"

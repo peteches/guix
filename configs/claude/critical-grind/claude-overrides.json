@@ -1,3 +1,10 @@
 {
-  "mcpServers": {}
+  "mcpServers": {
+    "plane": {
+      "type": "stdio",
+      "command": "plane-mcp-server",
+      "args": ["stdio"],
+      "env": {}
+    }
+  }
 }
