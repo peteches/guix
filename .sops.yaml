@@ -103,3 +103,9 @@ creation_rules:
       - age14wrglclq4jcp5jx2vkz5evt0fmjl32zuzq86hmnt5hn6pcl02dyq9qhkew  # vault
       - age1g3nsny7xdewga8eatwtapelwn058035s4jwa3lhehh2eu4zzpf3sjvqpsu  # critical-grind-outline
       - age15cnry6833ujv0dpz3szm4sv6y6ga4vltaxw5kty8vcfgck96cq7qd5n9gy  # plane
+
+  # Per-session claude-container secrets.  PGP-only: these are
+  # decrypted on the host by the operator, never on a VM, so no age
+  # recipient is needed.
+  - path_regex: configs/claude/.*/secrets\.env$
+    pgp: "5FFB7006A36B0AEDE8D08E3753B1E002546A642A"

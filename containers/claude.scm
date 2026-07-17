@@ -251,6 +251,20 @@ by the @code{node} entry in the container manifest.")
    "  set +a\n"
    "fi\n"
    "\n"
+   ;; Decrypted per-session secrets.  The wrapper runs `sops -d' on the
+   ;; host and drops the plaintext into a host tmpfs file exposed here
+   ;; read-only; it is never written to the session dir or the store,
+   ;; and the wrapper shreds it on exit.  Sourced after the plaintext
+   ;; env so a secret may override a placeholder set there.\n"
+   "# Decrypted per-session secrets (sops), exposed read-only from a\n"
+   "# host tmpfs by the wrapper.  Never persisted to the session dir.\n"
+   "if [ -f \"$HOME/.claude-session-secrets\" ]; then\n"
+   "  set -a\n"
+   "  # shellcheck disable=SC1091\n"
+   "  . \"$HOME/.claude-session-secrets\"\n"
+   "  set +a\n"
+   "fi\n"
+   "\n"
    "# ~/.claude.json is a bind mount inside the container, so `mv' over\n"
    "# it fails with EBUSY.  Capture jq output in a shell variable and\n"
    "# write it back with `> \"$HOME/.claude.json\"' — that opens/truncates\n"
@@ -366,6 +380,7 @@ by the @code{node} entry in the container manifest.")
    "no_anvil=no\n"
    "shell_mode=no\n"
    "ephemeral=no\n"
+   "secrets_shm=\"\"\n"
    "extra_opts=()\n"
    "claude_args=()\n"
    "\n"
@@ -390,7 +405,14 @@ by the @code{node} entry in the container manifest.")
    "                       .bash_history    -> ~/.bash_history\n"
    "                       init.sh          -> sourced after anvil starts\n"
    "                       env              -> auto-exported KEY=VALUE lines\n"
+   "                       secrets.env      -> sops-encrypted dotenv,\n"
+   "                                           decrypted on the host and\n"
+   "                                           exported into the container\n"
    "                       shared-dirs      -> extra --share bind-mounts\n"
+   "                       packages         -> extra package specs, one per\n"
+   "                                           line, added to the container\n"
+   "                       manifest.scm     -> extra manifest, merged with\n"
+   "                                           the base container manifest\n"
    "                       claude-overrides.json\n"
    "                                        -> jq-merged over host\n"
    "                                           ~/.claude/settings.json every\n"
@@ -423,6 +445,32 @@ by the @code{node} entry in the container manifest.")
    "line, blank lines ignored). If present without --worktree, line 1\n"
    "becomes the container's working directory; every line is added as\n"
    "a --share bind-mount.\n"
+   "\n"
+   "Extra tooling can be layered onto the base container manifest per\n"
+   "session, without editing it:\n"
+   "\n"
+   "  packages       Package specs added to the container, whitespace- or\n"
+   "                 newline-separated. '#' starts a comment. Example, for\n"
+   "                 a Go project:\n"
+   "                     go\n"
+   "                     gopls\n"
+   "                     delve\n"
+   "  manifest.scm   A manifest file passed as an additional --manifest.\n"
+   "                 Use this when specs are not enough: package\n"
+   "                 transformations, custom package definitions, or a\n"
+   "                 specific package variant.\n"
+   "\n"
+   "Both are additive: the base manifest (claude-code, anvil, shared\n"
+   "tooling) is always present.\n"
+   "\n"
+   "Secrets are handled separately from the plaintext 'env' file. A\n"
+   "session may ship a sops-encrypted dotenv file named 'secrets.env'\n"
+   "(safe to commit and to symlink from the store, since it is\n"
+   "ciphertext). The wrapper runs 'sops -d' on the HOST, where\n"
+   "gpg-agent lives, into a private /dev/shm file that is exposed\n"
+   "read-only into the container and shredded on exit. Plaintext never\n"
+   "touches the session dir, the store, or the guix command line.\n"
+   "Requires 'sops' on the host PATH.\n"
    "\n"
    "Remaining args (or args after --) are forwarded to claude inside the\n"
    "container.\n"
@@ -631,6 +679,30 @@ by the @code{node} entry in the container manifest.")
    "  done < \"$session_dir/shared-dirs\"\n"
    "fi\n"
    "\n"
+   ;; Per-session manifest extensions.  `guix shell' merges every -m it
+   ;; is given and accepts bare specs positionally, so both files are
+   ;; purely additive on top of the base container manifest.
+   "# --- per-session packages / manifest ---\n"
+   "session_pkgs=()\n"
+   "if [ -f \"$session_dir/packages\" ]; then\n"
+   "  # Unquoted $line word-splits, so specs may be newline- or\n"
+   "  # whitespace-separated; `set -f' keeps a spec like `python*' from\n"
+   "  # globbing against the CWD.\n"
+   "  set -f\n"
+   "  while IFS= read -r line || [ -n \"$line\" ]; do\n"
+   "    line=\"${line%%#*}\"\n"
+   "    # shellcheck disable=SC2206\n"
+   "    for spec in $line; do\n"
+   "      session_pkgs+=(\"$spec\")\n"
+   "    done\n"
+   "  done < \"$session_dir/packages\"\n"
+   "  set +f\n"
+   "fi\n"
+   "\n"
+   "if [ -f \"$session_dir/manifest.scm\" ]; then\n"
+   "  extra_opts+=(\"--manifest=$session_dir/manifest.scm\")\n"
+   "fi\n"
+   "\n"
    "if [ -n \"$worktree_path\" ]; then\n"
    "  primary_dir=\"$worktree_path\"\n"
    "  share_opts=(\"--share=$worktree_path\")\n"
@@ -651,6 +723,39 @@ by the @code{node} entry in the container manifest.")
    "if [ ! -d \"$primary_dir\" ]; then\n"
    "  echo \"Primary directory '$primary_dir' does not exist.\" >&2\n"
    "  exit 1\n"
+   "fi\n"
+   "\n"
+   ;; --- per-session sops secrets --------------------------------------
+   ;; A session may ship `secrets.env': a sops-encrypted dotenv file,
+   ;; committed to the repo and symlinked into the session dir from the
+   ;; store (safe — it is ciphertext).  We decrypt it HERE, on the host,
+   ;; where gpg-agent lives, into a private tmpfs file under /dev/shm.
+   ;; That file is exposed read-only into the container and shredded on
+   ;; exit (see cleanup()).  Plaintext never touches the session dir,
+   ;; the store, or the `guix' command line, so it stays off disk and
+   ;; out of `ps'.  This is deliberately a separate channel from the
+   ;; plaintext `env' file.  Placed after the last early `exit' so a
+   ;; failure path can never orphan the decrypted tmpfs file: from here
+   ;; to the cleanup trap there are no exits.
+   "# --- per-session sops secrets ---\n"
+   "if [ -f \"$session_dir/secrets.env\" ]; then\n"
+   "  if command -v sops >/dev/null 2>&1; then\n"
+   "    secrets_shm=$(mktemp \"/dev/shm/claude-secrets-${session}-XXXXXX\") || {\n"
+   "      echo \"claude-container: failed to allocate tmpfs for secrets\" >&2\n"
+   "      exit 1\n"
+   "    }\n"
+   "    chmod 600 \"$secrets_shm\"\n"
+   "    if ! sops -d --output-type dotenv \"$session_dir/secrets.env\" \\\n"
+   "         > \"$secrets_shm\"; then\n"
+   "      echo \"claude-container: sops failed to decrypt\" >&2\n"
+   "      echo \"  $session_dir/secrets.env\" >&2\n"
+   "      shred -u \"$secrets_shm\" 2>/dev/null || rm -f \"$secrets_shm\"\n"
+   "      exit 1\n"
+   "    fi\n"
+   "  else\n"
+   "    echo \"claude-container: $session_dir/secrets.env present but sops\" >&2\n"
+   "    echo \"  is not on PATH; secrets will not be available\" >&2\n"
+   "  fi\n"
    "fi\n"
    "\n"
    "# --- container env ---\n"
@@ -715,6 +820,13 @@ by the @code{node} entry in the container manifest.")
    "if [ -n \"${SSH_AUTH_SOCK:-}\" ] && [ -e \"$SSH_AUTH_SOCK\" ]; then\n"
    "  opts+=(--expose=\"$SSH_AUTH_SOCK\")\n"
    "fi\n"
+   ;; Decrypted secrets tmpfs, read-only, at a fixed in-container path
+   ;; the startup script sources.  The host path (a random /dev/shm
+   ;; name) is remapped to a stable name so the startup script needn't
+   ;; know it.
+   "if [ -n \"$secrets_shm\" ]; then\n"
+   "  opts+=(--expose=\"$secrets_shm=$HOME/.claude-session-secrets\")\n"
+   "fi\n"
    "\n"
    "cd \"$primary_dir\"\n"
    "\n"
@@ -731,11 +843,18 @@ by the @code{node} entry in the container manifest.")
    "  if [ \"$ephemeral\" = yes ]; then\n"
    "    rm -rf \"$session_dir\"\n"
    "  fi\n"
+   "  if [ -n \"$secrets_shm\" ]; then\n"
+   "    shred -u \"$secrets_shm\" 2>/dev/null || rm -f \"$secrets_shm\"\n"
+   "  fi\n"
    "  exit \"$rc\"\n"
    "}\n"
    "\n"
+   ;; Secrets always force the wait-and-cleanup path: on the exec path
+   ;; the wrapper is replaced and the trap never fires, which would
+   ;; leave the decrypted tmpfs file behind for the rest of the boot.
    "needs_cleanup=no\n"
    "if [ \"$ephemeral\" = yes ] \\\n"
+   "   || [ -n \"$secrets_shm\" ] \\\n"
    "   || { [ -n \"$worktree_path\" ] && [ \"$keep_worktree\" != yes ]; }; then\n"
    "  needs_cleanup=yes\n"
    "  trap cleanup EXIT INT TERM\n"
@@ -751,6 +870,7 @@ by the @code{node} entry in the container manifest.")
    "  guix shell \"${opts[@]}\" \"${extra_opts[@]}\"\n"
    "  --expose=" claude-container-startup "\n"
    "  -m " claude-container-manifest "\n"
+   "  \"${session_pkgs[@]}\"\n"
    "  --\n"
    "  env \"${container_env[@]}\"\n"
    "     bash " claude-container-startup " \"${claude_args[@]}\"\n"
@@ -766,7 +886,7 @@ by the @code{node} entry in the container manifest.")
 (define-public claude-container
   (package
     (name "claude-container")
-    (version "0.2.0")
+    (version "0.3.0")
     (source #f)
     (build-system trivial-build-system)
     (arguments
@@ -801,6 +921,23 @@ a @file{claude-overrides.json} recursively merged over the host's
 @file{~/.claude/settings.json} at every launch so global
 @code{mcpServers} and hook edits propagate without session
 recreation.
+
+A session can also extend the container manifest without editing it:
+@file{packages} lists extra package specifications (whitespace- or
+newline-separated, @code{#} comments allowed) that are added to the
+environment, and @file{manifest.scm} is passed as an additional
+@option{--manifest} for cases needing package transformations or
+custom package definitions.  Both are additive, so a Go project's
+session needs only a @file{packages} file containing @code{go},
+@code{gopls} and @code{delve}.
+
+Secrets are a separate channel from the plaintext @file{env} file: a
+session may ship @file{secrets.env}, a sops-encrypted dotenv file
+(safe to commit, since it is ciphertext).  The wrapper runs
+@code{sops -d} on the host, where gpg-agent lives, into a private
+@file{/dev/shm} file exposed read-only into the container and
+shredded on exit, so decrypted values never reach the session dir,
+the store, or the @code{guix} command line.
 
 @option{--worktree [BRANCH]} provisions a git worktree of @code{$PWD}
 and uses it as CWD, letting several claude sessions work on the same

@@ -1,0 +1,14 @@
+# Extra packages for the Critical Grind session (Go + PostgreSQL).
+# Added on top of the base claude container manifest, which already
+# provides git, make, jq, ripgrep, shellcheck and friends.
+
+go                # 1.26.0
+gopls             # language server
+delve             # dlv debugger
+
+postgresql        # psql, pg_dump, pg_restore (also the server binaries)
+pgcli             # interactive psql REPL with completion
+
+# cgo and `go test -race` need a C toolchain.  Drop this if the
+# project is pure Go (pgx/lib-pq are) and never runs the race detector.
+gcc-toolchain

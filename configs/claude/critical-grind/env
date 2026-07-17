@@ -1,0 +1,33 @@
+# Auto-exported into the Critical Grind container.  Sourced by bash
+# under `set -a', so $HOME and earlier entries expand as usual.
+#
+# NO SECRETS HERE: this file is symlinked in from /gnu/store, which is
+# world-readable.  See the note at the bottom for the API keys.
+
+# --- Go toolchain ---------------------------------------------------
+# Point the caches at the session's persisted ~/.cache and ~/.local so
+# module downloads and build artefacts survive container restarts.
+# These deliberately override the host GOPATH/GOMODCACHE that the
+# wrapper preserves: the host's GOPATH ($HOME/state/go) is not
+# bind-mounted into the container and would be lost on exit.
+GOPATH=$HOME/.local/share/go
+GOBIN=$HOME/.local/bin
+GOMODCACHE=$HOME/.cache/go/mod
+GOCACHE=$HOME/.cache/go/build
+PATH=$HOME/.local/bin:$PATH
+
+# --- Plane MCP ------------------------------------------------------
+# plane-mcp-server in stdio mode requires PLANE_API_KEY and
+# PLANE_WORKSPACE_SLUG, and errors out at startup without them.  The
+# Plane SDK appends /api/v1 to PLANE_BASE_URL itself, so this is the
+# bare host.  The workspace slug is not a secret.
+PLANE_BASE_URL=https://plane.ts.peteches.co.uk
+PLANE_WORKSPACE_SLUG=critical-grind
+
+# --- Secrets (not set here) -----------------------------------------
+# PLANE_API_KEY and OUTLINE_API_KEY are delivered separately, via the
+# sops-encrypted `secrets.env' in this directory: the claude-container
+# wrapper decrypts it on the host and exports it into the container.
+# Create/edit it with:
+#     sops configs/claude/critical-grind/secrets.env
+# (dotenv format: one KEY=VALUE per line).
