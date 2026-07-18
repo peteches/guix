@@ -166,6 +166,9 @@
 		     (name "vault.ts")
 		     (host-name "vault.spaniel-cordylus.ts.net"))
 		    (openssh-host
+		     (name "critical-grind-campaign.ts")
+		     (host-name "critical-grind-campaign.spaniel-cordylus.ts.net"))
+		    (openssh-host
 		     (name "critical-grind-campaign")
 		     (host-name "192.168.51.202")
 		     (user "peteches")

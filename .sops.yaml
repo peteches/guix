@@ -82,6 +82,10 @@ creation_rules:
     pgp: "5FFB7006A36B0AEDE8D08E3753B1E002546A642A"
     age: "age14wrglclq4jcp5jx2vkz5evt0fmjl32zuzq86hmnt5hn6pcl02dyq9qhkew"
 
+  - path_regex: secrets/hosts/critical-grind-campaign/.*\.yaml$
+    pgp: "5FFB7006A36B0AEDE8D08E3753B1E002546A642A"
+    age: "age1ytrfl4a94j2c4xtms7at982tsptdp2z65ss3l8frg0dwcnlns45q7v5uv8"
+
   - path_regex: secrets/hosts/critical-grind-outline/.*\.yaml$
     pgp: "5FFB7006A36B0AEDE8D08E3753B1E002546A642A"
     age: "age1g3nsny7xdewga8eatwtapelwn058035s4jwa3lhehh2eu4zzpf3sjvqpsu"
@@ -103,6 +107,7 @@ creation_rules:
       - age14wrglclq4jcp5jx2vkz5evt0fmjl32zuzq86hmnt5hn6pcl02dyq9qhkew  # vault
       - age1g3nsny7xdewga8eatwtapelwn058035s4jwa3lhehh2eu4zzpf3sjvqpsu  # critical-grind-outline
       - age15cnry6833ujv0dpz3szm4sv6y6ga4vltaxw5kty8vcfgck96cq7qd5n9gy  # plane
+      - age1ytrfl4a94j2c4xtms7at982tsptdp2z65ss3l8frg0dwcnlns45q7v5uv8  # critical-grind-campaign
 
   # Per-session claude-container secrets.  PGP-only: these are
   # decrypted on the host by the operator, never on a VM, so no age

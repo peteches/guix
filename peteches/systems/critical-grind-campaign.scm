@@ -25,14 +25,20 @@
 ;;   /dev/vda2  ext4  25G  -> /           UUID 38af4c98-8758-b1c9-009b-584238af4c98
 ;;   no swap partition or swap file
 ;;
-;; TODO (needs the VM's age key enrolled first — see docs/secrets-management.org):
-;;   * restic backups of /var/lib/postgresql — currently NONE.
+;; TODO — the VM's age key IS enrolled (age-keys/critical-grind-campaign.pub,
+;; with a creation rule in .sops.yaml), so what remains is creating the
+;; encrypted files under secrets/hosts/critical-grind-campaign/ and adding the
+;; matching #:sops-secrets here.  See docs/secrets-management.org.  Until a
+;; file exists, do NOT reference it: the local-file would break the build.
+;;
+;;   * restic backups of /var/lib/postgresql — currently NONE.  Needs
+;;     restic.yaml (password + ssh-key) and a #:restic-config.
 ;;   * SESSION_SECRET as a sops-secret rather than the hand-provisioned
 ;;     /etc/critical-grind/env described below.
 ;;   * #:with-nug-offload? can go back to its #t default once
-;;     secrets/hosts/critical-grind/guix-build.yaml exists and the VM's
-;;     guix-offload public key is in nug.scm's authorized-keys.  Enabling it
-;;     without both halves fails silently, so it is off for now.
+;;     secrets/hosts/critical-grind-campaign/guix-build.yaml exists AND the
+;;     VM's guix-offload public key is in nug.scm's authorized-keys.  Enabling
+;;     it with only one half fails silently, so it is off for now.
 
 (define-module (peteches systems critical-grind-campaign)
   #:use-module (guix gexp)
@@ -48,6 +54,7 @@
   #:use-module (peteches systems vm-base)
   #:use-module (peteches services alloy)
   #:use-module (peteches services firewall)
+  #:use-module (peteches services tailscale)
   #:use-module (critical-grind services campaign)
   #:export (critical-grind-campaign-os))
 
@@ -88,6 +95,15 @@
      #:with-nug-offload? #f
      #:extra-services
      (list
+      ;; Caddy reaches every backend in this fleet over Tailscale, not the
+      ;; LAN, so the reverse proxy in peteches/systems/caddy.scm depends on
+      ;; this.  The node has to be authenticated by hand once after first
+      ;; boot -- `sudo tailscale up' on the VM -- exactly as for the other
+      ;; Tailscale VMs; there is no auth key in sops.
+      (service tailscale-service-type
+               (list (tailscale-instance-configuration
+                      (name "peteches"))))
+
       (service critical-grind-service-type
                (critical-grind-configuration
                 (port 8080)
@@ -142,6 +158,7 @@
                                  (cons "/var/log/prometheus-node-exporter.log" "node-exporter")
                                  (cons "/var/log/ntpd.log" "ntpd")
                                  (cons "/var/log/alloy.log" "alloy")
+                                 (cons "/var/log/tailscaled-*.log" "tailscale")
                                  (cons "/var/log/critical-grind.log" "critical-grind-campaign"))))))))))
 
 critical-grind-campaign-os

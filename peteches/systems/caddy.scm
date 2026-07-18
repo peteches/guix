@@ -147,7 +147,10 @@
 		   (upstream "critical-grind-outline.spaniel-cordylus.ts.net:3000"))
 		  (caddy-reverse-proxy
 		   (domain "plane.ts.peteches.co.uk")
-		   (upstream "plane.spaniel-cordylus.ts.net:80"))))))      (service alloy-service-type
+		   (upstream "plane.spaniel-cordylus.ts.net:80"))
+		  (caddy-reverse-proxy
+		   (domain "battlefronts.ts.peteches.co.uk")
+		   (upstream "critical-grind-campaign.spaniel-cordylus.ts.net:8080"))))))      (service alloy-service-type
                (alloy-configuration
                 (hostname "caddy.peteches.co.uk")
                 (log-files (list (cons "/var/log/messages" "syslog")
