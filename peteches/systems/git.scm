@@ -122,6 +122,26 @@
                  (plain-file "admin.pub"
                              "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIM28x2V8tgwfzjyhapMayamDFwviOTHfU4W9BMnmc70w peteches@nyarlothotep.peteches.co.uk"))
                 (admin-name "peteches@nyarlothotep")))
+      ;; cgit-service-type instantiates fcgiwrap with its default value, which
+      ;; runs it as user AND group "fcgiwrap".  That cannot work here: guix's
+      ;; gitolite-service-type does `chmod #o750' on /var/lib/gitolite (see the
+      ;; comment in gnu/services/version-control.scm, which explicitly says
+      ;; services needing looser access should arrange it themselves), and the
+      ;; directory is owned git:git.  A process that is neither the owner nor in
+      ;; group git cannot traverse it, so BOTH CGIs -- cgit and git-http-backend
+      ;; -- see nothing and answer 404 for every path.  The 404 is indistinguish-
+      ;; able from "no such repository", which is what makes this awkward to
+      ;; diagnose.
+      ;;
+      ;; Declaring the service here overrides that default.  Give it group git,
+      ;; NOT user git: 0750 grants the group r-x only, so the CGIs get exactly
+      ;; the read access they need and no write access to any repository.
+      ;; Running as user git would also work and is what most recipes suggest,
+      ;; but it would let a CGI bug write to gitolite's repositories.
+      (service fcgiwrap-service-type
+               (fcgiwrap-configuration
+                (user "fcgiwrap")
+                (group "git")))
       (service cgit-service-type
                (cgit-configuration
                 (repository-directory "/var/lib/gitolite/repositories")
