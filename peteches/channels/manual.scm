@@ -90,9 +90,10 @@
 
  (channel
   (name 'critical-grind)
-  ;; SSH because git.peteches.co.uk is gitolite and has no HTTPS endpoint.
+  ;; Smart HTTP, not gitolite's ssh:// URL -- guix fetches git over
+  ;; ssh-agent only, so ssh:// would need an agent on every pulling machine.
   ;; No introduction: commits are unauthenticated and guix pull will say so.
-  (url "ssh://git@git.peteches.co.uk/critical-grind-campaign")
+  (url "https://git.ts.peteches.co.uk/git/critical-grind-campaign.git")
   (branch "main")
   (commit "632f70d4c792e8fdf273fe10060a1d30a7993639"))
 
