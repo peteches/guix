@@ -181,7 +181,10 @@
                       (labels '(("instance" . "concourse-worker01"))))
                      (prometheus-static-config
                       (targets '("192.168.51.201:12345"))
-                      (labels '(("instance" . "vault")))))))
+                      (labels '(("instance" . "vault"))))
+                     (prometheus-static-config
+                      (targets '("192.168.51.202:12345"))
+                      (labels '(("instance" . "critical-grind-campaign")))))))
                   (prometheus-scrape-config
                    (job-name "proxmox")
                    (metrics-path "/pve")

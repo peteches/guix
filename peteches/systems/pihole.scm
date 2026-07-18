@@ -20,7 +20,8 @@
 ;;
 ;; In use: ::1 gateway, ::100 prometheus, ::101 grafana, ::102 loki,
 ;; ::103 git, ::104 jellyfin, ::105 pihole, ::106 caddy, ::107 rustdesk,
-;; ::108 vault, ::110 critical-grind-outline.  Free: ::109, ::111+.
+;; ::108 vault, ::109 critical-grind-campaign, ::110 critical-grind-outline.
+;; Free: ::111+.
 ;; (prowlarr, arr, downloads, concourse-*, plane are IPv4-only.)
 
 (define-module (peteches systems pihole)
@@ -150,6 +151,8 @@
                                       (hostname "concourse-worker01.peteches.co.uk"))
                   (pihole-custom-host (address "192.168.51.201")
                                       (hostname "vault.peteches.co.uk"))
+		  (pihole-custom-host (address "192.168.51.202")
+				      (hostname "critical-grind-campaign.peteches.co.uk"))
 		  (pihole-custom-host (address "192.168.51.203")
 				      (hostname "critical-grind-outline.peteches.co.uk"))
 		  (pihole-custom-host (address "192.168.51.204")

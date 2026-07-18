@@ -166,6 +166,7 @@ Three sources are easy to confuse when reading a `#:use-module` line:
 |---|---|
 | `(gnu ...)`, `(guix ...)` | upstream Guix |
 | `(peteches services ...)`, `(peteches home services ...)`, `(peteches packages ...)` | the **external `peteches` channel** (codeberg.org/peteches/guix-channel), pinned in `peteches/channels/base.scm` — **not in this repo** |
+| `(critical-grind packages ...)`, `(critical-grind services ...)` | the **`critical-grind` channel** — the application repo at `git@git.peteches.co.uk:critical-grind-campaign`, pinned in `peteches/channels/base.scm` — **not in this repo** |
 | `(peteches systems ...)`, `(peteches home modules ...)`, `(peteches home configs ...)`, `(peteches channels ...)`, `(containers ...)` | this repo |
 
 So `alloy-service-type`, `restic-vm-backup-service-type`, `firewall-service-type`,
@@ -247,6 +248,7 @@ Each module's header comment documents its keyword arguments — read
 | `concourse-web01.scm` | Concourse CI web frontend — ATC (:8080), TSA (:2222) (192.168.51.199) |
 | `concourse-worker01.scm` | Concourse CI worker VM (192.168.51.200) |
 | `vault.scm` | HashiCorp Vault secrets management VM (192.168.51.201, port 8200) — does not auto-unseal |
+| `critical-grind-campaign.scm` | Critical Grind campaign system VM — Go/Gin app on :8080 + local PostgreSQL (192.168.51.202). Package and service come from the `critical-grind` channel |
 | `critical-grind-outline.scm` | Outline wiki VM — Podman container + local PostgreSQL/Redis (192.168.51.203, :3000) |
 | `plane.scm` | Plane project management VM — Podman containers + PostgreSQL/Redis/RabbitMQ (192.168.51.204, :80) |
 | `nug-substitute-key.pub` | SSH public key for nug's local Guix substitute server |
@@ -296,7 +298,7 @@ Prefer the `/update-channels` skill over editing pins directly.
 
 | File | Purpose |
 |---|---|
-| `base.scm` | `%base-channels` — the reference. Module. Pinned: sops-guix, guix-science, guix-science-nonfree, nonguix, guix, peteches |
+| `base.scm` | `%base-channels` — the reference. Module. Pinned: sops-guix, guix-science, guix-science-nonfree, nonguix, guix, peteches, critical-grind |
 | `nug.scm` | Module exporting `%nug-channels` = `%base-channels` + guix-hpc-non-free |
 | `manual.scm` | **Full** plain channels list (all 7) for `guix pull -C` / symlinking to `~/.config/guix/channels.scm` |
 | `channels-nug.scm` | Plain list with **only** the `peteches` channel — *not* a mirror of the above, despite the name. Pulling with it leaves guix unpinned |
@@ -381,9 +383,17 @@ never by relative path, which would break under `-L .` and in worktrees.
 ### Channels (`peteches/channels/`)
 
 `base.scm` exports `%base-channels` — pinned: `sops-guix`, `guix-science`,
-`guix-science-nonfree`, `nonguix`, `guix` itself, and the `peteches` channel
+`guix-science-nonfree`, `nonguix`, `guix` itself, the `peteches` channel
 (which provides the custom packages, home services and system services this repo
-consumes). `nug.scm` adds `guix-hpc-non-free` on top.
+consumes), and `critical-grind`. `nug.scm` adds `guix-hpc-non-free` on top.
+
+`critical-grind` is the Critical Grind application repository, which is itself
+a channel supplying `(critical-grind packages campaign)` and
+`(critical-grind services campaign)`. It is the odd one out twice over: the URL
+is **SSH** (`git.peteches.co.uk` is gitolite, no HTTPS), so `guix pull` needs
+your SSH agent; and it has **no channel introduction**, so commits are not
+signature-verified and every pull warns. Releasing a new version of the app is
+a commit bump in the four channel files — there is nothing to build by hand.
 
 **Pins are duplicated across four files** (`base.scm`, `nug.scm`, `manual.scm`,
 `channels-nug.scm`) with nothing enforcing agreement. Update them together —

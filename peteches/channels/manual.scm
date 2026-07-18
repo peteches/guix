@@ -92,6 +92,14 @@
      "73C1 C132 9190 37C0 6D6A  6729 A6E8 150F ED00 29D7"))))
 
  (channel
+  (name 'critical-grind)
+  ;; SSH because git.peteches.co.uk is gitolite and has no HTTPS endpoint.
+  ;; No introduction: commits are unauthenticated and guix pull will say so.
+  (url "ssh://git@git.peteches.co.uk/critical-grind-campaign")
+  (branch "main")
+  (commit "632f70d4c792e8fdf273fe10060a1d30a7993639"))
+
+ (channel
   (name 'guix-hpc-non-free)
   (url "https://gitlab.inria.fr/guix-hpc/guix-hpc.git")
   (branch "master")

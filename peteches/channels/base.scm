@@ -10,7 +10,7 @@
 ;;;                    THE REFERENCE — update here first.
 ;;;   nug.scm          %nug-channels = %base-channels + guix-hpc-non-free.
 ;;;                    Module; used by nug's home config.
-;;;   manual.scm       Mirrors %nug-channels (all 7 channels).  Module with a
+;;;   manual.scm       Mirrors %nug-channels (all 8 channels).  Module with a
 ;;;                    define-module header but ending in a bare `(list ...)',
 ;;;                    so it still works with `guix pull -C'.
 ;;;   channels-nug.scm Only the `peteches' channel — NOT a mirror of the
@@ -35,6 +35,16 @@
 ;;; (peteches home services …) and (peteches services …).  Those live in
 ;;; codeberg.org/peteches/guix-channel, NOT in this repo — editing a service
 ;;; type means editing that channel and re-pinning its commit here.
+;;;
+;;; The `critical-grind' channel is the Critical Grind application repository
+;;; itself, providing (critical-grind packages campaign) and
+;;; (critical-grind services campaign) for
+;;; peteches/systems/critical-grind-campaign.scm.  Two things make it unlike
+;;; the others: its URL is SSH, because git.peteches.co.uk is gitolite with no
+;;; HTTPS endpoint, so `guix pull' needs your agent loaded; and it has no
+;;; channel introduction, so its commits are NOT signature-verified and guix
+;;; will warn on every pull.  Shipping a new version of the app is a commit
+;;; bump here, nothing more.
 ;;;
 ;;; The trailing bare `%base-channels' lets the file double as a plain
 ;;; channels list for `guix pull -C peteches/channels/base.scm'.
@@ -107,5 +117,14 @@
      (make-channel-introduction
       "ff4b8a08276932c10cf6ca8cf726d78a86c17588"
       (openpgp-fingerprint
-       "73C1 C132 9190 37C0 6D6A  6729 A6E8 150F ED00 29D7"))))))
+       "73C1 C132 9190 37C0 6D6A  6729 A6E8 150F ED00 29D7"))))
+   (channel
+    (name 'critical-grind)
+    ;; SSH because git.peteches.co.uk is gitolite and has no HTTPS endpoint.
+    ;; This works where git-fetch as a package source did not: channel cloning
+    ;; runs as the invoking user with their SSH agent, not in the build daemon.
+    ;; No introduction: commits are unauthenticated and guix pull will say so.
+    (url "ssh://git@git.peteches.co.uk/critical-grind-campaign")
+    (branch "main")
+    (commit "632f70d4c792e8fdf273fe10060a1d30a7993639"))))
 %base-channels
