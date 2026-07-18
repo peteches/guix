@@ -21,9 +21,6 @@
 ;;; `(list ...)' still lets the file double as a plain channels list for
 ;;; `guix pull -C peteches/channels/manual.scm', exactly like base.scm.
 
-(define-module (peteches channels manual)
-  #:use-module (guix channels))
-
 (list
  (channel
   (name 'sops-guix)
