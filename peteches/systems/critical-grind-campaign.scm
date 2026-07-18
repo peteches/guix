@@ -1,9 +1,10 @@
-;; critical-grind.scm — Critical Grind campaign system (Go/Gin + HTMX + PostgreSQL).
+;; critical-grind-campaign.scm — Critical Grind campaign system
+;; (Go/Gin + HTMX + PostgreSQL).
 ;;
 ;; The package and the Shepherd service are NOT defined here.  They live in the
 ;; application's own repository, which is a Guix channel:
 ;;
-;;     git@git.peteches.co.uk:critical-grind-campaign
+;;     https://git.ts.peteches.co.uk/git/critical-grind-campaign.git
 ;;     modules (critical-grind packages campaign) / (critical-grind services campaign)
 ;;
 ;; pinned in peteches/channels/*.scm like every other channel.  Shipping a new
@@ -25,20 +26,23 @@
 ;;   /dev/vda2  ext4  25G  -> /           UUID 38af4c98-8758-b1c9-009b-584238af4c98
 ;;   no swap partition or swap file
 ;;
-;; TODO — the VM's age key IS enrolled (age-keys/critical-grind-campaign.pub,
-;; with a creation rule in .sops.yaml), so what remains is creating the
-;; encrypted files under secrets/hosts/critical-grind-campaign/ and adding the
-;; matching #:sops-secrets here.  See docs/secrets-management.org.  Until a
-;; file exists, do NOT reference it: the local-file would break the build.
+;; SOPS.  The VM's age key is enrolled (age-keys/critical-grind-campaign.pub,
+;; plus a creation rule in .sops.yaml), so secrets can be encrypted to it.
 ;;
-;;   * restic backups of /var/lib/postgresql — currently NONE.  Needs
-;;     restic.yaml (password + ssh-key) and a #:restic-config.
+;; Never reference a secrets/ file before it exists.  A local-file pointing at
+;; a missing path does not fail politely -- it breaks the build for the WHOLE
+;; fleet, because machines.scm imports this module and every deploy loads that.
+;; Create the encrypted file first, then add the sops-secret.
+;;
+;; TODO, both needing further files under secrets/hosts/critical-grind-campaign/
+;; (see docs/secrets-management.org):
+;;
 ;;   * SESSION_SECRET as a sops-secret rather than the hand-provisioned
 ;;     /etc/critical-grind/env described below.
-;;   * #:with-nug-offload? can go back to its #t default once
-;;     secrets/hosts/critical-grind-campaign/guix-build.yaml exists AND the
-;;     VM's guix-offload public key is in nug.scm's authorized-keys.  Enabling
-;;     it with only one half fails silently, so it is off for now.
+;;   * #:with-nug-offload? can go back to its #t default once guix-build.yaml
+;;     exists AND the VM's guix-offload public key is in nug.scm's
+;;     authorized-keys.  Enabling it with only one half fails silently, so it
+;;     is off for now.
 
 (define-module (peteches systems critical-grind-campaign)
   #:use-module (guix gexp)
@@ -54,7 +58,9 @@
   #:use-module (peteches systems vm-base)
   #:use-module (peteches services alloy)
   #:use-module (peteches services firewall)
+  #:use-module (peteches services restic)
   #:use-module (peteches services tailscale)
+  #:use-module (sops secrets)
   #:use-module (critical-grind services campaign)
   #:export (critical-grind-campaign-os))
 
@@ -91,6 +97,31 @@
         (type "ext4")))
      ;; psql and pg_dump for maintenance; the app itself needs nothing extra.
      #:extra-packages (list postgresql)
+     ;; /var/lib/postgresql is the whole of the application's state.  Uploaded
+     ;; terrain images are NOT on disk -- AdminUploadTerrainImage reads them
+     ;; into memory and stores the bytes in the database -- and the HTML
+     ;; templates and static assets are compiled into the binary via embed.FS.
+     ;; /etc/critical-grind carries the hand-provisioned SESSION_SECRET; losing
+     ;; it only invalidates live sessions, but it is unmanaged by Guix and so
+     ;; exists nowhere else.
+     #:restic-config
+     (restic-vm-backup-configuration
+      (vm-name "critical-grind-campaign")
+      (synology-host "nas.peteches.co.uk")
+      (backup-paths '("/var/lib/postgresql" "/etc/critical-grind"))
+      (password-file "/run/secrets/restic-password")
+      (ssh-key-file "/run/secrets/restic-ssh-key"))
+     #:sops-secrets
+     (list
+      (sops-secret
+       (key '("restic-password"))
+       (file (local-file "../../secrets/hosts/critical-grind-campaign/restic.yaml"))
+       (path "/run/secrets/restic-password"))
+      (sops-secret
+       (key '("ssh-key"))
+       (file (local-file "../../secrets/hosts/critical-grind-campaign/restic.yaml"))
+       (path "/run/secrets/restic-ssh-key")
+       (permissions #o400)))
      ;; See the TODO in the header.
      #:with-nug-offload? #f
      #:extra-services
