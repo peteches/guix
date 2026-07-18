@@ -39,11 +39,13 @@
 ;;; The `critical-grind' channel is the Critical Grind application repository
 ;;; itself, providing (critical-grind packages campaign) and
 ;;; (critical-grind services campaign) for
-;;; peteches/systems/critical-grind-campaign.scm.  Two things make it unlike
-;;; the others: its URL is SSH, because git.peteches.co.uk is gitolite with no
-;;; HTTPS endpoint, so `guix pull' needs your agent loaded; and it has no
+;;; peteches/systems/critical-grind-campaign.scm.  It is fetched over smart
+;;; HTTP (git-http-backend on the git VM, via Caddy on the tailnet) rather
+;;; than over gitolite's SSH: guix authenticates git fetches with
+;;; (%make-auth-ssh-agent) alone, so an ssh:// channel would need the key
+;;; loaded in an agent everywhere it is pulled, CI included.  It has no
 ;;; channel introduction, so its commits are NOT signature-verified and guix
-;;; will warn on every pull.  Shipping a new version of the app is a commit
+;;; warns on every pull.  Shipping a new version of the app is a commit
 ;;; bump here, nothing more.
 ;;;
 ;;; The trailing bare `%base-channels' lets the file double as a plain
@@ -120,11 +122,13 @@
        "73C1 C132 9190 37C0 6D6A  6729 A6E8 150F ED00 29D7"))))
    (channel
     (name 'critical-grind)
-    ;; SSH because git.peteches.co.uk is gitolite and has no HTTPS endpoint.
-    ;; This works where git-fetch as a package source did not: channel cloning
-    ;; runs as the invoking user with their SSH agent, not in the build daemon.
+    ;; Smart HTTP via git-http-backend on the git VM, fronted by Caddy over the
+    ;; tailnet.  Deliberately NOT the ssh:// gitolite URL: guix authenticates
+    ;; git fetches with (%make-auth-ssh-agent) and nothing else, so an ssh://
+    ;; channel needs the key in an agent on every machine that pulls -- and it
+    ;; fails as "remote rejected authentication", naming neither.
     ;; No introduction: commits are unauthenticated and guix pull will say so.
-    (url "ssh://git@git.peteches.co.uk/critical-grind-campaign")
+    (url "https://git.ts.peteches.co.uk/git/critical-grind-campaign.git")
     (branch "main")
     (commit "632f70d4c792e8fdf273fe10060a1d30a7993639"))))
 %base-channels

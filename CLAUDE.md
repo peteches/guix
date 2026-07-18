@@ -389,11 +389,20 @@ consumes), and `critical-grind`. `nug.scm` adds `guix-hpc-non-free` on top.
 
 `critical-grind` is the Critical Grind application repository, which is itself
 a channel supplying `(critical-grind packages campaign)` and
-`(critical-grind services campaign)`. It is the odd one out twice over: the URL
-is **SSH** (`git.peteches.co.uk` is gitolite, no HTTPS), so `guix pull` needs
-your SSH agent; and it has **no channel introduction**, so commits are not
-signature-verified and every pull warns. Releasing a new version of the app is
-a commit bump in the four channel files — there is nothing to build by hand.
+`(critical-grind services campaign)`. It has **no channel introduction**, so
+commits are not signature-verified and every pull warns. Releasing a new
+version of the app is a commit bump in the four channel files — there is
+nothing to build by hand.
+
+It is fetched over **smart HTTP** (`git.ts.peteches.co.uk/git/…`, served by
+`git-http-backend` on the git VM), not over gitolite's SSH. That is not a
+stylistic choice: `guix/git.scm` authenticates git fetches with
+`(%make-auth-ssh-agent)` and nothing else — it never reads `~/.ssh/config` or a
+key file — so an `ssh://` channel URL requires the key loaded in an agent on
+**every** machine that pulls, CI containers included, and fails with a
+`remote rejected authentication` message that names neither ssh-agent nor the
+key. Repositories must carry `git-daemon-export-ok` to be fetchable this way;
+see `peteches/systems/git.scm`.
 
 **Pins are duplicated across four files** (`base.scm`, `nug.scm`, `manual.scm`,
 `channels-nug.scm`) with nothing enforcing agreement. Update them together —
