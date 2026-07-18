@@ -44,6 +44,7 @@
     "jq"
     "less"
     "make"
+    "mcp-grafana"
     "mcp-outline"
     "moreutils"
     "netcat-openbsd"
@@ -313,6 +314,24 @@ by the @code{node} entry in the container manifest.")
    "  set +a\n"
    "fi\n"
    "\n"
+   ;; Default Grafana endpoint for the homelab.  The grafana VM inherits
+   ;; the base firewall, which opens only 22/9100/ICMP — port 3000 is
+   ;; NOT reachable on the LAN — so this deliberately points at the
+   ;; Tailscale-fronted Caddy vhost rather than 192.168.51.188:3000.
+   ;;
+   ;; A session `env' file (sourced above) or a preserved host
+   ;; GRAFANA_URL still wins; this is only the fallback.
+   ;;
+   ;; Note `-' rather than `:-': that substitutes only when the variable
+   ;; is *unset*, so a session can opt out of the Grafana MCP server
+   ;; entirely with a bare `GRAFANA_URL=' line in its `env' file, which
+   ;; register_grafana_mcp then treats as "remove the entry".  With `:-'
+   ;; an explicit empty value would silently get the default back.
+   "# Default Grafana endpoint (Tailscale/Caddy; :3000 is firewalled).\n"
+   "# Set GRAFANA_URL= (empty) in a session env file to opt out.\n"
+   "GRAFANA_URL=\"${GRAFANA_URL-https://grafana.ts.peteches.co.uk}\"\n"
+   "export GRAFANA_URL\n"
+   "\n"
    "# ~/.claude.json is a bind mount inside the container, so `mv' over\n"
    "# it fails with EBUSY.  Capture jq output in a shell variable and\n"
    "# write it back with `> \"$HOME/.claude.json\"' — that opens/truncates\n"
@@ -355,6 +374,58 @@ by the @code{node} entry in the container manifest.")
    "  printf '%s\\n' \"$new_content\" > \"$HOME/.claude.json\"\n"
    "}\n"
    "\n"
+   ;; Grafana MCP: one server covering Prometheus metrics, Loki logs and
+   ;; Grafana dashboards.  Registration is gated on GRAFANA_URL so that
+   ;; sessions without Grafana config do not get a server that fails on
+   ;; every call; when it is unset we actively *remove* any stale entry,
+   ;; keeping this idempotent in both directions.
+   ;;
+   ;; GRAFANA_URL comes from the per-session `env' file and
+   ;; GRAFANA_SERVICE_ACCOUNT_TOKEN from the sops-encrypted
+   ;; `secrets.env'; both are already exported into this shell above, and
+   ;; the MCP server inherits them from claude.  The token is therefore
+   ;; deliberately NOT written into ~/.claude.json — that file is rewritten
+   ;; by Claude Code at runtime and is not a safe place for a credential.
+   ;;
+   ;; The tool allowlist is trimmed to the self-hosted stack: no OnCall,
+   ;; Incident, Sift, Asserts or Grafana Cloud datasources.  --disable-write
+   ;; drops the six mutating tools (create/update dashboard, datasource,
+   ;; annotation) so an agent cannot rewrite the monitoring setup.
+   "register_grafana_mcp() {\n"
+   "  command -v jq >/dev/null 2>&1 || return 0\n"
+   "  [ -f \"$HOME/.claude.json\" ] || echo '{}' > \"$HOME/.claude.json\"\n"
+   "  local new_content grafana_bin\n"
+   "  if [ -z \"${GRAFANA_URL:-}\" ] \\\n"
+   "     || ! grafana_bin=$(command -v mcp-grafana); then\n"
+   "    new_content=$(jq 'if .mcpServers then\n"
+   "          .mcpServers |= del(.grafana)\n"
+   "        else . end' \"$HOME/.claude.json\") || return 0\n"
+   "    printf '%s\\n' \"$new_content\" > \"$HOME/.claude.json\"\n"
+   "    return 0\n"
+   "  fi\n"
+   "  if [ -z \"${GRAFANA_SERVICE_ACCOUNT_TOKEN:-}\" ]; then\n"
+   "    log \"GRAFANA_URL set but GRAFANA_SERVICE_ACCOUNT_TOKEN is not;\"\n"
+   "    log \"  grafana MCP will register but calls will be unauthorised\"\n"
+   "  fi\n"
+   "  new_content=$(jq \\\n"
+   "    --arg cmd \"$grafana_bin\" \\\n"
+   "    '(.mcpServers //= {})\n"
+   "     | .mcpServers.grafana = {\n"
+   "         type: \"stdio\",\n"
+   "         command: $cmd,\n"
+   "         args: [\n"
+   "           \"-t\", \"stdio\",\n"
+   ;; Must stay on one physical line: jq string literals have no
+   ;; line-continuation escape.
+   "           \"--enabled-tools=search,datasource,prometheus,loki,dashboard,folder,navigation,annotations\",\n"
+   "           \"--disable-write\",\n"
+   "           \"--disable-proxied\"\n"
+   "         ],\n"
+   "         env: {}\n"
+   "       }' \"$HOME/.claude.json\") || return 0\n"
+   "  printf '%s\\n' \"$new_content\" > \"$HOME/.claude.json\"\n"
+   "}\n"
+   "\n"
    ;; anvil.el >= 1.3 splits module loading (anvil-enable) from request
    ;; handling (anvil-server-start); bridges error with \"No active MCP
    ;; server\" unless the server is started.  Run both idempotently so
@@ -390,6 +461,7 @@ by the @code{node} entry in the container manifest.")
    "}\n"
    "\n"
    "register_anvil_mcp\n"
+   "register_grafana_mcp\n"
    "start_anvil_daemon\n"
    "\n"
    "# Per-session init hook, sourced after anvil is up.\n"
@@ -460,7 +532,8 @@ by the @code{node} entry in the container manifest.")
    "                       env              -> auto-exported KEY=VALUE lines\n"
    "                       secrets.env      -> sops-encrypted dotenv,\n"
    "                                           decrypted on the host and\n"
-   "                                           exported into the container\n"
+   "                                           exported into the container;\n"
+   "                                           overrides ~/.claude/secrets.env\n"
    "                       shared-dirs      -> extra --share bind-mounts\n"
    "                       packages         -> extra package specs, one per\n"
    "                                           line, added to the container\n"
@@ -531,14 +604,22 @@ by the @code{node} entry in the container manifest.")
    "Both are additive: the base manifest (claude-code, anvil, shared\n"
    "tooling) is always present.\n"
    "\n"
-   "Secrets are handled separately from the plaintext 'env' file. A\n"
-   "session may ship a sops-encrypted dotenv file named 'secrets.env'\n"
-   "(safe to commit and to symlink from the store, since it is\n"
-   "ciphertext). The wrapper runs 'sops -d' on the HOST, where\n"
-   "gpg-agent lives, into a private /dev/shm file that is exposed\n"
-   "read-only into the container and shredded on exit. Plaintext never\n"
-   "touches the session dir, the store, or the guix command line.\n"
-   "Requires 'sops' on the host PATH.\n"
+   "Secrets are handled separately from the plaintext 'env' file, via\n"
+   "sops-encrypted dotenv files (safe to commit and to symlink from the\n"
+   "store, since they are ciphertext). Two are read, in order:\n"
+   "\n"
+   "  ~/.claude/secrets.env        shared by every session\n"
+   "  <session-dir>/secrets.env    that session only\n"
+   "\n"
+   "Both are sourced under 'set -a', shared first, so a session key of\n"
+   "the same name overrides the shared one. Put homelab-wide credentials\n"
+   "(e.g. GRAFANA_SERVICE_ACCOUNT_TOKEN) in the shared file so rotating\n"
+   "one is a single-file edit.\n"
+   "\n"
+   "The wrapper runs 'sops -d' on the HOST, where gpg-agent lives, into\n"
+   "a private /dev/shm file that is exposed read-only into the container\n"
+   "and shredded on exit. Plaintext never touches the session dir, the\n"
+   "store, or the guix command line. Requires 'sops' on the host PATH.\n"
    "\n"
    "Remaining args (or args after --) are forwarded to claude inside the\n"
    "container.\n"
@@ -819,24 +900,43 @@ by the @code{node} entry in the container manifest.")
    ;; plaintext `env' file.  Placed after the last early `exit' so a
    ;; failure path can never orphan the decrypted tmpfs file: from here
    ;; to the cleanup trap there are no exits.
-   "# --- per-session sops secrets ---\n"
-   "if [ -f \"$session_dir/secrets.env\" ]; then\n"
+   ;; Two tiers, concatenated into one tmpfs file in this order:
+   ;;
+   ;;   1. ~/.claude/secrets.env  — shared by every session (symlinked
+   ;;      from configs/claude/defaults).  For credentials that are a
+   ;;      property of the homelab rather than of one project, such as
+   ;;      GRAFANA_SERVICE_ACCOUNT_TOKEN.  Encrypting it once here beats
+   ;;      copying the same ciphertext into every session dir, which
+   ;;      would make rotation an N-file edit.
+   ;;   2. $session_dir/secrets.env — per-session, as before.
+   ;;
+   ;; Order matters: the file is sourced sequentially under `set -a', so
+   ;; a session key of the same name overrides the shared one.
+   "# --- shared + per-session sops secrets ---\n"
+   "shared_secrets=\"$HOME/.claude/secrets.env\"\n"
+   "if [ -f \"$shared_secrets\" ] || [ -f \"$session_dir/secrets.env\" ]; then\n"
    "  if command -v sops >/dev/null 2>&1; then\n"
    "    secrets_shm=$(mktemp \"/dev/shm/claude-secrets-${session}-XXXXXX\") || {\n"
    "      echo \"claude-container: failed to allocate tmpfs for secrets\" >&2\n"
    "      exit 1\n"
    "    }\n"
    "    chmod 600 \"$secrets_shm\"\n"
-   "    if ! sops -d --output-type dotenv \"$session_dir/secrets.env\" \\\n"
-   "         > \"$secrets_shm\"; then\n"
-   "      echo \"claude-container: sops failed to decrypt\" >&2\n"
-   "      echo \"  $session_dir/secrets.env\" >&2\n"
-   "      shred -u \"$secrets_shm\" 2>/dev/null || rm -f \"$secrets_shm\"\n"
-   "      exit 1\n"
-   "    fi\n"
+   "    for secrets_file in \"$shared_secrets\" \"$session_dir/secrets.env\"; do\n"
+   "      [ -f \"$secrets_file\" ] || continue\n"
+   "      if ! sops -d --output-type dotenv \"$secrets_file\" \\\n"
+   "           >> \"$secrets_shm\"; then\n"
+   "        echo \"claude-container: sops failed to decrypt\" >&2\n"
+   "        echo \"  $secrets_file\" >&2\n"
+   "        shred -u \"$secrets_shm\" 2>/dev/null || rm -f \"$secrets_shm\"\n"
+   "        exit 1\n"
+   "      fi\n"
+   ;; Guard against a decrypted file with no trailing newline running
+   ;; its last KEY=VALUE into the next file's first one.
+   "      printf '\\n' >> \"$secrets_shm\"\n"
+   "    done\n"
    "  else\n"
-   "    echo \"claude-container: $session_dir/secrets.env present but sops\" >&2\n"
-   "    echo \"  is not on PATH; secrets will not be available\" >&2\n"
+   "    echo \"claude-container: a secrets.env is present but sops is not\" >&2\n"
+   "    echo \"  on PATH; secrets will not be available\" >&2\n"
    "  fi\n"
    "fi\n"
    "\n"
@@ -872,6 +972,7 @@ by the @code{node} entry in the container manifest.")
    "  --preserve=^GEMINI_\n"
    "  --preserve=^GOOGLE_\n"
    "  --preserve=^AWS_\n"
+   "  --preserve=^GRAFANA_\n"
    "  --preserve=^NPM_TOKEN$\n"
    "  --preserve=^NODE_AUTH_TOKEN$\n"
    "  --preserve=^CARGO_\n"
@@ -1042,13 +1143,23 @@ custom package definitions.  Both are additive, so a Go project's
 session needs only a @file{packages} file containing @code{go},
 @code{gopls} and @code{delve}.
 
-Secrets are a separate channel from the plaintext @file{env} file: a
-session may ship @file{secrets.env}, a sops-encrypted dotenv file
-(safe to commit, since it is ciphertext).  The wrapper runs
-@code{sops -d} on the host, where gpg-agent lives, into a private
-@file{/dev/shm} file exposed read-only into the container and
-shredded on exit, so decrypted values never reach the session dir,
-the store, or the @code{guix} command line.
+Secrets are a separate channel from the plaintext @file{env} file,
+carried by sops-encrypted dotenv files (safe to commit, since they are
+ciphertext).  Two are read, in order: @file{~/.claude/secrets.env},
+shared by every session, then the session's own @file{secrets.env}.
+Both are sourced under @code{set -a}, so a session key overrides the
+shared one of the same name; homelab-wide credentials such as
+@env{GRAFANA_SERVICE_ACCOUNT_TOKEN} belong in the shared file, where
+rotating one is a single-file edit.  The wrapper runs @code{sops -d} on
+the host, where gpg-agent lives, into a private @file{/dev/shm} file
+exposed read-only into the container and shredded on exit, so decrypted
+values never reach the session dir, the store, or the @code{guix}
+command line.
+
+The Grafana MCP server is registered automatically in every session
+when @env{GRAFANA_URL} is set (it defaults to the Tailscale-fronted
+vhost).  It is a single server covering Prometheus metrics, Loki logs
+and Grafana dashboards, restricted to a read-only tool set.
 
 @option{--worktree [BRANCH]} provisions a git worktree of @code{$PWD}
 and uses it as CWD, letting several claude sessions work on the same
