@@ -43,10 +43,11 @@ SECRETS_DIR="$REPO_ROOT/secrets/hosts"
 SYNOLOGY_HOST="${SYNOLOGY_HOST:-nas.peteches.co.uk}"
 SYNOLOGY_USER="${SYNOLOGY_USER:-restic-backup}"
 OPERATOR_PUBKEY="${OPERATOR_PUBKEY:-$HOME/.ssh/id_ed25519.pub}"
-# Relative to the login user's home, so this does not depend on whether /homes
-# or /volume1/homes is canonical on the NAS -- they differ, and the absolute
-# form only worked by accident of the symlink.
-AUTHORIZED_KEYS_PATH="${AUTHORIZED_KEYS_PATH:-.ssh/authorized_keys}"
+# Absolute, because the NAS drops sftp sessions in / rather than the login
+# user's home -- a relative path resolves to /.ssh/authorized_keys and fails.
+# /homes is a symlink to /volume1/homes; both work, and sshd itself reports the
+# file as /var/services/homes/... All three name the same file.
+AUTHORIZED_KEYS_PATH="${AUTHORIZED_KEYS_PATH:-/homes/restic-backup/.ssh/authorized_keys}"
 
 KEYS_FILE="/dev/shm/restic-keys-$$"
 SFTP_BATCH="/dev/shm/restic-sftp-batch-$$"
