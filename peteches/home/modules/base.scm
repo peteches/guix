@@ -290,6 +290,7 @@
 	     (config-directory (repo-directory "configs/nyxt"))))
 
    base-ssh-service
+   base-ssh-control-dir-service
 
    base-gpg-service
 
@@ -462,10 +463,15 @@
 		  (name "anvil-emacs-eval")
 		  (command bash-path)
 		  (args (list script "--server-id=emacs-eval")))
+		 ;; The packaged server, not `npx -y comfyui-mcp': comfyui-mcp
+		 ;; depends on two native addons (better-sqlite3 and sharp),
+		 ;; which npx builds from source on first use.  That needs a C
+		 ;; toolchain the claude container does not have, and npx
+		 ;; swallowed the failure, so the server only ever showed as
+		 ;; "failed to connect".
 		 (home-claude-mcp-server
 		  (name "comfyui")
-		  (command "npx")
-		  (args (list "-y" "comfyui-mcp")))))))))
+		  (command (file-append comfyui-mcp "/bin/comfyui-mcp")))))))))
 
    (list
     (simple-service 'claude-sessions
