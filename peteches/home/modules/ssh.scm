@@ -20,10 +20,26 @@
 ;;; inline in (peteches systems vm-base).
 
 (define-module (peteches home modules ssh)
+  #:use-module (gnu home services)
   #:use-module (gnu home services ssh)
   #:use-module (gnu services)
   #:use-module (guix gexp)
-  #:export (base-ssh-service))
+  #:export (base-ssh-service
+            base-ssh-control-dir-service))
+
+;;; ssh creates the control socket but not the directory holding it, so a
+;;; missing ~/.cache/ssh makes every multiplexed connection fail.  Create
+;;; it at activation time.  ~/.cache itself is created too: it is not
+;;; guaranteed to exist on a fresh home.
+(define-public base-ssh-control-dir-service
+  (simple-service 'ssh-control-dir
+                  home-activation-service-type
+                  #~(let ((home (getenv "HOME")))
+                      (for-each (lambda (dir)
+                                  (unless (file-exists? dir)
+                                    (mkdir dir #o700)))
+                                (list (string-append home "/.cache")
+                                      (string-append home "/.cache/ssh"))))))
 
 (define-public base-ssh-service
   (service home-openssh-service-type
@@ -35,7 +51,13 @@
 		     (name "*")
 		     (extra-content (string-append
 				     "    ControlMaster auto\n"
-				     "    ControlPath ~/.ssh/ctrl-%C\n"
+				     ;; Not ~/.ssh: that directory is bind-mounted
+				     ;; read-only inside the claude container, and ssh
+				     ;; aborts with "cannot bind to path ...: Read-only
+				     ;; file system" *after* authenticating -- which git
+				     ;; then reports as "Could not read from remote
+				     ;; repository".
+				     "    ControlPath ~/.cache/ssh/ctrl-%C\n"
 				     "    ControlPersist 10m\n"
 				     "    CanonicalizeHostname always\n")))
 		    (openssh-host
