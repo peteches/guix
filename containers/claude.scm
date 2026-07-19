@@ -8,6 +8,7 @@
   #:use-module (gnu packages)
   #:use-module (gnu packages base)
   #:use-module (gnu packages bash)
+  #:use-module (peteches packages comfyui-mcp)
   #:export (claude-container-manifest
             claude-container
             emacs-anvil
@@ -126,46 +127,17 @@ call over stdio.  This package installs the elisp modules and the
     (home-page "https://github.com/zawatton/anvil.el")
     (license license:gpl3+)))
 
-;; Thin wrapper package for the comfyui-mcp Node.js MCP server
-;; (https://github.com/artokun/comfyui-mcp).  The upstream project is
-;; distributed via npm; rather than repackaging its dependency tree we
-;; expose a `comfyui-mcp' command that execs `npx -y comfyui-mcp@latest'.
-;; `node' (which provides `npx') is already in the container manifest.
-(define comfyui-mcp-wrapper
-  (mixed-text-file
-   "comfyui-mcp"
-   "#!" bash-minimal "/bin/bash\n"
-   "exec npx -y comfyui-mcp@latest \"$@\"\n"))
-
-(define-public comfyui-mcp
-  (package
-    (name "comfyui-mcp")
-    (version "0.1.0")
-    (source #f)
-    (build-system trivial-build-system)
-    (arguments
-     (list
-      #:modules '((guix build utils))
-      #:builder
-      #~(begin
-          (use-modules (guix build utils))
-          (let* ((out    #$output)
-                 (bin    (string-append out "/bin"))
-                 (script (string-append bin "/comfyui-mcp")))
-            (mkdir-p bin)
-            (copy-file #$comfyui-mcp-wrapper script)
-            (chmod script #o755)))))
-    (synopsis "MCP server bridging Claude Code to ComfyUI")
-    (description
-     "Thin wrapper package around the upstream @code{comfyui-mcp} npm
-package (https://github.com/artokun/comfyui-mcp).  Installs a
-@command{comfyui-mcp} executable that execs @code{npx -y
-comfyui-mcp@@latest}, so the underlying Node.js server is fetched and
-cached by npm at first use.  Node.js (which ships @command{npx}) must
-be available on @env{PATH}; inside the Claude container it is provided
-by the @code{node} entry in the container manifest.")
-    (home-page "https://github.com/artokun/comfyui-mcp")
-    (license license:expat)))
+;; The comfyui-mcp MCP server (https://github.com/artokun/comfyui-mcp),
+;; from the peteches channel.
+;;
+;; This was previously a trivial wrapper that exec'd `npx -y
+;; comfyui-mcp@latest', which never worked here: comfyui-mcp depends on
+;; two native addons (better-sqlite3 and sharp), npx builds them from
+;; source on first use, and the container ships no C compiler — so npx
+;; failed with no diagnostics and the MCP server merely showed as
+;; "failed to connect".  The channel package builds both addons at
+;; package-build time instead.
+(define comfyui-mcp node-comfyui-mcp)
 
 (define %spec-list-str
   (string-join (map (lambda (s) (string-append "\"" s "\""))
