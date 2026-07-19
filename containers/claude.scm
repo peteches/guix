@@ -8,6 +8,7 @@
   #:use-module (gnu packages)
   #:use-module (gnu packages base)
   #:use-module (gnu packages bash)
+  #:use-module (peteches packages comfyui-mcp)
   #:export (claude-container-manifest
             claude-container
             emacs-anvil
@@ -126,46 +127,17 @@ call over stdio.  This package installs the elisp modules and the
     (home-page "https://github.com/zawatton/anvil.el")
     (license license:gpl3+)))
 
-;; Thin wrapper package for the comfyui-mcp Node.js MCP server
-;; (https://github.com/artokun/comfyui-mcp).  The upstream project is
-;; distributed via npm; rather than repackaging its dependency tree we
-;; expose a `comfyui-mcp' command that execs `npx -y comfyui-mcp@latest'.
-;; `node' (which provides `npx') is already in the container manifest.
-(define comfyui-mcp-wrapper
-  (mixed-text-file
-   "comfyui-mcp"
-   "#!" bash-minimal "/bin/bash\n"
-   "exec npx -y comfyui-mcp@latest \"$@\"\n"))
-
-(define-public comfyui-mcp
-  (package
-    (name "comfyui-mcp")
-    (version "0.1.0")
-    (source #f)
-    (build-system trivial-build-system)
-    (arguments
-     (list
-      #:modules '((guix build utils))
-      #:builder
-      #~(begin
-          (use-modules (guix build utils))
-          (let* ((out    #$output)
-                 (bin    (string-append out "/bin"))
-                 (script (string-append bin "/comfyui-mcp")))
-            (mkdir-p bin)
-            (copy-file #$comfyui-mcp-wrapper script)
-            (chmod script #o755)))))
-    (synopsis "MCP server bridging Claude Code to ComfyUI")
-    (description
-     "Thin wrapper package around the upstream @code{comfyui-mcp} npm
-package (https://github.com/artokun/comfyui-mcp).  Installs a
-@command{comfyui-mcp} executable that execs @code{npx -y
-comfyui-mcp@@latest}, so the underlying Node.js server is fetched and
-cached by npm at first use.  Node.js (which ships @command{npx}) must
-be available on @env{PATH}; inside the Claude container it is provided
-by the @code{node} entry in the container manifest.")
-    (home-page "https://github.com/artokun/comfyui-mcp")
-    (license license:expat)))
+;; The comfyui-mcp MCP server (https://github.com/artokun/comfyui-mcp),
+;; from the peteches channel.
+;;
+;; This was previously a trivial wrapper that exec'd `npx -y
+;; comfyui-mcp@latest', which never worked here: comfyui-mcp depends on
+;; two native addons (better-sqlite3 and sharp), npx builds them from
+;; source on first use, and the container ships no C compiler — so npx
+;; failed with no diagnostics and the MCP server merely showed as
+;; "failed to connect".  The channel package builds both addons at
+;; package-build time instead.
+(define comfyui-mcp node-comfyui-mcp)
 
 (define %spec-list-str
   (string-join (map (lambda (s) (string-append "\"" s "\""))
@@ -426,6 +398,38 @@ by the @code{node} entry in the container manifest.")
    "  printf '%s\\n' \"$new_content\" > \"$HOME/.claude.json\"\n"
    "}\n"
    "\n"
+   ;; comfyui-mcp drives a ComfyUI instance.  Unlike the grafana server,
+   ;; this one starts cleanly with no configuration — it defaults to
+   ;; 127.0.0.1:8188 and simply reports ComfyUI as undetected — so
+   ;; registration is gated only on the binary being present (it comes
+   ;; from the container manifest).  When it is absent we actively
+   ;; *remove* any stale entry, keeping this idempotent in both
+   ;; directions.  COMFYUI_URL, if set, is inherited from the environment
+   ;; and is deliberately not written into ~/.claude.json, which Claude
+   ;; Code rewrites at runtime.
+   "register_comfyui_mcp() {\n"
+   "  command -v jq >/dev/null 2>&1 || return 0\n"
+   "  [ -f \"$HOME/.claude.json\" ] || echo '{}' > \"$HOME/.claude.json\"\n"
+   "  local new_content comfyui_bin\n"
+   "  if ! comfyui_bin=$(command -v comfyui-mcp); then\n"
+   "    new_content=$(jq 'if .mcpServers then\n"
+   "          .mcpServers |= del(.comfyui)\n"
+   "        else . end' \"$HOME/.claude.json\") || return 0\n"
+   "    printf '%s\\n' \"$new_content\" > \"$HOME/.claude.json\"\n"
+   "    return 0\n"
+   "  fi\n"
+   "  new_content=$(jq \\\n"
+   "    --arg cmd \"$comfyui_bin\" \\\n"
+   "    '(.mcpServers //= {})\n"
+   "     | .mcpServers.comfyui = {\n"
+   "         type: \"stdio\",\n"
+   "         command: $cmd,\n"
+   "         args: [],\n"
+   "         env: {}\n"
+   "       }' \"$HOME/.claude.json\") || return 0\n"
+   "  printf '%s\\n' \"$new_content\" > \"$HOME/.claude.json\"\n"
+   "}\n"
+   "\n"
    ;; anvil.el >= 1.3 splits module loading (anvil-enable) from request
    ;; handling (anvil-server-start); bridges error with \"No active MCP
    ;; server\" unless the server is started.  Run both idempotently so
@@ -462,6 +466,7 @@ by the @code{node} entry in the container manifest.")
    "\n"
    "register_anvil_mcp\n"
    "register_grafana_mcp\n"
+   "register_comfyui_mcp\n"
    "start_anvil_daemon\n"
    "\n"
    "# Per-session init hook, sourced after anvil is up.\n"
