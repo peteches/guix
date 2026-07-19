@@ -398,6 +398,42 @@ call over stdio.  This package installs the elisp modules and the
    "  printf '%s\\n' \"$new_content\" > \"$HOME/.claude.json\"\n"
    "}\n"
    "\n"
+   ;; The comfyui entry arrives from the host ~/.claude.json sync, where
+   ;; `guix home' registered it as an absolute store path built from the
+   ;; *host's* channel pin.  The container builds its own comfyui-mcp from
+   ;; the pin in this file, so the two store paths differ even at identical
+   ;; versions.  With --nesting the whole host store is mapped read-only and
+   ;; the host path happens to resolve; without it the container sees only
+   ;; its own manifest closure, the host path is absent, and the server
+   ;; merely reports "failed to connect".
+   ;;
+   ;; So rewrite the entry to the container profile's binary, exactly as
+   ;; register_anvil_mcp and register_grafana_mcp do for theirs.  If
+   ;; comfyui-mcp is not on PATH, drop the entry rather than leave a
+   ;; dangling one.
+   "register_comfyui_mcp() {\n"
+   "  command -v jq >/dev/null 2>&1 || return 0\n"
+   "  [ -f \"$HOME/.claude.json\" ] || echo '{}' > \"$HOME/.claude.json\"\n"
+   "  local new_content comfyui_bin\n"
+   "  if ! comfyui_bin=$(command -v comfyui-mcp); then\n"
+   "    new_content=$(jq 'if .mcpServers then\n"
+   "          .mcpServers |= del(.comfyui)\n"
+   "        else . end' \"$HOME/.claude.json\") || return 0\n"
+   "    printf '%s\\n' \"$new_content\" > \"$HOME/.claude.json\"\n"
+   "    return 0\n"
+   "  fi\n"
+   "  new_content=$(jq \\\n"
+   "    --arg cmd \"$comfyui_bin\" \\\n"
+   "    '(.mcpServers //= {})\n"
+   "     | .mcpServers.comfyui = {\n"
+   "         type: \"stdio\",\n"
+   "         command: $cmd,\n"
+   "         args: [],\n"
+   "         env: {}\n"
+   "       }' \"$HOME/.claude.json\") || return 0\n"
+   "  printf '%s\\n' \"$new_content\" > \"$HOME/.claude.json\"\n"
+   "}\n"
+   "\n"
    ;; anvil.el >= 1.3 splits module loading (anvil-enable) from request
    ;; handling (anvil-server-start); bridges error with \"No active MCP
    ;; server\" unless the server is started.  Run both idempotently so
@@ -434,6 +470,7 @@ call over stdio.  This package installs the elisp modules and the
    "\n"
    "register_anvil_mcp\n"
    "register_grafana_mcp\n"
+   "register_comfyui_mcp\n"
    "start_anvil_daemon\n"
    "\n"
    "# Per-session init hook, sourced after anvil is up.\n"
