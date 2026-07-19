@@ -8,6 +8,7 @@
   #:use-module (gnu packages)
   #:use-module (gnu packages base)
   #:use-module (gnu packages bash)
+  #:use-module (gnu packages networking)
   #:use-module (peteches repository)
   #:use-module (peteches packages comfyui-mcp)
   #:export (claude-container-manifest
@@ -23,6 +24,11 @@
 ;;
 ;; Agentic-coding staples: shellcheck, moreutils, yq, bind:utils (dig),
 ;; netcat-openbsd, socat, procps, psmisc, make, openssl, recutils.
+;;
+;; `docker-cli' is the client only -- it is inert unless the wrapper was
+;; given --docker, which relays the host daemon's socket into the
+;; container.  Shipping it unconditionally costs nothing and keeps the
+;; manifest independent of a per-run flag.
 (define %claude-container-specs
   '("claude-code"
     "bash"
@@ -31,6 +37,7 @@
     "coreutils"
     "curl"
     "diffutils"
+    "docker-cli"
     "emacs-no-x"
     "fd"
     "file"
@@ -515,6 +522,9 @@ call over stdio.  This package installs the elisp modules and the
    "# 'unset' means \"not specified on the command line\", which lets a\n"
    "# per-session marker file decide instead.\n"
    "nesting=unset\n"
+   "# Docker socket access: off by default for the same reason as nesting --\n"
+   "# the daemon socket is root-equivalent on the host.\n"
+   "docker=unset\n"
    "extra_opts=()\n"
    "claude_args=()\n"
    "\n"
@@ -523,7 +533,7 @@ call over stdio.  This package installs the elisp modules and the
    "Usage: claude [--session NAME] [--migrate y|n] [--share PATH[=DEST]]\n"
    "              [--expose PATH[=DEST]] [--worktree [BRANCH]] [--no-worktree]\n"
    "              [--keep-worktree] [--no-anvil] [--nesting|--no-nesting]\n"
-   "              [--shell] [--rm|--ephemeral]\n"
+   "              [--docker|--no-docker] [--shell] [--rm|--ephemeral]\n"
    "              [--list-sessions] [-h|--help] [-- CLAUDE_ARG ...]\n"
    "\n"
    "Runs claude-code inside 'guix shell --container'.\n"
@@ -587,6 +597,20 @@ call over stdio.  This package installs the elisp modules and the
    "                     session opts in permanently by creating an empty\n"
    "                     'nesting' file in its session dir.\n"
    "  --no-nesting       Force nesting off, overriding the marker file.\n"
+   "  --docker           Make the host's Docker daemon usable inside the\n"
+   "                     container: the socket appears at\n"
+   "                     /var/run/docker.sock and DOCKER_HOST points at it.\n"
+   "                     The socket is RELAYED through a socat listener on\n"
+   "                     the host rather than bind-mounted directly, because\n"
+   "                     dockerd's socket is 0660 root:docker and\n"
+   "                     'guix shell --container' maps only the primary gid\n"
+   "                     into the user namespace (setgroups is denied), so\n"
+   "                     the supplementary 'docker' group is lost inside and\n"
+   "                     a direct mount is unreadable.\n"
+   "                     OFF by default: the Docker socket is root-equivalent\n"
+   "                     on the host.  A session opts in permanently by\n"
+   "                     creating an empty 'docker' file in its session dir.\n"
+   "  --no-docker        Force docker off, overriding the marker file.\n"
    "  --shell            Drop into container bash instead of launching claude.\n"
    "  --rm, --ephemeral  Use a throwaway session (mktemp) removed on exit.\n"
    "  --list-sessions    Print existing session directory names and exit.\n"
@@ -661,6 +685,8 @@ call over stdio.  This package installs the elisp modules and the
    "    --no-anvil)        no_anvil=yes; shift ;;\n"
    "    --nesting|--guix)  nesting=yes; shift ;;\n"
    "    --no-nesting)      nesting=no; shift ;;\n"
+   "    --docker)          docker=yes; shift ;;\n"
+   "    --no-docker)       docker=no; shift ;;\n"
    "    --shell)           shell_mode=yes; shift ;;\n"
    "    --rm|--ephemeral)  ephemeral=yes; shift ;;\n"
    "    --list-sessions)\n"
@@ -697,7 +723,8 @@ call over stdio.  This package installs the elisp modules and the
    "                  ! -name shared-dirs ! -name init.sh ! -name env \\\n"
    "                  ! -name .cache ! -name .local ! -name .npm \\\n"
    "                  ! -name .bash_history ! -name worktrees \\\n"
-   "                  ! -name nesting ! -name claude-overrides.json \\\n"
+   "                  ! -name nesting ! -name docker \\\n"
+   "                  ! -name claude-overrides.json \\\n"
    "                  ! -name .config -print -quit 2>/dev/null)\" ]; then\n"
    "    legacy=yes\n"
    "  fi\n"
@@ -809,6 +836,13 @@ call over stdio.  This package installs the elisp modules and the
    "# its session dir; --nesting/--no-nesting override per invocation.\n"
    "if [ \"$nesting\" = unset ]; then\n"
    "  if [ -e \"$session_dir/nesting\" ]; then nesting=yes; else nesting=no; fi\n"
+   "fi\n"
+   "\n"
+   "# --- docker resolution ---\n"
+   "# Same marker-file convention as nesting: an empty 'docker' file in the\n"
+   "# session dir opts in permanently, --docker/--no-docker override per run.\n"
+   "if [ \"$docker\" = unset ]; then\n"
+   "  if [ -e \"$session_dir/docker\" ]; then docker=yes; else docker=no; fi\n"
    "fi\n"
    "\n"
    "# --- worktree provisioning ---\n"
@@ -1042,6 +1076,45 @@ call over stdio.  This package installs the elisp modules and the
    "if [ -n \"${SSH_AUTH_SOCK:-}\" ] && [ -e \"$SSH_AUTH_SOCK\" ]; then\n"
    "  opts+=(--expose=\"$SSH_AUTH_SOCK\")\n"
    "fi\n"
+   "\n"
+   ;; Docker: relayed, not bind-mounted.  dockerd's socket is 0660
+   ;; root:docker; `guix shell --container' writes "deny" to
+   ;; /proc/PID/setgroups and maps only the primary gid into the user
+   ;; namespace, so the supplementary `docker' group becomes overflow
+   ;; inside and a direct --share of the socket gives EACCES.  socat runs
+   ;; on the HOST, where the group still applies, and re-exports the
+   ;; daemon on a 0600 socket we own; that one is shared in.
+   "# --- docker ---\n"
+   "# See --help: the socket is relayed via socat because the container's\n"
+   "# user namespace drops the 'docker' supplementary group.\n"
+   "docker_relay=\"\"\n"
+   "docker_relay_pid=\"\"\n"
+   "if [ \"$docker\" = yes ]; then\n"
+   "  docker_sock=\"${DOCKER_HOST:-unix:///var/run/docker.sock}\"\n"
+   "  docker_sock=\"${docker_sock#unix://}\"\n"
+   "  if [ ! -S \"$docker_sock\" ]; then\n"
+   "    echo \"claude: --docker: no docker socket at $docker_sock\" >&2\n"
+   "  else\n"
+   "    docker_relay=$(mktemp -u -p /dev/shm docker-sock-XXXXXX)\n"
+   "    " socat "/bin/socat \\\n"
+   "      \"UNIX-LISTEN:$docker_relay,fork,mode=0600\" \\\n"
+   "      \"UNIX-CONNECT:$docker_sock\" &\n"
+   "    docker_relay_pid=$!\n"
+   "    for _ in $(seq 20); do\n"
+   "      [ -S \"$docker_relay\" ] && break\n"
+   "      sleep 0.1\n"
+   "    done\n"
+   "    if [ -S \"$docker_relay\" ]; then\n"
+   "      opts+=(--share=\"$docker_relay=/var/run/docker.sock\")\n"
+   "      container_env+=(\"DOCKER_HOST=unix:///var/run/docker.sock\")\n"
+   "    else\n"
+   "      echo \"claude: --docker: socat relay failed to start\" >&2\n"
+   "      kill \"$docker_relay_pid\" 2>/dev/null || true\n"
+   "      docker_relay=\"\"\n"
+   "      docker_relay_pid=\"\"\n"
+   "    fi\n"
+   "  fi\n"
+   "fi\n"
    ;; Decrypted secrets tmpfs, read-only, at a fixed in-container path
    ;; the startup script sources.  The host path (a random /dev/shm
    ;; name) is remapped to a stable name so the startup script needn't
@@ -1068,6 +1141,12 @@ call over stdio.  This package installs the elisp modules and the
    "  if [ -n \"$secrets_shm\" ]; then\n"
    "    shred -u \"$secrets_shm\" 2>/dev/null || rm -f \"$secrets_shm\"\n"
    "  fi\n"
+   "  if [ -n \"$docker_relay_pid\" ]; then\n"
+   "    kill \"$docker_relay_pid\" 2>/dev/null || true\n"
+   "  fi\n"
+   "  if [ -n \"$docker_relay\" ]; then\n"
+   "    rm -f \"$docker_relay\"\n"
+   "  fi\n"
    "  exit \"$rc\"\n"
    "}\n"
    "\n"
@@ -1077,6 +1156,7 @@ call over stdio.  This package installs the elisp modules and the
    "needs_cleanup=no\n"
    "if [ \"$ephemeral\" = yes ] \\\n"
    "   || [ -n \"$secrets_shm\" ] \\\n"
+   "   || [ -n \"$docker_relay\" ] \\\n"
    "   || { [ -n \"$worktree_path\" ] && [ \"$keep_worktree\" != yes ]; }; then\n"
    "  needs_cleanup=yes\n"
    "  trap cleanup EXIT INT TERM\n"
@@ -1108,7 +1188,7 @@ call over stdio.  This package installs the elisp modules and the
 (define-public claude-container
   (package
     (name "claude-container")
-    (version "0.3.0")
+    (version "0.4.0")
     (source #f)
     (build-system trivial-build-system)
     (arguments
@@ -1189,6 +1269,17 @@ working tree the wrapper falls back silently to no-worktree unless
 ephemeral mktemp session.  @option{--shell} drops into container
 bash.  @option{--no-anvil} skips the emacs daemon for fast one-off
 runs.
+
+@option{--docker} makes the host's Docker daemon usable inside the
+container: @command{docker-cli} is always in the manifest, and the flag
+adds the socket at @file{/var/run/docker.sock} with @env{DOCKER_HOST}
+set to match.  The socket is relayed through a @command{socat} listener
+running on the host rather than bind-mounted, because dockerd's socket
+is @code{0660 root:docker} while @code{guix shell --container} maps only
+the primary gid into the user namespace, dropping the supplementary
+@code{docker} group.  It is OFF by default -- the socket is
+root-equivalent on the host -- and a session opts in permanently with an
+empty @file{docker} file in its session dir, mirroring @file{nesting}.
 
 An @code{emacs-no-x} daemon hosts the Anvil MCP server
 (https://github.com/zawatton/anvil.el), packaged as

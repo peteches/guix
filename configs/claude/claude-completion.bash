@@ -55,6 +55,7 @@ _claude_container_wrapper_opts="
     --session --migrate --share --expose
     --worktree --no-worktree --keep-worktree
     --no-anvil --nesting --guix --no-nesting
+    --docker --no-docker
     --shell --rm --ephemeral --list-sessions
     -h --help --
 "
