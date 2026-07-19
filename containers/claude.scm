@@ -398,38 +398,6 @@ call over stdio.  This package installs the elisp modules and the
    "  printf '%s\\n' \"$new_content\" > \"$HOME/.claude.json\"\n"
    "}\n"
    "\n"
-   ;; comfyui-mcp drives a ComfyUI instance.  Unlike the grafana server,
-   ;; this one starts cleanly with no configuration — it defaults to
-   ;; 127.0.0.1:8188 and simply reports ComfyUI as undetected — so
-   ;; registration is gated only on the binary being present (it comes
-   ;; from the container manifest).  When it is absent we actively
-   ;; *remove* any stale entry, keeping this idempotent in both
-   ;; directions.  COMFYUI_URL, if set, is inherited from the environment
-   ;; and is deliberately not written into ~/.claude.json, which Claude
-   ;; Code rewrites at runtime.
-   "register_comfyui_mcp() {\n"
-   "  command -v jq >/dev/null 2>&1 || return 0\n"
-   "  [ -f \"$HOME/.claude.json\" ] || echo '{}' > \"$HOME/.claude.json\"\n"
-   "  local new_content comfyui_bin\n"
-   "  if ! comfyui_bin=$(command -v comfyui-mcp); then\n"
-   "    new_content=$(jq 'if .mcpServers then\n"
-   "          .mcpServers |= del(.comfyui)\n"
-   "        else . end' \"$HOME/.claude.json\") || return 0\n"
-   "    printf '%s\\n' \"$new_content\" > \"$HOME/.claude.json\"\n"
-   "    return 0\n"
-   "  fi\n"
-   "  new_content=$(jq \\\n"
-   "    --arg cmd \"$comfyui_bin\" \\\n"
-   "    '(.mcpServers //= {})\n"
-   "     | .mcpServers.comfyui = {\n"
-   "         type: \"stdio\",\n"
-   "         command: $cmd,\n"
-   "         args: [],\n"
-   "         env: {}\n"
-   "       }' \"$HOME/.claude.json\") || return 0\n"
-   "  printf '%s\\n' \"$new_content\" > \"$HOME/.claude.json\"\n"
-   "}\n"
-   "\n"
    ;; anvil.el >= 1.3 splits module loading (anvil-enable) from request
    ;; handling (anvil-server-start); bridges error with \"No active MCP
    ;; server\" unless the server is started.  Run both idempotently so
@@ -466,7 +434,6 @@ call over stdio.  This package installs the elisp modules and the
    "\n"
    "register_anvil_mcp\n"
    "register_grafana_mcp\n"
-   "register_comfyui_mcp\n"
    "start_anvil_daemon\n"
    "\n"
    "# Per-session init hook, sourced after anvil is up.\n"
