@@ -435,6 +435,20 @@
 	     (aliases `(("grhome" . "guix home -L ~/area_51/guix reconfigure ~/area_51/guix/peteches/home/configs/$(hostname).scm")
 			("grsys" . "sudo guix system -L ~/area_51/guix reconfigure ~/area_51/guix/peteches/systems/$(hostname).scm")))
 	     (guix-defaults? #t)
+	     ;; bash-completion's lazy loader is not installed, so source
+	     ;; the claude wrapper's completion file directly.  The path is
+	     ;; stable across generations; the guard keeps the shell quiet
+	     ;; when claude-container is not in the profile.
+	     (bashrc
+	      (list (plain-file
+		     "claude-completion.bash"
+		     "\
+_claude_completion=\"$HOME/.guix-home/profile/share/bash-completion/completions/claude\"
+if [ -r \"$_claude_completion\" ]; then
+  . \"$_claude_completion\"
+fi
+unset _claude_completion
+")))
 	     (environment-variables '(("CGO_ENABLED" . "1")))))
 
    ;; Desktop conveniences (terminals/aliases/env, etc.).

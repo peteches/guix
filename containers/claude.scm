@@ -8,6 +8,7 @@
   #:use-module (gnu packages)
   #:use-module (gnu packages base)
   #:use-module (gnu packages bash)
+  #:use-module (peteches repository)
   #:use-module (peteches packages comfyui-mcp)
   #:export (claude-container-manifest
             claude-container
@@ -1118,10 +1119,19 @@ call over stdio.  This package installs the elisp modules and the
           (use-modules (guix build utils))
           (let* ((out    #$output)
                  (bin    (string-append out "/bin"))
-                 (script (string-append bin "/claude")))
+                 (script (string-append bin "/claude"))
+                 ;; Standard bash-completion search path.  Nothing on
+                 ;; this host runs bash-completion's lazy loader, so
+                 ;; (peteches home modules base) sources this file
+                 ;; directly from ~/.guix-home/profile; the location is
+                 ;; still the conventional one in case that changes.
+                 (comp    (string-append out "/share/bash-completion/completions")))
             (mkdir-p bin)
             (copy-file #$claude-container-wrapper script)
-            (chmod script #o755)))))
+            (chmod script #o755)
+            (mkdir-p comp)
+            (copy-file #$(local-file (source-path "configs/claude/claude-completion.bash"))
+                       (string-append comp "/claude"))))))
     (synopsis "Launch claude-code inside a guix shell --container")
     (description
      "Wrapper package that runs claude-code inside an isolated
