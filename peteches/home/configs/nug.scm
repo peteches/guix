@@ -62,6 +62,7 @@
   #:use-module (peteches home services mpv)
 
   #:use-module (peteches packages lycheeslicer)
+  #:use-module (peteches packages docker-compose)
 
   #:use-module (peteches channels nug)
 )
@@ -94,6 +95,19 @@
 ;; Services unique to nug (AI stacks, AGiXT bots, etc.)
 (define nug-extra-services
   (list
+   ;; `docker compose'.  Guix's only compose package is the Python v1
+   ;; (1.29.2), which cannot talk to the daemon at all -- see
+   ;; (peteches packages docker-compose).  The plugin manager searches
+   ;; $DOCKER_CONFIG/cli-plugins (i.e. ~/.docker/cli-plugins) and some
+   ;; FHS paths, never PATH, so putting the package in `packages' would
+   ;; not be found; it has to be symlinked into place.  This replaces a
+   ;; binary that was previously installed there by hand.
+   (simple-service 'docker-compose-cli-plugin
+		   home-files-service-type
+		   `((".docker/cli-plugins/docker-compose"
+		      ,(file-append docker-compose-cli-plugin
+				    "/libexec/docker/cli-plugins/docker-compose"))))
+
    (service home-mpv-service-type
 	    (mpv-config
 	     (hwdec "nvdec")

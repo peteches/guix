@@ -11,6 +11,7 @@
   #:use-module (gnu packages networking)
   #:use-module (peteches repository)
   #:use-module (peteches packages comfyui-mcp)
+  #:use-module (peteches packages docker-compose)
   #:export (claude-container-manifest
             claude-container
             emacs-anvil
@@ -1107,6 +1108,14 @@ call over stdio.  This package installs the elisp modules and the
    "    if [ -S \"$docker_relay\" ]; then\n"
    "      opts+=(--share=\"$docker_relay=/var/run/docker.sock\")\n"
    "      container_env+=(\"DOCKER_HOST=unix:///var/run/docker.sock\")\n"
+   ;; Compose v2 is a `docker' CLI plugin, and the plugin manager looks
+   ;; only in $DOCKER_CONFIG/cli-plugins and four hard-coded FHS paths --
+   ;; PATH is never consulted.  Map the package's plugin directory onto
+   ;; one of those FHS paths; /usr does not otherwise exist in the
+   ;; container.  Read-only, hence --expose rather than --share.
+   "      opts+=(--expose=\""
+   docker-compose-cli-plugin "/libexec/docker/cli-plugins"
+   "=/usr/lib/docker/cli-plugins\")\n"
    "    else\n"
    "      echo \"claude: --docker: socat relay failed to start\" >&2\n"
    "      kill \"$docker_relay_pid\" 2>/dev/null || true\n"
@@ -1272,6 +1281,8 @@ runs.
 
 @option{--docker} makes the host's Docker daemon usable inside the
 container: @command{docker-cli} is always in the manifest, and the flag
+also supplies @command{docker compose} by mapping the Compose v2 CLI
+plugin onto @file{/usr/lib/docker/cli-plugins}, and the flag
 adds the socket at @file{/var/run/docker.sock} with @env{DOCKER_HOST}
 set to match.  The socket is relayed through a @command{socat} listener
 running on the host rather than bind-mounted, because dockerd's socket
