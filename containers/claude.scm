@@ -28,7 +28,10 @@
 ;; `docker-cli' is the client only -- it is inert unless the wrapper was
 ;; given --docker, which relays the host daemon's socket into the
 ;; container.  Shipping it unconditionally costs nothing and keeps the
-;; manifest independent of a per-run flag.
+;; manifest independent of a per-run flag.  `docker-compose' is Guix's
+;; only compose: the standalone Python v1 (1.29.2), invoked as
+;; `docker-compose' -- Guix does not package the v2 `docker compose'
+;; CLI plugin.
 (define %claude-container-specs
   '("claude-code"
     "bash"
@@ -38,6 +41,7 @@
     "curl"
     "diffutils"
     "docker-cli"
+    "docker-compose"
     "emacs-no-x"
     "fd"
     "file"
@@ -1271,7 +1275,8 @@ bash.  @option{--no-anvil} skips the emacs daemon for fast one-off
 runs.
 
 @option{--docker} makes the host's Docker daemon usable inside the
-container: @command{docker-cli} is always in the manifest, and the flag
+container: @command{docker-cli} and @command{docker-compose} are always
+in the manifest, and the flag
 adds the socket at @file{/var/run/docker.sock} with @env{DOCKER_HOST}
 set to match.  The socket is relayed through a @command{socat} listener
 running on the host rather than bind-mounted, because dockerd's socket
