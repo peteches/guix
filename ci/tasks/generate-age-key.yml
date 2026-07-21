@@ -7,9 +7,14 @@ image_resource:
     tag: latest
 
 params:
-  VM_NAME:            ((VM_NAME))
-  VAULT_ADDR:         ((VAULT_ADDR))          # set per-job in pipeline
-  VAULT_TOKEN:        ((image-build.vault_write_token))  # token with create/update on secret/data/vms/*
+  # Plain job values (see build-vm-image.yml) — NOT ((vars)), or Concourse
+  # tries to resolve them as `concourse` credentials and fails.
+  VM_NAME:
+  VAULT_ADDR:
+  # Writes the keypair to the `infra` engine (vault write
+  # infra/data/vms/$VM_NAME/age), so this token's Vault policy MUST grant
+  # create/update on infra/data/vms/*.
+  VAULT_TOKEN:        ((image-build.vault_write_token))
   TAILSCALE_AUTHKEY:  ((tailscale_authkey))   # ephemeral pre-auth key
 
 run:

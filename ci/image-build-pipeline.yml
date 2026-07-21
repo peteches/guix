@@ -7,8 +7,12 @@
 ##   generate-<name>-age-key  — run once to create the keypair in Vault.
 ##                              Re-run only to rotate keys.
 ##   build-<name>-image       — triggered automatically on system config changes.
-##                              Reads the age private key from Vault via
-##                              AGE_PRIVATE_KEY param.
+##                              Reads the age private key at runtime with the
+##                              vault CLI (vault kv get infra/vms/<name>/age).
+##                              NOT a ((var)) credential: Concourse's cred
+##                              manager only reads the `concourse` engine, so
+##                              VAULT_TOKEN just needs a policy granting read
+##                              on infra/data/vms/*.
 ##
 ## After a build completes:
 ##   1. Retrieve the age public key:
