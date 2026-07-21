@@ -486,3 +486,46 @@ module "plane" {
   image_url = lookup(var.vm_image_urls, "plane", null)
 
 }
+
+module "claude-workstation" {
+  source    = "./modules/proxmox-vm"
+  vmid      = 118
+  name      = "claude-workstation"
+  node_name = var.node_name
+
+  bios          = "ovmf"
+  machine       = "q35"
+  scsi_hardware = "virtio-scsi-pci"
+  on_boot       = true
+  started       = true
+  memory        = 8192
+
+  cpu = {
+    cores = 4
+    type  = "qemu64"
+  }
+
+  efi_disk = {
+    datastore_id      = "local-lvm"
+    type              = "4m"
+    pre_enrolled_keys = false
+  }
+
+  disk = {
+    datastore_id = "local-lvm"
+    interface    = "virtio0"
+    size         = 50
+  }
+
+  network_device = {
+    bridge = "vmbr0"
+    model  = "virtio"
+  }
+
+  agent = {
+    enabled = true
+  }
+
+  image_url = lookup(var.vm_image_urls, "claude-workstation", null)
+
+}

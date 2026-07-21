@@ -184,7 +184,10 @@
                       (labels '(("instance" . "vault"))))
                      (prometheus-static-config
                       (targets '("192.168.51.202:12345"))
-                      (labels '(("instance" . "critical-grind-campaign")))))))
+                      (labels '(("instance" . "critical-grind-campaign"))))
+                     (prometheus-static-config
+                      (targets '("192.168.51.205:12345"))
+                      (labels '(("instance" . "claude-workstation")))))))
                   (prometheus-scrape-config
                    (job-name "proxmox")
                    (metrics-path "/pve")

@@ -46,6 +46,7 @@
   #:use-module (peteches systems critical-grind-outline)
   #:use-module (peteches systems plane)
   #:use-module (peteches systems critical-grind-campaign)
+  #:use-module (peteches systems claude-workstation)
   )
 
 (define-public prometheus-machine
@@ -265,6 +266,20 @@
      (user "peteches")
      (identity "/home/peteches/.ssh/id_ed25519")))))
 
+(define-public claude-workstation-machine
+  (machine
+   (operating-system claude-workstation-os)
+   (environment managed-host-environment-type)
+   (configuration
+    (machine-ssh-configuration
+     (host-name "192.168.51.205")
+     ;; TODO: ssh-keyscan 192.168.51.205 after first boot and replace this.
+     ;; The VM pipeline provisions the host; guix deploy refuses on mismatch.
+     (host-key "ssh-ed25519 AAAA-REPLACE-AFTER-FIRST-BOOT")
+     (system "x86_64-linux")
+     (user "peteches")
+     (identity "/home/peteches/.ssh/id_ed25519")))))
+
 (define-public %all-machines
   (list prometheus-machine
         grafana-machine
@@ -284,4 +299,5 @@
         critical-grind-outline-machine
         plane-machine
         critical-grind-campaign-machine
+        claude-workstation-machine
         ))

@@ -207,4 +207,12 @@
 		     (name "plane")
 		     (host-name "192.168.51.204")
 		     (user "peteches")
+		     (identity-file "~/.ssh/id_ed25519"))
+		    (openssh-host
+		     (name "claude-workstation.ts")
+		     (host-name "claude-workstation.spaniel-cordylus.ts.net"))
+		    (openssh-host
+		     (name "claude-workstation")
+		     (host-name "192.168.51.205")
+		     (user "peteches")
 		     (identity-file "~/.ssh/id_ed25519")))))))

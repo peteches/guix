@@ -31,6 +31,7 @@ Current VMs (all use OVMF/EFI and =qcow2-gpt= images):
 | peteches/systems/critical-grind-campaign.scm | critical-grind-campaign.peteches.co.uk | Critical Grind campaign system on :8080 (192.168.51.202, VMID 115, 2 vCPU, 2048 MB) |
 | peteches/systems/critical-grind-outline.scm | critical-grind-outline.peteches.co.uk | Outline wiki on :3000 (192.168.51.203, VMID 116, 2 vCPU, 2048 MB) |
 | peteches/systems/plane.scm              | plane.peteches.co.uk      | Plane PM on :80 (192.168.51.204, VMID 117, 4 vCPU, 8192 MB) |
+| peteches/systems/claude-workstation.scm | claude-workstation.peteches.co.uk | Claude Code for 2 accounts (peteches + criticalgrind users) (192.168.51.205, VMID 118, 4 vCPU, 8192 MB) |
 
 * Adding a New VM Config
 

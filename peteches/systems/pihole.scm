@@ -156,6 +156,8 @@
 		  (pihole-custom-host (address "192.168.51.203")
 				      (hostname "critical-grind-outline.peteches.co.uk"))
 		  (pihole-custom-host (address "192.168.51.204")
-				      (hostname "plane.peteches.co.uk")))))))))))
+				      (hostname "plane.peteches.co.uk"))
+		  (pihole-custom-host (address "192.168.51.205")
+				      (hostname "claude-workstation.peteches.co.uk")))))))))))
 
 pihole-os
