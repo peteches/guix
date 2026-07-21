@@ -159,6 +159,51 @@ run:
     $GIT clone https://codeberg.org/guix-science/guix-science-nonfree.git /dev/shm/guix-science-nonfree
     $GIT -C /dev/shm/guix-science-nonfree checkout f30ef0318dd1c26bcb9d952a50cfa777429ab4e9
 
+    # ── Skip rebuild if an identical image already exists ─────────────────────
+    # Compute the image DERIVATION without building it (guix system image -d is
+    # fast: it evaluates the config and lowers it to a .drv but never realises
+    # the multi-GB disk image).  The .drv basename is a stable content hash of
+    # the whole build closure — system config plus every pinned channel — so it
+    # uniquely identifies what the image would contain.  We stash it in a marker
+    # object beside the qcow2 after each successful build; if the marker still
+    # matches and the image is present, this run is a no-op and we reuse the
+    # existing artifact instead of rebuilding.  The -L set MUST match the real
+    # build below or the derivation hash will differ.
+    IMG_DRV=$($WORKER_GUIX system image \
+      -L repo \
+      -L /dev/shm/peteches-channel \
+      -L "$SOPS_GUIX_L" \
+      -L /dev/shm/nonguix \
+      -L /dev/shm/guix-science-nonfree \
+      -t qcow2-gpt \
+      --no-grafts \
+      --image-size="$IMAGE_SIZE" \
+      -d \
+      "repo/$SYSTEM_FILE")
+    WANT_DRV=$(basename "$IMG_DRV" .drv)
+    echo "=== image derivation: $WANT_DRV ==="
+
+    MARKER_KEY="meta/$VM_NAME.drv"
+    HAVE_DRV=$(aws --endpoint-url "$MINIO_ENDPOINT" \
+      s3 cp "s3://$MINIO_BUCKET/$MARKER_KEY" - 2>/dev/null || true)
+
+    if [ "$WANT_DRV" = "$HAVE_DRV" ] \
+       && aws --endpoint-url "$MINIO_ENDPOINT" \
+            s3api head-object --bucket "$MINIO_BUCKET" \
+            --key "$VM_NAME.qcow2" >/dev/null 2>&1; then
+      echo "=== $VM_NAME image is up to date ($WANT_DRV); skipping rebuild ==="
+      # Still emit a fresh presigned URL for the existing object so the rest of
+      # the plan (and the downstream terraform provision job) is unchanged.
+      aws --endpoint-url "$MINIO_ENDPOINT" \
+        s3 presign s3://"$MINIO_BUCKET"/"$VM_NAME".qcow2 \
+        --expires-in 86400 > presigned-url/url
+      tailscale down
+      kill "$TAILSCALED_PID"
+      kill "$GUIX_DAEMON_PID" 2>/dev/null || true
+      exit 0
+    fi
+    echo "=== no matching image for $VM_NAME; building $WANT_DRV ==="
+
     # ── Age private key ──────────────────────────────────────────────────────
     # Read the VM's age key from the `infra` engine; if it does not exist yet,
     # generate and store it (get-or-create).  Idempotent: it only creates when
@@ -278,6 +323,13 @@ run:
     aws --endpoint-url "$MINIO_ENDPOINT" \
       s3 cp /tmp/"$VM_NAME".qcow2 s3://"$MINIO_BUCKET"/"$VM_NAME".qcow2
     rm -f /tmp/"$VM_NAME".qcow2
+
+    # Record the derivation hash of the image we just uploaded so a later run
+    # with an identical config short-circuits the build above.  Written only
+    # after the qcow2 upload succeeds, so a failed build never leaves a marker
+    # claiming an image that is not there.
+    printf '%s' "$WANT_DRV" | aws --endpoint-url "$MINIO_ENDPOINT" \
+      s3 cp - "s3://$MINIO_BUCKET/meta/$VM_NAME.drv"
 
     # Generate a 24-hour pre-signed download URL for Terraform.
     aws --endpoint-url "$MINIO_ENDPOINT" \
