@@ -12,7 +12,7 @@
 ##
 ## After a build completes:
 ##   1. Retrieve the age public key:
-##        vault kv get -field=public_key secret/vms/<name>/age > age-keys/<name>.pub
+##        vault kv get -field=public_key infra/vms/<name>/age > age-keys/<name>.pub
 ##   2. Commit it to age-keys/<name>.pub, update .sops.yaml, create secrets.
 ##   3. Add image_url to the VM's module block in infra/terraform and push.
 
@@ -50,6 +50,17 @@ resources:
     - ci/tasks/build-vm-image.yml
     - ci/tasks/generate-age-key.yml
 
+- name: repo-claude-workstation
+  type: git
+  source:
+    uri: https://github.com/peteches/guix
+    branch: main
+    paths:
+    - peteches/systems/claude-workstation.scm
+    - peteches/channels/channels-nug.scm
+    - ci/tasks/build-vm-image.yml
+    - ci/tasks/generate-age-key.yml
+
 # Per-VM S3 resources — written after a successful image build to trigger the
 # terraform pipeline's provision job. MinIO bucket versioning must be enabled
 # on vm-images so each put creates a new version:
@@ -70,6 +81,15 @@ resources:
     endpoint: https://minio.ts.peteches.co.uk
     bucket: vm-images
     versioned_file: triggers/prometheus/url
+    access_key_id: ((image-build.minio_access_key))
+    secret_access_key: ((image-build.minio_secret_key))
+
+- name: claude-workstation-image-url
+  type: s3
+  source:
+    endpoint: https://minio.ts.peteches.co.uk
+    bucket: vm-images
+    versioned_file: triggers/claude-workstation/url
     access_key_id: ((image-build.minio_access_key))
     secret_access_key: ((image-build.minio_secret_key))
 
@@ -132,6 +152,35 @@ jobs:
       MINIO_ENDPOINT: https://minio.ts.peteches.co.uk
       VAULT_ADDR: https://vault.ts.peteches.co.uk
   - put: prometheus-image-url
+    params:
+      file: presigned-url/url
+
+- name: generate-claude-workstation-age-key
+  plan:
+  - get: repo
+  - task: generate-key
+    file: repo/ci/tasks/generate-age-key.yml
+    params:
+      VM_NAME: claude-workstation
+      VAULT_ADDR: https://vault.ts.peteches.co.uk
+
+- name: build-claude-workstation-image
+  plan:
+  - get: repo
+    resource: repo-claude-workstation
+    trigger: true
+  - task: build-image
+    privileged: true
+    file: repo/ci/tasks/build-vm-image.yml
+    input_mapping:
+      repo: repo
+    params:
+      VM_NAME: claude-workstation
+      SYSTEM_FILE: peteches/systems/claude-workstation.scm
+      IMAGE_SIZE: 50G
+      MINIO_ENDPOINT: https://minio.ts.peteches.co.uk
+      VAULT_ADDR: https://vault.ts.peteches.co.uk
+  - put: claude-workstation-image-url
     params:
       file: presigned-url/url
 
