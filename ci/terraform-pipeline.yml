@@ -147,6 +147,7 @@ resources:
   type: s3
   source:
     endpoint: https://minio.ts.peteches.co.uk
+    use_path_style: true
     bucket: vm-images
     versioned_file: triggers/claude-workstation/url
     access_key_id: ((image-build.minio_access_key))
