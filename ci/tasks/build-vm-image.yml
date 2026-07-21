@@ -13,14 +13,24 @@ outputs:
 - name: presigned-url # url — pass as TF_VAR_image_url to terraform apply
 
 params:
-  VM_NAME:               ((VM_NAME))
-  SYSTEM_FILE:           ((SYSTEM_FILE))           # relative to repo root, e.g. peteches/systems/plane.scm
-  IMAGE_SIZE:            ((IMAGE_SIZE))
-  MINIO_ENDPOINT:        ((MINIO_ENDPOINT))
+  # Plain job values, supplied by each job's `params:` in
+  # image-build-pipeline.yml.  These MUST NOT use ((var)) syntax: Concourse
+  # interpolates ((vars)) in a file: task against the Vault credential manager
+  # (the `concourse` KV engine) and fails with "undefined var" for anything
+  # that is not a secret there — that is the "undefined var: VAULT_ADDR" error.
+  VM_NAME:
+  SYSTEM_FILE:                                     # e.g. peteches/systems/plane.scm
+  IMAGE_SIZE:
+  MINIO_ENDPOINT:
+  VAULT_ADDR:
+  MINIO_BUCKET:          vm-images
+  # Genuine credentials — resolved from the `concourse` Vault engine.
   AWS_ACCESS_KEY_ID:     ((image-build.minio_access_key))
   AWS_SECRET_ACCESS_KEY: ((image-build.minio_secret_key))
-  MINIO_BUCKET:          vm-images
-  VAULT_ADDR:            ((VAULT_ADDR))
+  # The age private key is read at RUNTIME from the separate `infra` engine
+  # (vault kv get infra/vms/$VM_NAME/age), which Concourse's credential
+  # manager cannot see.  This token's Vault policy MUST grant read on
+  # infra/data/vms/* (KV v2 data path).
   VAULT_TOKEN:           ((image-build.vault_write_token))
   TAILSCALE_AUTHKEY:     ((tailscale_authkey))     # ephemeral pre-auth key
 
