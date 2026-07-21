@@ -80,6 +80,15 @@ resource_types:
   source:
     repository: aoldershaw/git-branches-resource
   type: registry-image
+# Override the built-in s3 resource to force path-style addressing against
+# MinIO (minio.ts.peteches.co.uk/vm-images/...).  The bundled version
+# virtual-hosts the bucket as a subdomain, which does not resolve.  Keep this
+# tag in sync with ci/image-build-pipeline.yml.
+- name: s3
+  type: registry-image
+  source:
+    repository: concourse/s3-resource
+    tag: "1.3.2"
 
 resources:
 - name: non-main-branches

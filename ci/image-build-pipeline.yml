@@ -21,7 +21,18 @@
 ##   2. Commit it to age-keys/<name>.pub, update .sops.yaml, create secrets.
 ##   3. Add image_url to the VM's module block in infra/terraform and push.
 
-resource_types: []
+resource_types:
+# Override the built-in s3 resource: the bundled version virtual-hosts the
+# bucket (vm-images.minio.ts.peteches.co.uk — no such host).  This
+# concourse/s3-resource version forces path-style addressing when a custom
+# `endpoint' is set (minio.ts.peteches.co.uk/vm-images/...), which is what
+# MinIO here serves.  TAG TO VERIFY: must be a version that path-styles;
+# adjust if the bucket still appears as a subdomain.
+- name: s3
+  type: registry-image
+  source:
+    repository: concourse/s3-resource
+    tag: "1.3.2"
 
 resources:
 
