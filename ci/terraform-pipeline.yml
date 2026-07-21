@@ -92,15 +92,15 @@ resource_types:
   source:
     repository: aoldershaw/git-branches-resource
   type: registry-image
-# Override the built-in s3 resource to force path-style addressing against
-# MinIO (minio.ts.peteches.co.uk/vm-images/...).  The bundled version
-# virtual-hosts the bucket as a subdomain, which does not resolve.  Keep this
-# tag in sync with ci/image-build-pipeline.yml.
+# Pin the s3 resource type to a version supporting the `use_path_style'
+# source option; the resources set use_path_style: true so MinIO buckets go
+# in the path, not as a subdomain.  Keep the tag in sync with
+# ci/image-build-pipeline.yml.
 - name: s3
   type: registry-image
   source:
     repository: concourse/s3-resource
-    tag: "1.3.2"
+    tag: "2.5.4"
 
 resources:
 - name: non-main-branches
@@ -127,6 +127,7 @@ resources:
   type: s3
   source:
     endpoint: https://minio.ts.peteches.co.uk
+    use_path_style: true
     bucket: vm-images
     versioned_file: triggers/plane/url
     access_key_id: ((image-build.minio_access_key))
@@ -136,6 +137,7 @@ resources:
   type: s3
   source:
     endpoint: https://minio.ts.peteches.co.uk
+    use_path_style: true
     bucket: vm-images
     versioned_file: triggers/prometheus/url
     access_key_id: ((image-build.minio_access_key))
