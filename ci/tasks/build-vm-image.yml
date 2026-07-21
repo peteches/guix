@@ -92,8 +92,15 @@ run:
     # Container writable layers live under /var/lib/concourse-worker, which is
     # mounted from the worker's 100G /dev/vdb — no disk-space workarounds needed.
     mkdir -p /var/guix/daemon-socket
+    # Substitute ordering (applies to every --substitute-urls in this task):
+    # public servers first, nug LAST.  nug is a LAN substitute server; when it
+    # is down, listing it first stalls every narinfo lookup on a connection
+    # timeout.  Last means the public servers answer for common packages and
+    # only nug-specific ones fall through (built from source if nug is offline).
+    # TEMPORARY while nug is under repair (~2026-08); restore nug-first for LAN
+    # speed once it is back.
     guix-daemon --build-users-group=guixbuild --disable-chroot \
-      --substitute-urls="http://nug.spaniel-cordylus.ts.net:3000 https://bordeaux.guix.gnu.org https://ci.guix.gnu.org" &
+      --substitute-urls="https://bordeaux.guix.gnu.org https://ci.guix.gnu.org http://nug.spaniel-cordylus.ts.net:3000" &
     GUIX_DAEMON_PID=$!
     # Wait for the daemon socket to be ready before proceeding.
     for i in $(seq 1 15); do
@@ -120,7 +127,7 @@ run:
     # Find git in the overlaid worker store; fall back to guix build.
     GIT=$(find /gnu/store -maxdepth 3 -name git -type f -executable 2>/dev/null \
             | grep '/bin/git$' | head -1)
-    [ -z "$GIT" ] && GIT=$(guix build git --substitute-urls="http://nug.spaniel-cordylus.ts.net:3000 https://bordeaux.guix.gnu.org")/bin/git
+    [ -z "$GIT" ] && GIT=$(guix build git --substitute-urls="https://bordeaux.guix.gnu.org http://nug.spaniel-cordylus.ts.net:3000")/bin/git
 
     export GIT_SSL_CAINFO=$SSL_CERT_FILE
 
@@ -196,7 +203,7 @@ run:
       -t qcow2-gpt \
       --no-grafts \
       --image-size="$IMAGE_SIZE" \
-      --substitute-urls="http://nug.spaniel-cordylus.ts.net:3000 https://bordeaux.guix.gnu.org https://ci.guix.gnu.org" \
+      --substitute-urls="https://bordeaux.guix.gnu.org https://ci.guix.gnu.org http://nug.spaniel-cordylus.ts.net:3000" \
       "repo/$SYSTEM_FILE")
     # /dev/shm is a RAM-backed tmpfs; use /tmp (container overlay on 100G disk)
     # for the image file which can be several gigabytes.
@@ -213,7 +220,7 @@ run:
     # ext4 partition image file entirely in userspace.
     DEBUGFS=$(find /gnu/store -maxdepth 4 -name debugfs -type f -executable 2>/dev/null | head -1)
     [ -z "$DEBUGFS" ] && DEBUGFS=$($WORKER_GUIX build e2fsprogs \
-      --substitute-urls="http://nug.spaniel-cordylus.ts.net:3000 https://bordeaux.guix.gnu.org")/sbin/debugfs
+      --substitute-urls="https://bordeaux.guix.gnu.org http://nug.spaniel-cordylus.ts.net:3000")/sbin/debugfs
     echo "=== DEBUGFS=$DEBUGFS ==="
 
     # Locate the root (non-EFI) partition via sfdisk dump format.
