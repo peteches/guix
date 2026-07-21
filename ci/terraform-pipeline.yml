@@ -73,6 +73,18 @@ jobs:
     params:
       VM_NAME: prometheus
 
+- name: provision-claude-workstation
+  plan:
+  - get: repo-main
+  - get: claude-workstation-image-url
+    trigger: true
+  - task: terraform-apply
+    file: repo-main/ci/tasks/terraform-apply-vm.yml
+    input_mapping:
+      image-url: claude-workstation-image-url
+    params:
+      VM_NAME: claude-workstation
+
 # Add one provision job per additional VM following the pattern above.
 
 resource_types:
@@ -126,6 +138,15 @@ resources:
     endpoint: https://minio.ts.peteches.co.uk
     bucket: vm-images
     versioned_file: triggers/prometheus/url
+    access_key_id: ((image-build.minio_access_key))
+    secret_access_key: ((image-build.minio_secret_key))
+
+- name: claude-workstation-image-url
+  type: s3
+  source:
+    endpoint: https://minio.ts.peteches.co.uk
+    bucket: vm-images
+    versioned_file: triggers/claude-workstation/url
     access_key_id: ((image-build.minio_access_key))
     secret_access_key: ((image-build.minio_secret_key))
 

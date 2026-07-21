@@ -12,7 +12,10 @@ inputs:
 - name: image-url
 
 params:
-  VM_NAME: ((VM_NAME))
+  # Supplied by each provision job's `params`; NOT a ((var)), or Concourse
+  # interpolates it against the `concourse` credential manager and fails with
+  # "undefined var: VM_NAME".
+  VM_NAME:
   AWS_ACCESS_KEY_ID: ((terraform.minio_access_key))
   AWS_SECRET_ACCESS_KEY: ((terraform.minio_secret_key))
   TF_VAR_proxmox_api_token: ((terraform.proxmox_api_token))
