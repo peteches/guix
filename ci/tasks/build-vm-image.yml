@@ -246,8 +246,13 @@ run:
     echo "=== root partition: start=$PART_START sectors=$PART_SECTORS ==="
 
     # Extract root partition to a separate file for debugfs manipulation.
+    # conv=sparse: a 50 GiB partition is almost all zeros, so keep the extracted
+    # file sparse.  Writing every zero block makes rootfs.ext4 a solid ~53 GB
+    # which, alongside the raw image, overflows the worker's ~100 GB disk and
+    # fails with ENOSPC.  GNU dd ftruncates to the correct size at EOF, so the
+    # ext4 filesystem still sees its full extent.
     dd if=/tmp/"$VM_NAME".raw of=/tmp/rootfs.ext4 bs=512 \
-       skip="$PART_START" count="$PART_SECTORS"
+       skip="$PART_START" count="$PART_SECTORS" conv=sparse
 
     # Inject age key directly into ext4 partition — no mount, no loop device.
     "$DEBUGFS" -w /tmp/rootfs.ext4 -R "mkdir /etc/age" 2>/dev/null || true
@@ -257,9 +262,12 @@ run:
     "$DEBUGFS" -w /tmp/rootfs.ext4 -R "set_inode_field /etc/age/keys.txt mode 0x8180"
     shred -u /dev/shm/age-key.txt
 
-    # Write modified partition back into raw image.
+    # Write modified partition back into raw image.  sparse keeps .raw from
+    # re-inflating to full size as zero blocks are written back; notrunc keeps
+    # its existing length.  Safe because rootfs.ext4 was extracted from .raw, so
+    # a zero block skipped here was already zero at that offset in .raw.
     dd if=/tmp/rootfs.ext4 of=/tmp/"$VM_NAME".raw bs=512 \
-       seek="$PART_START" conv=notrunc
+       seek="$PART_START" conv=notrunc,sparse
     rm -f /tmp/rootfs.ext4
 
     # Convert back to qcow2 (sparse/compressed) for upload.
