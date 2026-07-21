@@ -27,9 +27,9 @@ params:
   # Genuine credentials — resolved from the `concourse` Vault engine.
   AWS_ACCESS_KEY_ID:     ((image-build.minio_access_key))
   AWS_SECRET_ACCESS_KEY: ((image-build.minio_secret_key))
-  # The age private key is read at RUNTIME from the separate `infra` engine
-  # (vault kv get infra/vms/$VM_NAME/age), which Concourse's credential
-  # manager cannot see.  This token's Vault policy MUST grant read on
+  # The age private key is read (and created if absent) at RUNTIME from the
+  # separate `infra` engine, which Concourse's credential manager cannot see.
+  # This token's Vault policy MUST grant read AND create/update on
   # infra/data/vms/* (KV v2 data path).
   VAULT_TOKEN:           ((image-build.vault_write_token))
   TAILSCALE_AUTHKEY:     ((tailscale_authkey))     # ephemeral pre-auth key
@@ -139,9 +139,27 @@ run:
     [ -z "$SOPS_GUIX_L" ] && SOPS_GUIX_L=/dev/shm/sops-guix
 
     # ── Age private key ──────────────────────────────────────────────────────
-    # Key was generated once via the generate-age-key job and stored in Vault.
+    # Read the VM's age key from the `infra` engine; if it does not exist yet,
+    # generate and store it (get-or-create).  Idempotent: it only creates when
+    # absent, so it never rotates a key existing sops secrets are encrypted to.
+    # This removes any ordering dependency on the generate-<vm>-age-key job,
+    # which is kept only for deliberate rotation.
     # VAULT_ADDR resolves via Caddy (vault.ts.peteches.co.uk → 192.168.51.193 → Vault).
-    vault kv get -field=private_key "infra/vms/$VM_NAME/age" > /dev/shm/age-key.txt
+    if ! vault kv get -field=private_key "infra/vms/$VM_NAME/age" \
+         > /dev/shm/age-key.txt 2>/dev/null; then
+      echo "=== no age key at infra/vms/$VM_NAME/age; generating one ==="
+      age-keygen -o /dev/shm/age-key.txt
+      grep '^# public key:' /dev/shm/age-key.txt | awk '{print $NF}' \
+        > /dev/shm/age-pub.txt
+      # KV v2 payload built with jq so no key material lands in a shell var.
+      jq -n \
+        --rawfile pk  /dev/shm/age-key.txt \
+        --rawfile pub /dev/shm/age-pub.txt \
+        '{data: {private_key: ($pk | rtrimstr("\n")), public_key: ($pub | rtrimstr("\n"))}}' \
+        > /dev/shm/vault-payload.json
+      vault write "infra/data/vms/$VM_NAME/age" @/dev/shm/vault-payload.json
+      shred -u /dev/shm/vault-payload.json /dev/shm/age-pub.txt
+    fi
     chmod 600 /dev/shm/age-key.txt
 
     # ── Diagnostics ─────────────────────────────────────────────────────────

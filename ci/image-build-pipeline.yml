@@ -4,15 +4,16 @@
 ## private key (retrieved from Vault), and uploads the result to MinIO.
 ##
 ## Two job types per VM:
-##   generate-<name>-age-key  — run once to create the keypair in Vault.
-##                              Re-run only to rotate keys.
+##   generate-<name>-age-key  — deliberate key ROTATION: overwrites the keypair
+##                              in Vault.  NOT required before the first build —
+##                              build creates the key if it is absent.
 ##   build-<name>-image       — triggered automatically on system config changes.
-##                              Reads the age private key at runtime with the
-##                              vault CLI (vault kv get infra/vms/<name>/age).
-##                              NOT a ((var)) credential: Concourse's cred
-##                              manager only reads the `concourse` engine, so
-##                              VAULT_TOKEN just needs a policy granting read
-##                              on infra/data/vms/*.
+##                              Reads the age key at runtime, generating and
+##                              storing it if absent (get-or-create).  NOT a
+##                              ((var)) credential: Concourse's cred manager only
+##                              reads the `concourse` engine, so VAULT_TOKEN just
+##                              needs a policy granting read + create/update on
+##                              infra/data/vms/*.
 ##
 ## After a build completes:
 ##   1. Retrieve the age public key:
