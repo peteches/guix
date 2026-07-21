@@ -138,6 +138,20 @@ run:
                    | head -1 | xargs -I{} dirname {} | xargs -I{} dirname {})
     [ -z "$SOPS_GUIX_L" ] && SOPS_GUIX_L=/dev/shm/sops-guix
 
+    # nonguix + guix-science-nonfree: vm-base.scm imports (nongnu services
+    # nvidia), (nongnu packages nvidia) and (guix-science-nonfree packages
+    # cuda-modules) at the top level for make-vm-os's #:with-nvidia? path. The
+    # builder image ships plain upstream guix, so without these on the load
+    # path vm-base fails to load and every VM build dies with
+    # "make-vm-os: unbound variable". Both keep their modules at the repo root;
+    # cuda-modules is self-contained (no guix-science / guix-past needed).
+    # Pinned to the commits in peteches/channels/base.scm.
+    $GIT clone https://gitlab.com/nonguix/nonguix.git /dev/shm/nonguix
+    $GIT -C /dev/shm/nonguix checkout bf39542ca537fde8839b209ac21d6f3254469b15
+
+    $GIT clone https://codeberg.org/guix-science/guix-science-nonfree.git /dev/shm/guix-science-nonfree
+    $GIT -C /dev/shm/guix-science-nonfree checkout f30ef0318dd1c26bcb9d952a50cfa777429ab4e9
+
     # ── Age private key ──────────────────────────────────────────────────────
     # Read the VM's age key from the `infra` engine; if it does not exist yet,
     # generate and store it (get-or-create).  Idempotent: it only creates when
@@ -177,6 +191,8 @@ run:
       -L repo \
       -L /dev/shm/peteches-channel \
       -L "$SOPS_GUIX_L" \
+      -L /dev/shm/nonguix \
+      -L /dev/shm/guix-science-nonfree \
       -t qcow2-gpt \
       --no-grafts \
       --image-size="$IMAGE_SIZE" \
