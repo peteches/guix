@@ -95,7 +95,7 @@
   ;; No introduction: commits are unauthenticated and guix pull will say so.
   (url "https://git.ts.peteches.co.uk/git/critical-grind-campaign.git")
   (branch "main")
-  (commit "632f70d4c792e8fdf273fe10060a1d30a7993639"))
+  (commit "ceb1ae7caf339a65676f1b70e38666f21e4f316f"))
 
  (channel
   (name 'guix-hpc-non-free)
