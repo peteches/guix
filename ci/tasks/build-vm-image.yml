@@ -148,6 +148,10 @@ run:
     if ! vault kv get -field=private_key "infra/vms/$VM_NAME/age" \
          > /dev/shm/age-key.txt 2>/dev/null; then
       echo "=== no age key at infra/vms/$VM_NAME/age; generating one ==="
+      # The `vault kv get > age-key.txt` above created an empty stub even though
+      # the read failed (the redirect opens the file before vault runs), and
+      # `age-keygen -o` refuses to overwrite an existing file — so drop it first.
+      rm -f /dev/shm/age-key.txt
       age-keygen -o /dev/shm/age-key.txt
       grep '^# public key:' /dev/shm/age-key.txt | awk '{print $NF}' \
         > /dev/shm/age-pub.txt
