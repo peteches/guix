@@ -61,6 +61,17 @@ run:
     # a broken symlink in the worker's /etc overlay.
     export SSL_CERT_DIR=$GUIX_SYSTEM/profile/etc/ssl/certs
 
+    # ── Force path-style S3 addressing for every aws call below ───────────────
+    # MinIO is served at a plain host (minio.ts.peteches.co.uk). Virtual-hosted
+    # addressing (the aws-cli default) would target the bucket as a subdomain —
+    # vm-images.minio.ts.peteches.co.uk — which has NO DNS record, so the
+    # presigned URL emitted by `s3 presign` would be undownloadable by Proxmox
+    # ("Name or service not known"). Path style keeps the bucket in the path:
+    #   https://minio.ts.peteches.co.uk/vm-images/<vm>.qcow2?X-Amz-...
+    # AWS_CONFIG_FILE points at tmpfs so this needs no writable HOME.
+    export AWS_CONFIG_FILE=/dev/shm/aws-config
+    aws configure set default.s3.addressing_style path
+
     # ── Fix DNS, nsswitch, and services ──────────────────────────────────────
     # Worker's nsswitch.conf references nscd (not running), causing EAI_SERVICE.
     # Activation may create these as symlinks to read-only store paths; remove first.

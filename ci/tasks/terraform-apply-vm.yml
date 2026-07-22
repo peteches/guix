@@ -29,7 +29,12 @@ run:
     mkdir -p /home/peteches/.ssh
     printf '%s' "$PETECHES_SSH_PRIVATE_KEY" > /home/peteches/.ssh/id_ed25519
     chmod 600 /home/peteches/.ssh/id_ed25519
-    URL=$(cat image-url/url)
+    # Read the object CONTENT (the presigned qcow2 URL), not image-url/url:
+    # the s3 resource's `in` also writes a metadata file named `url` holding the
+    # trigger object's own S3 URL, so the versioned_file basename must not be
+    # `url` or the two collide and clobber the presigned URL. See the
+    # image-url resources in ci/terraform-pipeline.yml (basename: image-url).
+    URL=$(cat image-url/image-url)
     export TF_VAR_vm_image_urls="{\"${VM_NAME}\":\"${URL}\"}"
     cd repo/infra/terraform
     terraform init

@@ -129,7 +129,7 @@ resources:
     endpoint: https://minio.ts.peteches.co.uk
     use_path_style: true
     bucket: vm-images
-    versioned_file: triggers/plane/url
+    versioned_file: triggers/plane/image-url
     access_key_id: ((image-build.minio_access_key))
     secret_access_key: ((image-build.minio_secret_key))
 
@@ -139,7 +139,7 @@ resources:
     endpoint: https://minio.ts.peteches.co.uk
     use_path_style: true
     bucket: vm-images
-    versioned_file: triggers/prometheus/url
+    versioned_file: triggers/prometheus/image-url
     access_key_id: ((image-build.minio_access_key))
     secret_access_key: ((image-build.minio_secret_key))
 
@@ -149,7 +149,7 @@ resources:
     endpoint: https://minio.ts.peteches.co.uk
     use_path_style: true
     bucket: vm-images
-    versioned_file: triggers/claude-workstation/url
+    versioned_file: triggers/claude-workstation/image-url
     access_key_id: ((image-build.minio_access_key))
     secret_access_key: ((image-build.minio_secret_key))
 
