@@ -10,7 +10,8 @@ image_resource:
   type: registry-image
   source:
     repository: amazon/aws-cli
-    tag: "2"
+    # No bare "2" tag is published — only `latest` and full semver.
+    tag: "2.36.5"
 
 outputs:
 - name: image
