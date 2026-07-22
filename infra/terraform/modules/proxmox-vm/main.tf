@@ -80,8 +80,17 @@ resource "proxmox_virtual_environment_vm" "vm" {
 
   lifecycle {
     ignore_changes = [
-      # import_from is create-only; never re-import disk from a new image build.
-      disk[0].import_from,
+      # The boot disk is a one-time bootstrap: created (and imported) with the
+      # Guix image at VM creation, then owned entirely by guix deploy / guix
+      # system reconfigure in place. Terraform must never reconcile it again
+      # (a re-import only happens when the VM is destroyed and recreated). Ignore
+      # the WHOLE disk block: ignore_changes does not affect create (so the image
+      # still imports at creation), but suppresses all later drift — including
+      # the create-only import_from and the imported disk's actual size, which
+      # otherwise diverge from what a plain `apply` (with no image var) computes.
+      # Ignoring the whole block rather than disk[0].import_from also avoids the
+      # unreliable nested-attribute ignore_changes behaviour (hashicorp/terraform#30027).
+      disk,
       # clone was removed from config (deprecated path) but may still be in state
       # for existing VMs. Ignore it to avoid forced replacement during migration.
       clone,
