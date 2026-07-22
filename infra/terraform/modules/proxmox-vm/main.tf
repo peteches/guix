@@ -55,7 +55,11 @@ resource "proxmox_virtual_environment_vm" "vm" {
     datastore_id = var.disk.datastore_id
     import_from  = var.image_file != null ? proxmox_virtual_environment_file.vm_image[0].id : null
     interface    = var.disk.interface
-    size         = var.disk.size
+    # `guix system image --image-size=NG` builds a TOTAL image slightly larger
+    # than N GiB (ESP + GPT on top of the root), so an import target of exactly
+    # N is ~40 MiB too small — the import then silently yields a blank disk. Give
+    # imported disks headroom over the declared size so the image always fits.
+    size         = var.image_file != null ? var.disk.size + 2 : var.disk.size
   }
 
   network_device {
