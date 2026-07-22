@@ -16,8 +16,8 @@ variable "node_name" {
   description = "Proxmox cluster node name"
 }
 
-variable "vm_image_urls" {
+variable "vm_image_files" {
   type        = map(string)
   default     = {}
-  description = "Map of VM name to pre-signed MinIO URL for its QCOW2 image. Passed via TF_VAR_vm_image_urls='{\"plane\":\"https://...\"}' during first provisioning only. After provisioning, commit a permanent image_url to main.tf for each VM."
+  description = "Map of VM name to a local path (or URL) of its QCOW2, which CI pulled from MinIO. Passed via TF_VAR_vm_image_files='{\"plane\":\"/tmp/plane.qcow2\"}' during first provisioning only; the module uploads it to local:import over the Proxmox API and imports the boot disk from it. import_from is create-only, so once the VM exists this has no further effect."
 }

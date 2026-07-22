@@ -3,7 +3,7 @@ module "prometheus" {
   vmid      = 100
   name      = "prometheus"
   node_name = var.node_name
-  image_url = lookup(var.vm_image_urls, "prometheus", null)
+  image_file = lookup(var.vm_image_files, "prometheus", null)
 
   bios          = "ovmf"
   machine       = "q35"
@@ -483,7 +483,7 @@ module "plane" {
     enabled = true
   }
 
-  image_url = lookup(var.vm_image_urls, "plane", null)
+  image_file = lookup(var.vm_image_files, "plane", null)
 
 }
 
@@ -526,6 +526,6 @@ module "claude-workstation" {
     enabled = true
   }
 
-  image_url = lookup(var.vm_image_urls, "claude-workstation", null)
+  image_file = lookup(var.vm_image_files, "claude-workstation", null)
 
 }

@@ -44,10 +44,12 @@ jobs:
       TF_VAR_proxmox_api_token: ((terraform.proxmox_api_token))
       PETECHES_SSH_PRIVATE_KEY: ((terraform.peteches_ssh_private_key))
 
-# Per-VM provision jobs — triggered by new image builds via the S3 URL trigger.
-# These run a targeted apply for a single VM, passing the fresh presigned URL.
-# After provisioning completes, commit a permanent image_url to infra/terraform/main.tf
-# so subsequent full applies don't oscillate the download resource.
+# Per-VM provision jobs — triggered by new image builds via the S3 trigger.
+# Each runs a targeted apply for one VM: the terraform-apply task pulls the qcow2
+# from MinIO and Terraform uploads it to the node's local:import store over the
+# Proxmox API, then imports the boot disk from it. import_from is create-only, so
+# once the VM exists a rebuilt image does not re-provision it — recreate the VM
+# (state rm + apply) to roll a new image.
 
 - name: provision-plane
   plan:
@@ -56,8 +58,6 @@ jobs:
     trigger: true
   - task: terraform-apply
     file: repo-main/ci/tasks/terraform-apply-vm.yml
-    input_mapping:
-      image-url: plane-image-url
     params:
       VM_NAME: plane
 
@@ -68,8 +68,6 @@ jobs:
     trigger: true
   - task: terraform-apply
     file: repo-main/ci/tasks/terraform-apply-vm.yml
-    input_mapping:
-      image-url: prometheus-image-url
     params:
       VM_NAME: prometheus
 
@@ -80,8 +78,6 @@ jobs:
     trigger: true
   - task: terraform-apply
     file: repo-main/ci/tasks/terraform-apply-vm.yml
-    input_mapping:
-      image-url: claude-workstation-image-url
     params:
       VM_NAME: claude-workstation
 

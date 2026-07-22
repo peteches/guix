@@ -1,16 +1,26 @@
-resource "proxmox_download_file" "vm_image" {
-  count        = var.image_url != null ? 1 : 0
+# The boot disk is imported from a qcow2 that CI (the terraform-apply task)
+# pulled from MinIO and this resource uploads to the node's `local:import`
+# datastore over the Proxmox HTTP API (content_type=import always uses the API,
+# so the provider's API token is sufficient — no SSH, no root on the node).
+# Proxmox never fetches from MinIO itself: proxmox_download_file makes Proxmox
+# HEAD-probe the URL for metadata, and MinIO rejects a HEAD against a presigned
+# GET URL (minio/minio#6146, "out of scope"), so that resource is unusable here.
+# Requires the `import` content type enabled on the `local` datastore.
+resource "proxmox_virtual_environment_file" "vm_image" {
+  count        = var.image_file != null ? 1 : 0
   content_type = "import"
   datastore_id = "local"
   node_name    = var.node_name
-  url          = var.image_url
-  file_name    = "${var.name}.qcow2"
-  overwrite    = false
+
+  source_file {
+    path      = var.image_file
+    file_name = "${var.name}.qcow2"
+  }
 
   lifecycle {
-    # After first download, ignore URL changes (presigned → stable URL, new builds).
-    # overwrite=false ensures Proxmox never re-downloads when the file exists.
-    ignore_changes = [url]
+    # Upload once. import_from is create-only, so a later image build must not
+    # churn this under an already-provisioned VM.
+    ignore_changes = [source_file]
   }
 }
 
@@ -43,7 +53,7 @@ resource "proxmox_virtual_environment_vm" "vm" {
 
   disk {
     datastore_id = var.disk.datastore_id
-    import_from  = var.image_url != null ? proxmox_download_file.vm_image[0].id : null
+    import_from  = var.image_file != null ? proxmox_virtual_environment_file.vm_image[0].id : null
     interface    = var.disk.interface
     size         = var.disk.size
   }

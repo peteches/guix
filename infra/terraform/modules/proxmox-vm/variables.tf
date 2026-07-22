@@ -89,10 +89,10 @@ variable "agent" {
   description = "QEMU guest agent configuration"
 }
 
-variable "image_url" {
+variable "image_file" {
   type        = string
   default     = null
-  description = "HTTPS pre-signed URL of the per-VM QCOW2 image in MinIO. When set the VM is provisioned via disk import rather than template clone; the remote-exec provisioner is skipped because networking is baked into the Guix system image."
+  description = "Path (local file or URL) to the per-VM QCOW2 that CI pulled from MinIO. When set, it is uploaded to the node's `local:import` datastore over the Proxmox HTTP API (proxmox_virtual_environment_file, content_type=import — API token is sufficient, no SSH), and the VM's boot disk is imported from it. Proxmox never fetches from MinIO itself (its download-url HEAD probe is rejected on presigned GET URLs). import_from is create-only."
 }
 
 variable "cloud_init" {
