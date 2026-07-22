@@ -1,0 +1,37 @@
+platform: linux
+
+# Pulls the built qcow2 from MinIO (authenticated) into an output volume, so the
+# terraform-apply task can upload it to Proxmox over the API. Kept separate from
+# the terraform task because the aws-cli in the hashicorp/terraform (alpine)
+# image is broken (pyexpat/expat musl symbol mismatch on import); the official
+# amazon/aws-cli image is reliable.
+
+image_resource:
+  type: registry-image
+  source:
+    repository: amazon/aws-cli
+    tag: "2"
+
+outputs:
+- name: image
+
+params:
+  # Plain job values — NOT ((vars)) (Concourse would resolve against the
+  # `concourse` credential manager and fail "undefined var"). See build-vm-image.yml.
+  VM_NAME:
+  MINIO_ENDPOINT: https://minio.ts.peteches.co.uk
+  MINIO_BUCKET:   vm-images
+  # Genuine credentials — resolved from the `concourse` Vault engine.
+  AWS_ACCESS_KEY_ID:     ((terraform.minio_access_key))
+  AWS_SECRET_ACCESS_KEY: ((terraform.minio_secret_key))
+
+run:
+  # Concourse execs run.path directly (it ignores the image ENTRYPOINT), so call
+  # a shell and let it find aws on PATH.
+  path: /bin/sh
+  args:
+  - -ec
+  - |
+    aws --endpoint-url "$MINIO_ENDPOINT" \
+      s3 cp "s3://${MINIO_BUCKET}/${VM_NAME}.qcow2" "image/${VM_NAME}.qcow2"
+    echo "=== fetched image/${VM_NAME}.qcow2 ($(du -h "image/${VM_NAME}.qcow2" | cut -f1)) ==="

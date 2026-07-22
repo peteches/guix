@@ -9,15 +9,15 @@ image_resource:
 inputs:
 - name: repo-main
   path: repo
+- name: image   # qcow2 fetched from MinIO by the fetch-vm-image task
 
 params:
   # Supplied by each provision job's `params`; NOT a ((var)), or Concourse
   # interpolates it against the `concourse` credential manager and fails with
   # "undefined var: VM_NAME".
   VM_NAME:
-  MINIO_ENDPOINT: https://minio.ts.peteches.co.uk
-  MINIO_BUCKET:   vm-images
-  # AWS creds serve both the image pull below and the Terraform S3 state backend.
+  # AWS creds are for the Terraform S3 state backend (init reads/writes state in
+  # MinIO); the image was already fetched by the fetch-vm-image task.
   AWS_ACCESS_KEY_ID: ((terraform.minio_access_key))
   AWS_SECRET_ACCESS_KEY: ((terraform.minio_secret_key))
   TF_VAR_proxmox_api_token: ((terraform.proxmox_api_token))
@@ -27,16 +27,16 @@ run:
   args:
   - -ec
   - |
-    # Pull the built image from MinIO (authenticated GET) to a local file, then
-    # let Terraform upload it to the node's local:import datastore over the
-    # Proxmox HTTP API (proxmox_virtual_environment_file, content_type=import —
-    # the API token is sufficient, no SSH/root on the node). Proxmox never
-    # fetches from MinIO itself: its download-url HEAD metadata probe is rejected
-    # by MinIO on presigned GET URLs (minio/minio#6146).
-    apk add --no-cache aws-cli >/dev/null
-    aws --endpoint-url "$MINIO_ENDPOINT" \
-      s3 cp "s3://${MINIO_BUCKET}/${VM_NAME}.qcow2" "/tmp/${VM_NAME}.qcow2"
-    export TF_VAR_vm_image_files="{\"${VM_NAME}\":\"/tmp/${VM_NAME}.qcow2\"}"
+    # The fetch-vm-image task placed the qcow2 in the `image` input. Terraform
+    # uploads it to the node's local:import datastore over the Proxmox HTTP API
+    # (proxmox_virtual_environment_file, content_type=import — the API token is
+    # sufficient, no SSH/root on the node) and imports the boot disk from it.
+    # Proxmox never fetches from MinIO itself: its download-url HEAD metadata
+    # probe is rejected by MinIO on presigned GET URLs (minio/minio#6146).
+    # Absolute path: terraform runs from repo/infra/terraform, but the input is
+    # at the build root.
+    IMAGE_PATH="$(pwd)/image/${VM_NAME}.qcow2"
+    export TF_VAR_vm_image_files="{\"${VM_NAME}\":\"${IMAGE_PATH}\"}"
     cd repo/infra/terraform
     terraform init
     terraform apply -auto-approve -target="module.${VM_NAME}"

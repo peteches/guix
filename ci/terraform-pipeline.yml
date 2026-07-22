@@ -56,6 +56,10 @@ jobs:
   - get: repo-main
   - get: plane-image-url
     trigger: true
+  - task: fetch-image
+    file: repo-main/ci/tasks/fetch-vm-image.yml
+    params:
+      VM_NAME: plane
   - task: terraform-apply
     file: repo-main/ci/tasks/terraform-apply-vm.yml
     params:
@@ -66,6 +70,10 @@ jobs:
   - get: repo-main
   - get: prometheus-image-url
     trigger: true
+  - task: fetch-image
+    file: repo-main/ci/tasks/fetch-vm-image.yml
+    params:
+      VM_NAME: prometheus
   - task: terraform-apply
     file: repo-main/ci/tasks/terraform-apply-vm.yml
     params:
@@ -76,6 +84,10 @@ jobs:
   - get: repo-main
   - get: claude-workstation-image-url
     trigger: true
+  - task: fetch-image
+    file: repo-main/ci/tasks/fetch-vm-image.yml
+    params:
+      VM_NAME: claude-workstation
   - task: terraform-apply
     file: repo-main/ci/tasks/terraform-apply-vm.yml
     params:
