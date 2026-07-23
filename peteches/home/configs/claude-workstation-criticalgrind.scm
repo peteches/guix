@@ -28,7 +28,8 @@
      "git@git.peteches.co.uk:critical-grind-campaign")))
 
 ;; TODO: set the git identity you want commits from this account to carry.
-(make-claude-workstation-home
+(define-public claude-workstation-criticalgrind-home
+  (make-claude-workstation-home
  #:git-name "Critical Grind"
  #:git-email "criticalgrind@peteches.co.uk"
  #:repos %criticalgrind-repos
@@ -49,4 +50,7 @@
        (home-claude-mcp-server
         (name "outline")
         (command (file-append (specification->package "mcp-outline")
-                             "/bin/mcp-outline")))))
+                             "/bin/mcp-outline"))))))
+
+claude-workstation-criticalgrind-home
+

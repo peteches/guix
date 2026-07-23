@@ -45,6 +45,9 @@
   #:use-module (peteches services firewall)
   #:use-module (peteches services tailscale)
   #:use-module (sops secrets)
+  #:use-module (gnu services guix)
+  #:use-module (peteches home configs claude-workstation-peteches)
+  #:use-module (peteches home configs claude-workstation-criticalgrind)
   #:export (claude-workstation-os))
 
 ;; Console-recovery user for the criticalgrind account.  Same shape as
@@ -101,6 +104,9 @@
         (type "ext4")))
      #:extra-services
      (list
+      (service guix-home-service-type
+       `(("peteches" ,claude-workstation-peteches-home)
+         ("criticalgrind" ,claude-workstation-criticalgrind-home)))
       ;; Claude reaches Anthropic outbound; the base firewall permits
       ;; established/related + output and opens ssh inbound.  Tailscale needs
       ;; no inbound rule here: ssh over the tailnet still lands on tcp/22

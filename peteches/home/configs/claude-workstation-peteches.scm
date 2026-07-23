@@ -22,7 +22,11 @@
   '(("guix"         "git@github.com:peteches/guix")
     ("guix-channel" "ssh://git@codeberg.org/peteches/guix-channel.git")))
 
-(make-claude-workstation-home
+(define-public claude-workstation-peteches-home
+  (make-claude-workstation-home
  #:git-name "Pete 'Peteches' McCabe"
  #:git-email "claude@peteches.co.uk"
- #:repos %peteches-repos)
+ #:repos %peteches-repos))
+
+claude-workstation-peteches-home
+
