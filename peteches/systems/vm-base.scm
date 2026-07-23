@@ -232,15 +232,19 @@
                                       (list (network-address (device %vm-interface)
                                                              (value ipv6-address)))
                                       '())))
+                                ;; Only the IPv4 default route is static. The IPv6
+                                ;; default comes from the network's Router
+                                ;; Advertisements (`default proto ra`). Adding a
+                                ;; static IPv6 default here races the kernel's
+                                ;; RA-installed default route — both land at metric
+                                ;; 1024, so whichever loses the race gets netlink
+                                ;; EEXIST (17), which kills the one-shot networking
+                                ;; service and everything that Requires: networking
+                                ;; (ssh, tailscale, node-exporter…). The static IPv6
+                                ;; address is still assigned above.
                                 (routes
-                                 (append
-                                  (list (network-route (destination "default")
-                                                       (gateway %vm-ipv4-gw)))
-                                  (if ipv6-address
-                                      (list (network-route (destination "default")
-                                                           (gateway %vm-ipv6-gw)
-                                                           (ipv6? #t)))
-                                      '())))
+                                 (list (network-route (destination "default")
+                                                      (gateway %vm-ipv4-gw))))
                                 (name-servers nameservers))))
                 (service dhcpcd-service-type))
             (service ntp-service-type)
