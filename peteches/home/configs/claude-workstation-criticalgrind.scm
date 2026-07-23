@@ -17,7 +17,14 @@
 (define-module (peteches home configs claude-workstation-criticalgrind)
   #:use-module (guix gexp)
   #:use-module (guix packages)
-  #:use-module (gnu packages)
+  ;; Import packages directly instead of `specification->package'.  A top-level
+  ;; `specification->package' fires `fold-packages' over `%package-module-path',
+  ;; which `guix deploy'/`guix system' populate with the repo (`-L .'); the scan
+  ;; then re-enters this half-loaded module tree and every module fails to bind.
+  ;; See the note in (peteches home modules claude-workstation).
+  #:use-module ((peteches packages mcp) #:select (plane-mcp-server mcp-outline))
+  #:use-module ((gnu packages golang) #:select (go))
+  #:use-module ((gnu packages golang-apps) #:select (gopls))
   #:use-module (peteches home modules claude-workstation)
   #:use-module (peteches home modules claude))
 
@@ -33,10 +40,12 @@
  #:git-name "Critical Grind"
  #:git-email "criticalgrind@peteches.co.uk"
  #:repos %criticalgrind-repos
- #:extra-packages (list (specification->package "plane-mcp-server")
-                        (specification->package "mcp-outline")
-                        (specification->package "go")
-                        (specification->package "gopls"))
+ ;; plane-mcp-server and mcp-outline are NOT in the profile: they propagate
+ ;; conflicting python-pyjwt versions (2.13.0 vs 2.10.1) and guix refuses to
+ ;; union them.  They don't need to be on PATH — the MCP servers below launch
+ ;; them by absolute store path via file-append, so the profile only needs the
+ ;; Go toolchain the account actually uses interactively.
+ #:extra-packages (list go gopls)
  ;; Non-secret only.  The Plane SDK appends /api/v1 to PLANE_BASE_URL itself.
  #:mcp-env '(("PLANE_BASE_URL"       . "https://plane.ts.peteches.co.uk")
              ("PLANE_WORKSPACE_SLUG" . "critical-grind")
@@ -44,13 +53,11 @@
  #:mcp-servers
  (list (home-claude-mcp-server
         (name "plane")
-        (command (file-append (specification->package "plane-mcp-server")
-                              "/bin/plane-mcp-server"))
+        (command (file-append plane-mcp-server "/bin/plane-mcp-server"))
         (args (list "stdio")))
        (home-claude-mcp-server
         (name "outline")
-        (command (file-append (specification->package "mcp-outline")
-                             "/bin/mcp-outline"))))))
+        (command (file-append mcp-outline "/bin/mcp-outline"))))))
 
 claude-workstation-criticalgrind-home
 

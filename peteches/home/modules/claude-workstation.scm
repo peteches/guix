@@ -34,26 +34,32 @@
   #:use-module (gnu services shepherd)
   #:use-module (guix gexp)
   #:use-module (guix packages)
-  #:use-module (gnu packages)
   #:use-module (gnu packages emacs)
+  ;; Package modules are imported directly (with #:select) rather than looked
+  ;; up via `specification->package'.  A top-level `specification->package'
+  ;; call fires `fold-packages' over `%package-module-path' — and `guix
+  ;; deploy'/`guix system' put the repo (`-L .') on that path, so the scan
+  ;; re-enters THIS module (and its siblings) while they are still compiling,
+  ;; yielding a cascade of bogus "unbound variable" errors.  `guix repl' never
+  ;; sets `%package-module-path', which is why it worked there.  Direct
+  ;; imports avoid the scan entirely.
+  #:use-module ((gnu packages version-control) #:select (git))
+  #:use-module ((gnu packages ssh) #:select (openssh))
+  #:use-module ((gnu packages node) #:select (node))
+  #:use-module ((gnu packages rust-apps) #:select (ripgrep))
+  #:use-module ((gnu packages web) #:select (jq))
+  #:use-module ((gnu packages curl) #:select (curl))
+  #:use-module ((gnu packages base) #:select (coreutils))
+  #:use-module ((gnu packages less) #:select (less))
+  #:use-module ((gnu packages bash) #:select (bash))
   #:use-module (peteches repository)
   #:use-module (peteches packages claude-code)
   #:use-module (peteches home modules claude)
   #:use-module (containers claude)
   #:export (make-claude-workstation-home))
 
-(define (spec name) (specification->package name))
-
 (define %claude-workstation-base-packages
-  (list claude-code
-        (spec "git")
-        (spec "openssh")
-        (spec "node")
-        (spec "ripgrep")
-        (spec "jq")
-        (spec "curl")
-        (spec "coreutils")
-        (spec "less")))
+  (list claude-code git openssh node ripgrep jq curl coreutils less))
 
 ;; --- Anvil headless emacs daemon --------------------------------------
 ;; init.el mirrors the container's anvil bootstrap (containers/claude.scm),
@@ -105,22 +111,22 @@
 
 (define (anvil-mcp-servers)
   "The two anvil MCP bridges, matching the container registration."
-  (let ((script (file-append emacs-anvil "/bin/anvil-stdio.sh"))
-        (bash   (file-append (spec "bash") "/bin/bash")))
+  (let ((script    (file-append emacs-anvil "/bin/anvil-stdio.sh"))
+        (bash-path (file-append bash "/bin/bash")))
     (list (home-claude-mcp-server
            (name "anvil")
-           (command bash)
+           (command bash-path)
            (args (list script "--server-id=anvil")))
           (home-claude-mcp-server
            (name "anvil-emacs-eval")
-           (command bash)
+           (command bash-path)
            (args (list script "--server-id=emacs-eval"))))))
 
 ;; --- repo pre-clone ----------------------------------------------------
 ;; Build the activation gexp that clones REPOS — a list of (NAME URL)
 ;; two-element lists — into ~/area_51/NAME, skipping any already present.
 (define (repos-activation repos)
-  (let ((git (file-append (spec "git") "/bin/git")))
+  (let ((git (file-append git "/bin/git")))
     #~(begin
         (use-modules (ice-9 format))
         (let* ((home (getenv "HOME"))
