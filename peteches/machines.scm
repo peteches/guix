@@ -275,7 +275,7 @@
      (host-name "192.168.51.205")
      ;; TODO: ssh-keyscan 192.168.51.205 after first boot and replace this.
      ;; The VM pipeline provisions the host; guix deploy refuses on mismatch.
-     (host-key "ssh-ed25519 AAAA-REPLACE-AFTER-FIRST-BOOT")
+     (host-key "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIKJiP5mksOP24+DCSLHsDxy0Ge3V33eNTVTJq0VyvJwj")
      (system "x86_64-linux")
      (user "peteches")
      (identity "/home/peteches/.ssh/id_ed25519")))))
