@@ -87,7 +87,9 @@
   ;; Your config fragments
   #:use-module (peteches packages gurps)
   #:use-module (peteches packages claude-code)
-  #:use-module (containers claude)
+  #:use-module (peteches packages claude-completion)
+  #:use-module (peteches packages emacs-anvil)
+  #:use-module ((peteches packages comfyui-mcp) #:select (node-comfyui-mcp))
   #:use-module (peteches packages rustdesk)
   #:use-module (peteches packages concourse)
   #:use-module (peteches packages proxmox-scripts)
@@ -95,7 +97,6 @@
 
   #:use-module (peteches repository)
   ;; utilities
-  #:use-module (ice-9 ftw)
   #:use-module (ice-9 popen)
   #:use-module (ice-9 textual-ports)
   ;; Export
@@ -154,7 +155,8 @@
   (list
    peteches-desktop-scripts
    alacritty
-   claude-container
+   claude-code
+   claude-completion
    emacs-anvil
    rustdesk
    dank-material-shell
@@ -206,30 +208,6 @@
    btop
    proxmox-scripts
    (specification->package "imagemagick")))
-
-;; Enumerate configs/claude/<session>/ contents so home-files-service
-;; can symlink them under ~/.claude-sessions/<session>/.  Called at
-;; module-load time; adding new files in the repo is picked up on the
-;; next `guix home reconfigure'.  `canonicalize-path' turns the
-;; %load-path-resolved dir into an absolute path so `local-file'
-;; doesn't warn about relative resolution.  Leaf filenames must not
-;; start with '.' — home-files-service-type rejects those.
-(define (claude-session-files sessions)
-  (apply append
-         (map (lambda (session)
-                (let ((session-dir
-                       (canonicalize-path
-                        (repo-directory
-                         (string-append "configs/claude/" session)))))
-                  (map (lambda (entry)
-                         (let* ((src (string-append session-dir "/" entry))
-                                (dst (string-append ".claude-sessions/"
-                                                    session "/" entry))
-                                (dir? (eq? 'directory (stat:type (stat src)))))
-                           `(,dst ,(local-file src #:recursive? dir?))))
-                       (filter (lambda (e) (not (member e '("." ".."))))
-                               (scandir session-dir)))))
-              sessions)))
 
 ;; 2) Shared services (with your existing configs).
 (define-public base-services
@@ -436,9 +414,9 @@
 			("grsys" . "sudo guix system -L ~/area_51/guix reconfigure ~/area_51/guix/peteches/systems/$(hostname).scm")))
 	     (guix-defaults? #t)
 	     ;; bash-completion's lazy loader is not installed, so source
-	     ;; the claude wrapper's completion file directly.  The path is
+	     ;; the claude-completion package's file directly.  The path is
 	     ;; stable across generations; the guard keeps the shell quiet
-	     ;; when claude-container is not in the profile.
+	     ;; if the package is ever dropped from the profile.
 	     (bashrc
 	      (list (plain-file
 		     "claude-completion.bash"
@@ -480,17 +458,11 @@ unset _claude_completion
 		 ;; The packaged server, not `npx -y comfyui-mcp': comfyui-mcp
 		 ;; depends on two native addons (better-sqlite3 and sharp),
 		 ;; which npx builds from source on first use.  That needs a C
-		 ;; toolchain the claude container does not have, and npx
-		 ;; swallowed the failure, so the server only ever showed as
-		 ;; "failed to connect".
+		 ;; toolchain that isn't on PATH here, and npx swallowed the
+		 ;; failure, so the server only ever showed as "failed to
+		 ;; connect".
 		 (home-claude-mcp-server
 		  (name "comfyui")
-		  (command (file-append comfyui-mcp "/bin/comfyui-mcp")))))))))
-
-   (list
-    (simple-service 'claude-sessions
-		    home-files-service-type
-		    (claude-session-files
-		     '("guix" "critical-grind" "peteches"))))
+		  (command (file-append node-comfyui-mcp "/bin/comfyui-mcp")))))))))
 
    base-theming-services))

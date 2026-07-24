@@ -109,8 +109,11 @@ creation_rules:
       - age15cnry6833ujv0dpz3szm4sv6y6ga4vltaxw5kty8vcfgck96cq7qd5n9gy  # plane
       - age1ytrfl4a94j2c4xtms7at982tsptdp2z65ss3l8frg0dwcnlns45q7v5uv8  # critical-grind-campaign
 
-  # Per-session claude-container secrets.  PGP-only: these are
-  # decrypted on the host by the operator, never on a VM, so no age
-  # recipient is needed.
-  - path_regex: configs/claude/.*/secrets\.env$
+  # criticalgrind's Plane/Outline MCP keys: decrypted directly on
+  # claude-workstation at system boot (its own age key, see
+  # peteches/systems/claude-workstation.scm), with the operator's PGP key
+  # kept as an additional recipient purely so it can also be edited from
+  # a desktop with gpg-agent.
+  - path_regex: secrets/hosts/claude-workstation/critical-grind\.env$
     pgp: "5FFB7006A36B0AEDE8D08E3753B1E002546A642A"
+    age: "age1gcrgp0sy04kdxuyn2rmkeknx32jvw55yku8v0mwyhypagds5z9jqz0h0z2"

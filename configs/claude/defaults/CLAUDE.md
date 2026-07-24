@@ -34,35 +34,38 @@ This applies to **all** key material without exception:
 5. If a secret has appeared in conversation output, treat it as
    compromised and rotate it.
 
-## Anvil MCP — the in-container Emacs bridge
+## Anvil MCP — the Emacs bridge
 
-You are running inside the `claude` container (defined in
-`containers/claude.scm`).  On launch the container's startup
-script (`claude-container-startup.sh`) brings up a headless
-`emacs --daemon` with [anvil.el](https://github.com/zawatton/anvil.el)
-loaded from the Guix `emacs-anvil` package.  The daemon exposes
-the Anvil MCP server so you get low-token file/org/eval/worker
-tools instead of round-tripping whole files through
-Read/Edit/Write.
+Every account — desktop or VM — runs [anvil.el](https://github.com/zawatton/anvil.el)
+from the Guix `emacs-anvil` package, exposing an MCP server so you get
+low-token file/org/eval/worker tools instead of round-tripping whole
+files through Read/Edit/Write. `home-claude-service-type` registers the
+`anvil` / `anvil-emacs-eval` MCP servers (via `claude mcp add` at `guix
+home` activation) pointing at the packaged `anvil-stdio.sh` launcher —
+the same entry for every account, no runtime rewriting of
+`~/.claude.json` involved.
 
-Key facts about this setup:
+How the Emacs daemon itself comes up depends on the machine:
 
-- `emacs-anvil` is a first-class Guix package — no straight.el,
-  no network at container startup, no cold-start wait.  The
-  emacs config lives at `~/.config/emacs/init.el` (session-
-  persistent) and just does `(require 'anvil) (anvil-enable)`.
-- On every container launch the startup script rewrites the
-  `mcpServers.anvil` and `mcpServers.anvil-emacs-eval` entries
-  in `~/.claude.json` with container-resolved paths
-  (`command -v bash` and `command -v anvil-stdio.sh`), so
-  a host `guix gc` cannot orphan the seeded config.
-- Session-persistent daemon log at
-  `~/.config/emacs/daemon.log` — check it when anvil tools are
-  missing.
-- If a tool call fails with `MCP error: daemon returned empty
-  response` or `can't find socket`, the daemon is still coming
-  up or has died — retry once, then fall back to built-in
-  Read/Edit/Write for the immediate task.
+- **Desktop accounts** (nug, nyarlothotep): a GUI Emacs is already
+  part of the Hyprland session, calling `(server-start)` and
+  `(anvil-server-start)` from `configs/emacs/init.el` — anvil is live
+  before Claude Code even starts.
+- **Headless VM accounts** (claude-workstation: peteches,
+  criticalgrind): nothing starts Emacs automatically, so a
+  `SessionStart` hook (in this same `settings.json`) checks
+  `emacsclient -e t` and starts `emacs --daemon` on demand, waiting
+  briefly for `anvil-enable` to load. It also creates
+  `$XDG_RUNTIME_DIR` if missing — this VM has no elogind/PAM session
+  management, so the default `/run/user/<uid>` location Emacs wants
+  for its server socket doesn't exist; see
+  `peteches/home/modules/claude-workstation.scm`.
+
+Session-persistent daemon log at `~/.config/emacs/daemon.log` — check
+it when anvil tools are missing. If a tool call fails with `MCP error:
+daemon returned empty response` or `can't find socket`, the daemon is
+still coming up or has died — retry once, then fall back to built-in
+Read/Edit/Write for the immediate task.
 
 **Always prefer Anvil tools over the built-in file tools where
 they apply.**  They ship only the delta and avoid full-file

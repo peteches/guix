@@ -98,17 +98,22 @@ EOF
 done
 ```
 
-**4. Channel modules need `-L`, or the pulled guix.** Most modules here import
-`(peteches services ...)` from the external channel, which in turn imports
-`(nongnu ...)`, `(sops ...)`, `(guix-science-nonfree ...)`. Point `-L` at a
-channel checkout for the `peteches` half:
+**4. Channel modules need `-L` pointed at real checkouts.** Most modules here
+import `(peteches services ...)` from the external channel, which in turn
+imports `(nongnu ...)`, `(sops ...)`, `(guix-science-nonfree ...)`. None of
+these need to be *pulled* — a plain shallow clone at the pinned commit (see
+`peteches/channels/base.scm` for URLs/commits) is enough, passed via repeated
+`-L`:
 
 ```bash
-guix repl -L . -L ~/area_51/codeberg.org/peteches/guix-channel_main -- …
+guix repl -L . -L ~/area_51/guix-channel -L /path/to/nonguix \
+          -L /path/to/guix-science -L /path/to/guix-science-nonfree \
+          -L /path/to/sops-guix/modules -- …
 ```
 
-The third-party channels are only available via the **pulled** guix
-(`~/.config/guix/current`), which needs container nesting — see below.
+Missing one just means the specific module chain that needs it fails to
+resolve (e.g. `(nonguix packages nvidia)` without a `nonguix` checkout) —
+everything else still validates fine.
 
 **5. Real builds need the guix daemon.** `guix build` / `guix system build`
 cannot even compute a derivation without a store connection, so `--dry-run`
@@ -118,24 +123,6 @@ does not help.
 guix system build -L . --dry-run peteches/systems/<host>.scm
 guix build -L . -L "$CHANNEL" peteches/packages/<pkg>.scm:<name>
 ```
-
-### Container nesting (required for builds)
-
-A plain `guix shell --container` has **no `/var/guix`** and only the manifest
-closure in `/gnu/store` (~200 items), so guix cannot work inside it. The
-`claude-container` wrapper therefore supports `--nesting` (alias `--guix`),
-which passes `guix shell -W` — mapping the full store read-only, the daemon
-socket, and guix's caches — and exposes `~/.config/guix/current` so channel
-modules resolve.
-
-It is **off by default** (a reachable daemon can build and install arbitrary
-derivations on the host). The `guix` session opts in permanently via an empty
-`nesting` file in its session dir (`~/.claude-sessions/guix/nesting`); use
-`--nesting` ad hoc, or `--no-nesting` to force it off.
-
-Nesting also makes store-symlinked host config resolve — notably
-`~/.config/git/config`, which otherwise dangles, taking `user.name`/`user.email`
-and `commit.gpgSign` with it and producing unsigned commits.
 
 Check whether you have it:
 
@@ -174,8 +161,10 @@ So `alloy-service-type`, `restic-vm-backup-service-type`, `firewall-service-type
 channel**. This repo only supplies configuration *values* for them. Changing a
 service type means editing that channel and re-pinning its commit here.
 
-`peteches/packages/desktop-scripts.scm` is the one exception — a package defined
-in this repo, because its source (`configs/bin/`) is here.
+`peteches/packages/` holds the exceptions — packages defined in this repo
+rather than the channel: `desktop-scripts.scm` and `claude-completion.scm`
+because their sources (`configs/bin/`, `configs/claude/claude-completion.bash`)
+are here, and `emacs-anvil.scm` because nothing else needed a home for it.
 
 ### Two OS constructors
 
@@ -202,7 +191,7 @@ Each module's header comment documents its keyword arguments — read
 | `peteches/home/modules/` | Shared home config fragments — `base.scm` plus focused modules (ssh, gpg, theming, ai, etc.) |
 | `peteches/monitoring/` | Loki gexp helper — **dead code**, not exported, not called |
 | `peteches/channels/` | Channel lock files (four of them — see "Channels") |
-| `peteches/packages/` | `desktop-scripts.scm` — the only package defined in this repo |
+| `peteches/packages/` | `desktop-scripts.scm`, `claude-completion.scm`, `emacs-anvil.scm` — the packages defined in this repo |
 | `peteches/repository.scm` | `repo-directory` / `source-path` — resolve repo assets via `%load-path` |
 | `peteches/utils.scm` | **Legacy**, unused; `gather-manifest-packages` reads a `manifests/` dir that no longer exists |
 | `peteches/deploy.scm` | **Legacy** `guix deploy` manifest, superseded by `machines.scm` — do not use |
@@ -312,10 +301,11 @@ Prefer the `/update-channels` skill over editing pins directly.
 | `peteches/utils.scm` | **Legacy/unused**: `gather-manifest-packages` (reads a nonexistent `manifests/` dir, hard-codes an absolute path), `apply-template-file` |
 | `peteches/deploy.scm` | **Legacy** `guix deploy` manifest listing only 5 of 17 machines. Superseded by `machines.scm` + `scripts/deploy.scm`. `docs/backups.org` and `proxmox-vms.org` still reference it — that guidance is stale |
 | `peteches/packages/desktop-scripts.scm` | `peteches-desktop-scripts` — packages `configs/bin/`. Scripts must be listed explicitly in `#:install-plan` |
+| `peteches/packages/claude-completion.scm` | `claude-completion` — packages `configs/claude/claude-completion.bash` as `share/bash-completion/completions/claude`; installed for every claude-workstation and desktop account |
+| `peteches/packages/emacs-anvil.scm` | `emacs-anvil` — packages anvil.el + `anvil-stdio.sh`; consumed by `(peteches home modules claude-workstation)` and `(peteches home modules base)` to run the Anvil MCP bridge |
 | `scripts/deploy.scm` | `guix deploy` wrapper — parses `--hosts` patterns, filters `%all-machines`, passes result via `-e`. Keeps its own `%machine-names` alist that must be updated alongside `machines.scm` |
 | `scripts/sync-restic-keys.sh` | Syncs restic backup keys to all VMs |
 | `proxmox-vms.org` | VM inventory: IPs, VMIDs, purpose — authoritative IP reference |
-| `containers/claude.scm` | `claude-container` (runs claude-code in `guix shell --container`), `emacs-anvil`, `comfyui-mcp` packages |
 | `containers/guix-builder.scm` | Docker image for Concourse CI tasks — `registry.ts.peteches.co.uk/guix-builder`, referenced by `ci/tasks/*.yml` |
 | `containers/postgres.scm` | Throwaway PostgreSQL test container — not deployed, nothing imports it |
 | `peteches/grafana-dashboards/node-exporter.json` | Node Exporter Grafana dashboard |

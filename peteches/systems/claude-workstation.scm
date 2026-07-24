@@ -87,7 +87,26 @@
        (key '("auth-key"))
        (file (local-file "../../secrets/shared/tailscale.yaml"))
        (path "/run/secrets/tailscale-auth-key")
-       (permissions #o400)))
+       (permissions #o400))
+      ;; criticalgrind's Plane/Outline MCP keys, decrypted here with this
+      ;; VM's own age key. secrets/hosts/claude-workstation/critical-grind.env
+      ;; also carries the operator's PGP key as a recipient, purely so it
+      ;; can be edited from a desktop with gpg-agent -- see
+      ;; docs/secrets-management.org.
+      (sops-secret
+       (key '("PLANE_API_KEY"))
+       (file (local-file "../../secrets/hosts/claude-workstation/critical-grind.env"))
+       (user "criticalgrind")
+       (group "users")
+       (permissions #o400)
+       (path "/run/secrets/plane-api-key"))
+      (sops-secret
+       (key '("OUTLINE_API_KEY"))
+       (file (local-file "../../secrets/hosts/claude-workstation/critical-grind.env"))
+       (user "criticalgrind")
+       (group "users")
+       (permissions #o400)
+       (path "/run/secrets/outline-api-key")))
      #:bootloader
      (bootloader-configuration
       (bootloader grub-efi-removable-bootloader)

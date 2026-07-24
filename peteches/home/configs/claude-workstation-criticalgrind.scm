@@ -8,9 +8,10 @@
 ;;; the command above.
 ;;;
 ;;; Adds the Critical Grind tooling on top of the shared constructor: the Go
-;;; toolchain plus the Plane and Outline MCP servers.  The non-secret MCP env
-;;; is set here; PLANE_API_KEY / OUTLINE_API_KEY are secrets and must arrive
-;;; via sops once the VM's age key exists (see the module header).
+;;; toolchain (plus delve/postgresql/pgcli/gcc-toolchain) and the Plane and
+;;; Outline MCP servers.  Non-secret MCP env is set here directly;
+;;; PLANE_API_KEY / OUTLINE_API_KEY arrive via #:secret-env-vars, sourced from
+;;; the VM's own sops-secrets (see #:sops-secrets in claude-workstation.scm).
 ;;;
 ;;; Evaluates to a bare `home-environment' as its final expression.
 
@@ -25,6 +26,9 @@
   #:use-module ((peteches packages mcp) #:select (plane-mcp-server mcp-outline))
   #:use-module ((gnu packages golang) #:select (go))
   #:use-module ((gnu packages golang-apps) #:select (gopls))
+  #:use-module ((gnu packages debug) #:select (delve))
+  #:use-module ((gnu packages databases) #:select (postgresql pgcli))
+  #:use-module ((gnu packages commencement) #:select (gcc-toolchain))
   #:use-module (peteches home modules claude-workstation)
   #:use-module (peteches home modules claude))
 
@@ -44,12 +48,20 @@
  ;; conflicting python-pyjwt versions (2.13.0 vs 2.10.1) and guix refuses to
  ;; union them.  They don't need to be on PATH — the MCP servers below launch
  ;; them by absolute store path via file-append, so the profile only needs the
- ;; Go toolchain the account actually uses interactively.
- #:extra-packages (list go gopls)
+ ;; tools the account actually uses interactively: the Go toolchain plus
+ ;; debugger, and PostgreSQL client tooling for the campaign app's database.
+ ;; cgo and `go test -race` need a C toolchain -- drop gcc-toolchain if the
+ ;; project stays pure Go (pgx/lib-pq are) and never runs the race detector.
+ #:extra-packages (list go gopls delve postgresql pgcli gcc-toolchain)
  ;; Non-secret only.  The Plane SDK appends /api/v1 to PLANE_BASE_URL itself.
  #:mcp-env '(("PLANE_BASE_URL"       . "https://plane.ts.peteches.co.uk")
              ("PLANE_WORKSPACE_SLUG" . "critical-grind")
              ("OUTLINE_API_URL"      . "https://outline.ts.peteches.co.uk/api"))
+ ;; Secrets: sops-decrypted at system boot into /run/secrets/... (see the
+ ;; #:sops-secrets entries in peteches/systems/claude-workstation.scm),
+ ;; exported into the shell from there -- never baked into the store.
+ #:secret-env-vars '(("PLANE_API_KEY"   . "/run/secrets/plane-api-key")
+                      ("OUTLINE_API_KEY" . "/run/secrets/outline-api-key"))
  #:mcp-servers
  (list (home-claude-mcp-server
         (name "plane")
