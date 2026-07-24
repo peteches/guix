@@ -35,7 +35,8 @@
 ;;   #:nameservers        defaults to %vm-nameservers (the pihole VM).
 ;;   #:restic-config      a restic-vm-backup-configuration, or #f for no backups.
 ;;   #:sops-secrets       list of sops-secret records decrypted at boot into
-;;                        /run/secrets/ using the VM's own age key.
+;;                        /run/secrets/ using the VM's own age key (baked into
+;;                        the image at /etc/age/keys.txt by CI; see note below).
 ;;   #:with-nonguix?      register the nonguix substitute server.
 ;;   #:with-nug-offload?  DEFAULT #t — adds nug as a build machine.  This
 ;;                        requires a private key at /run/secrets/guix-offload-key,
@@ -48,9 +49,17 @@
 ;;
 ;; Baseline every VM gets: openssh (key-only, nug + nyarlothotep enrolled),
 ;; ntpd, qemu-guest-agent, nftables firewall (%vm-base-firewall: ssh + 9100
-;; + icmp only), cifs-client, prometheus-node-exporter, the sops age-key
-;; generator, and %authorize-coordinator-key (trusts nug/nyarlothotep to push
-;; store items, and registers nug's guix-publish as a substitute server).
+;; + icmp only), cifs-client, prometheus-node-exporter, and
+;; %authorize-coordinator-key (trusts nug/nyarlothotep to push store items,
+;; and registers nug's guix-publish as a substitute server).
+;;
+;; The age key sops uses to decrypt #:sops-secrets is baked into each VM's
+;; image by the CI build-vm-image pipeline (debugfs-written to
+;; /etc/age/keys.txt), so the base no longer runs sops-key-generator to make
+;; one on first boot -- doing so would fail, since age-keygen refuses to
+;; overwrite the injected key.  The two non-pipeline paths that build
+;; UN-injected images still add that service themselves: bootstrap.scm (the
+;; legacy Proxmox template) and nyarlothotep.scm (a bare-metal desktop).
 ;;
 ;; Opening a port means extending firewall-service-type from #:extra-services;
 ;; see git.scm or rustdesk.scm for the `simple-service' pattern.
@@ -81,7 +90,6 @@
   #:use-module (peteches services firewall)
   #:use-module (peteches services restic)
   #:use-module (peteches services cifs)
-  #:use-module (peteches services sops-key-generator)
   #:use-module (sops secrets)
   #:use-module (sops services sops)
   #:use-module (gnu services linux)
@@ -259,7 +267,6 @@
             (service firewall-service-type %vm-base-firewall)
             (service cifs-client-service-type)
             (service prometheus-node-exporter-service-type)
-            (service sops-key-generator-service-type)
             %authorize-coordinator-key)
            nonguix-services
            restic-services
