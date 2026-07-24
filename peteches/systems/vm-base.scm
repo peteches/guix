@@ -89,7 +89,8 @@
   #:use-module (nongnu packages nvidia)
   #:use-module (guix-science-nonfree packages cuda-modules)
   #:export (make-vm-os
-            %vm-peteches-user))
+            %vm-peteches-user
+            %vm-peteches-authorized-keys))
 
 ;; Console-login user for the VMs.  `password' is a pre-hashed crypt(3)
 ;; string, needed because these are headless clones with no interactive
@@ -104,6 +105,16 @@
    (home-directory "/home/peteches")
    (supplementary-groups '("wheel" "netdev"))
    (password "$6$yk5pnJr/ECPPOvGv$/HoWZNE7fWDslHHIVHAcaxk0AyhnthoHGhs3RrXaXqvVL8W5UI9OUVHndx4RfSqnWnnPw/.q2KhkfrPRKkw.11")))
+
+;; The admin SSH keys enrolled on every VM: nug + nyarlothotep.  Kept as a
+;; named, exported list so other system configs can grant the same access to
+;; an additional login user (see peteches/systems/claude-workstation.scm,
+;; which authorizes these for the criticalgrind account too).
+(define %vm-peteches-authorized-keys
+  (list (plain-file "peteches-nug.pub"
+                    "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIMddPKUs7sbjMj8GtmzytHhGx7JOoCikqPEBuwE50qa7 peteches@nug\n")
+        (plain-file "peteches-nyarlothotep.pub"
+                    "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIM28x2V8tgwfzjyhapMayamDFwviOTHfU4W9BMnmc70w peteches@nyarlothotep.peteches.co.uk\n")))
 
 (define (nonguix-substitute-service)
   (simple-service 'add-nonguix-substitutes
@@ -216,11 +227,7 @@
             (service openssh-service-type
                      (openssh-configuration
                       (authorized-keys
-                       `(("peteches"
-                          ,(plain-file "peteches-nug.pub"
-                                       "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIMddPKUs7sbjMj8GtmzytHhGx7JOoCikqPEBuwE50qa7 peteches@nug\n")
-                          ,(plain-file "peteches-nyarlothotep.pub"
-                                       "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIM28x2V8tgwfzjyhapMayamDFwviOTHfU4W9BMnmc70w peteches@nyarlothotep.peteches.co.uk\n"))))))
+                       `(("peteches" ,@%vm-peteches-authorized-keys)))))
             (if ipv4-address
                 (service static-networking-service-type
                          (list (static-networking

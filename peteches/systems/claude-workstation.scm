@@ -35,6 +35,7 @@
   #:use-module (gnu bootloader)
   #:use-module (gnu bootloader grub)
   #:use-module (gnu services)
+  #:use-module (gnu services ssh)
   #:use-module (gnu system)
   #:use-module (gnu system accounts)
   #:use-module (gnu system shadow)
@@ -107,6 +108,13 @@
       (service guix-home-service-type
        `(("peteches" ,claude-workstation-peteches-home)
          ("criticalgrind" ,claude-workstation-criticalgrind-home)))
+      ;; Authorize the same admin keys (nug + nyarlothotep) for the
+      ;; criticalgrind user, so `ssh criticalgrind@…' works key-only just
+      ;; like the peteches account.  openssh-service-type coalesces this with
+      ;; the peteches entry vm-base already sets.
+      (simple-service 'criticalgrind-authorized-keys
+                      openssh-service-type
+                      `(("criticalgrind" ,@%vm-peteches-authorized-keys)))
       ;; Claude reaches Anthropic outbound; the base firewall permits
       ;; established/related + output and opens ssh inbound.  Tailscale needs
       ;; no inbound rule here: ssh over the tailnet still lands on tcp/22

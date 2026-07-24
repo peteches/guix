@@ -30,6 +30,7 @@
   #:use-module (gnu home services)
   #:use-module (gnu home services shells)
   #:use-module (gnu home services shepherd)
+  #:use-module (gnu home services ssh)
   #:use-module (gnu services)
   #:use-module (gnu services shepherd)
   #:use-module (guix gexp)
@@ -191,6 +192,17 @@ set."
                       home-files-service-type
                       (list (list ".config/git/config"
                                   (git-config-file git-name git-email))))
+      ;; Declarative known_hosts for the repos this account clones over SSH.
+      ;; Written to ~/.ssh/known_hosts2 (a store symlink) so the non-interactive
+      ;; git clone in the repos activation below can verify github.com,
+      ;; codeberg.org and git.peteches.co.uk without a TTY to accept the host
+      ;; key.  ~/.ssh/known_hosts is deliberately left alone — OpenSSH reads
+      ;; both files by default, so hosts added interactively still persist
+      ;; there and survive `guix home reconfigure'.
+      (service home-openssh-service-type
+               (home-openssh-configuration
+                (known-hosts2
+                 (list (local-file "claude-workstation-known-hosts")))))
       (simple-service 'clone-area51-repos
                       home-activation-service-type
                       (repos-activation repos))
