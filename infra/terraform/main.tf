@@ -502,7 +502,11 @@ module "claude-workstation" {
 
   cpu = {
     cores = 4
-    type  = "qemu64"
+    # claude-code ships a Node SEA whose bundled V8 assumes a modern CPU
+    # baseline; the default "qemu64" model exposes no AVX/SSE4/AES/RDRAND and
+    # the binary busy-spins forever at startup. "host" passes the node CPU's
+    # full feature set through to the guest. Requires a VM power cycle to apply.
+    type  = "host"
   }
 
   efi_disk = {
