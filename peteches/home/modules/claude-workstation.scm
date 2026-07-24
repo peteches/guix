@@ -8,11 +8,12 @@
 ;;;   * claude-code on PATH, plus git / node / ripgrep / jq / curl.
 ;;;   * ~/.claude seeded from configs/claude/defaults (CLAUDE.md, skills,
 ;;;     statusline) via home-claude-service-type, which ALSO registers this
-;;;     account's MCP servers with `claude mcp add' at activation.
+;;;     account's MCP servers with `claude mcp add' at activation.  An
+;;;     account can layer its own extra ~/.claude/ files on top via
+;;;     #:extra-claude-files, without touching the shared defaults set.
 ;;;   * the Anvil MCP bridge (#:with-anvil?, default #t): an emacs-no-x
 ;;;     --fg-daemon supervised by home-shepherd, loading emacs-anvil from a
 ;;;     baked store path, plus the `anvil' / `anvil-emacs-eval' MCP servers.
-;;;     This is the headless sibling of the container's anvil setup.
 ;;;   * ~/area_51/<repo> pre-cloned on `guix home reconfigure' — idempotent
 ;;;     (existing checkouts are skipped) and non-fatal (a clone that fails for
 ;;;     want of a key or network just warns and is retried next reconfigure,
@@ -20,10 +21,10 @@
 ;;;   * a git identity and any non-secret MCP env (PLANE_BASE_URL, …).
 ;;;
 ;;; SECRETS are deliberately NOT here: the store is world-readable, so an
-;;; API key set via home-environment-variables would leak.  Deliver them via
-;;; sops once the VM's age key exists, and source /run/secrets/… from the
-;;; user's bash profile — exactly as configs/claude/critical-grind/{env,
-;;; secrets.env} do for the container path.
+;;; API key set via home-environment-variables would leak.  They arrive via
+;;; the VM's own sops-secrets (see #:sops-secrets in claude-workstation.scm,
+;;; decrypting to /run/secrets/…) and are exported into the shell by
+;;; #:secret-env-vars below — see criticalgrind's config for an example.
 
 (define-module (peteches home modules claude-workstation)
   #:use-module (gnu home)
@@ -54,16 +55,17 @@
   #:use-module ((gnu packages bash) #:select (bash))
   #:use-module (peteches repository)
   #:use-module (peteches packages claude-code)
+  #:use-module (peteches packages claude-completion)
   #:use-module (peteches home modules claude)
-  #:use-module (containers claude)
+  #:use-module (peteches packages emacs-anvil)
   #:export (make-claude-workstation-home))
 
 (define %claude-workstation-base-packages
-  (list claude-code git openssh node ripgrep jq curl coreutils less))
+  (list claude-code claude-completion git openssh node ripgrep jq curl
+        coreutils less))
 
 ;; --- Anvil headless emacs daemon --------------------------------------
-;; init.el mirrors the container's anvil bootstrap (containers/claude.scm),
-;; but bakes emacs-anvil's site-lisp onto the load-path directly so it needs
+;; Bakes emacs-anvil's site-lisp onto the load-path directly so it needs
 ;; no EMACSLOADPATH plumbing, and starts the MCP server in-daemon (guarded)
 ;; rather than via a post-hoc emacsclient poke.
 (define anvil-init-file
@@ -157,6 +159,41 @@ will retry next reconfigure~%" name))))))
     "[init]\n\tdefaultBranch = main\n"
     "[pull]\n\trebase = true\n")))
 
+;; Build a bashrc snippet exporting each (ENV-VAR . RUN-SECRETS-PATH) pair
+;; from SECRET-ENV-VARS, guarded so a missing/unreadable file (wrong
+;; account, secret not yet wired) is silently skipped rather than erroring.
+;; The path itself is baked into the world-readable store, same as the
+;; anvil launcher paths above -- only the *value* at that path, read at
+;; shell-start time from tmpfs, is sensitive.
+;; bash-completion's lazy loader is not installed, so source the
+;; claude-completion package's file directly. The path is stable across
+;; generations; the guard keeps the shell quiet if the package is ever
+;; dropped from the profile. Matches (peteches home modules base)'s
+;; identical snippet for the desktop accounts.
+(define claude-completion-bashrc
+  (plain-file
+   "claude-completion.bash"
+   "\
+_claude_completion=\"$HOME/.guix-home/profile/share/bash-completion/completions/claude\"
+if [ -r \"$_claude_completion\" ]; then
+  . \"$_claude_completion\"
+fi
+unset _claude_completion
+"))
+
+(define (secret-env-bashrc secret-env-vars)
+  (plain-file
+   "secret-env.sh"
+   (string-append
+    ";;; -*- mode: sh -*-\n"
+    (apply string-append
+           (map (lambda (pair)
+                  (let ((var (car pair)) (path (cdr pair)))
+                    (string-append
+                     "if [ -r \"" path "\" ]; then export " var
+                     "=\"$(cat \"" path "\")\"; fi\n")))
+                secret-env-vars)))))
+
 (define* (make-claude-workstation-home
           #:key
           (git-name "Pete 'Peteches' McCabe")
@@ -164,14 +201,25 @@ will retry next reconfigure~%" name))))))
           (repos '())
           (mcp-servers '())
           (mcp-env '())
+          (secret-env-vars '())
           (extra-packages '())
+          (extra-claude-files '())
           (with-anvil? #t))
   "Return a headless home-environment for one Claude account on
 claude-workstation.  REPOS is a list of (NAME URL) cloned into ~/area_51.
 MCP-SERVERS is a list of <home-claude-mcp-server> (the anvil bridges are added
 automatically when WITH-ANVIL?).  MCP-ENV is a NON-SECRET alist of environment
-variables the MCP servers inherit.  EXTRA-PACKAGES are added to the base tool
-set."
+variables the MCP servers inherit.  SECRET-ENV-VARS is an alist of (ENV-VAR .
+RUN-SECRETS-PATH): at shell startup each ENV-VAR is exported from the contents
+of RUN-SECRETS-PATH (normally a sops-secret's /run/secrets/... path) if that
+path is readable -- see claude-workstation.scm's #:sops-secrets. EXTRA-PACKAGES
+are added to the base tool set.  EXTRA-CLAUDE-FILES is an alist of (RELATIVE-
+PATH . FILE-LIKE), each landing at ~/.claude/RELATIVE-PATH alongside (not
+replacing) the shared configs/claude/defaults set -- for an account-specific
+agent, skill or similar that doesn't belong to any one project (a project's
+own CLAUDE.md/.claude/agents/ takes precedence over an account-wide file for
+project-specific instructions). A RELATIVE-PATH colliding with a defaults/
+entry is a build-time error, not a silent override."
   (home-environment
    (packages (append %claude-workstation-base-packages
                      (if with-anvil? (list emacs-no-x emacs-anvil) '())
@@ -179,11 +227,26 @@ set."
    (services
     (append
      (list
+      ;; This VM has no elogind/PAM session management, so /run/user/<uid>
+      ;; is never created -- yet XDG_RUNTIME_DIR is still exported pointing
+      ;; at it (picked up from some ambient default). `emacs --daemon` uses
+      ;; that variable to place its server socket and aborts with "Unable
+      ;; to start daemon: Creating directory: Permission denied, /run/user"
+      ;; because a plain user can't create entries directly under /run.
+      ;; Point it at a per-account directory under $HOME instead, which is
+      ;; always writable. The SessionStart hook (configs/claude/defaults/
+      ;; settings.json) creates the directory and starts the daemon.
       (service home-bash-service-type
                (home-bash-configuration
                 (guix-defaults? #t)
                 (environment-variables
-                 '(("PATH" . "$HOME/.local/bin:$PATH")))))
+                 '(("PATH" . "$HOME/.local/bin:$PATH")
+                   ("XDG_RUNTIME_DIR" . "$HOME/.cache/xdg-runtime")))
+                (bashrc
+                 (cons claude-completion-bashrc
+                       (if (null? secret-env-vars)
+                           '()
+                           (list (secret-env-bashrc secret-env-vars)))))))
       (simple-service 'mcp-env
                       home-environment-variables-service-type
                       mcp-env)
@@ -199,4 +262,12 @@ set."
                 (config-directory (repo-directory "configs/claude/defaults"))
                 (mcp-servers (append (if with-anvil? (anvil-mcp-servers) '())
                                      mcp-servers)))))
+     (if (null? extra-claude-files)
+         '()
+         (list (simple-service 'claude-extra-files
+                               home-files-service-type
+                               (map (lambda (pair)
+                                      (list (string-append ".claude/" (car pair))
+                                            (cdr pair)))
+                                    extra-claude-files))))
      (if with-anvil? (anvil-services) '())))))

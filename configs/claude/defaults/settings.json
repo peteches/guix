@@ -1,0 +1,17 @@
+{
+  "theme": "dark",
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "if [ -z \"${DISPLAY:-}\" ] && [ -z \"${WAYLAND_DISPLAY:-}\" ] && ! emacsclient -e t >/dev/null 2>&1; then mkdir -p -m 700 \"${XDG_RUNTIME_DIR:-$HOME/.cache/xdg-runtime}\"; mkdir -p \"$HOME/.config/emacs\"; nohup emacs --daemon >>\"$HOME/.config/emacs/daemon.log\" 2>&1 & disown; for i in $(seq 1 15); do emacsclient -e '(fboundp (quote anvil-enable))' 2>/dev/null | grep -q t && break; sleep 1; done; fi",
+            "timeout": 20,
+            "statusMessage": "Starting anvil emacs daemon..."
+          }
+        ]
+      }
+    ]
+  }
+}

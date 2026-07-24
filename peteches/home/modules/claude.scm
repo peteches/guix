@@ -17,10 +17,6 @@
 ;;;
 ;;; The service type is `extend'-able — extensions are appended to
 ;;; mcp-servers — though nothing currently extends it.
-;;;
-;;; Note the split: this covers the *host* Claude Code install.  The
-;;; containerised launcher is a separate package in (containers claude),
-;;; which does its own MCP registration inside the container.
 
 (define-module (peteches home modules claude)
   #:use-module (gnu home services)
