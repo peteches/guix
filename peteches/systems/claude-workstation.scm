@@ -35,7 +35,9 @@
   #:use-module (gnu bootloader)
   #:use-module (gnu bootloader grub)
   #:use-module (gnu services)
+  #:use-module (gnu services shepherd)
   #:use-module (gnu services ssh)
+  #:use-module (gnu services docker)
   #:use-module (gnu system)
   #:use-module (gnu system accounts)
   #:use-module (gnu system shadow)
@@ -62,8 +64,30 @@
    (comment "Critical Grind (Claude account)")
    (group "users")
    (home-directory "/home/criticalgrind")
-   (supplementary-groups '("wheel" "netdev"))
+   (supplementary-groups '("wheel" "netdev" "docker"))
    (password "$6$yk5pnJr/ECPPOvGv$/HoWZNE7fWDslHHIVHAcaxk0AyhnthoHGhs3RrXaXqvVL8W5UI9OUVHndx4RfSqnWnnPw/.q2KhkfrPRKkw.11")))
+
+;; Guix's docker-service-type storage driver defaults to overlay2, which
+;; needs kernel overlayfs support this VM's linux-libre kernel lacks (see
+;; vm-base.scm's #:kernel note — the Podman hosts plane.scm/
+;; critical-grind-outline.scm hit the same wall and pin vfs for the same
+;; reason). vfs is slower but is the only driver that actually works here.
+(define %docker-daemon-config
+  (plain-file "docker-daemon.json" "{\"storage-driver\": \"vfs\"}\n"))
+
+;; Docker/Podman-style container networking on this VM.
+(define %docker-firewall-rules
+  (nftables-rules
+   ;; Docker always names its default bridge "docker0" (fixed, unlike
+   ;; Podman's netavark-assigned br-* names — see plane.scm's comment on why
+   ;; that one matches by subnet instead).
+   (forward
+    (list
+     "iifname \"docker0\" oifname \"eth0\" accept comment \"docker containers to lan/internet\""
+     "iifname \"eth0\" oifname \"docker0\" ct state established,related accept comment \"lan/internet return to docker containers\""))
+   (nat-postrouting
+    (list
+     "ip saddr 172.17.0.0/16 oifname \"eth0\" masquerade comment \"nat docker containers to lan/internet\""))))
 
 (define-public claude-workstation-os
   (operating-system
@@ -75,6 +99,7 @@
      ;; Offload needs a guix-build.yaml secret + nug authorized-key that do
      ;; not exist until first boot; enabling half of it fails silently.
      #:with-nug-offload? #f
+     #:with-docker? #t
      #:users-extra (list %criticalgrind-user)
      ;; Tailscale unattended join.  The auth-key is a SHARED sops secret
      ;; (secrets/shared/tailscale.yaml), decrypted at boot with the VM's own
@@ -121,12 +146,59 @@
       (file-system
         (mount-point "/")
         (device "/dev/vda2")
-        (type "ext4")))
+        (type "ext4"))
+      ;; cgroup2 mount required by containerd/docker for container management
+      ;; (not part of %base-file-systems — see plane.scm/
+      ;; critical-grind-outline.scm for the same mount, needed there by Podman).
+      (file-system
+        (mount-point "/sys/fs/cgroup")
+        (device "cgroup2")
+        (type "cgroup2")
+        (flags '(no-exec no-suid no-dev))
+        (check? #f)
+        (create-mount-point? #t)))
      #:extra-services
      (list
       (service guix-home-service-type
        `(("peteches" ,claude-workstation-peteches-home)
          ("criticalgrind" ,claude-workstation-criticalgrind-home)))
+      ;; Guix's docker-service-type hard-codes 'dbus-system and 'elogind in
+      ;; its shepherd requirement list. This VM base runs neither (headless,
+      ;; no elogind/PAM session management — see vm-base.scm and CLAUDE.md's
+      ;; "Adding a New VM" note), so stub both out as one-shot no-ops. Same
+      ;; technique plane.scm uses to satisfy oci-service-type's Podman
+      ;; requirements without a real elogind/dbus-system running.
+      (simple-service 'docker-requirement-stubs
+                      shepherd-root-service-type
+                      (list
+                       (shepherd-service
+                        (provision '(dbus-system))
+                        (one-shot? #t)
+                        (start #~(lambda _ #t))
+                        (documentation "Stub."))
+                       (shepherd-service
+                        (provision '(elogind))
+                        (one-shot? #t)
+                        (start #~(lambda _ #t))
+                        (documentation "Stub."))))
+      (service containerd-service-type)
+      ;; enable-iptables? is off deliberately: dockerd's own iptables-nft
+      ;; rule insertion would be wiped out on every `nft -f' the peteches
+      ;; firewall does (its shepherd service flushes the whole ruleset on
+      ;; every boot AND every reconfigure — see (peteches services
+      ;; firewall)). Egress NAT for docker0 is handled explicitly below
+      ;; instead, the same way concourse-worker01.scm owns NAT for its own
+      ;; container bridge rather than relying on the runtime's iptables
+      ;; integration. Consequence: `docker run -p' host port publishing
+      ;; needs its own nftables DNAT rule added here if/when it's used —
+      ;; it is NOT wired up by this change.
+      (service docker-service-type
+               (docker-configuration
+                (enable-iptables? #f)
+                (config-file %docker-daemon-config)))
+      (simple-service 'docker-firewall
+                      firewall-service-type
+                      %docker-firewall-rules)
       ;; Authorize the same admin keys (nug + nyarlothotep) for the
       ;; criticalgrind user, so `ssh criticalgrind@…' works key-only just
       ;; like the peteches account.  openssh-service-type coalesces this with

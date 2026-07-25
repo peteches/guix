@@ -46,6 +46,18 @@
 ;;                        guix-offload public key must be listed in
 ;;                        peteches/systems/nug.scm's authorized_keys service.
 ;;   #:with-nvidia?       nonguix NVIDIA driver + CUDA (jellyfin, for NVENC).
+;;   #:with-docker?       adds "docker" to %vm-peteches-user's supplementary
+;;                        groups.  Mirrors make-base-os's with-docker? flag in
+;;                        (peteches systems base), which does the same for
+;;                        %peteches-user.  This flag ONLY touches the user
+;;                        record baked into this module — it does not install
+;;                        containerd/docker services.  Those, plus the
+;;                        dbus-system/elogind shepherd stubs Guix's
+;;                        docker-service-type requires (this base has neither
+;;                        running) and the cgroup2 mount, are wired per-VM in
+;;                        #:extra-services/#:file-systems, the same way
+;;                        plane.scm and critical-grind-outline.scm wire up
+;;                        Podman locally rather than through this module.
 ;;
 ;; Baseline every VM gets: openssh (key-only, nug + nyarlothotep enrolled),
 ;; ntpd, qemu-guest-agent, nftables firewall (%vm-base-firewall: ssh + 9100
@@ -197,7 +209,8 @@
           (nameservers %vm-nameservers)
           (sops-secrets '())
           (with-nug-offload? #t)
-          (with-nvidia? #f))
+          (with-nvidia? #f)
+          (with-docker? #f))
   (let* ((nonguix-services (if with-nonguix? (list (nonguix-substitute-service)) '()))
          (restic-services
           (if restic-config
@@ -292,7 +305,13 @@
                                  "root ALL=(ALL) ALL\n"
                                  "%wheel ALL=(ALL) NOPASSWD: ALL\n"
                                  "#includedir /run/sudoers.d\n")))
-      (users (append (list %vm-peteches-user)
+      (users (append (list (if with-docker?
+                               (user-account
+                                (inherit %vm-peteches-user)
+                                (supplementary-groups
+                                 (append (user-account-supplementary-groups %vm-peteches-user)
+                                         '("docker"))))
+                               %vm-peteches-user))
                      %base-user-accounts
                      users-extra))
       (name-service-switch
