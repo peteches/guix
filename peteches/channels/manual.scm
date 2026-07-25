@@ -6,13 +6,15 @@
 ;;;
 ;;;   guix pull -C peteches/channels/manual.scm
 ;;;
-;;; or symlinked to ~/.config/guix/channels.scm.  This is the full list;
-;;; channels-nug.scm in this directory holds only the `peteches' channel
-;;; despite its name.
+;;; or symlinked to ~/.config/guix/channels.scm.  This is the full list.
 ;;;
 ;;; Kept in sync BY HAND with base.scm / nug.scm — see the header in
 ;;; base.scm for the full picture, and prefer the `/update-channels' skill
 ;;; over editing pins here directly.
+
+(define-module (peteches channels manual)
+  #:use-module (gnu)
+  #:use-module (guix channels))
 ;;;
 ;;; A `define-module' header (matching this file's path) makes guix load it
 ;;; cleanly when it scans the `-L .' load path — `guix home'/`guix system'
@@ -76,17 +78,6 @@
     "199fd26ab268d4f26cebcb39e844fe4ff9bea9bc"
     (openpgp-fingerprint
      "BBB0 2DDF 2CEA F6A8 0D1D  E643 A2A0 6DF2 A33A 54FA"))))
-
- (channel
-  (name 'peteches)
-  (url "https://codeberg.org/peteches/guix-channel")
-  (branch "main")
-  (commit "c8eb9ced0567e900fab56640797a26c2847a5ca8")
-  (introduction
-   (make-channel-introduction
-    "ff4b8a08276932c10cf6ca8cf726d78a86c17588"
-    (openpgp-fingerprint
-     "73C1 C132 9190 37C0 6D6A  6729 A6E8 150F ED00 29D7"))))
 
  (channel
   (name 'critical-grind)

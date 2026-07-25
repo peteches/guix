@@ -31,8 +31,12 @@ This applies to **all** key material without exception:
 
 A personal [GNU Guix](https://guix.gnu.org/) system configuration repository. All files are written in Guile Scheme. It defines operating systems and home environments for multiple machines. The root Guile module namespace is `(peteches ...)`.
 
-Custom packages, home services, and system services have been migrated to a separate
-private guix channel (`peteches`). The channel URL is pinned in `peteches/channels/base.scm`.
+Custom packages, home services, and system services used to live in a separate private
+Codeberg channel repo (`peteches/guix-channel`). Codeberg changed its ToS to prohibit
+AI-generated code, and since this repo is now developed with Claude Code, that channel
+was folded back into this repo — see `peteches/packages/`, `peteches/home/services/`
+and `peteches/services/` below. They are ordinary local modules loaded via `-L .`, with
+no channel pin and no re-pinning step to change a service type.
 
 ## Common Commands
 
@@ -45,10 +49,8 @@ guix system build -L . --dry-run peteches/systems/<host>.scm
 # Build a QCOW2 disk image for a VM
 guix system image -L . -t qcow2 peteches/systems/<vm>.scm
 
-# Pull channels (updates all pinned channels including peteches channel).
-# Use manual.scm — it is the full plain list. Despite its name,
-# channels-nug.scm contains ONLY the peteches channel and would leave
-# guix itself unpinned. See "Channels" below.
+# Pull channels (updates all pinned channels).
+# Use manual.scm — it is the full plain list. See "Channels" below.
 guix pull -C peteches/channels/manual.scm
 
 # Deploy to all VMs (or filter with --hosts)
@@ -98,22 +100,26 @@ EOF
 done
 ```
 
-**4. Channel modules need `-L` pointed at real checkouts.** Most modules here
-import `(peteches services ...)` from the external channel, which in turn
-imports `(nongnu ...)`, `(sops ...)`, `(guix-science-nonfree ...)`. None of
-these need to be *pulled* — a plain shallow clone at the pinned commit (see
-`peteches/channels/base.scm` for URLs/commits) is enough, passed via repeated
-`-L`:
+**4. Some modules still need `-L` pointed at real checkouts of *other*
+channels.** `(peteches services ...)`, `(peteches home services ...)` and
+`(peteches packages ...)` are local now (just `-L .`), but several of them
+import `(nongnu ...)`, `(sops ...)`, `(guix-science-nonfree ...)` from the
+dependency channels this repo still pulls in (see `peteches/channels/base.scm`
+for URLs/commits). None of these need to be *pulled* — a plain shallow clone
+at the pinned commit is enough, passed via repeated `-L`:
 
 ```bash
-guix repl -L . -L ~/area_51/guix-channel -L /path/to/nonguix \
+guix repl -L . -L /path/to/nonguix \
           -L /path/to/guix-science -L /path/to/guix-science-nonfree \
           -L /path/to/sops-guix/modules -- …
 ```
 
 Missing one just means the specific module chain that needs it fails to
 resolve (e.g. `(nonguix packages nvidia)` without a `nonguix` checkout) —
-everything else still validates fine.
+everything else still validates fine. The `critical-grind` channel
+(`(critical-grind packages campaign)`, `(critical-grind services campaign)`)
+is the one remaining channel that is genuinely external — see "Channels"
+below.
 
 **5. Real builds need the guix daemon.** `guix build` / `guix system build`
 cannot even compute a derivation without a store connection, so `--dry-run`
@@ -131,13 +137,12 @@ ls /var/guix/daemon-socket/socket   # present => builds work
 guix describe                       # lists channels => pulled guix in use
 ```
 
-The `manual.scm` / `channels-nug.scm` channel files each carry a
-`define-module` header (matching their path) but end in a bare `(list …)`, so
-they double as plain channel lists for `guix pull -C` while still loading
-cleanly when `guix home`/`guix system` scan every module under `-L .` (a plain
-list with no module header fails that scan with `no code for module …`). They
-use Guix record macros, so bare `guile` still cannot load them — validate with
-a read-only parse instead:
+The `manual.scm` channel file carries a `define-module` header (matching its
+path) but ends in a bare `(list …)`, so it doubles as a plain channel list for
+`guix pull -C` while still loading cleanly when `guix home`/`guix system` scan
+every module under `-L .` (a plain list with no module header fails that scan
+with `no code for module …`). It uses Guix record macros, so bare `guile`
+still cannot load it — validate with a read-only parse instead:
 ```bash
 guile -c '(call-with-input-file "peteches/channels/manual.scm"
             (lambda (p) (let loop () (unless (eof-object? (read p)) (loop)))))'
@@ -147,24 +152,28 @@ guile -c '(call-with-input-file "peteches/channels/manual.scm"
 
 ### Where code actually lives
 
-Three sources are easy to confuse when reading a `#:use-module` line:
+Two sources are easy to confuse when reading a `#:use-module` line:
 
 | Module prefix | Where it lives |
 |---|---|
 | `(gnu ...)`, `(guix ...)` | upstream Guix |
-| `(peteches services ...)`, `(peteches home services ...)`, `(peteches packages ...)` | the **external `peteches` channel** (codeberg.org/peteches/guix-channel), pinned in `peteches/channels/base.scm` — **not in this repo** |
 | `(critical-grind packages ...)`, `(critical-grind services ...)` | the **`critical-grind` channel** — the application repo at `git@git.peteches.co.uk:critical-grind-campaign`, pinned in `peteches/channels/base.scm` — **not in this repo** |
-| `(peteches systems ...)`, `(peteches home modules ...)`, `(peteches home configs ...)`, `(peteches channels ...)`, `(containers ...)` | this repo |
+| `(peteches services ...)`, `(peteches home services ...)`, `(peteches packages ...)`, `(peteches systems ...)`, `(peteches home modules ...)`, `(peteches home configs ...)`, `(peteches channels ...)`, `(containers ...)` | this repo |
 
 So `alloy-service-type`, `restic-vm-backup-service-type`, `firewall-service-type`,
-`tailscale-service-type`, `home-git-service-type` and friends are **defined in the
-channel**. This repo only supplies configuration *values* for them. Changing a
-service type means editing that channel and re-pinning its commit here.
+`tailscale-service-type`, `home-git-service-type` and friends are defined in
+`peteches/services/` and `peteches/home/services/` in this repo — service
+*types* — while `peteches/systems/` and `peteches/home/modules/` +
+`peteches/home/configs/` supply configuration *values* for them. Changing a
+service type is just editing the file; there is no channel to re-pin.
 
-`peteches/packages/` holds the exceptions — packages defined in this repo
-rather than the channel: `desktop-scripts.scm` and `claude-completion.scm`
-because their sources (`configs/bin/`, `configs/claude/claude-completion.bash`)
-are here, and `emacs-anvil.scm` because nothing else needed a home for it.
+These package/service directories used to live in a separate private Codeberg
+channel repo (`peteches/guix-channel`), pulled as `(peteches ...)` via
+`peteches/channels/base.scm`. Codeberg changed its ToS to prohibit
+AI-generated code; since this repo is developed with Claude Code, the channel
+was folded back in here instead of continuing to host it there. The only
+channel that remains genuinely external is `critical-grind` (a separate
+application repo, not a modularisation of this one).
 
 ### Two OS constructors
 
@@ -188,10 +197,12 @@ Each module's header comment documents its keyword arguments — read
 |---|---|
 | `peteches/systems/` | OS configurations per host |
 | `peteches/home/configs/` | Host-specific home-environment files (`nug.scm`, `nyarlothotep.scm`) |
-| `peteches/home/modules/` | Shared home config fragments — `base.scm` plus focused modules (ssh, gpg, theming, ai, etc.) |
+| `peteches/home/modules/` | Shared home config fragments — `base.scm` plus focused modules (ssh, gpg, theming, ai, etc.) — configuration *values* |
+| `peteches/home/services/` | Reusable home service *types* (aws, git, hyprland, firefox, nyxt, wofi, mako, mpv, …) — folded in from the retired `peteches` channel |
+| `peteches/services/` | Reusable system service *types* (alloy, restic, firewall, tailscale, grafana, pihole, …) — folded in from the retired `peteches` channel |
 | `peteches/monitoring/` | Loki gexp helper — **dead code**, not exported, not called |
-| `peteches/channels/` | Channel lock files (four of them — see "Channels") |
-| `peteches/packages/` | `desktop-scripts.scm`, `claude-completion.scm`, `emacs-anvil.scm` — the packages defined in this repo |
+| `peteches/channels/` | Channel lock files (three of them — see "Channels") |
+| `peteches/packages/` | Package definitions — folded in from the retired `peteches` channel, plus `desktop-scripts.scm`, `claude-completion.scm`, `docker-compose.scm`, `emacs-anvil.scm` which were already local |
 | `peteches/repository.scm` | `repo-directory` / `source-path` — resolve repo assets via `%load-path` |
 | `peteches/utils.scm` | **Legacy**, unused; `gather-manifest-packages` reads a `manifests/` dir that no longer exists |
 | `peteches/deploy.scm` | **Legacy** `guix deploy` manifest, superseded by `machines.scm` — do not use |
@@ -282,15 +293,127 @@ Shared fragments — imported by host configs and composed into `base-packages` 
 
 #### `peteches/channels/`
 
-Four files carrying duplicated pinned commits, kept in sync **by hand**.
+Three files carrying duplicated pinned commits, kept in sync **by hand**.
 Prefer the `/update-channels` skill over editing pins directly.
 
 | File | Purpose |
 |---|---|
-| `base.scm` | `%base-channels` — the reference. Module. Pinned: sops-guix, guix-science, guix-science-nonfree, nonguix, guix, peteches, critical-grind |
+| `base.scm` | `%base-channels` — the reference. Module. Pinned: sops-guix, guix-science, guix-science-nonfree, nonguix, guix, critical-grind |
 | `nug.scm` | Module exporting `%nug-channels` = `%base-channels` + guix-hpc-non-free |
-| `manual.scm` | **Full** plain channels list (all 7) for `guix pull -C` / symlinking to `~/.config/guix/channels.scm` |
-| `channels-nug.scm` | Plain list with **only** the `peteches` channel — *not* a mirror of the above, despite the name. Pulling with it leaves guix unpinned |
+| `manual.scm` | **Full** plain channels list (all 6) for `guix pull -C` / symlinking to `~/.config/guix/channels.scm` |
+
+#### `peteches/packages/`
+
+Package definitions. All but the last four rows below were folded in from the
+retired `peteches` channel; the last four were already local. Node/Python
+dependency-closure files (`claude-agent-acp.scm`, `mermaid.scm`,
+`seerr-deps.scm`, `go-deps.scm`, `python-deps.scm`) list only their
+culminating package(s) — most of their content is transitive deps.
+
+| File | Provides |
+|---|---|
+| `aider.scm` | `aider` — AI pair-programming CLI |
+| `alloy.scm` | `alloy` — Grafana Alloy telemetry collector |
+| `aws.scm` | `aws-session-manager-plugin` |
+| `beeper.scm` | `beeper-bin` — Beeper chat client |
+| `caddy.scm` | `caddy` |
+| `claude-agent-acp.scm` | `node-agentclientprotocol-claude-agent-acp-*` + ~50 node deps — Claude Agent ACP bridge (editor integration) |
+| `claude-code.scm` | `claude-code` — the Claude Code CLI |
+| `comfyui-mcp.scm` | `node-comfyui-mcp` + sharp/canvas/sqlite node deps |
+| `concourse.scm` | `concourse`, `fly` |
+| `emacs.scm` | `emacs-slack`, `emacs-mcp`, `emacs-linear` |
+| `fonts.scm` | `font-jost` |
+| `go-deps.scm` | Go module deps for GitHub API tooling (10 packages) |
+| `go-enum.scm` | `go-enum` — Go enum code generator |
+| `go-tools.scm` | `go-golangci-lint` |
+| `gpg.scm` | `peteches-pinentry-switch` — pinentry dispatch script |
+| `grafana.scm` | `grafana` |
+| `gurps.scm` | `gurpscharactersheet` |
+| `hyprland.scm` | `hyprland-glvnd` |
+| `jellyfin.scm` | `jellyfin-ffmpeg`, `jellyfin` |
+| `koboldcpp.scm` | `koboldcpp-bin`, `koboldcpp-nocuda-bin` |
+| `loki.scm` | `loki` |
+| `lycheeslicer.scm` | `lycheeslicer-7.6.2` — 3D print slicer |
+| `mcp.scm` | MCP servers: `plane-mcp-server`, `mcp-grafana`, `mcp-outline`, `go-github-com-sonirico-mcp-shell` |
+| `mermaid.scm` | `node-mermaid-js-mermaid-cli` + ~787 node deps |
+| `nvidia-container-runtime.scm` | `nvidia-modprobe`, `libnvidia-container`, `nvidia-container-toolkit` |
+| `nyxt.scm` | `sbcl-nyxt-webkit`, `nyxt-webkit`, `nyxt-electron` |
+| `nzbget.scm` | `nzbget` |
+| `pihole-exporter.scm` | `pihole-exporter` |
+| `pihole.scm` | `pihole-ftl`, `pihole-scripts`, `pihole-web` |
+| `prometheus.scm` | `prometheus` |
+| `prowlarr.scm` | `prowlarr` |
+| `proxmox-scripts.scm` | `proxmox-scripts` — packages `scripts/` (`proxmox-clone-bootstrap`) via `local-file "../../scripts"` |
+| `python-deps.scm` | Python MCP/Plane-SDK deps: `python-mcp-1.26`, `python-fastmcp`, `python-plane-sdk`, +12 more |
+| `radarr.scm` | `radarr` |
+| `rclone.scm` | `rclone` |
+| `rustdesk.scm` | `rustdesk-server`, `rustdesk` |
+| `scripts.scm` | `shell-scripts` |
+| `seerr-deps.scm` | Node/Tailwind deps for Seerr (~1112 packages) |
+| `seerr.scm` | `seerr` |
+| `shims.scm` | `python-six-bootstrap` — compat shim, points at the current `six` |
+| `sonarr.scm` | `sonarr` |
+| `tailscale.scm` | `tailscale` |
+| `terraform.scm` | `terragrunt` |
+| `vault.scm` | `vault` |
+| `desktop-scripts.scm` | `peteches-desktop-scripts` — packages `configs/bin/`. Scripts must be listed explicitly in `#:install-plan`. Already local (source lives in this repo) |
+| `claude-completion.scm` | `claude-completion` — packages `configs/claude/claude-completion.bash` as `share/bash-completion/completions/claude`. Already local |
+| `emacs-anvil.scm` | `emacs-anvil` — packages anvil.el + `anvil-stdio.sh`; consumed by `(peteches home modules claude-workstation)` and `(peteches home modules base)`. Already local |
+| `docker-compose.scm` | `docker-compose` plugin packaging. Already local |
+
+#### `peteches/services/`
+
+System service *types*, folded in from the retired `peteches` channel.
+
+| File | Provides |
+|---|---|
+| `alloy.scm` | `alloy-service-type` |
+| `boltd.scm` | `boltd-service-type` — Thunderbolt authorization daemon |
+| `caddy.scm` | `caddy-service-type` |
+| `cifs.scm` | `cifs-client-service-type` |
+| `comfyui.scm` | `comfyui-service-type` |
+| `concourse.scm` | `concourse-web-service-type`, `concourse-worker-service-type` |
+| `firewall.scm` | `firewall-service-type` |
+| `grafana.scm` | `grafana-service-type` |
+| `jellyfin.scm` | `jellyfin-service-type` |
+| `loki.scm` | `loki-service-type` |
+| `media-accounts.scm` | `media-accounts-service-type` |
+| `nzbget.scm` | `nzbget-service-type` |
+| `outline.scm` | `outline-service-type` |
+| `pihole.scm` | `pihole-service-type` |
+| `plane.scm` | `plane-service-type` |
+| `prometheus.scm` | `prometheus-service-type` |
+| `prowlarr.scm` | `prowlarr-service-type` |
+| `radarr.scm` | `radarr-service-type` |
+| `restic.scm` | `restic-vm-backup-service-type` — restic backups over SFTP to Synology |
+| `rustdesk.scm` | `rustdesk-service-type` |
+| `seerr.scm` | `seerr-service-type` |
+| `sonarr.scm` | `sonarr-service-type` |
+| `sops-key-generator.scm` | `sops-key-generator-service-type` — one-shot age keypair generation on first boot |
+| `tailscale.scm` | `tailscale-service-type` |
+| `transmission.scm` | `transmission-service-type` |
+| `vault.scm` | `vault-service-type` |
+| `vllm.scm` | `vllm-service-type` |
+
+#### `peteches/home/services/`
+
+Home service *types*, folded in from the retired `peteches` channel.
+
+| File | Provides |
+|---|---|
+| `aws.scm` | `home-aws-service-type` |
+| `desktop.scm` | `home-desktop-service-type` |
+| `emacs.scm` | `home-emacs-base-service-type` |
+| `ezlocalai.scm` | `ezlocalai-direct-home-service-type` |
+| `firefox.scm` | `firefox-service-type` — profiles, `firefox-profile-launcher.sh` co-located for `local-file` |
+| `git.scm` | `home-git-service-type` |
+| `hyprland.scm` | `home-hyprland-service-type` |
+| `koboldcpp.scm` | `koboldcpp-service-type` (home variant) |
+| `mako.scm` | `home-mako-service-type` |
+| `mpv.scm` | `home-mpv-service-type` |
+| `nyxt.scm` | `nyxt-service-type` |
+| `password-store.scm` | `home-password-store-service-type` |
+| `wofi.scm` | `wofi-service-type` |
 
 #### Other notable files
 
@@ -300,9 +423,6 @@ Prefer the `/update-channels` skill over editing pins directly.
 | `peteches/repository.scm` | `repo-directory` / `source-path` — resolve repo assets through `%load-path` |
 | `peteches/utils.scm` | **Legacy/unused**: `gather-manifest-packages` (reads a nonexistent `manifests/` dir, hard-codes an absolute path), `apply-template-file` |
 | `peteches/deploy.scm` | **Legacy** `guix deploy` manifest listing only 5 of 17 machines. Superseded by `machines.scm` + `scripts/deploy.scm`. `docs/backups.org` and `proxmox-vms.org` still reference it — that guidance is stale |
-| `peteches/packages/desktop-scripts.scm` | `peteches-desktop-scripts` — packages `configs/bin/`. Scripts must be listed explicitly in `#:install-plan` |
-| `peteches/packages/claude-completion.scm` | `claude-completion` — packages `configs/claude/claude-completion.bash` as `share/bash-completion/completions/claude`; installed for every claude-workstation and desktop account |
-| `peteches/packages/emacs-anvil.scm` | `emacs-anvil` — packages anvil.el + `anvil-stdio.sh`; consumed by `(peteches home modules claude-workstation)` and `(peteches home modules base)` to run the Anvil MCP bridge |
 | `scripts/deploy.scm` | `guix deploy` wrapper — parses `--hosts` patterns, filters `%all-machines`, passes result via `-e`. Keeps its own `%machine-names` alist that must be updated alongside `machines.scm` |
 | `scripts/sync-restic-keys.sh` | Syncs restic backup keys to all VMs |
 | `proxmox-vms.org` | VM inventory: IPs, VMIDs, purpose — authoritative IP reference |
@@ -316,7 +436,7 @@ Prefer the `/update-channels` skill over editing pins directly.
 | `docs/backups.org` | Backup strategy documentation |
 | `docs/secrets-management.org` | SOPS + age keys workflow |
 | `docs/infrastructure.org` | Terraform + Concourse CI overview |
-| `.claude/skills/update-channels/` | Claude Code skill for updating pinned channel commits across all four channel files |
+| `.claude/skills/update-channels/` | Claude Code skill for updating pinned channel commits across all three channel files |
 
 ### System Configurations (`peteches/systems/`)
 
@@ -358,10 +478,11 @@ The base firewall (`%vm-base-firewall`) has a **drop** input policy and opens on
 ### Home Configurations (`peteches/home/`)
 
 `peteches/home/modules/base.scm` is the orchestrator: it exports `base-packages`
-and `base-services`, composing feature modules from the external `peteches` guix
-channel (imported as `(peteches home services ...)`) — emacs, git, hyprland, aws,
-nyxt, wofi, and more. The focused modules alongside it (`ssh.scm`, `gpg.scm`,
-`theming.scm`, `mako.scm`, `ai.scm`, `claude.scm`, …) supply configuration values.
+and `base-services`, composing feature modules from `peteches/home/services/`
+in this repo (imported as `(peteches home services ...)`) — emacs, git,
+hyprland, aws, nyxt, wofi, and more. The focused modules alongside it
+(`ssh.scm`, `gpg.scm`, `theming.scm`, `mako.scm`, `ai.scm`, `claude.scm`, …)
+supply configuration values.
 
 `peteches/home/configs/nug.scm` and `nyarlothotep.scm` append host-specific
 extras and each evaluate to a bare `home-environment` record.
@@ -373,15 +494,24 @@ never by relative path, which would break under `-L .` and in worktrees.
 ### Channels (`peteches/channels/`)
 
 `base.scm` exports `%base-channels` — pinned: `sops-guix`, `guix-science`,
-`guix-science-nonfree`, `nonguix`, `guix` itself, the `peteches` channel
-(which provides the custom packages, home services and system services this repo
-consumes), and `critical-grind`. `nug.scm` adds `guix-hpc-non-free` on top.
+`guix-science-nonfree`, `nonguix`, `guix` itself, and `critical-grind`.
+`nug.scm` adds `guix-hpc-non-free` on top.
+
+There used to be a `peteches` channel here too (codeberg.org/peteches/guix-
+channel), providing the custom packages, home services and system services
+this repo consumes as `(peteches packages …)`, `(peteches home services …)`
+and `(peteches services …)`. Codeberg changed its ToS to prohibit
+AI-generated code, and since this repo is developed with Claude Code, that
+channel's contents were folded back into this repo instead — see
+`peteches/packages/`, `peteches/home/services/` and `peteches/services/`
+above. There is no pin to update and no commit to re-pin any more; editing a
+service type is just editing the file.
 
 `critical-grind` is the Critical Grind application repository, which is itself
 a channel supplying `(critical-grind packages campaign)` and
 `(critical-grind services campaign)`. It has **no channel introduction**, so
 commits are not signature-verified and every pull warns. Releasing a new
-version of the app is a commit bump in the four channel files — there is
+version of the app is a commit bump in the three channel files — there is
 nothing to build by hand.
 
 It is fetched over **smart HTTP** (`git.ts.peteches.co.uk/git/…`, served by
@@ -394,13 +524,12 @@ key file — so an `ssh://` channel URL requires the key loaded in an agent on
 key. Repositories must carry `git-daemon-export-ok` to be fetchable this way;
 see `peteches/systems/git.scm`.
 
-**Pins are duplicated across four files** (`base.scm`, `nug.scm`, `manual.scm`,
-`channels-nug.scm`) with nothing enforcing agreement. Update them together —
-use the `/update-channels` skill.
+**Pins are duplicated across three files** (`base.scm`, `nug.scm`,
+`manual.scm`) with nothing enforcing agreement. Update them together — use
+the `/update-channels` skill.
 
 For `guix pull -C` or symlinking to `~/.config/guix/channels.scm`, use
-**`manual.scm`** (the full plain list). `channels-nug.scm` holds only the
-`peteches` channel despite its name.
+**`manual.scm`** (the full plain list).
 
 ### Adding a New VM
 

@@ -19,8 +19,7 @@
 ;; SSH URLs need this user's key + known_hosts on the VM at reconfigure time;
 ;; a clone that can't authenticate just warns and retries next reconfigure.
 (define %peteches-repos
-  '(("guix"         "git@github.com:peteches/guix")
-    ("guix-channel" "ssh://git@codeberg.org/peteches/guix-channel.git")))
+  '(("guix"         "git@github.com:peteches/guix")))
 
 (define-public claude-workstation-peteches-home
   (make-claude-workstation-home

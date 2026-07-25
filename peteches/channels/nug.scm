@@ -5,8 +5,8 @@
 ;;; it has no channel introduction, so its commits are not signature-verified
 ;;; the way every channel in base.scm is.
 ;;;
-;;; Kept in sync by hand with base.scm / manual.scm / channels-nug.scm — see
-;;; the header in base.scm, and prefer the `/update-channels' skill.
+;;; Kept in sync by hand with base.scm / manual.scm — see the header in
+;;; base.scm, and prefer the `/update-channels' skill.
 
 (define-module (peteches channels nug)
   #:use-module (guix channels)
@@ -17,11 +17,6 @@
   (append
    %base-channels
    (list
-    ;; (channel
-    ;;  (name 'peteches)
-    ;;  (url "file:///home/peteches/area_51/peteches-channel")
-    ;;  (branch "main"))
-
     ;; Guix-HPC Non-Free
     (channel
      (name 'guix-hpc-non-free)

@@ -1,0 +1,142 @@
+(define-module (peteches home services hyprland)
+  #:use-module (gnu home services)
+  #:use-module (gnu packages)
+  #:use-module (gnu packages base)
+  #:use-module (gnu packages glib) ;dbus (dbus-update-activation-environment)
+  #:use-module (gnu packages bash)
+  #:use-module (gnu packages linux)
+  #:use-module (gnu packages wm)
+  #:use-module (gnu packages freedesktop)
+  #:use-module (gnu packages xdisorg)
+  #:use-module (gnu services)
+  #:use-module (gnu services configuration)
+  #:use-module (guix gexp)
+  #:use-module (guix packages)
+  #:use-module (ice-9 regex)
+  #:use-module (srfi srfi-1)
+  #:use-module (ice-9 ftw)
+  #:use-module (ice-9 rdelim)
+  #:use-module (ice-9 iconv)
+  #:use-module (ice-9 binary-ports)
+  #:export (home-hyprland-service-type <home-hyprland-configuration>
+                                       home-hyprland-configuration
+                                       home-hyprland-configuration?))
+
+(define (maybe-string? value)
+  (or (not value)
+      (string? value)))
+
+(define (package-list? value)
+  (and (list? value)
+       (every package? value)))
+
+(define-configuration/no-serialization home-hyprland-configuration
+                                       (extra-packages (package-list '())
+                                        "Additional packages to add to the home profile alongside the base Hyprland
+packages.  This is useful for host-specific Hyprland packages or tools that should not be part of the reusable
+base service.")
+                                       (config-directory (maybe-string #f)
+                                        "Path to a directory containing Hyprland configuration files.  Each top-level
+entry in this directory is linked into ~/.config/hypr, while ~/.config/hypr
+itself remains a real directory.
+
+Warning: every top-level file or directory in this source directory is managed
+by Guix Home and linked into the store.  Do not include directories that Hyprland expects to mutate.  Including mutable Hyprland state here can cause breakage because
+those paths will resolve to immutable store locations."))
+
+(define (home-hyprland-profile-service config)
+  (append (list hyprcursor xdg-desktop-portal xdg-desktop-portal-gtk
+                xdg-desktop-portal-wlr xdg-desktop-portal-hyprland)
+          (home-hyprland-configuration-extra-packages config)))
+
+(define (directory-children directory)
+  "Return the non-special immediate children of DIRECTORY."
+  (filter (lambda (entry)
+            (not (member entry
+                         '("." ".."))))
+          (scandir directory)))
+
+(define (home-hyprland-files-service config)
+  (let ((config-directory (home-hyprland-configuration-config-directory config)))
+    (if config-directory
+        (map (lambda (entry)
+               (let ((source-path (string-append config-directory "/" entry))
+                     (target-path (string-append "hypr/" entry)))
+                 `(,target-path ,(local-file source-path
+                                             #:recursive? (file-is-directory?
+                                                           source-path)))))
+             (directory-children config-directory))
+        '())))
+
+;; Determine runtime dir (fallback to /tmp)
+(define xdg-runtime-dir
+  (or (getenv "XDG_RUNTIME_DIR")
+      (string-append "/run/user/"
+                     (number->string (getuid)))))
+
+(define hypr-root
+  (string-append xdg-runtime-dir "/hypr"))
+
+(define (find-hypr-instance)
+  (and (file-exists? hypr-root)
+       (let ((entries (scandir hypr-root
+                               (lambda (name)
+                                 (and (not (member name
+                                                   '("." "..")))
+                                      (file-is-directory? (string-append
+                                                           hypr-root "/" name)))))))
+         (if (null? entries) #f
+             ;; usually only one instance, pick the newest
+             (car (sort entries
+                        (lambda (a b)
+                          (> (stat:mtime (stat (string-append hypr-root "/" a)))
+                             (stat:mtime (stat (string-append hypr-root "/" b)))))))))))
+
+(define (hypr-socket-path)
+  (let ((sig (find-hypr-instance)))
+    (and sig
+         (string-append hypr-root "/" sig "/.socket.sock"))))
+
+(define (home-hyprland-activation-service-type config)
+  #~(begin
+      (use-modules (ice-9 iconv))
+      (define (hypr-send socket-path command)
+        ;; Create a Unix domain stream socket, like (socket PF_INET SOCK_STREAM 0)
+        ;; but AF_UNIX instead of PF_INET.
+        (let ((s (socket AF_UNIX SOCK_STREAM 0)))
+          ;; Connect to Hyprland's control socket
+          (connect s
+                   (make-socket-address AF_UNIX socket-path))
+
+          ;; Send the command. The Hyprland IPC accepts "reload" with no newline.
+          ;; Using `display` matches the Guile manual style, which just writes to `s`
+          ;; directly because `s` is a port once connected. :contentReference[oaicite:2]{index=2}
+          (send s
+                (string->bytevector command "utf8"))
+          (force-output s)))
+      (hypr-send #$(hypr-socket-path) "reload")
+      (hypr-send #$(hypr-socket-path) "dispatch exec dms restart")))
+
+(define (home-hyprland-environment-variables-service-type config)
+  `(("XDG_SESSION_TYPE" . "wayland") ("XDG_CURRENT_DESKTOP" . "Hyprland")
+    ("XDG_SESSION_DESKTOP" . "Hyprland")
+    ("MOZ_ENABLE_WAYLAND" . "1")
+    ("QT_QPA_PLATFORM" . "wayland")
+    ("GTK_USE_PORTAL" . "1")
+    ("NIXOS_OZONE_WL" . "1")))
+
+(define home-hyprland-service-type
+  (service-type (name 'home-hyprland-config)
+                (extensions (list (service-extension
+                                   home-activation-service-type
+                                   home-hyprland-activation-service-type)
+                                  (service-extension
+                                   home-environment-variables-service-type
+                                   home-hyprland-environment-variables-service-type)
+                                  (service-extension home-profile-service-type
+                                   home-hyprland-profile-service)
+                                  (service-extension
+                                   home-xdg-configuration-files-service-type
+                                   home-hyprland-files-service)))
+                (default-value (home-hyprland-configuration))
+                (description "Applies my personal Hyprland base configuration")))

@@ -1,26 +1,25 @@
 ;;; peteches/channels/base.scm — %base-channels, the pinned channel set.
 ;;;
-;;; THE FOUR CHANNEL FILES.  Pinned commits are duplicated across four files
-;;; in this directory, and nothing enforces agreement between them.  Update
-;;; all four together — the `/update-channels' skill (.claude/skills/) exists
-;;; to do exactly this, and is the preferred route.
+;;; THE THREE CHANNEL FILES.  Pinned commits are duplicated across three
+;;; files in this directory, and nothing enforces agreement between them.
+;;; Update all three together — the `/update-channels' skill
+;;; (.claude/skills/) exists to do exactly this, and is the preferred route.
 ;;;
 ;;;   base.scm         (this file)  %base-channels.  Module; used by
 ;;;                    nyarlothotep's home config and by nug.scm below.
 ;;;                    THE REFERENCE — update here first.
 ;;;   nug.scm          %nug-channels = %base-channels + guix-hpc-non-free.
 ;;;                    Module; used by nug's home config.
-;;;   manual.scm       Mirrors %nug-channels (all 8 channels).  Module with a
+;;;   manual.scm       Mirrors %nug-channels (all 7 channels).  Module with a
 ;;;                    define-module header but ending in a bare `(list ...)',
 ;;;                    so it still works with `guix pull -C'.
-;;;   channels-nug.scm Only the `peteches' channel — NOT a mirror of the
-;;;                    above despite the name.  Pulling with it leaves guix
-;;;                    itself unpinned.  Also a module + trailing bare list.
 ;;;
-;;; The `channels-nug.scm' / `manual.scm' naming is misleading: manual.scm is
-;;; the full plain list you probably want for `guix pull -C' or for
-;;; symlinking to ~/.config/guix/channels.scm.  (CLAUDE.md's instruction to
-;;; use channels-nug.scm for this predates the split.)
+;;; manual.scm is the full plain list you want for `guix pull -C' or for
+;;; symlinking to ~/.config/guix/channels.scm.
+;;;
+;;; A fourth file, channels-nug.scm, used to hold only the (now-retired)
+;;; `peteches' channel for fast iteration on it from nug — removed once that
+;;; channel's contents moved into this repo (see below).
 ;;;
 ;;; Channels are pinned by commit + verified by channel introduction
 ;;; (an OpenPGP fingerprint + the first signed commit).  The introduction is
@@ -30,11 +29,14 @@
 ;;; `guix' is pinned here too, so `guix pull' with these channels replaces
 ;;; the default guix channel rather than adding to it.
 ;;;
-;;; The `peteches' channel carries the custom packages, home services and
-;;; system services this repo consumes as (peteches packages …),
-;;; (peteches home services …) and (peteches services …).  Those live in
-;;; codeberg.org/peteches/guix-channel, NOT in this repo — editing a service
-;;; type means editing that channel and re-pinning its commit here.
+;;; There used to be a `peteches' channel here (codeberg.org/peteches/guix-
+;;; channel) supplying (peteches packages …), (peteches home services …) and
+;;; (peteches services …). Codeberg's ToS changed to prohibit AI-generated
+;;; code, and since this repo is now developed with Claude Code, that channel
+;;; was folded back into this repo — those modules now live under
+;;; peteches/packages/, peteches/home/services/ and peteches/services/ here,
+;;; loaded via `-L .' like everything else. No channel pin, no re-pinning
+;;; step: editing a service type is just editing the file.
 ;;;
 ;;; The `critical-grind' channel is the Critical Grind application repository
 ;;; itself, providing (critical-grind packages campaign) and
@@ -110,16 +112,6 @@
       "199fd26ab268d4f26cebcb39e844fe4ff9bea9bc"
       (openpgp-fingerprint
        "BBB0 2DDF 2CEA F6A8 0D1D  E643 A2A0 6DF2 A33A 54FA"))))
-   (channel
-    (name 'peteches)
-    (url "https://codeberg.org/peteches/guix-channel")
-    (branch "main")
-    (commit "b19d29ff10bbfa1fab3a5a06ea1830f347baaa3f")
-    (introduction
-     (make-channel-introduction
-      "ff4b8a08276932c10cf6ca8cf726d78a86c17588"
-      (openpgp-fingerprint
-       "73C1 C132 9190 37C0 6D6A  6729 A6E8 150F ED00 29D7"))))
    (channel
     (name 'critical-grind)
     ;; Smart HTTP via git-http-backend on the git VM, fronted by Caddy over the

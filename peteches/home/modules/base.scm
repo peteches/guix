@@ -8,11 +8,11 @@
 ;;;
 ;;; Three distinct sources of code, easy to confuse:
 ;;;   (gnu home services …)      — upstream Guix.
-;;;   (peteches home services …) — the external `peteches' guix channel
-;;;                                (pinned in peteches/channels/base.scm).
-;;;                                NOT in this repo; to change a service
-;;;                                type you must edit the channel and
-;;;                                re-pin its commit.
+;;;   (peteches home services …) — peteches/home/services/ in this repo:
+;;;                                reusable home service *types*. (Formerly
+;;;                                the external `peteches' guix channel;
+;;;                                folded back in once Codeberg's ToS
+;;;                                barred AI-generated code there.)
 ;;;   (peteches home modules …)  — this directory: configuration *values*
 ;;;                                for those service types.
 ;;;
@@ -227,7 +227,7 @@
 		     ("NUG_HOST" . "nug.spaniel-cordylus.ts.net")
 		     ("COMFYUI_URL" . "http://$NUG_HOST:8188")))
    (simple-service 'peteches-guile-load-path home-environment-variables-service-type
-		   `(("GUILE_LOAD_PATH" . "$HOME/area_51/guix:${HOME}/area_51/codeberg.org/peteches/guix-channel.git_main:${GUILE_LOAD_PATH:+:$GUILE_LOAD_PATH}")))
+		   `(("GUILE_LOAD_PATH" . "$HOME/area_51/guix:${GUILE_LOAD_PATH:+:$GUILE_LOAD_PATH}")))
 
    ;; Dbus
    (service home-dbus-service-type)

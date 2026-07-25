@@ -158,14 +158,12 @@ guile -L /home/peteches/area_51/guix -c '(use-modules (peteches channels base))'
 guile -L /home/peteches/area_51/guix -c '(use-modules (peteches channels nug))'
 ```
 
-**Plain-list files** (`manual.scm`, `channels-nug.scm`):
+**Plain-list file** (`manual.scm`):
 
-These files use Guix record macros (`channel`, `make-channel-introduction`, etc.) and cannot be evaluated by bare `guile` — they require the full Guix environment. Validate them with a paren-balance check only (already done in Step 5), plus a read-only syntax parse:
+This file uses Guix record macros (`channel`, `make-channel-introduction`, etc.) and cannot be evaluated by bare `guile` — it requires the full Guix environment. Validate it with a paren-balance check only (already done in Step 5), plus a read-only syntax parse:
 
 ```bash
 guile -c '(call-with-input-file "/home/peteches/area_51/guix/peteches/channels/manual.scm"
-            (lambda (port) (let loop () (let ((x (read port))) (unless (eof-object? x) (loop))))))'
-guile -c '(call-with-input-file "/home/peteches/area_51/guix/peteches/channels/channels-nug.scm"
             (lambda (port) (let loop () (let ((x (read port))) (unless (eof-object? x) (loop))))))'
 ```
 
