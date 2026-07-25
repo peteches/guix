@@ -255,6 +255,18 @@ entry is a build-time error, not a silent override."
                       home-files-service-type
                       (list (list ".config/git/config"
                                   (git-config-file git-name git-email))))
+      ;; Pins `guix pull' (no `-C' needed) to this repo's channel set, the
+      ;; same way `scripts/deploy.scm' pins the system layer -- except this
+      ;; is per-account and only takes effect on the next `guix home
+      ;; reconfigure', same as every other file below. Without this,
+      ;; `guix pull' falls back to plain upstream guix with none of
+      ;; nonguix/guix-science(-nonfree)/sops-guix/critical-grind, and
+      ;; `(peteches services ...)'/`(peteches packages ...)' modules that
+      ;; touch those channels fail to resolve.
+      (simple-service 'guix-pull-channels
+                      home-files-service-type
+                      (list (list ".config/guix/channels.scm"
+                                  (local-file (source-path "peteches/channels/manual.scm")))))
       ;; Declarative known_hosts for the repos this account clones over SSH.
       ;; Written to ~/.ssh/known_hosts2 (a store symlink) so the non-interactive
       ;; git clone in the repos activation below can verify github.com,
