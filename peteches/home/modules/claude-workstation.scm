@@ -59,11 +59,12 @@
   #:use-module (peteches packages claude-completion)
   #:use-module (peteches home modules claude)
   #:use-module (peteches packages emacs-anvil)
+  #:use-module (peteches packages graphify)
   #:export (make-claude-workstation-home))
 
 (define %claude-workstation-base-packages
   (list claude-code claude-completion git openssh node ripgrep jq curl
-        coreutils less))
+        coreutils less graphify))
 
 ;; --- Anvil headless emacs daemon --------------------------------------
 ;; Bakes emacs-anvil's site-lisp onto the load-path directly so it needs
@@ -124,6 +125,14 @@
            (name "anvil-emacs-eval")
            (command bash-path)
            (args (list script "--server-id=emacs-eval"))))))
+
+;; Stdio only (see graphify.scm on why the HTTP transport isn't available).
+;; No args: it defaults to reading graphify-out/graph.json relative to the
+;; launch cwd, which Claude Code sets to the current project directory.
+(define graphify-mcp-server
+  (home-claude-mcp-server
+   (name "graphify")
+   (command (file-append graphify "/bin/graphify-mcp"))))
 
 ;; --- repo pre-clone ----------------------------------------------------
 ;; Build the activation gexp that clones REPOS — a list of (NAME URL)
@@ -209,8 +218,9 @@ unset _claude_completion
   "Return a headless home-environment for one Claude account on
 claude-workstation.  REPOS is a list of (NAME URL) cloned into ~/area_51.
 MCP-SERVERS is a list of <home-claude-mcp-server> (the anvil bridges are added
-automatically when WITH-ANVIL?).  MCP-ENV is a NON-SECRET alist of environment
-variables the MCP servers inherit.  SECRET-ENV-VARS is an alist of (ENV-VAR .
+automatically when WITH-ANVIL?, and graphify unconditionally).  MCP-ENV is a
+NON-SECRET alist of environment variables the MCP servers inherit.
+SECRET-ENV-VARS is an alist of (ENV-VAR .
 RUN-SECRETS-PATH): at shell startup each ENV-VAR is exported from the contents
 of RUN-SECRETS-PATH (normally a sops-secret's /run/secrets/... path) if that
 path is readable -- see claude-workstation.scm's #:sops-secrets. EXTRA-PACKAGES
@@ -285,6 +295,7 @@ entry is a build-time error, not a silent override."
                (home-claude-configuration
                 (config-directory (repo-directory "configs/claude/defaults"))
                 (mcp-servers (append (if with-anvil? (anvil-mcp-servers) '())
+                                     (list graphify-mcp-server)
                                      mcp-servers)))))
      (if (null? extra-claude-files)
          '()
