@@ -38,6 +38,20 @@ was folded back into this repo — see `peteches/packages/`, `peteches/home/serv
 and `peteches/services/` below. They are ordinary local modules loaded via `-L .`, with
 no channel pin and no re-pinning step to change a service type.
 
+## Knowledge Graph (graphify)
+
+`graphify-out/` is a regenerable knowledge graph over this repo (god nodes, community
+structure, cross-file relationships) and is **gitignored** — it is derived data, not
+source, and its interpreter wrapper (`.graphify_python_wrapper.sh`) bakes in
+machine-specific `/gnu/store/...` paths from the current Guix generation that would be
+wrong on another machine or after the next `guix pull`. It never gets committed or
+pushed.
+
+If `graphify-out/graph.json` is missing (fresh clone, or after `.gitignore` cleanup) and
+a codebase question would benefit from it, regenerate it first by running `/graphify`
+(full pipeline) or `graphify update .` (incremental, if a graph already exists elsewhere)
+before falling back to raw grep/read.
+
 ## Common Commands
 
 All `guix` commands that reference local modules need `-L .` (or `--load-path=.`) to be run from the repo root.
