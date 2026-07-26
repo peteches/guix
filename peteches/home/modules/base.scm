@@ -89,6 +89,7 @@
   #:use-module (peteches packages claude-code)
   #:use-module (peteches packages claude-completion)
   #:use-module (peteches packages emacs-anvil)
+  #:use-module (peteches packages graphify)
   #:use-module ((peteches packages comfyui-mcp) #:select (node-comfyui-mcp))
   #:use-module (peteches packages rustdesk)
   #:use-module (peteches packages concourse)
@@ -158,6 +159,7 @@
    claude-code
    claude-completion
    emacs-anvil
+   graphify
    rustdesk
    dank-material-shell
    mako
@@ -463,6 +465,13 @@ unset _claude_completion
 		 ;; connect".
 		 (home-claude-mcp-server
 		  (name "comfyui")
-		  (command (file-append node-comfyui-mcp "/bin/comfyui-mcp")))))))))
+		  (command (file-append node-comfyui-mcp "/bin/comfyui-mcp")))
+		 ;; Stdio only (see graphify.scm on why the HTTP transport isn't
+		 ;; available). No args: it defaults to reading
+		 ;; graphify-out/graph.json relative to the launch cwd, which
+		 ;; Claude Code sets to the current project directory.
+		 (home-claude-mcp-server
+		  (name "graphify")
+		  (command (file-append graphify "/bin/graphify-mcp")))))))))
 
    base-theming-services))
