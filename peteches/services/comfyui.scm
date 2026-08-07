@@ -285,6 +285,17 @@
                 (comfyui-resolved-temp-directory config))
           (list "--user-directory"
                 (comfyui-resolved-user-directory config))
+          ;; ComfyUI's --database-url default is hardcoded relative to
+          ;; main.py's own location (<uv-project-dir>/user/comfyui.db),
+          ;; independent of --user-directory — so left unset, it tries to
+          ;; open a database under uv-project-dir, which has no "user"
+          ;; subdirectory (that name is only created, and chowned, under
+          ;; state-dir by comfyui-instance-activation). Point it at the
+          ;; directory that actually exists instead.
+          (list "--database-url"
+                (string-append "sqlite:///"
+                               (comfyui-resolved-user-directory config)
+                               "/comfyui.db"))
           (maybe-option "--extra-model-paths-config"
                         (comfyui-configuration-extra-model-paths-config config))
           ;; VRAM mode: exactly one flag from the set, or none.
