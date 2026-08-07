@@ -293,7 +293,8 @@
          (cuda-devices (comfyui-configuration-cuda-visible-devices config))
          (ld-paths (comfyui-configuration-ld-library-paths config))
          (uv-env (comfyui-configuration-uv-project-environment config))
-         (uv-python (comfyui-configuration-uv-python config)))
+         (uv-python (comfyui-configuration-uv-python config))
+         (git-command (comfyui-configuration-git-command config)))
     (append (list (string-append "HOME=" state-dir)
              "PATH=/run/current-system/profile/bin:/run/current-system/profile/sbin:/run/setuid-programs"
              "SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt"
@@ -302,6 +303,14 @@
              "HF_HUB_DISABLE_TELEMETRY=1"
              (string-append "UV_CACHE_DIR=" uv-cache-dir)
              (string-append "XDG_CACHE_HOME=" xdg-cache-home))
+            ;; ComfyUI-Manager's GitPython dependency searches $PATH for
+            ;; `git' (or respects this variable) rather than using the
+            ;; git-command already configured for this service's own
+            ;; sync/update runners.  The daemon's PATH above deliberately
+            ;; excludes the store, so without this GitPython can't find
+            ;; git at all and ComfyUI-Manager crashes main.py on import.
+            (list #~(string-append "GIT_PYTHON_GIT_EXECUTABLE="
+                                   #$git-command))
             (if uv-python
                 (list (string-append "UV_PYTHON=" uv-python))
                 '())
