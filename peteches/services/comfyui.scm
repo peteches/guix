@@ -307,13 +307,21 @@
          (git-command (comfyui-configuration-git-command config))
          (c-compiler-pkg (comfyui-configuration-c-compiler-package config)))
     (append (list (string-append "HOME=" state-dir)
-             "PATH=/run/current-system/profile/bin:/run/current-system/profile/sbin:/run/setuid-programs"
              "SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt"
              "UV_PYTHON_DOWNLOADS=never"
              (string-append "HF_HOME=" hf-home)
              "HF_HUB_DISABLE_TELEMETRY=1"
              (string-append "UV_CACHE_DIR=" uv-cache-dir)
              (string-append "XDG_CACHE_HOME=" xdg-cache-home))
+            ;; c-compiler-package's own bin/ carries `as' and `ld' too:
+            ;; gcc execs them by bare name via posix_spawnp (a PATH
+            ;; search), not via its own internal exec-prefix, so without
+            ;; this on PATH linking fails with "cannot execute 'as'" even
+            ;; though gcc itself runs fine from its full store path.
+            (list #~(string-append "PATH=" #$(file-append c-compiler-pkg "/bin")
+                                   ":/run/current-system/profile/bin"
+                                   ":/run/current-system/profile/sbin"
+                                   ":/run/setuid-programs"))
             ;; ComfyUI-Manager's GitPython dependency searches $PATH for
             ;; `git' (or respects this variable) rather than using the
             ;; git-command already configured for this service's own
@@ -323,6 +331,16 @@
             (list #~(string-append "GIT_PYTHON_GIT_EXECUTABLE="
                                    #$git-command))
             (list #~(string-append "CC=" #$(file-append c-compiler-pkg "/bin/gcc")))
+            ;; gcc-toolchain alone isn't quite self-contained on Guix:
+            ;; glibc's <errno.h> transitively includes the Linux UAPI
+            ;; <linux/errno.h>, which only linux-libre-headers ships.
+            ;; Without this, any C compile — even a trivial one — fails
+            ;; with "fatal error: linux/errno.h: No such file or
+            ;; directory".  gcc reads CPATH for all languages.
+            (list #~(string-append "CPATH="
+                                   #$(file-append (@ (gnu packages linux)
+                                                      linux-libre-headers)
+                                                  "/include")))
             (if uv-python
                 (list (string-append "UV_PYTHON=" uv-python))
                 '())
