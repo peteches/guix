@@ -214,6 +214,9 @@
 (define (comfyui-resolved-sync-log-file config)
   (string-append (comfyui-resolved-log-dir config) "/sync.log"))
 
+(define (comfyui-resolved-update-log-file config)
+  (string-append (comfyui-resolved-log-dir config) "/update.log"))
+
 (define (comfyui-resolved-output-directory config)
   (or (comfyui-configuration-output-directory config)
       (string-append (comfyui-resolved-state-dir config) "/output")))
@@ -374,6 +377,79 @@
       (use-modules (guix build utils))
       #$@(map comfyui-instance-activation configs)))
 
+;; Shared by the bootstrap sync runner and the manual update runner below:
+;; resolve the uv environment against whatever commit is currently checked
+;; out at uv-project-dir.
+(define (comfyui-sync-steps-gexp uv-command uv-sync-args uv-project-dir
+                                 venv-dir enable-manager?)
+  #~(begin
+      ;; Drop --frozen when no lockfile exists yet
+      ;; (e.g. after a fresh clone of a repo that
+      ;; doesn't ship uv.lock).
+      (let* ((have-lock? (file-exists? (string-append #$uv-project-dir
+                                        "/uv.lock")))
+             (sync-args (if have-lock?
+                            (list #$@uv-sync-args)
+                            (filter (lambda (a)
+                                      (not (equal?
+                                            a
+                                            "--frozen")))
+                                    (list #$@uv-sync-args))))
+             (ret (apply system*
+                         #$uv-command "sync"
+                         sync-args)))
+        (unless (zero? ret)
+          (error "uv sync failed with exit code"
+                 ret)))
+      ;; Install from requirements.txt when present
+      ;; (ComfyUI declares deps there, not in pyproject.toml).
+      ;; Use --python <venv> so uv installs into the project
+      ;; venv rather than the read-only store Python.
+      (let ((req (string-append #$uv-project-dir
+                  "/requirements.txt")))
+        (when (file-exists? req)
+          (let ((ret (system* #$uv-command
+                              "pip"
+                              "install"
+                              "--python"
+                              #$venv-dir
+                              "-r"
+                              req)))
+            (unless (zero? ret)
+              (error
+               "uv pip install failed with exit code"
+               ret)))))
+      ;; Install comfyui-manager from ComfyUI's own
+      ;; manager_requirements.txt when enabled.  ComfyUI
+      ;; imports the Python module `comfyui_manager' by
+      ;; name; if the module isn't in the venv, main.py
+      ;; silently disables the --enable-manager flag.
+      ;; Using ComfyUI's shipped requirements file pins
+      ;; to the version main.py was built against.
+      ;; Use #$@(if ...) rather than (when #$bool ...)
+      ;; because Guix gexps don't splice plain booleans
+      ;; reliably with #$ — the when block was silently dropped.
+      #$@(if enable-manager?
+             (list #~(let ((mgr-req (string-append #$uv-project-dir
+                                     "/manager_requirements.txt")))
+                       (if (file-exists? mgr-req)
+                           (let ((ret (system* #$uv-command
+                                       "pip"
+                                       "install"
+                                       "--python"
+                                       #$venv-dir
+                                       "-U"
+                                       "-r"
+                                       mgr-req)))
+                             (unless (zero? ret)
+                               (error
+                                "comfyui-manager install failed with exit code"
+                                ret)))
+                           (error
+                            "enable-manager? is #t but manager_requirements.txt not found at"
+                            mgr-req))))
+             '())))
+
 (define (comfyui-sync-shepherd-service config)
   (let* ((service-name (comfyui-configuration-service-name config))
          (sync-name (string->symbol (string-append service-name "-sync")))
@@ -406,76 +482,85 @@
                                          (error
                                           "git clone failed with exit code"
                                           ret))))
-                                   ;; Drop --frozen when no lockfile exists yet
-                                   ;; (e.g. after a fresh clone of a repo that
-                                   ;; doesn't ship uv.lock).
-                                   (let* ((have-lock? (file-exists? (string-append #$uv-project-dir
-                                                                     "/uv.lock")))
-                                          (sync-args (if have-lock?
-                                                         (list #$@uv-sync-args)
-                                                         (filter (lambda (a)
-                                                                   (not (equal?
-                                                                         a
-                                                                         "--frozen")))
-                                                                 (list #$@uv-sync-args))))
-                                          (ret (apply system*
-                                                      #$uv-command "sync"
-                                                      sync-args)))
-                                     (unless (zero? ret)
-                                       (error "uv sync failed with exit code"
-                                              ret)))
-                                   ;; Install from requirements.txt when present
-                                   ;; (ComfyUI declares deps there, not in pyproject.toml).
-                                   ;; Use --python <venv> so uv installs into the project
-                                   ;; venv rather than the read-only store Python.
-                                   (let ((req (string-append #$uv-project-dir
-                                               "/requirements.txt")))
-                                     (when (file-exists? req)
-                                       (let ((ret (system* #$uv-command
-                                                           "pip"
-                                                           "install"
-                                                           "--python"
-                                                           #$venv-dir
-                                                           "-r"
-                                                           req)))
-                                         (unless (zero? ret)
-                                           (error
-                                            "uv pip install failed with exit code"
-                                            ret)))))
-                                   ;; Install comfyui-manager from ComfyUI's own
-                                   ;; manager_requirements.txt when enabled.  ComfyUI
-                                   ;; imports the Python module `comfyui_manager' by
-                                   ;; name; if the module isn't in the venv, main.py
-                                   ;; silently disables the --enable-manager flag.
-                                   ;; Using ComfyUI's shipped requirements file pins
-                                   ;; to the version main.py was built against.
-                                   ;; Use #$@(if ...) rather than (when #$bool ...)
-                                   ;; because Guix gexps don't splice plain booleans
-                                   ;; reliably with #$ — the when block was silently dropped.
-                                   #$@(if enable-manager?
-                                          (list #~(let ((mgr-req (string-append #$uv-project-dir
-                                                                  "/manager_requirements.txt")))
-                                                    (if (file-exists? mgr-req)
-                                                        (let ((ret (system* #$uv-command
-                                                                    "pip"
-                                                                    "install"
-                                                                    "--python"
-                                                                    #$venv-dir
-                                                                    "-U"
-                                                                    "-r"
-                                                                    mgr-req)))
-                                                          (unless (zero? ret)
-                                                            (error
-                                                             "comfyui-manager install failed with exit code"
-                                                             ret)))
-                                                        (error
-                                                         "enable-manager? is #t but manager_requirements.txt not found at"
-                                                         mgr-req))))
-                                          '())))))
+                                   #$(comfyui-sync-steps-gexp uv-command uv-sync-args
+                                                              uv-project-dir venv-dir
+                                                              enable-manager?)))))
     (shepherd-service (provision (list sync-name))
                       (documentation (string-append
                                       "Synchronise the uv environment for "
                                       service-name "."))
+                      (requirement '(networking file-systems))
+                      (one-shot? #t)
+                      (auto-start? #f)
+                      (start #~(make-forkexec-constructor (list #$runner)
+                                                          #:directory #$uv-project-dir
+                                                          #:user #$user
+                                                          #:group #$group
+                                                          #:log-file #$log-file
+                                                          #:environment-variables
+                                                          (list #$@env
+                                                                #$@python-env)))
+                      (stop #~(lambda _
+                                #t)))))
+
+;; Manual-only version bump: pulls the latest commit onto the existing
+;; checkout and re-resolves the uv environment against it.  `auto-start?' is
+;; #f, one-shot services never restart on their own once they exit, and
+;; nothing else in this file lists it as a `requirement' — so unlike the
+;; daemon, the only way this ever runs is an explicit
+;; `herd start <service-name>-update'.  It does not restart the daemon
+;; itself; follow up with `herd restart <service-name>' once it succeeds.
+(define (comfyui-update-shepherd-service config)
+  (let* ((service-name (comfyui-configuration-service-name config))
+         (update-name (string->symbol (string-append service-name "-update")))
+         (uv-command (comfyui-configuration-uv-command config))
+         (uv-sync-args (comfyui-configuration-uv-sync-args config))
+         (uv-project-dir (comfyui-configuration-uv-project-dir config))
+         (git-command (comfyui-configuration-git-command config))
+         (user (comfyui-configuration-user config))
+         (group (comfyui-configuration-group config))
+         (log-file (comfyui-resolved-update-log-file config))
+         (python-pkg (comfyui-configuration-python-package config))
+         (uv-env (comfyui-configuration-uv-project-environment config))
+         (venv-dir (or uv-env
+                       (string-append uv-project-dir "/.venv")))
+         (enable-manager? (comfyui-configuration-enable-manager? config))
+         (python-env (if python-pkg
+                         (list #~(string-append "UV_PYTHON="
+                                                #$(file-append python-pkg
+                                                               "/bin/python3")))
+                         '()))
+         (env (comfyui-environment config))
+         (runner (program-file (string-append service-name "-update-runner")
+                               #~(begin
+                                   (unless (file-exists? (string-append #$uv-project-dir
+                                                          "/.git"))
+                                     (error
+                                      "comfyui-update: no git checkout found at"
+                                      #$uv-project-dir))
+                                   (let ((ret (system* #$git-command "-C" #$uv-project-dir
+                                                       "fetch" "--tags")))
+                                     (unless (zero? ret)
+                                       (error "git fetch failed with exit code"
+                                              ret)))
+                                   ;; --ff-only refuses to update a checkout with local
+                                   ;; commits/edits or one left on a detached HEAD (e.g.
+                                   ;; after a manual `git checkout <tag>') rather than
+                                   ;; silently discarding state — surface that as a
+                                   ;; failed run instead of guessing what to do about it.
+                                   (let ((ret (system* #$git-command "-C" #$uv-project-dir
+                                                       "pull" "--ff-only")))
+                                     (unless (zero? ret)
+                                       (error "git pull failed with exit code"
+                                              ret)))
+                                   #$(comfyui-sync-steps-gexp uv-command uv-sync-args
+                                                              uv-project-dir venv-dir
+                                                              enable-manager?)))))
+    (shepherd-service (provision (list update-name))
+                      (documentation (string-append
+                                      "Manually pull the latest ComfyUI commit and "
+                                      "re-sync the uv environment for "
+                                      service-name ".  Never starts on its own."))
                       (requirement '(networking file-systems))
                       (one-shot? #t)
                       (auto-start? #f)
@@ -527,6 +612,7 @@
 
 (define (comfyui-shepherd-services configs)
   (append (map comfyui-sync-shepherd-service configs)
+          (map comfyui-update-shepherd-service configs)
           (map comfyui-daemon-shepherd-service configs)))
 
 (define (comfyui-firewall-rules configs)
