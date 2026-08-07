@@ -7,6 +7,16 @@
 ;; The ComfyUI source tree (git clone of https://github.com/Comfy-Org/ComfyUI)
 ;; must live at uv-project-dir with a pyproject.toml and uv.lock already in
 ;; place before the service starts.
+;;
+;; Everything (the daemon, and the sync/update one-shots) runs inside a
+;; `guix shell --container --emulate-fhs' sandbox rather than directly on the
+;; host.  ComfyUI's dependency tree (PyTorch, Triton, ComfyUI-Manager, ...)
+;; ships prebuilt binaries and hardcodes FHS assumptions — /sbin/ldconfig,
+;; /lib64/ld-linux-x86-64.so.2, a `cc' just sitting on PATH — none of which
+;; exist on Guix.  Emulating FHS inside a throwaway container fixes the whole
+;; class of problem at once instead of patching each symptom (missing
+;; ldconfig, missing compiler, prebuilt ELF binaries with the wrong
+;; interpreter, ...) as it's discovered.  See comfyui-container-runner-file.
 
 (define-module (peteches services comfyui)
   #:use-module (guix gexp)
@@ -104,31 +114,37 @@
   (uv-project-environment comfyui-configuration-uv-project-environment
                           (default #f))
   ;; Guix package providing the Python interpreter uv will use.  Its store
-  ;; path is passed as UV_PYTHON so uv finds it without needing it in PATH.
+  ;; path is passed as UV_PYTHON so uv finds it without needing it in PATH,
+  ;; and it's declared as a package in the FHS container (see
+  ;; comfyui-container-runner-file) so the venv's own bin/python3 symlink —
+  ;; which points straight at this package's store output — resolves there.
   (python-package comfyui-configuration-python-package
                   (default (@ (gnu packages python) python)))
   ;; Guix package providing uv.  Installed into the system profile so the
   ;; default uv-command path (/run/current-system/profile/bin/uv) resolves.
   (uv-package comfyui-configuration-uv-package
               (default (@ (gnu packages rust-apps) uv)))
-  ;; Guix package providing a standalone C compiler, exported as CC.
-  ;; Triton (used by Triton-backed nodes/kernels, e.g. MiniMaxH3) shells
-  ;; out to $CC directly to build small driver-glue extensions and JIT
-  ;; kernels; the daemon's PATH deliberately carries no compiler.
-  ;; gcc-toolchain (not plain gcc) is required here — it bundles
-  ;; binutils/ld and glibc so the store path works standalone, without
-  ;; the extra CPATH/LIBRARY_PATH search-path wiring `guix shell gcc`
-  ;; would normally set up.
+  ;; Guix package providing a standalone C compiler.  Declared as a package
+  ;; in the FHS container so Triton (used by Triton-backed nodes/kernels,
+  ;; e.g. MiniMaxH3) can find a working `cc' on PATH the same way it would
+  ;; on a normal FHS distro, instead of hand-wiring CC/CPATH/PATH ourselves.
   (c-compiler-package comfyui-configuration-c-compiler-package
                       (default (@ (gnu packages commencement) gcc-toolchain)))
-  ;; Guix package providing patchelf.  Guix has no /lib64 and a different
-  ;; dynamic linker path, so prebuilt ELF binaries bundled inside upstream
-  ;; Python wheels (e.g. triton's CUDA toolchain: ptxas, cuobjdump,
-  ;; nvdisasm) hardcode /lib64/ld-linux-x86-64.so.2 and can't execute as
-  ;; shipped.  The sync/update runners patch them in place to use
-  ;; c-compiler-package's own linker/libc instead.
-  (patchelf-package comfyui-configuration-patchelf-package
-                    (default (@ (gnu packages elf) patchelf)))
+  ;; Extra Guix packages declared inside the FHS container alongside the
+  ;; baseline (coreutils, bash, git, c-compiler-package,
+  ;; linux-libre-headers, python-package, uv-package).  Add whatever a
+  ;; custom node's own compiled extensions need.
+  (container-extra-packages comfyui-configuration-container-extra-packages
+                            (default (list)))
+  ;; Extra host paths writably bind-mounted into the container, beyond the
+  ;; baseline (uv-project-dir, state-dir, cache-dir, uv-project-environment
+  ;; when set).  Needed for anything referenced by extra-model-paths-config,
+  ;; e.g. an external model drive.
+  (container-extra-shares comfyui-configuration-container-extra-shares
+                          (default (list)))
+  ;; Same as container-extra-shares but read-only.
+  (container-extra-exposes comfyui-configuration-container-extra-exposes
+                           (default (list)))
   ;; Additional packages installed into the system profile for this service.
   (runtime-packages comfyui-configuration-runtime-packages
                     (default (list)))
@@ -313,8 +329,7 @@
          (ld-paths (comfyui-configuration-ld-library-paths config))
          (uv-env (comfyui-configuration-uv-project-environment config))
          (uv-python (comfyui-configuration-uv-python config))
-         (git-command (comfyui-configuration-git-command config))
-         (c-compiler-pkg (comfyui-configuration-c-compiler-package config)))
+         (git-command (comfyui-configuration-git-command config)))
     (append (list (string-append "HOME=" state-dir)
              "SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt"
              "UV_PYTHON_DOWNLOADS=never"
@@ -322,50 +337,26 @@
              "HF_HUB_DISABLE_TELEMETRY=1"
              (string-append "UV_CACHE_DIR=" uv-cache-dir)
              (string-append "XDG_CACHE_HOME=" xdg-cache-home))
-            ;; c-compiler-package's own bin/ carries `as' and `ld' too:
-            ;; gcc execs them by bare name via posix_spawnp (a PATH
-            ;; search), not via its own internal exec-prefix, so without
-            ;; this on PATH linking fails with "cannot execute 'as'" even
-            ;; though gcc itself runs fine from its full store path.
-            (list #~(string-append "PATH=" #$(file-append c-compiler-pkg "/bin")
-                                   ":/run/current-system/profile/bin"
-                                   ":/run/current-system/profile/sbin"
-                                   ":/run/setuid-programs"))
             ;; ComfyUI-Manager's GitPython dependency searches $PATH for
-            ;; `git' (or respects this variable) rather than using the
-            ;; git-command already configured for this service's own
-            ;; sync/update runners.  The daemon's PATH above deliberately
-            ;; excludes the store, so without this GitPython can't find
-            ;; git at all and ComfyUI-Manager crashes main.py on import.
+            ;; `git' (or respects this variable).  Redundant now that git
+            ;; is declared as a container package and reachable on PATH
+            ;; there too, but harmless and cheap insurance.
             (list #~(string-append "GIT_PYTHON_GIT_EXECUTABLE="
                                    #$git-command))
-            (list #~(string-append "CC=" #$(file-append c-compiler-pkg "/bin/gcc")))
-            ;; gcc-toolchain alone isn't quite self-contained on Guix:
-            ;; glibc's <errno.h> transitively includes the Linux UAPI
-            ;; <linux/errno.h>, which only linux-libre-headers ships.
-            ;; Without this, any C compile — even a trivial one — fails
-            ;; with "fatal error: linux/errno.h: No such file or
-            ;; directory".  gcc reads CPATH for all languages.
-            (list #~(string-append "CPATH="
-                                   #$(file-append (@ (gnu packages linux)
-                                                      linux-libre-headers)
-                                                  "/include")))
             (if uv-python
                 (list (string-append "UV_PYTHON=" uv-python))
                 '())
             (if cuda-devices
                 (list (string-append "CUDA_VISIBLE_DEVICES=" cuda-devices)
                       "CUDA_DEVICE_ORDER=PCI_BUS_ID"
-                      ;; Triton's CUDA backend locates libcuda.so.1 by
-                      ;; shelling out to `/sbin/ldconfig', which doesn't
-                      ;; exist on Guix (no FHS, no ldconfig at all) — it
-                      ;; only skips that call when this is set.  Guix's
-                      ;; nvidia-driver package symlinks libcuda.so.1 into
-                      ;; the system profile's lib/ directory, which is
-                      ;; also the default first entry of ld-library-paths
-                      ;; below (that's why PyTorch's own CUDA init already
-                      ;; works fine here — it just dlopens via
-                      ;; LD_LIBRARY_PATH, unlike Triton).
+                      ;; Belt-and-suspenders: the FHS container's own
+                      ;; ldconfig genuinely works (glibc-for-fhs ships a
+                      ;; real one), but it only knows about the container's
+                      ;; own lib dirs, not the bind-mounted
+                      ;; /run/current-system/profile/lib holding
+                      ;; libcuda.so.1.  This skips Triton's ldconfig call
+                      ;; entirely rather than relying on it finding the
+                      ;; right cache entry.
                       "TRITON_LIBCUDA_PATH=/run/current-system/profile/lib")
                 '())
             (if (null? ld-paths)
@@ -376,6 +367,78 @@
                 (list (string-append "UV_PROJECT_ENVIRONMENT=" uv-env))
                 '())
             (comfyui-configuration-extra-environment-variables config))))
+
+;;; ── FHS container wrapper ────────────────────────────────────────────────
+
+;; Builds a program-file that, when run, execs into
+;; `guix shell --container --emulate-fhs' with INNER-COMMAND as the
+;; containerized command.  Used to launch the daemon and the sync/update
+;; one-shots alike (see the module comment at the top of this file for why).
+;;
+;; The nvidia device list is discovered at the *runtime* of the generated
+;; script, not at reconfigure time, since it has to reflect whatever GPU(s)
+;; are actually present on the machine that ends up running it, not the
+;; machine that happened to build/reconfigure it (nug offloads builds).
+;;
+;; `--container' only bind-mounts store items that are part of the
+;; requested package closure — *not* the whole store — so anything
+;; referenced only via a raw store path (uv-command's default, the venv's
+;; own bin/python3 symlink, an already's-been-through-uv package) would
+;; otherwise be invisible inside the container.  `--expose=/gnu/store'
+;; sidesteps having to enumerate every such path by hand.
+(define (comfyui-container-runner-file config suffix env inner-command)
+  (let* ((service-name (comfyui-configuration-service-name config))
+         (uv-project-dir (comfyui-configuration-uv-project-dir config))
+         (state-dir (comfyui-resolved-state-dir config))
+         (cache-dir (comfyui-resolved-cache-dir config))
+         (uv-env (comfyui-configuration-uv-project-environment config))
+         (python-pkg (comfyui-configuration-python-package config))
+         (uv-pkg (comfyui-configuration-uv-package config))
+         (c-compiler-pkg (comfyui-configuration-c-compiler-package config))
+         (extra-pkgs (comfyui-configuration-container-extra-packages config))
+         (extra-shares (comfyui-configuration-container-extra-shares config))
+         (extra-exposes (comfyui-configuration-container-extra-exposes config))
+         (package-names (map package-name
+                             (append (list (@ (gnu packages base) coreutils)
+                                           (@ (gnu packages bash) bash)
+                                           (@ (gnu packages version-control) git)
+                                           c-compiler-pkg
+                                           (@ (gnu packages linux) linux-libre-headers)
+                                           python-pkg
+                                           uv-pkg)
+                                     extra-pkgs)))
+         (static-args (append
+                       (list "--container" "--emulate-fhs" "--network"
+                             "--expose=/gnu/store"
+                             (string-append "--share=" uv-project-dir)
+                             (string-append "--share=" state-dir)
+                             (string-append "--share=" cache-dir)
+                             "--expose=/run/current-system/profile")
+                       (if uv-env
+                           (list (string-append "--share=" uv-env))
+                           '())
+                       (map (lambda (s) (string-append "--share=" s)) extra-shares)
+                       (map (lambda (s) (string-append "--expose=" s)) extra-exposes)
+                       package-names))
+         (guix-pkg (@ (gnu packages package-management) guix)))
+    (program-file
+     (string-append service-name suffix "-container-runner")
+     #~(begin
+         (use-modules (ice-9 ftw) (srfi srfi-1) (srfi srfi-13))
+         (let* ((nvidia-exposes
+                 (filter-map (lambda (name)
+                               (and (string-prefix? "nvidia" name)
+                                    (string-append "--expose=/dev/" name)))
+                             (or (scandir "/dev") '())))
+                (args (append (list "shell")
+                              (list #$@static-args)
+                              nvidia-exposes
+                              (list #$@(map (lambda (kv)
+                                              #~(string-append "--preserve=" #$kv))
+                                            env))
+                              (list "--")
+                              (list #$@inner-command))))
+           (apply execlp #$(file-append guix-pkg "/bin/guix") "guix" args))))))
 
 ;;; ── Service extension helpers ────────────────────────────────────────────
 
@@ -440,13 +503,7 @@
 ;; resolve the uv environment against whatever commit is currently checked
 ;; out at uv-project-dir.
 (define (comfyui-sync-steps-gexp uv-command uv-sync-args uv-project-dir
-                                 venv-dir enable-manager? python-pkg
-                                 c-compiler-pkg patchelf-pkg)
-  (define python-site-packages-dir
-    (let* ((version (package-version python-pkg))
-           (parts (string-split version #\.)))
-      (string-append venv-dir "/lib/python" (car parts) "." (cadr parts)
-                      "/site-packages")))
+                                 venv-dir enable-manager?)
   #~(begin
       ;; Drop --frozen when no lockfile exists yet
       ;; (e.g. after a fresh clone of a repo that
@@ -513,30 +570,7 @@
                            (error
                             "enable-manager? is #t but manager_requirements.txt not found at"
                             mgr-req))))
-             '())
-      ;; Guix has no /lib64 and a different dynamic linker path, so
-      ;; prebuilt ELF binaries bundled inside upstream wheels — triton's
-      ;; own CUDA toolchain here — hardcode /lib64/ld-linux-x86-64.so.2
-      ;; and can't execute as shipped.  Patch them to use
-      ;; c-compiler-package's own linker/libc instead.  Must re-run on
-      ;; every sync/update: uv reinstalls these files fresh whenever
-      ;; triton is (re)installed, and patchelf on an already-patched file
-      ;; is a harmless no-op.
-      (let ((triton-bin-dir (string-append #$python-site-packages-dir
-                             "/triton/backends/nvidia/bin")))
-        (when (file-exists? triton-bin-dir)
-          (for-each
-           (lambda (name)
-             (let ((path (string-append triton-bin-dir "/" name)))
-               (when (file-exists? path)
-                 (system* #$(file-append patchelf-pkg "/bin/patchelf")
-                          "--set-interpreter"
-                          #$(file-append c-compiler-pkg
-                                        "/lib/ld-linux-x86-64.so.2")
-                          "--set-rpath"
-                          #$(file-append c-compiler-pkg "/lib")
-                          path))))
-           '("ptxas" "ptxas-blackwell" "cuobjdump" "nvdisasm"))))))
+             '())))
 
 (define (comfyui-sync-shepherd-service config)
   (let* ((service-name (comfyui-configuration-service-name config))
@@ -554,12 +588,13 @@
          (venv-dir (or uv-env
                        (string-append uv-project-dir "/.venv")))
          (enable-manager? (comfyui-configuration-enable-manager? config))
-         (python-env (if python-pkg
-                         (list #~(string-append "UV_PYTHON="
-                                                #$(file-append python-pkg
-                                                               "/bin/python3")))
-                         '()))
-         (env (comfyui-environment config))
+         ;; The store interpreter, used to *create* the venv — as opposed
+         ;; to the daemon's UV_PYTHON, which points at the venv itself
+         ;; once it exists (see comfyui-daemon-shepherd-service).
+         (python-env (list #~(string-append "UV_PYTHON="
+                                            #$(file-append python-pkg
+                                                           "/bin/python3"))))
+         (env (append (comfyui-environment config) python-env))
          (runner (program-file (string-append service-name "-sync-runner")
                                #~(begin
                                    (unless (file-exists? (string-append #$uv-project-dir
@@ -572,9 +607,9 @@
                                           ret))))
                                    #$(comfyui-sync-steps-gexp uv-command uv-sync-args
                                                               uv-project-dir venv-dir
-                                                              enable-manager? python-pkg
-                                                              (comfyui-configuration-c-compiler-package config)
-                                                              (comfyui-configuration-patchelf-package config))))))
+                                                              enable-manager?))))
+         (container-runner (comfyui-container-runner-file config "-sync" env
+                                                           (list runner))))
     (shepherd-service (provision (list sync-name))
                       (documentation (string-append
                                       "Synchronise the uv environment for "
@@ -582,14 +617,13 @@
                       (requirement '(networking file-systems))
                       (one-shot? #t)
                       (auto-start? #f)
-                      (start #~(make-forkexec-constructor (list #$runner)
+                      (start #~(make-forkexec-constructor (list #$container-runner)
                                                           #:directory #$uv-project-dir
                                                           #:user #$user
                                                           #:group #$group
                                                           #:log-file #$log-file
                                                           #:environment-variables
-                                                          (list #$@env
-                                                                #$@python-env)))
+                                                          (list #$@env)))
                       (stop #~(lambda _
                                 #t)))))
 
@@ -615,12 +649,10 @@
          (venv-dir (or uv-env
                        (string-append uv-project-dir "/.venv")))
          (enable-manager? (comfyui-configuration-enable-manager? config))
-         (python-env (if python-pkg
-                         (list #~(string-append "UV_PYTHON="
-                                                #$(file-append python-pkg
-                                                               "/bin/python3")))
-                         '()))
-         (env (comfyui-environment config))
+         (python-env (list #~(string-append "UV_PYTHON="
+                                            #$(file-append python-pkg
+                                                           "/bin/python3"))))
+         (env (append (comfyui-environment config) python-env))
          (runner (program-file (string-append service-name "-update-runner")
                                #~(begin
                                    (unless (file-exists? (string-append #$uv-project-dir
@@ -645,9 +677,9 @@
                                               ret)))
                                    #$(comfyui-sync-steps-gexp uv-command uv-sync-args
                                                               uv-project-dir venv-dir
-                                                              enable-manager? python-pkg
-                                                              (comfyui-configuration-c-compiler-package config)
-                                                              (comfyui-configuration-patchelf-package config))))))
+                                                              enable-manager?))))
+         (container-runner (comfyui-container-runner-file config "-update" env
+                                                           (list runner))))
     (shepherd-service (provision (list update-name))
                       (documentation (string-append
                                       "Manually pull the latest ComfyUI commit and "
@@ -656,14 +688,13 @@
                       (requirement '(networking file-systems))
                       (one-shot? #t)
                       (auto-start? #f)
-                      (start #~(make-forkexec-constructor (list #$runner)
+                      (start #~(make-forkexec-constructor (list #$container-runner)
                                                           #:directory #$uv-project-dir
                                                           #:user #$user
                                                           #:group #$group
                                                           #:log-file #$log-file
                                                           #:environment-variables
-                                                          (list #$@env
-                                                                #$@python-env)))
+                                                          (list #$@env)))
                       (stop #~(lambda _
                                 #t)))))
 
@@ -687,24 +718,23 @@
          ;; read-only, so it must resolve to the writable venv instead.
          (python-env (list #~(string-append "UV_PYTHON=" #$venv-dir
                                             "/bin/python3")))
-         (env (comfyui-environment config))
-         (main-args (comfyui-main-args config)))
+         (env (append (comfyui-environment config) python-env))
+         (main-args (comfyui-main-args config))
+         (inner-command (append (list uv-command "run") uv-run-args main-args))
+         (container-runner (comfyui-container-runner-file config "" env
+                                                           inner-command)))
     (shepherd-service (provision (list provision-name))
                       (documentation (comfyui-configuration-documentation
                                       config))
                       (requirement '(networking file-systems))
                       (auto-start? (comfyui-configuration-auto-start? config))
-                      (start #~(make-forkexec-constructor (list #$uv-command
-                                                                "run"
-                                                                #$@uv-run-args
-                                                                #$@main-args)
+                      (start #~(make-forkexec-constructor (list #$container-runner)
                                                           #:directory #$uv-project-dir
                                                           #:user #$user
                                                           #:group #$group
                                                           #:log-file #$log-file
                                                           #:environment-variables
-                                                          (list #$@env
-                                                                #$@python-env)))
+                                                          (list #$@env)))
                       (stop #~(make-kill-destructor)))))
 
 (define (comfyui-shepherd-services configs)
