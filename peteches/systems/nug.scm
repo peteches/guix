@@ -173,14 +173,12 @@
  (list
   (service comfyui-service-type
            (list
-            (comfyui-configuration
-             (listen "0.0.0.0,::")
-;;	     (ssl-certfile "/etc/letsencrypt/live/nug.peteches.co.uk/fullchain.pem")
-;;	     (ssl-keyfile "/etc/letsencrypt/live/nug.peteches.co.uk/privkey.pem")
-             (extra-model-paths-config %comfyui-model-paths)
-             (runtime-packages (list uv))
-
-             (open-firewall? #t))))
+	    (comfyui-configuration
+	     (listen "0.0.0.0,::")
+	     (extra-model-paths-config %comfyui-model-paths)
+	     (runtime-packages (list uv))
+	     (open-firewall? #t)
+	     (container-extra-shares (list "/media/ColdStorage")))))
   (simple-service 'nug-guix-publish-firewall
                   firewall-service-type
                   (nftables-rules
