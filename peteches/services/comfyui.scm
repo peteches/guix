@@ -584,12 +584,17 @@
          (user (comfyui-configuration-user config))
          (group (comfyui-configuration-group config))
          (log-file (comfyui-resolved-log-file config))
-         (python-pkg (comfyui-configuration-python-package config))
-         (python-env (if python-pkg
-                         (list #~(string-append "UV_PYTHON="
-                                                #$(file-append python-pkg
-                                                               "/bin/python3")))
-                         '()))
+         (uv-env (comfyui-configuration-uv-project-environment config))
+         (venv-dir (or uv-env
+                       (string-append uv-project-dir "/.venv")))
+         ;; Point UV_PYTHON at the already-provisioned venv here, not at the
+         ;; store interpreter used by the sync/update runners to *create*
+         ;; that venv.  ComfyUI-Manager shells out to a bare `uv pip
+         ;; install <pkg>` (no --python) to self-repair packages at
+         ;; startup; that call inherits this env var, and the store path is
+         ;; read-only, so it must resolve to the writable venv instead.
+         (python-env (list #~(string-append "UV_PYTHON=" #$venv-dir
+                                            "/bin/python3")))
          (env (comfyui-environment config))
          (main-args (comfyui-main-args config)))
     (shepherd-service (provision (list provision-name))
