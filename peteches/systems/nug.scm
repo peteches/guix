@@ -18,8 +18,10 @@
   #:use-module (gnu packages base)           ; e.g. glibc-locales if you want it
   #:use-module (peteches systems base)
   #:use-module (peteches services firewall)
+  #:use-module (peteches services comfyui)
   #:use-module (peteches systems network-mounts)
-  #:use-module (gnu packages admin))
+  #:use-module (gnu packages admin)
+  #:use-module (gnu packages rust-apps))
 
 ;; Bring service types into scope for any host-specific additions.
 (use-service-modules base linux cups desktop networking ssh xorg)
@@ -57,6 +59,39 @@
         (invoke chown "-R" "peteches:" dst-dir)
         (invoke chmod "600" dst)))))
 
+
+(define %comfyui-model-paths
+  (plain-file "extra_model_paths.yaml"
+              "comfyui:
+    base_path: /media/ColdStorage/models/comfyui
+
+    checkpoints: checkpoints/
+    clip: clip/
+    clip_vision: clip_vision/
+    configs: configs/
+    controlnet: controlnet/
+    diffusion_models: diffusion_models/
+    embeddings: embeddings/
+    hypernetworks: hypernetworks/
+    loras: loras/
+    text_encoders: text_encoders/
+    upscale_models: upscale_models/
+    vae: vae/
+    unet: unet/
+    ipadapter: ipadapter/
+    style_models: style_models/
+    photomaker: photomaker/
+    gligen: gligen/
+    vae_approx: vae_approx/
+    insightface: insightface/
+    facerestore_models: facerestore_models/
+    facedetection: facedetection/
+    reactor: reactor/
+    sams: sams/
+    ultralytics: ultralytics/
+    audio_encoders: audio_encoders/
+    diffusers: diffusers/
+"))
 
 (make-base-os
  #:host-name "nug"
@@ -136,6 +171,16 @@
  ;; Host-only services
  #:extra-services
  (list
+  (service comfyui-service-type
+           (list
+            (comfyui-configuration
+             (listen "0.0.0.0,::")
+;;	     (ssl-certfile "/etc/letsencrypt/live/nug.peteches.co.uk/fullchain.pem")
+;;	     (ssl-keyfile "/etc/letsencrypt/live/nug.peteches.co.uk/privkey.pem")
+             (extra-model-paths-config %comfyui-model-paths)
+             (runtime-packages (list uv))
+
+             (open-firewall? #t))))
   (simple-service 'nug-guix-publish-firewall
                   firewall-service-type
                   (nftables-rules

@@ -189,7 +189,6 @@
 
                   "tcp dport 22 accept comment \"ssh\""
                   "tcp dport 9100 accept comment \"prometheus node-exporter\""
-                  "tcp dport 8188 accept comment \"comfyui\""
                   "tcp dport { 5001, 5002, 5003 } accept comment \"KoboldCpp\""
                   "tcp dport 80 accept comment \"required for certbot acme approvals\""
 
