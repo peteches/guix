@@ -110,6 +110,16 @@
   ;; default uv-command path (/run/current-system/profile/bin/uv) resolves.
   (uv-package comfyui-configuration-uv-package
               (default (@ (gnu packages rust-apps) uv)))
+  ;; Guix package providing a standalone C compiler, exported as CC.
+  ;; Triton (used by Triton-backed nodes/kernels, e.g. MiniMaxH3) shells
+  ;; out to $CC directly to build small driver-glue extensions and JIT
+  ;; kernels; the daemon's PATH deliberately carries no compiler.
+  ;; gcc-toolchain (not plain gcc) is required here — it bundles
+  ;; binutils/ld and glibc so the store path works standalone, without
+  ;; the extra CPATH/LIBRARY_PATH search-path wiring `guix shell gcc`
+  ;; would normally set up.
+  (c-compiler-package comfyui-configuration-c-compiler-package
+                      (default (@ (gnu packages commencement) gcc-toolchain)))
   ;; Additional packages installed into the system profile for this service.
   (runtime-packages comfyui-configuration-runtime-packages
                     (default (list)))
@@ -294,7 +304,8 @@
          (ld-paths (comfyui-configuration-ld-library-paths config))
          (uv-env (comfyui-configuration-uv-project-environment config))
          (uv-python (comfyui-configuration-uv-python config))
-         (git-command (comfyui-configuration-git-command config)))
+         (git-command (comfyui-configuration-git-command config))
+         (c-compiler-pkg (comfyui-configuration-c-compiler-package config)))
     (append (list (string-append "HOME=" state-dir)
              "PATH=/run/current-system/profile/bin:/run/current-system/profile/sbin:/run/setuid-programs"
              "SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt"
@@ -311,6 +322,7 @@
             ;; git at all and ComfyUI-Manager crashes main.py on import.
             (list #~(string-append "GIT_PYTHON_GIT_EXECUTABLE="
                                    #$git-command))
+            (list #~(string-append "CC=" #$(file-append c-compiler-pkg "/bin/gcc")))
             (if uv-python
                 (list (string-append "UV_PYTHON=" uv-python))
                 '())
