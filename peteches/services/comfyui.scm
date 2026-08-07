@@ -11,6 +11,7 @@
 (define-module (peteches services comfyui)
   #:use-module (guix gexp)
   #:use-module (guix records)
+  #:use-module (guix packages)
   #:use-module (gnu services)
   #:use-module (gnu services shepherd)
   #:use-module (gnu services base)
@@ -120,6 +121,14 @@
   ;; would normally set up.
   (c-compiler-package comfyui-configuration-c-compiler-package
                       (default (@ (gnu packages commencement) gcc-toolchain)))
+  ;; Guix package providing patchelf.  Guix has no /lib64 and a different
+  ;; dynamic linker path, so prebuilt ELF binaries bundled inside upstream
+  ;; Python wheels (e.g. triton's CUDA toolchain: ptxas, cuobjdump,
+  ;; nvdisasm) hardcode /lib64/ld-linux-x86-64.so.2 and can't execute as
+  ;; shipped.  The sync/update runners patch them in place to use
+  ;; c-compiler-package's own linker/libc instead.
+  (patchelf-package comfyui-configuration-patchelf-package
+                    (default (@ (gnu packages elf) patchelf)))
   ;; Additional packages installed into the system profile for this service.
   (runtime-packages comfyui-configuration-runtime-packages
                     (default (list)))
@@ -431,7 +440,13 @@
 ;; resolve the uv environment against whatever commit is currently checked
 ;; out at uv-project-dir.
 (define (comfyui-sync-steps-gexp uv-command uv-sync-args uv-project-dir
-                                 venv-dir enable-manager?)
+                                 venv-dir enable-manager? python-pkg
+                                 c-compiler-pkg patchelf-pkg)
+  (define python-site-packages-dir
+    (let* ((version (package-version python-pkg))
+           (parts (string-split version #\.)))
+      (string-append venv-dir "/lib/python" (car parts) "." (cadr parts)
+                      "/site-packages")))
   #~(begin
       ;; Drop --frozen when no lockfile exists yet
       ;; (e.g. after a fresh clone of a repo that
@@ -498,7 +513,30 @@
                            (error
                             "enable-manager? is #t but manager_requirements.txt not found at"
                             mgr-req))))
-             '())))
+             '())
+      ;; Guix has no /lib64 and a different dynamic linker path, so
+      ;; prebuilt ELF binaries bundled inside upstream wheels — triton's
+      ;; own CUDA toolchain here — hardcode /lib64/ld-linux-x86-64.so.2
+      ;; and can't execute as shipped.  Patch them to use
+      ;; c-compiler-package's own linker/libc instead.  Must re-run on
+      ;; every sync/update: uv reinstalls these files fresh whenever
+      ;; triton is (re)installed, and patchelf on an already-patched file
+      ;; is a harmless no-op.
+      (let ((triton-bin-dir (string-append #$python-site-packages-dir
+                             "/triton/backends/nvidia/bin")))
+        (when (file-exists? triton-bin-dir)
+          (for-each
+           (lambda (name)
+             (let ((path (string-append triton-bin-dir "/" name)))
+               (when (file-exists? path)
+                 (system* #$(file-append patchelf-pkg "/bin/patchelf")
+                          "--set-interpreter"
+                          #$(file-append c-compiler-pkg
+                                        "/lib/ld-linux-x86-64.so.2")
+                          "--set-rpath"
+                          #$(file-append c-compiler-pkg "/lib")
+                          path))))
+           '("ptxas" "ptxas-blackwell" "cuobjdump" "nvdisasm"))))))
 
 (define (comfyui-sync-shepherd-service config)
   (let* ((service-name (comfyui-configuration-service-name config))
@@ -534,7 +572,9 @@
                                           ret))))
                                    #$(comfyui-sync-steps-gexp uv-command uv-sync-args
                                                               uv-project-dir venv-dir
-                                                              enable-manager?)))))
+                                                              enable-manager? python-pkg
+                                                              (comfyui-configuration-c-compiler-package config)
+                                                              (comfyui-configuration-patchelf-package config))))))
     (shepherd-service (provision (list sync-name))
                       (documentation (string-append
                                       "Synchronise the uv environment for "
@@ -605,7 +645,9 @@
                                               ret)))
                                    #$(comfyui-sync-steps-gexp uv-command uv-sync-args
                                                               uv-project-dir venv-dir
-                                                              enable-manager?)))))
+                                                              enable-manager? python-pkg
+                                                              (comfyui-configuration-c-compiler-package config)
+                                                              (comfyui-configuration-patchelf-package config))))))
     (shepherd-service (provision (list update-name))
                       (documentation (string-append
                                       "Manually pull the latest ComfyUI commit and "
