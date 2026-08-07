@@ -316,7 +316,18 @@
                 '())
             (if cuda-devices
                 (list (string-append "CUDA_VISIBLE_DEVICES=" cuda-devices)
-                      "CUDA_DEVICE_ORDER=PCI_BUS_ID")
+                      "CUDA_DEVICE_ORDER=PCI_BUS_ID"
+                      ;; Triton's CUDA backend locates libcuda.so.1 by
+                      ;; shelling out to `/sbin/ldconfig', which doesn't
+                      ;; exist on Guix (no FHS, no ldconfig at all) — it
+                      ;; only skips that call when this is set.  Guix's
+                      ;; nvidia-driver package symlinks libcuda.so.1 into
+                      ;; the system profile's lib/ directory, which is
+                      ;; also the default first entry of ld-library-paths
+                      ;; below (that's why PyTorch's own CUDA init already
+                      ;; works fine here — it just dlopens via
+                      ;; LD_LIBRARY_PATH, unlike Triton).
+                      "TRITON_LIBCUDA_PATH=/run/current-system/profile/lib")
                 '())
             (if (null? ld-paths)
                 '()
