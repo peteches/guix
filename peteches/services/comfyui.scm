@@ -425,6 +425,21 @@
      (string-append service-name suffix "-container-runner")
      #~(begin
          (use-modules (ice-9 ftw) (srfi srfi-1) (srfi srfi-13))
+         ;; `guix shell -E VAR=VALUE' (the "set directly" form documented as
+         ;; "if REGEXP contains `=', set VAR to VALUE instead") does not
+         ;; reliably inject VALUE when guix's own process environment is
+         ;; sparse — exactly what shepherd's #:environment-variables
+         ;; produces for this wrapper.  Verified live on nug: under a
+         ;; stripped `env -i' environment, `-E LD_LIBRARY_PATH=/foo/bar'
+         ;; forwarded nothing (torch.cuda.is_available() => False), while
+         ;; the plain-regex form `-E '^LD_LIBRARY_PATH$'` correctly forwards
+         ;; whatever value the variable already holds in this wrapper's own
+         ;; environment (torch.cuda.is_available() => True) — and it
+         ;; already does, since forkexec-constructor's
+         ;; #:environment-variables sets it here before execlp inherits it
+         ;; into guix.  So: preserve by name only, never by "VAR=VALUE".
+         (define (preserve-flag kv)
+           (string-append "--preserve=^" (substring kv 0 (string-index kv #\=)) "$"))
          (let* ((nvidia-exposes
                  (filter-map (lambda (name)
                                (and (string-prefix? "nvidia" name)
@@ -433,9 +448,7 @@
                 (args (append (list "shell")
                               (list #$@static-args)
                               nvidia-exposes
-                              (list #$@(map (lambda (kv)
-                                              #~(string-append "--preserve=" #$kv))
-                                            env))
+                              (map preserve-flag (list #$@env))
                               (list "--")
                               (list #$@inner-command))))
            (apply execlp #$(file-append guix-pkg "/bin/guix") "guix" args))))))
