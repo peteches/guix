@@ -353,12 +353,11 @@
                                             (@ (ice-9 rdelim) read-line)))))
                                        '())))
                              ((make-forkexec-constructor
-                               (append (list #$node-command
-                                            (string-append #$repo-dir
-                                                           "/server.js")
-                                            #$@args)
-                                       #$(sillytavern-configuration-extra-args
-                                          config))
+                               (list #$node-command
+                                    (string-append #$repo-dir "/server.js")
+                                    #$@args
+                                    #$@(sillytavern-configuration-extra-args
+                                        config))
                                #:directory #$repo-dir
                                #:user #$user
                                #:group #$group
