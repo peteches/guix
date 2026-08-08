@@ -101,6 +101,9 @@
                    (domain "jellyfin.ts.peteches.co.uk")
                    (upstream "jellyfin.spaniel-cordylus.ts.net:8096"))
                   (caddy-reverse-proxy
+                   (domain "colibri.ts.peteches.co.uk")
+                   (upstream "nug.spaniel-cordylus.ts.net:8000"))
+                  (caddy-reverse-proxy
                    (domain "pihole.ts.peteches.co.uk")
                    (upstream "pihole.spaniel-cordylus.ts.net:80/admin"))
                   (caddy-reverse-proxy

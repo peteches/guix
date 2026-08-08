@@ -19,6 +19,7 @@
   #:use-module (peteches systems base)
   #:use-module (peteches services firewall)
   #:use-module (peteches services comfyui)
+  #:use-module (peteches services colibri)
   #:use-module (peteches systems network-mounts)
   #:use-module (gnu packages admin)
   #:use-module (gnu packages rust-apps))
@@ -119,7 +120,12 @@
    (source (uuid "8e15e4a6-a1ac-4638-b9d2-814257363cab"))
    (target "HotStorage")
    (type luks-device-mapping)
-   (arguments '(#:key-file "/etc/keys/hot-storage.key"))))
+   (arguments '(#:key-file "/etc/keys/hot-storage.key")))
+  (mapped-device
+   (source (uuid "65689173-95c7-4f7a-83ff-7a66cb1c6695"))
+   (target "WarmStorage")
+   (type luks-device-mapping)
+   (arguments '(#:key-file "/etc/keys/warm-storage.key"))))
 
  #:file-systems
  (list
@@ -143,6 +149,11 @@
   (file-system
    (mount-point "/media/HotStorage")
    (device (uuid "0b30a1c2-64d8-47ec-bfeb-d6ec47292886" 'ext4))
+   (create-mount-point? #t)
+   (type "ext4"))
+  (file-system
+   (mount-point "/media/WarmStorage")
+   (device (uuid "2f08c1cc-68cb-47ca-8b1a-e4aff62def08" 'ext4))
    (create-mount-point? #t)
    (type "ext4"))
   scoreplay-cifs-mount)
@@ -179,6 +190,37 @@
 	     (runtime-packages (list uv))
 	     (open-firewall? #t)
 	     (container-extra-shares (list "/media/ColdStorage")))))
+  ;; CUDA-enabled (colibri-engine-cuda, sm_89/Ada — see
+  ;; peteches/packages/colibri.scm) but deliberately capped well below the
+  ;; RTX 4090's 24GB: vram-gb 6 + the engine's own ~2GB CUDA_RESERVE_GB
+  ;; ceiling leaves ComfyUI ~16GB of headroom. Reached via Caddy at
+  ;; colibri.ts.peteches.co.uk -> nug.spaniel-cordylus.ts.net:8000 (see
+  ;; peteches/systems/caddy.scm); --allowed-host must match that public
+  ;; domain because Caddy forwards the client's original Host header
+  ;; unchanged, and colibri's DNS-rebinding guard otherwise 403s anything
+  ;; that isn't loopback or its own literal bind address.
+  ;;
+  ;; model-dir lives on HotStorage (NVMe), not ColdStorage (spinning HDD):
+  ;; expert streaming is a random-read workload, which a platter disk
+  ;; handles catastrophically worse than NVMe. model-mirror duplicates the
+  ;; model onto the WarmStorage NVMe so expert reads split across both
+  ;; drives (COLI_MODEL_MIRROR) instead of bottlenecking on one. direct-io?
+  ;; is enabled to keep the two copies from competing for page cache, per
+  ;; upstream's own guidance for a mirrored setup — worth re-measuring if
+  ;; either drive turns out to be QLC/DRAM-less, where DIRECT can be neutral
+  ;; to negative instead.
+  (service colibri-service-type
+           (colibri-configuration
+            (package colibri-engine-cuda)
+            (model-dir "/media/HotStorage/models/colibri")
+            (model-mirror "/media/WarmStorage/models/colibri")
+            (direct-io? #t)
+            (host "0.0.0.0")
+            (open-firewall? #t)
+            (auto-start? #t)
+            (gpu "auto")
+            (vram-gb 6)
+            (allowed-hosts (list "colibri.ts.peteches.co.uk"))))
   (simple-service 'nug-guix-publish-firewall
                   firewall-service-type
                   (nftables-rules
