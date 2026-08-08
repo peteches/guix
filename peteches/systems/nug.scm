@@ -242,30 +242,34 @@
   ;; expert streaming is a random-read workload, which a platter disk
   ;; handles catastrophically worse than NVMe.
   ;;
-  ;; model-dir points at a stable symlink (/media/HotStorage/models/current),
-  ;; not a specific model's directory, so switching models is a filesystem
-  ;; operation (repoint the symlink, chown the new target, herd restart) —
-  ;; no guix system reconfigure needed for routine swaps. See the deployment
-  ;; conversation for the one-time setup and the swap procedure.
+  ;; model-dir and model-mirror both point at a stable "current" symlink
+  ;; (/media/{Hot,Warm}Storage/colibri/current) rather than a specific
+  ;; model's directory directly, so switching models is a filesystem
+  ;; operation (repoint both symlinks, chown the new targets, herd
+  ;; restart) — no guix system reconfigure needed for routine swaps. Model
+  ;; directories live as siblings of current, e.g.
+  ;; /media/HotStorage/colibri/glm-5.2, .../deepseek-v4-flash. See the
+  ;; deployment conversation for the one-time setup and the swap procedure.
   ;;
-  ;; model-mirror is deliberately NOT set here: it was previously pinned to
-  ;; GLM-5.2's specific WarmStorage copy, but with model-dir now able to
-  ;; point at a different model at any time, a mirror pinned to a specific
-  ;; other model would silently desync — colibri expects primary and mirror
-  ;; to be byte-identical copies of the *same* model, not two different
-  ;; ones. Re-add it once settled on a model that's actually mirrored onto
-  ;; WarmStorage under the matching name.
+  ;; Keeping both symlinks pointing at the SAME model is a manual
+  ;; discipline requirement now, not something enforced automatically:
+  ;; colibri expects primary and mirror to be byte-identical copies of the
+  ;; same model, and there's nothing stopping HotStorage's current and
+  ;; WarmStorage's current from being repointed independently and
+  ;; silently desyncing. Repoint them together.
   ;;
-  ;; direct-io? and pipe? aren't mirror-specific — DIRECT (O_DIRECT) is a
-  ;; general NVMe win per upstream's own guidance, independent of whether
-  ;; a second copy exists; pipe? overlaps expert disk-loads with matmul via
-  ;; I/O worker threads instead of doing them sequentially — byte-identical
-  ;; output, purely a scheduling change. pipe-workers left at the engine's
-  ;; own default (8) until there's a measurement to tune it against.
+  ;; direct-io? and pipe? aren't specific to the mirror existing — DIRECT
+  ;; (O_DIRECT) is a general NVMe win per upstream's own guidance,
+  ;; independent of whether a second copy exists; pipe? overlaps expert
+  ;; disk-loads with matmul via I/O worker threads instead of doing them
+  ;; sequentially — byte-identical output, purely a scheduling change.
+  ;; pipe-workers left at the engine's own default (8) until there's a
+  ;; measurement to tune it against.
   (service colibri-service-type
            (colibri-configuration
             (package colibri-engine-cuda)
-            (model-dir "/media/HotStorage/models/current")
+            (model-dir "/media/HotStorage/colibri/current")
+            (model-mirror "/media/WarmStorage/colibri/current")
             (direct-io? #t)
             (pipe? #t)
             ;; Per-turn latency percentiles, expert-I/O totals, cache-tier
