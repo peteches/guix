@@ -243,13 +243,13 @@
   ;; handles catastrophically worse than NVMe.
   ;;
   ;; model-dir and model-mirror both point at a stable "current" symlink
-  ;; (/media/{Hot,Warm}Storage/colibri/current) rather than a specific
-  ;; model's directory directly, so switching models is a filesystem
-  ;; operation (repoint both symlinks, chown the new targets, herd
-  ;; restart) — no guix system reconfigure needed for routine swaps. Model
-  ;; directories live as siblings of current, e.g.
-  ;; /media/HotStorage/colibri/glm-5.2, .../deepseek-v4-flash. See the
-  ;; deployment conversation for the one-time setup and the swap procedure.
+  ;; under models/colibri/ (identical layout on both drives) rather than a
+  ;; specific model's directory directly, so switching models is a
+  ;; filesystem operation (repoint both symlinks, chown the new targets,
+  ;; herd restart) — no guix system reconfigure needed for routine swaps.
+  ;; Model directories live as siblings of current, e.g. .../glm-5.2,
+  ;; .../deepseek-v4-flash. The config was made to match each drive's
+  ;; actual on-disk layout rather than the other way around.
   ;;
   ;; Keeping both symlinks pointing at the SAME model is a manual
   ;; discipline requirement now, not something enforced automatically:
@@ -268,8 +268,8 @@
   (service colibri-service-type
            (colibri-configuration
             (package colibri-engine-cuda)
-            (model-dir "/media/HotStorage/colibri/current")
-            (model-mirror "/media/WarmStorage/colibri/current")
+            (model-dir "/media/HotStorage/models/colibri/current")
+            (model-mirror "/media/WarmStorage/models/colibri/current")
             (direct-io? #t)
             (pipe? #t)
             ;; Per-turn latency percentiles, expert-I/O totals, cache-tier
