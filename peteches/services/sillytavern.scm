@@ -174,7 +174,13 @@
         (username (sillytavern-configuration-basic-auth-username config)))
     (append (list (string-append "HOME=" state-dir)
                   (string-append "npm_config_cache=" cache-dir)
-                  "PATH=/run/current-system/profile/bin:/run/current-system/profile/sbin")
+                  "PATH=/run/current-system/profile/bin:/run/current-system/profile/sbin"
+                  ;; #:environment-variables replaces the process
+                  ;; environment outright rather than extending it, and
+                  ;; git/npm have no built-in fallback CA path on Guix —
+                  ;; same lesson as colibri's missing ldd, same fix
+                  ;; comfyui.scm already established for this exact need.
+                  "SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt")
             (if (not (null? allowed-hosts))
                 (list "SILLYTAVERN_HOSTWHITELIST_ENABLED=true"
                       (string-append
