@@ -16,6 +16,7 @@
   #:use-module (gnu services desktop)
   #:use-module (gnu services certbot)
   #:use-module (gnu packages base)           ; e.g. glibc-locales if you want it
+  #:use-module (sops secrets)
   #:use-module (peteches systems base)
   #:use-module (peteches services firewall)
   #:use-module (peteches services comfyui)
@@ -179,13 +180,26 @@
  #:with-nvidia? #t
  #:with-docker? #t
  #:offload-builds? #f
- ;; Step 1 of 2 for the colibri API key: generates nug's age keypair on
- ;; first boot (/etc/age/keys.pub). Nothing can be encrypted for it until
- ;; that public key exists — see the module comment on with-sops? in
- ;; peteches/systems/base.scm. Once retrieved and committed to age-keys/
- ;; plus added as a .sops.yaml recipient, step 2 adds #:sops-secrets here
- ;; and switches colibri's api-key-file over to the decrypted path.
+ ;; Generates nug's age keypair on first boot (/etc/age/keys.pub) — see
+ ;; the module comment on with-sops? in peteches/systems/base.scm.
  #:with-sops? #t
+ ;; secrets/shared/colibri.yaml carries the colibri API key. It is
+ ;; currently encrypted with nug's age key only, NOT the operator PGP key
+ ;; every other secret in this repo also carries — that recipient needs
+ ;; gpg-agent with the real private key material, which isn't available
+ ;; in the environment that generated this file. Run, from a machine that
+ ;; does have it:
+ ;;   sops updatekeys secrets/shared/colibri.yaml
+ ;; secrets/shared/ is for keys used by more than one machine (client or
+ ;; server) — add a machine's age key to its .sops.yaml recipient list
+ ;; and run `sops updatekeys` again to let it decrypt this too.
+ #:sops-secrets
+ (list
+  (sops-secret
+   (key '("api-key"))
+   (file (local-file "../../secrets/shared/colibri.yaml"))
+   (path "/run/secrets/colibri-api-key")
+   (permissions #o400)))
 
  ;; Host-only services
  #:extra-services
@@ -231,12 +245,10 @@
             ;; Required: colibri refuses to bind beyond localhost without an
             ;; API key (COLI_ALLOW_INSECURE_BIND=1 exists to bypass this,
             ;; deliberately not used — this is reachable over Tailscale via
-            ;; Caddy, not just loopback). Generate the key file directly on
-            ;; nug (never through git): see the deployment conversation for
-            ;; the exact command; root-only-readable is enough since it's
-            ;; read by shepherd's root-privileged start action, not by the
-            ;; colibri user itself.
-            (api-key-file "/etc/keys/colibri-api-key")
+            ;; Caddy, not just loopback). Decrypted from
+            ;; secrets/shared/colibri.yaml by the sops-secrets entry above
+            ;; at boot, not a manually-placed file — see #:sops-secrets.
+            (api-key-file "/run/secrets/colibri-api-key")
             (allowed-hosts (list "colibri.ts.peteches.co.uk"))))
   (simple-service 'nug-guix-publish-firewall
                   firewall-service-type
