@@ -240,22 +240,32 @@
   ;;
   ;; model-dir lives on HotStorage (NVMe), not ColdStorage (spinning HDD):
   ;; expert streaming is a random-read workload, which a platter disk
-  ;; handles catastrophically worse than NVMe. model-mirror duplicates the
-  ;; model onto the WarmStorage NVMe so expert reads split across both
-  ;; drives (COLI_MODEL_MIRROR) instead of bottlenecking on one. direct-io?
-  ;; is enabled to keep the two copies from competing for page cache, per
-  ;; upstream's own guidance for a mirrored setup — worth re-measuring if
-  ;; either drive turns out to be QLC/DRAM-less, where DIRECT can be neutral
-  ;; to negative instead. pipe? is direct-io?'s documented pairing:
-  ;; overlaps expert disk-loads with matmul via I/O worker threads instead
-  ;; of doing them sequentially — byte-identical output, purely a
-  ;; scheduling change. pipe-workers left at the engine's own default (8)
-  ;; until there's a measurement to tune it against.
+  ;; handles catastrophically worse than NVMe.
+  ;;
+  ;; model-dir points at a stable symlink (/media/HotStorage/models/current),
+  ;; not a specific model's directory, so switching models is a filesystem
+  ;; operation (repoint the symlink, chown the new target, herd restart) —
+  ;; no guix system reconfigure needed for routine swaps. See the deployment
+  ;; conversation for the one-time setup and the swap procedure.
+  ;;
+  ;; model-mirror is deliberately NOT set here: it was previously pinned to
+  ;; GLM-5.2's specific WarmStorage copy, but with model-dir now able to
+  ;; point at a different model at any time, a mirror pinned to a specific
+  ;; other model would silently desync — colibri expects primary and mirror
+  ;; to be byte-identical copies of the *same* model, not two different
+  ;; ones. Re-add it once settled on a model that's actually mirrored onto
+  ;; WarmStorage under the matching name.
+  ;;
+  ;; direct-io? and pipe? aren't mirror-specific — DIRECT (O_DIRECT) is a
+  ;; general NVMe win per upstream's own guidance, independent of whether
+  ;; a second copy exists; pipe? overlaps expert disk-loads with matmul via
+  ;; I/O worker threads instead of doing them sequentially — byte-identical
+  ;; output, purely a scheduling change. pipe-workers left at the engine's
+  ;; own default (8) until there's a measurement to tune it against.
   (service colibri-service-type
            (colibri-configuration
             (package colibri-engine-cuda)
-            (model-dir "/media/HotStorage/models/colibri")
-            (model-mirror "/media/WarmStorage/models/colibri")
+            (model-dir "/media/HotStorage/models/current")
             (direct-io? #t)
             (pipe? #t)
             ;; Per-turn latency percentiles, expert-I/O totals, cache-tier
