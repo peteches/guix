@@ -236,13 +236,18 @@
   ;; is enabled to keep the two copies from competing for page cache, per
   ;; upstream's own guidance for a mirrored setup — worth re-measuring if
   ;; either drive turns out to be QLC/DRAM-less, where DIRECT can be neutral
-  ;; to negative instead.
+  ;; to negative instead. pipe? is direct-io?'s documented pairing:
+  ;; overlaps expert disk-loads with matmul via I/O worker threads instead
+  ;; of doing them sequentially — byte-identical output, purely a
+  ;; scheduling change. pipe-workers left at the engine's own default (8)
+  ;; until there's a measurement to tune it against.
   (service colibri-service-type
            (colibri-configuration
             (package colibri-engine-cuda)
             (model-dir "/media/HotStorage/models/colibri")
             (model-mirror "/media/WarmStorage/models/colibri")
             (direct-io? #t)
+            (pipe? #t)
             (host "0.0.0.0")
             (open-firewall? #t)
             (auto-start? #t)

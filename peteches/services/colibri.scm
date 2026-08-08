@@ -93,6 +93,17 @@
   ;; matches the engine's own default (buffered reads).
   (direct-io? colibri-configuration-direct-io?
               (default #f))
+  ;; Overlap expert disk-load with matmul via I/O worker threads (PIPE).
+  ;; Byte-identical output — this only reorders I/O, no quality tradeoff.
+  ;; Upstream specifically calls out pairing this with direct-io? for a
+  ;; mirrored dual-drive setup. Default #f matches the engine's own default
+  ;; (sequential load-then-compute).
+  (pipe? colibri-configuration-pipe?
+         (default #f))
+  ;; Loader thread count when pipe? is set. #f leaves the engine's own
+  ;; default (8); tune to actual NVMe queue depth once measured.
+  (pipe-workers colibri-configuration-pipe-workers
+                (default #f))
   (model-id colibri-configuration-model-id
             (default #f))
 
@@ -198,6 +209,8 @@
   (let ((state-dir (colibri-resolved-state-dir config))
         (model-mirror (colibri-configuration-model-mirror config))
         (direct-io? (colibri-configuration-direct-io? config))
+        (pipe? (colibri-configuration-pipe? config))
+        (pipe-workers (colibri-configuration-pipe-workers config))
         (gpu (colibri-configuration-gpu config))
         (cuda-devices (colibri-configuration-cuda-visible-devices config)))
     (append (list (string-append "HOME=" state-dir)
@@ -207,6 +220,13 @@
                 '())
             (if direct-io?
                 (list "DIRECT=1")
+                '())
+            (if pipe?
+                (list "PIPE=1")
+                '())
+            (if pipe-workers
+                (list (string-append "PIPE_WORKERS="
+                                     (number->string pipe-workers)))
                 '())
             ;; libcuda.so.1 (the driver's userspace lib, not part of
             ;; cuda-toolkit) lives under the system profile via nonguix's
