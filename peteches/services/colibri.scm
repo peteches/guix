@@ -283,20 +283,29 @@
                             '(networking file-systems sops-secrets)
                             '(networking file-systems)))
            (auto-start? (colibri-configuration-auto-start? config))
+           ;; The key goes in via COLI_API_KEY (coli serve's own env-var
+           ;; fallback for --api-key), never as a CLI argument: shepherd's
+           ;; own `herd status` prints the full argv verbatim, which would
+           ;; put the plaintext key on screen (and in scrollback, logs,
+           ;; anything that captures that output) every time anyone checks
+           ;; on the service. Environment variables don't appear there.
            (start #~(lambda _
                       (let* ((key-file #$api-key-file)
-                             (key-opt (if key-file
-                                          (list "--api-key"
-                                                (string-trim-right
-                                                 (call-with-input-file key-file
-                                                   (@ (ice-9 rdelim) read-line))))
+                             (key-env (if key-file
+                                          (list
+                                           (string-append
+                                            "COLI_API_KEY="
+                                            (string-trim-right
+                                             (call-with-input-file key-file
+                                               (@ (ice-9 rdelim) read-line)))))
                                           '())))
                         ((make-forkexec-constructor
-                          (append (list #$bin #$@args) key-opt)
+                          (append (list #$bin #$@args))
                           #:user #$user
                           #:group #$group
                           #:log-file #$log-file
-                          #:environment-variables (list #$@env))))))
+                          #:environment-variables
+                          (append (list #$@env) key-env))))))
            (stop #~(make-kill-destructor))))))
 
 (define (colibri-firewall-rules config)
