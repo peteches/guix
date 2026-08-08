@@ -179,6 +179,13 @@
  #:with-nvidia? #t
  #:with-docker? #t
  #:offload-builds? #f
+ ;; Step 1 of 2 for the colibri API key: generates nug's age keypair on
+ ;; first boot (/etc/age/keys.pub). Nothing can be encrypted for it until
+ ;; that public key exists — see the module comment on with-sops? in
+ ;; peteches/systems/base.scm. Once retrieved and committed to age-keys/
+ ;; plus added as a .sops.yaml recipient, step 2 adds #:sops-secrets here
+ ;; and switches colibri's api-key-file over to the decrypted path.
+ #:with-sops? #t
 
  ;; Host-only services
  #:extra-services

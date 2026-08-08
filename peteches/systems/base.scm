@@ -87,10 +87,14 @@
 
   #:use-module (gnu system nss)
 
+  #:use-module (sops secrets)
+  #:use-module (sops services sops)
+
   #:use-module (peteches systems common)
   #:use-module (peteches services boltd)
   #:use-module (peteches services firewall)
   #:use-module (peteches services tailscale)
+  #:use-module (peteches services sops-key-generator)
   #:use-module (peteches packages nvidia-container-runtime)
   #:use-module (peteches packages hyprland)
   ;; NOTE: `greetd-gtkgreet-service' (singular) is exported but no such
@@ -381,6 +385,20 @@
           (users-extra '())
           (extra-services '())
           (extra-packages '())
+          ;; SOPS support (see peteches/services/sops-key-generator and
+          ;; docs/secrets-management.org). Unlike make-vm-os (vm-base.scm),
+          ;; whose VMs get their age key baked into the image at provisioning
+          ;; time by CI, a desktop has no such pipeline, so with-sops? and
+          ;; sops-secrets are deliberately independent rather than inferring
+          ;; the former from the latter being non-empty: with-sops? #t alone
+          ;; starts sops-key-generator-service-type to generate
+          ;; /etc/age/keys.pub on first boot, with nothing yet to decrypt —
+          ;; nothing CAN be encrypted for a key that doesn't exist yet. Only
+          ;; after that key is committed to age-keys/ and added as a
+          ;; .sops.yaml recipient does a follow-up reconfigure adding actual
+          ;; sops-secrets entries have anything to decrypt.
+          (with-sops? #f)
+          (sops-secrets '())
           ;; flags
           (laptop? #f)
           (intel-cpu? #t)
@@ -438,6 +456,16 @@
          (printing-services (if with-printing? (list (service cups-service-type)) '()))
          (bluetooth-services (if with-bluetooth? (list (service bluetooth-service-type)) '()))
          (nonguix-services (if with-nonguix? (list (nonguix-substitute-service)) '()))
+         (sops-services
+          (if with-sops?
+              (cons (service sops-key-generator-service-type)
+                    (if (not (null? sops-secrets))
+                        (list (service sops-secrets-service-type
+                                       (sops-service-configuration
+                                        (age-key-file "/etc/age/keys.txt")
+                                        (secrets sops-secrets))))
+                        '()))
+              '()))
          (desktop* (without-gdm #:offload-builds? offload-builds?))
 	 (hyprland-session-command
           #~#$(hyprland-launcher with-nvidia?))
@@ -459,6 +487,7 @@
 		  nvidia-services
 		  docker-services
 		  peteches-tailscale-services
+		  sops-services
 		  extra-services)))
     (operating-system
      (kernel kernel)
