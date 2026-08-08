@@ -219,9 +219,19 @@
 	     (open-firewall? #t)
 	     (container-extra-shares (list "/media/ColdStorage")))))
   ;; CUDA-enabled (colibri-engine-cuda, sm_89/Ada — see
-  ;; peteches/packages/colibri.scm) but deliberately capped well below the
-  ;; RTX 4090's 24GB: vram-gb 6 + the engine's own ~2GB CUDA_RESERVE_GB
-  ;; ceiling leaves ComfyUI ~16GB of headroom. Reached via Caddy at
+  ;; peteches/packages/colibri.scm), capped at vram-gb 12: a static middle
+  ;; ground, not a dynamic split — colibri has no live/signal-based VRAM
+  ;; reconfiguration (fixed at process start) and this repo has no cross-
+  ;; service reactive/watcher pattern to build "colibri yields when ComfyUI
+  ;; needs VRAM" on, so a restart-cycling watcher was ruled out as its own
+  ;; project that would cost the warm cache it's meant to protect. 12GB +
+  ;; the engine's own ~2GB CUDA_RESERVE_GB leaves ComfyUI ~10GB — measured
+  ;; via `coli plan`/`coli doctor` to matter: projected_hit_rate was 9.35%
+  ;; at the previous 6GB cap vs 24.13% with the full card free. ComfyUI is
+  ;; needed alongside colibri specifically for in-roleplay illustrations via
+  ;; SillyTavern's image-gen extension, not just separate heavy sessions, so
+  ;; some headroom stays reserved rather than maximizing colibri outright.
+  ;; Reached via Caddy at
   ;; colibri.ts.peteches.co.uk -> nug.spaniel-cordylus.ts.net:8000 (see
   ;; peteches/systems/caddy.scm); --allowed-host must match that public
   ;; domain because Caddy forwards the client's original Host header
@@ -256,7 +266,7 @@
             (open-firewall? #t)
             (auto-start? #t)
             (gpu "auto")
-            (vram-gb 6)
+            (vram-gb 12)
             ;; Required: colibri refuses to bind beyond localhost without an
             ;; API key (COLI_ALLOW_INSECURE_BIND=1 exists to bypass this,
             ;; deliberately not used — this is reachable over Tailscale via
