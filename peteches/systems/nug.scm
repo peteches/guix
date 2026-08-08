@@ -19,6 +19,7 @@
   #:use-module (peteches systems base)
   #:use-module (peteches services firewall)
   #:use-module (peteches services comfyui)
+  #:use-module (peteches packages colibri)
   #:use-module (peteches services colibri)
   #:use-module (peteches systems network-mounts)
   #:use-module (gnu packages admin)
