@@ -88,19 +88,35 @@ CPU-only: no CUDA, Metal, or Vulkan backend is compiled in.")
 
 ;; See the module comment for why CUDA_ARCH is pinned rather than left at the
 ;; Makefile's default `native`.
+;;
+;; `arguments' and `inputs' are both written as fully literal lists rather
+;; than derived from colibri-engine's via substitute-keyword-arguments /
+;; (cons cuda (package-inputs colibri-engine)) — both are "thunked" package
+;; fields, re-evaluated later in a context that doesn't reliably preserve
+;; macro expansion or round-trip through Guix's input-normalization the same
+;; way a literal (list ...) does. The substitute-keyword-arguments form
+;; broke with "substitute-keyword-arguments: unbound variable" and the
+;; cons'd inputs form broke with "invalid input" — both only under `guix
+;; system reconfigure' (package->bag), not under a plain `guix build -e'.
+;; Plain literal data, built only from ordinary procedures (package-
+;; synopsis, package-description), has no such hazard.
 (define-public colibri-engine-cuda
   (package
     (inherit colibri-engine)
     (name "colibri-engine-cuda")
     (arguments
-     (substitute-keyword-arguments (package-arguments colibri-engine)
-       ((#:make-flags old-flags)
-        #~(list (string-append "PREFIX=" #$output)
-                "CUDA=1"
-                (string-append "CUDA_HOME=" #$cuda)
-                "CUDA_ARCH=sm_89"
-                "ARCH=x86-64-v3"))))
-    (inputs (cons cuda (package-inputs colibri-engine)))
+     (list
+      #:tests? #f
+      #:make-flags
+      #~(list (string-append "PREFIX=" #$output)
+              "CUDA=1"
+              (string-append "CUDA_HOME=" #$cuda)
+              "CUDA_ARCH=sm_89"
+              "ARCH=x86-64-v3")
+      #:phases
+      #~(modify-phases %standard-phases
+          (delete 'configure))))
+    (inputs (list cuda python))
     (synopsis
      (string-append (package-synopsis colibri-engine)
                     " (CUDA-enabled)"))
