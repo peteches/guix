@@ -262,6 +262,15 @@
             ;; fill and a tuning verdict on stderr -> colibri.log. Purely
             ;; diagnostic output, no behavioral effect.
             (perf-metrics? #t)
+            ;; Both straight from coli plan/doctor's own tuning verdict for
+            ;; this deployment: draft-tokens 0 disables MTP speculation,
+            ;; which at this cache-hit rate widens the expert union and
+            ;; adds disk reads rather than saving time (byte-identical
+            ;; output regardless — drafts are always verified, never
+            ;; trusted blindly); cuda-pipe? engages the multi-step GPU
+            ;; attention pipeline, recommended for this single-GPU box.
+            (draft-tokens 0)
+            (cuda-pipe? #t)
             (host "0.0.0.0")
             (open-firewall? #t)
             (auto-start? #t)

@@ -113,6 +113,21 @@
   ;; (colibri-profile, profile-service-type).
   (perf-metrics? colibri-configuration-perf-metrics?
                  (default #f))
+  ;; Number of speculative draft tokens per step (DRAFT). Engine default is
+  ;; -1 (auto: 3 with MTP enabled, else 0). #f leaves that auto behavior;
+  ;; set to 0 to disable speculation outright — colibri's own `coli plan`
+  ;; tuning verdict recommends this at low cache-hit rates, where
+  ;; speculation widens the expert union and adds disk reads instead of
+  ;; saving time. Output is byte-identical either way — draft tokens are
+  ;; always verified against the main model, never trusted blindly.
+  (draft-tokens colibri-configuration-draft-tokens
+                (default #f))
+  ;; COLI_CUDA_PIPE: engages the multi-step GPU attention pipeline (1) or
+  ;; the pipe2 path (2). Default #f leaves it off (engine default), matching
+  ;; upstream's own "0 (off)". colibri's own `coli plan` recommends 1 for a
+  ;; single-GPU box.
+  (cuda-pipe? colibri-configuration-cuda-pipe?
+              (default #f))
   (model-id colibri-configuration-model-id
             (default #f))
 
@@ -221,6 +236,8 @@
         (pipe? (colibri-configuration-pipe? config))
         (pipe-workers (colibri-configuration-pipe-workers config))
         (perf-metrics? (colibri-configuration-perf-metrics? config))
+        (draft-tokens (colibri-configuration-draft-tokens config))
+        (cuda-pipe? (colibri-configuration-cuda-pipe? config))
         (gpu (colibri-configuration-gpu config))
         (cuda-devices (colibri-configuration-cuda-visible-devices config)))
     (append (list (string-append "HOME=" state-dir)
@@ -240,6 +257,13 @@
                 '())
             (if perf-metrics?
                 (list "PROF=1")
+                '())
+            (if draft-tokens
+                (list (string-append "DRAFT="
+                                     (number->string draft-tokens)))
+                '())
+            (if cuda-pipe?
+                (list "COLI_CUDA_PIPE=1")
                 '())
             ;; libcuda.so.1 (the driver's userspace lib, not part of
             ;; cuda-toolkit) lives under the system profile via nonguix's
