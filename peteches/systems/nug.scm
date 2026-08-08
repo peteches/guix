@@ -22,6 +22,7 @@
   #:use-module (peteches services comfyui)
   #:use-module (peteches packages colibri)
   #:use-module (peteches services colibri)
+  #:use-module (peteches services sillytavern)
   #:use-module (peteches systems network-mounts)
   #:use-module (gnu packages admin)
   #:use-module (gnu packages rust-apps))
@@ -199,6 +200,11 @@
    (key '("api-key"))
    (file (local-file "../../secrets/shared/colibri.yaml"))
    (path "/run/secrets/colibri-api-key")
+   (permissions #o400))
+  (sops-secret
+   (key '("password"))
+   (file (local-file "../../secrets/shared/sillytavern.yaml"))
+   (path "/run/secrets/sillytavern-password")
    (permissions #o400)))
 
  ;; Host-only services
@@ -250,6 +256,21 @@
             ;; at boot, not a manually-placed file — see #:sops-secrets.
             (api-key-file "/run/secrets/colibri-api-key")
             (allowed-hosts (list "colibri.ts.peteches.co.uk"))))
+  ;; Verified directly (not just reasoned about): a plain `npm install` on
+  ;; this codebase needed no native compilation, and `node server.js`
+  ;; served HTTP cleanly — no FHS-container treatment needed here, unlike
+  ;; ComfyUI. Port 8001, not upstream's default 8000, to avoid colliding
+  ;; with colibri on the same box. Same host-header-guard reasoning as
+  ;; colibri: reachable via Caddy over Tailscale, so whitelistMode (IP-
+  ;; based) is off in favour of hostWhitelist (Host-header based) + basic
+  ;; auth — see peteches/services/sillytavern.scm's module comment.
+  (service sillytavern-service-type
+           (sillytavern-configuration
+            (host "0.0.0.0")
+            (open-firewall? #t)
+            (basic-auth? #t)
+            (basic-auth-password-file "/run/secrets/sillytavern-password")
+            (allowed-hosts (list "sillytavern.ts.peteches.co.uk"))))
   (simple-service 'nug-guix-publish-firewall
                   firewall-service-type
                   (nftables-rules

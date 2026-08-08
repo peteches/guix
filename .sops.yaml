@@ -90,6 +90,13 @@ creation_rules:
     pgp: "5FFB7006A36B0AEDE8D08E3753B1E002546A642A"
     age: "age1g3nsny7xdewga8eatwtapelwn058035s4jwa3lhehh2eu4zzpf3sjvqpsu"
 
+  # Same reasoning as the colibri rule below: its own independently-growable
+  # recipient list, not the general secrets/shared/.*\.yaml$ one.
+  - path_regex: secrets/shared/sillytavern\.yaml$
+    pgp: "5FFB7006A36B0AEDE8D08E3753B1E002546A642A"
+    age:
+      - age1hefq7zlvxhmn6f7gq6s4e27z4ykckel704tgcxz89tqxferg2amshtt9qr  # nug
+
   # Deliberately its own rule rather than falling under the general
   # secrets/shared/.*\.yaml$ rule below: recipients here are "whatever
   # machines actually need the colibri API key" (client or server), a
