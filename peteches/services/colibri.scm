@@ -104,6 +104,15 @@
   ;; default (8); tune to actual NVMe queue depth once measured.
   (pipe-workers colibri-configuration-pipe-workers
                 (default #f))
+  ;; PROF: startup header (machine + effective config) then, per turn in
+  ;; serve mode, forward-latency percentiles (p50/p90/p99/max), expert-I/O
+  ;; totals, cache-tier fill, phase shares of wall time, and a verdict
+  ;; naming the knob most likely to help — all on stderr, which lands in
+  ;; log-file. Named perf-metrics? rather than profile? to avoid reading as
+  ;; the unrelated Guix package-profile concept used elsewhere in this file
+  ;; (colibri-profile, profile-service-type).
+  (perf-metrics? colibri-configuration-perf-metrics?
+                 (default #f))
   (model-id colibri-configuration-model-id
             (default #f))
 
@@ -211,6 +220,7 @@
         (direct-io? (colibri-configuration-direct-io? config))
         (pipe? (colibri-configuration-pipe? config))
         (pipe-workers (colibri-configuration-pipe-workers config))
+        (perf-metrics? (colibri-configuration-perf-metrics? config))
         (gpu (colibri-configuration-gpu config))
         (cuda-devices (colibri-configuration-cuda-visible-devices config)))
     (append (list (string-append "HOME=" state-dir)
@@ -227,6 +237,9 @@
             (if pipe-workers
                 (list (string-append "PIPE_WORKERS="
                                      (number->string pipe-workers)))
+                '())
+            (if perf-metrics?
+                (list "PROF=1")
                 '())
             ;; libcuda.so.1 (the driver's userspace lib, not part of
             ;; cuda-toolkit) lives under the system profile via nonguix's

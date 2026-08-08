@@ -248,6 +248,10 @@
             (model-mirror "/media/WarmStorage/models/colibri")
             (direct-io? #t)
             (pipe? #t)
+            ;; Per-turn latency percentiles, expert-I/O totals, cache-tier
+            ;; fill and a tuning verdict on stderr -> colibri.log. Purely
+            ;; diagnostic output, no behavioral effect.
+            (perf-metrics? #t)
             (host "0.0.0.0")
             (open-firewall? #t)
             (auto-start? #t)
