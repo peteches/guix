@@ -268,14 +268,11 @@
          (log-file (colibri-resolved-log-file config))
          (api-key-file (colibri-configuration-api-key-file config))
          (env (colibri-environment config))
-         (args (colibri-serve-args config))
-         (requirement (if api-key-file
-                          '(networking file-systems sops-secrets)
-                          '(networking file-systems))))
+         (args (colibri-serve-args config)))
     (list (shepherd-service
            (provision (list provision-name))
            (documentation (colibri-configuration-documentation config))
-           (requirement requirement)
+           (requirement '(networking file-systems))
            (auto-start? (colibri-configuration-auto-start? config))
            (start #~(lambda _
                       (let* ((key-file #$api-key-file)

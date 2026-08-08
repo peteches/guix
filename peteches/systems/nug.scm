@@ -221,6 +221,15 @@
             (auto-start? #t)
             (gpu "auto")
             (vram-gb 6)
+            ;; Required: colibri refuses to bind beyond localhost without an
+            ;; API key (COLI_ALLOW_INSECURE_BIND=1 exists to bypass this,
+            ;; deliberately not used — this is reachable over Tailscale via
+            ;; Caddy, not just loopback). Generate the key file directly on
+            ;; nug (never through git): see the deployment conversation for
+            ;; the exact command; root-only-readable is enough since it's
+            ;; read by shepherd's root-privileged start action, not by the
+            ;; colibri user itself.
+            (api-key-file "/etc/keys/colibri-api-key")
             (allowed-hosts (list "colibri.ts.peteches.co.uk"))))
   (simple-service 'nug-guix-publish-firewall
                   firewall-service-type
