@@ -38,6 +38,7 @@
   #:use-module (gnu services base)
   #:use-module (gnu system shadow)
   #:use-module (gnu packages admin)
+  #:use-module (gnu packages base)
   #:use-module (peteches packages colibri)
   #:use-module (peteches services firewall)
   #:export (colibri-configuration colibri-configuration? colibri-service-type))
@@ -304,7 +305,14 @@
       (nftables-rules (input '()))))
 
 (define (colibri-profile config)
-  (list (colibri-configuration-package config)))
+  ;; glibc for `ldd`: coli's Linux CUDA-detection (cuda_binary() in the coli
+  ;; script) shells out to `ldd` on the engine binary and treats any failure
+  ;; to even run it — including a plain "not found on PATH" — as "not a
+  ;; CUDA build", silently falling back to CPU-only. The shepherd service's
+  ;; #:environment-variables replaces the process environment outright
+  ;; rather than extending it, so PATH must actually carry everything the
+  ;; engine or its launcher shells out to, not just the engine itself.
+  (list (colibri-configuration-package config) glibc))
 
 ;;; ── Service type ─────────────────────────────────────────────────────────
 
