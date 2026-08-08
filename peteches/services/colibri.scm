@@ -272,7 +272,16 @@
     (list (shepherd-service
            (provision (list provision-name))
            (documentation (colibri-configuration-documentation config))
-           (requirement '(networking file-systems))
+           ;; sops-secrets' own requirement is user-processes, a fairly
+           ;; late boot milestone, not networking/file-systems — it never
+           ;; runs on its own in time unless something actually depends
+           ;; on it. Without this, reading api-key-file before it's been
+           ;; decrypted fails as "open-fdes: No such file or directory"
+           ;; from inside call-with-input-file (hit for real with the
+           ;; identical bug in sillytavern.scm's daemon service).
+           (requirement (if api-key-file
+                            '(networking file-systems sops-secrets)
+                            '(networking file-systems)))
            (auto-start? (colibri-configuration-auto-start? config))
            (start #~(lambda _
                       (let* ((key-file #$api-key-file)

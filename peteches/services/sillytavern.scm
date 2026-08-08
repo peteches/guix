@@ -343,7 +343,18 @@
                       ;; bootstrapping: shepherd starts a one-shot
                       ;; requirement on demand regardless of its own
                       ;; auto-start?, satisfied permanently once it exits 0.
-                      (requirement (list sync-name))
+                      ;; Same reasoning extends to sops-secrets when a
+                      ;; password file is configured: sops-secrets' own
+                      ;; requirement is user-processes, a fairly late boot
+                      ;; milestone, not networking/file-systems — it will
+                      ;; never run on its own in time unless something
+                      ;; actually depends on it. Omitting this produced
+                      ;; exactly the symptom you'd expect from reading a
+                      ;; not-yet-decrypted file: "open-fdes: No such file or
+                      ;; directory" from inside call-with-input-file.
+                      (requirement (if password-file
+                                       (list sync-name 'sops-secrets)
+                                       (list sync-name)))
                       (auto-start? (sillytavern-configuration-auto-start?
                                     config))
                       (start
