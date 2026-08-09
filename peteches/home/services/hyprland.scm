@@ -68,38 +68,44 @@ those paths will resolve to immutable store locations."))
              (directory-children config-directory))
         '())))
 
-;; Determine runtime dir (fallback to /tmp)
-(define xdg-runtime-dir
-  (or (getenv "XDG_RUNTIME_DIR")
-      (string-append "/run/user/"
-                     (number->string (getuid)))))
-
-(define hypr-root
-  (string-append xdg-runtime-dir "/hypr"))
-
-(define (find-hypr-instance)
-  (and (file-exists? hypr-root)
-       (let ((entries (scandir hypr-root
-                               (lambda (name)
-                                 (and (not (member name
-                                                   '("." "..")))
-                                      (file-is-directory? (string-append
-                                                           hypr-root "/" name)))))))
-         (if (null? entries) #f
-             ;; usually only one instance, pick the newest
-             (car (sort entries
-                        (lambda (a b)
-                          (> (stat:mtime (stat (string-append hypr-root "/" a)))
-                             (stat:mtime (stat (string-append hypr-root "/" b)))))))))))
-
-(define (hypr-socket-path)
-  (let ((sig (find-hypr-instance)))
-    (and sig
-         (string-append hypr-root "/" sig "/.socket.sock"))))
-
+;; The lookups below must run *inside* the activation gexp, at activation
+;; time -- not here at module load / derivation-build time.  `guix home
+;; reconfigure` computes the activation script long before it runs it, and
+;; often from a session where Hyprland isn't the one invoking it (e.g. an
+;; SSH session), so evaluating them here would frequently bake in `#f` for
+;; the socket path and crash `make-socket-address` when the script runs.
 (define (home-hyprland-activation-service-type config)
   #~(begin
-      (use-modules (ice-9 iconv))
+      (use-modules (ice-9 iconv) (ice-9 ftw))
+
+      (define xdg-runtime-dir
+        (or (getenv "XDG_RUNTIME_DIR")
+            (string-append "/run/user/"
+                           (number->string (getuid)))))
+
+      (define hypr-root
+        (string-append xdg-runtime-dir "/hypr"))
+
+      (define (find-hypr-instance)
+        (and (file-exists? hypr-root)
+             (let ((entries (scandir hypr-root
+                                     (lambda (name)
+                                       (and (not (member name
+                                                         '("." "..")))
+                                            (file-is-directory? (string-append
+                                                                 hypr-root "/" name)))))))
+               (if (null? entries) #f
+                   ;; usually only one instance, pick the newest
+                   (car (sort entries
+                              (lambda (a b)
+                                (> (stat:mtime (stat (string-append hypr-root "/" a)))
+                                   (stat:mtime (stat (string-append hypr-root "/" b)))))))))))
+
+      (define (hypr-socket-path)
+        (let ((sig (find-hypr-instance)))
+          (and sig
+               (string-append hypr-root "/" sig "/.socket.sock"))))
+
       (define (hypr-send socket-path command)
         ;; Create a Unix domain stream socket, like (socket PF_INET SOCK_STREAM 0)
         ;; but AF_UNIX instead of PF_INET.
@@ -114,8 +120,13 @@ those paths will resolve to immutable store locations."))
           (send s
                 (string->bytevector command "utf8"))
           (force-output s)))
-      (hypr-send #$(hypr-socket-path) "reload")
-      (hypr-send #$(hypr-socket-path) "dispatch exec dms restart")))
+
+      ;; Skip silently if no Hyprland instance is running (e.g. reconfiguring
+      ;; from an SSH session or before Hyprland has started).
+      (let ((socket-path (hypr-socket-path)))
+        (when socket-path
+          (hypr-send socket-path "reload")
+          (hypr-send socket-path "dispatch exec dms restart")))))
 
 (define (home-hyprland-environment-variables-service-type config)
   `(("XDG_SESSION_TYPE" . "wayland") ("XDG_CURRENT_DESKTOP" . "Hyprland")
