@@ -12,9 +12,6 @@
 ;;; base.scm for the full picture, and prefer the `/update-channels' skill
 ;;; over editing pins here directly.
 
-(define-module (peteches channels manual)
-  #:use-module (gnu)
-  #:use-module (guix channels))
 ;;;
 ;;; A `define-module' header (matching this file's path) makes guix load it
 ;;; cleanly when it scans the `-L .' load path — `guix home'/`guix system'
