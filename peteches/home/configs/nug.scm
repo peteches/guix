@@ -15,10 +15,13 @@
 ;;;                             the firewall in (peteches systems base).
 ;;;       5002 koboldcpp-rp   — SillyTavern RP backend: dense 24B RP
 ;;;                             finetune (MS3.2-PaintedFantasy-v4.1-24B),
-;;;                             32K context, TTS/whisper attached, no SD
-;;;                             (use ComfyUI for image gen instead — the
-;;;                             VRAM budget at this quant/context doesn't
-;;;                             leave room for a resident SD checkpoint).
+;;;                             16K context, TTS/whisper attached (CPU),
+;;;                             partial GPU offload (--gpulayers 20) —
+;;;                             ComfyUI's Z-Image-Turbo process holds
+;;;                             ~12GB VRAM permanently and must stay
+;;;                             loaded concurrently, so full offload
+;;;                             doesn't fit.  No SD attached here; use
+;;;                             ComfyUI for image gen instead.
 ;;;     Both bind host "::" (all interfaces) and serve HTTPS using the
 ;;;     certbot-issued cert that peteches/systems/nug.scm's %fix-perms-hook
 ;;;     concatenates into ~/.local/share/certs/nug.peteches.co.uk.pem.
@@ -253,15 +256,22 @@
    ;; (huggingface.co/Qwen/Qwen3-30B-A3B/discussions/23) and neither has
    ;; RP-specific tuning — abliteration only strips refusals.
    ;;
-   ;; VRAM budget at Q5_K_M + 32K context: ~16.8GB weights + ~2.5GB KV
-   ;; cache (flash attention + --quantkv 1 = Q8 K/V) + ~1GB runtime
-   ;; overhead + TTS/whisper (<1GB) ≈ 21GB used, ~3GB headroom on the
-   ;; 24GB 4090 — comfortably fits fully on GPU, no CPU/RAM offload
-   ;; needed.  Stable Diffusion (previously attached to both instances)
-   ;; deliberately dropped here: it does not fit in the remaining
-   ;; headroom at this quant/context, and text RP quality/context rank
-   ;; above image-gen in priority.  Use ComfyUI (already referenced
-   ;; elsewhere in this config) for image generation instead.
+   ;; ComfyUI (/srv/comfyui, Z-Image-Turbo) is a separate always-on
+   ;; process that permanently holds ~12GB VRAM on this card (see
+   ;; `nvidia-smi` — PID resident, not on-demand), and it must stay
+   ;; loaded concurrently with this instance.  That leaves only ~12GB
+   ;; for koboldcpp, so full GPU offload of a Q5_K_M 24B model (~16GB
+   ;; weights alone) is not possible here — partial CPU/RAM offload is
+   ;; mandatory, not optional.  --gpulayers 20 (of 40 dense layers) and
+   ;; --ttsgpu removed (TTS now runs on CPU, matching koboldcpp-qwen's
+   ;; default) are a conservative starting point sized from
+   ;; ~380MiB/layer weights + proportional KV share, leaving safety
+   ;; margin against the ~12GB ComfyUI reserves.  --contextsize dropped
+   ;; from 32768 to 16384 for the same reason.  Offloading costs
+   ;; generation speed, not quality — tune --gpulayers/--contextsize
+   ;; upward from real `nvidia-smi`/`herd status koboldcpp-rp` numbers
+   ;; once this is confirmed stable; this pairing was not live-tested
+   ;; before being committed.
    (service koboldcpp-service-type
 	    (koboldcpp-configuration
 	     (service-name "koboldcpp-rp")
@@ -274,9 +284,8 @@
 	     (ssl-key  (home-abs-path ".local/share/certs/nug.peteches.co.uk.pem"))
 	     (extra-args (list "--usecuda"
 			       "--websearch"
-			       "--ttsgpu"
-			       "--gpulayers" "999"
-			       "--contextsize" "32768"
+			       "--gpulayers" "20"
+			       "--contextsize" "16384"
 			       "--flashattention"
 			       "--quantkv" "1"))))
 
