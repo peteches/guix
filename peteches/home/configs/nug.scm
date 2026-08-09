@@ -8,14 +8,18 @@
 ;;;
 ;;; nug-specific:
 ;;;   - NVIDIA/Steam/CUDA userspace, Blender, 3D-printing (lycheeslicer).
-;;;   - Three koboldcpp instances, one per model/port:
+;;;   - Two koboldcpp instances, one per model/port:
 ;;;       5001 qwen2.5-coder  — the coding model; ECA points here
 ;;;                             (see (peteches home modules ai)) and
 ;;;                             $COMFYUI_URL/KoboldCpp ports are opened in
 ;;;                             the firewall in (peteches systems base).
-;;;       5002 dolphin + SD   — chat + image gen
-;;;       5003 dolphin        — chat + image gen
-;;;     All bind host "::" (all interfaces) and serve HTTPS using the
+;;;       5002 koboldcpp-rp   — SillyTavern RP backend: dense 24B RP
+;;;                             finetune (MS3.2-PaintedFantasy-v4.1-24B),
+;;;                             32K context, TTS/whisper attached, no SD
+;;;                             (use ComfyUI for image gen instead — the
+;;;                             VRAM budget at this quant/context doesn't
+;;;                             leave room for a resident SD checkpoint).
+;;;     Both bind host "::" (all interfaces) and serve HTTPS using the
 ;;;     certbot-issued cert that peteches/systems/nug.scm's %fix-perms-hook
 ;;;     concatenates into ~/.local/share/certs/nug.peteches.co.uk.pem.
 ;;;     That deploy hook must run before these services can start.
@@ -236,37 +240,43 @@
 			       "--gpulayers" "999"
 			       "--contextsize" "16384"
 			       "--flashattention"))))
+   ;; Roleplay instance (SillyTavern backend).  Replaces the former
+   ;; koboldcpp-dolphin-sd (:5002) / koboldcpp-dolphin (:5003) pair —
+   ;; consolidated to a single dense 24B model so the full 24GB card goes
+   ;; to model weights + a 32K KV cache instead of splitting VRAM across
+   ;; two simultaneously-loaded ~24B checkpoints.  Dolphin-Mistral-24B
+   ;; Venice-Edition replaced with MS3.2-PaintedFantasy-v4.1-24B
+   ;; (zerofata) Q5_K_M: a dense Mistral-Small-3.2-24B-based finetune
+   ;; purpose-built for character-driven RP, chosen over the
+   ;; Qwen3.5-35B-A3B/Qwen3-30B-A3B abliterated MoE candidates because
+   ;; that MoE family has documented severe RP repetition
+   ;; (huggingface.co/Qwen/Qwen3-30B-A3B/discussions/23) and neither has
+   ;; RP-specific tuning — abliteration only strips refusals.
+   ;;
+   ;; VRAM budget at Q5_K_M + 32K context: ~16.8GB weights + ~2.5GB KV
+   ;; cache (flash attention + --quantkv 1 = Q8 K/V) + ~1GB runtime
+   ;; overhead + TTS/whisper (<1GB) ≈ 21GB used, ~3GB headroom on the
+   ;; 24GB 4090 — comfortably fits fully on GPU, no CPU/RAM offload
+   ;; needed.  Stable Diffusion (previously attached to both instances)
+   ;; deliberately dropped here: it does not fit in the remaining
+   ;; headroom at this quant/context, and text RP quality/context rank
+   ;; above image-gen in priority.  Use ComfyUI (already referenced
+   ;; elsewhere in this config) for image generation instead.
    (service koboldcpp-service-type
 	    (koboldcpp-configuration
-	     (service-name "koboldcpp-dolphin-sd")
-	     (model-name "Dolphin-Mistral-24B-Venice-Edition-Q4_K_S.gguf")
+	     (service-name "koboldcpp-rp")
+	     (model-name "MS3.2-PaintedFantasy-v4.1-24B-Q5_K_M.gguf")
 	     (host "::")
 	     (port 5002)
 	     (whisper-model "whisper-small-q5_1.bin")
 	     (tts-model "Kokoro_no_espeak_Q4.gguf")
-	     (sd-model "pornworksRealPorn_v03.safetensors")
 	     (ssl-cert (home-abs-path ".local/share/certs/nug.peteches.co.uk.pem"))
 	     (ssl-key  (home-abs-path ".local/share/certs/nug.peteches.co.uk.pem"))
 	     (extra-args (list "--usecuda"
 			       "--websearch"
 			       "--ttsgpu"
 			       "--gpulayers" "999"
-			       "--contextsize" "8192"
-			       "--flashattention"
-			       "--quantkv" "1"))))
-   (service koboldcpp-service-type
-	    (koboldcpp-configuration
-	     (service-name "koboldcpp-dolphin")
-	     (model-name "Dolphin-Mistral-24B-Venice-Edition-Q5_K_S.gguf")
-	     (sd-model "cyberrealisticLCM_cyberrealistic42.safetensors")
-	     (host "::")
-	     (port 5003)
-	     (ssl-cert (home-abs-path ".local/share/certs/nug.peteches.co.uk.pem"))
-	     (ssl-key  (home-abs-path ".local/share/certs/nug.peteches.co.uk.pem"))
-	     (extra-args (list "--usecuda"
-			       "--websearch"
-			       "--gpulayers" "999"
-			       "--contextsize" "16386"
+			       "--contextsize" "32768"
 			       "--flashattention"
 			       "--quantkv" "1"))))
 
