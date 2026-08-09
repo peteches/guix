@@ -210,6 +210,23 @@
  ;; Host-only services
  #:extra-services
  (list
+  ;; Restored 2026-08-09: deleted in ec83cfe ("Remove unused Tailscale
+  ;; and Certbot configurations", 2026-06-05) as apparently-dead code —
+  ;; it wasn't unused, %fix-perms-hook's only caller was this service.
+  ;; Deleting it silently stopped LE renewal for nug.peteches.co.uk,
+  ;; which koboldcpp-rp and sillytavern's SSL both depend on. Renews
+  ;; twice daily via the 'certbot-certificate-renewal shepherd timer
+  ;; (manually: `sudo herd trigger certbot-certificate-renewal`), plus
+  ;; once at boot via 'renew-certbot-certificates. deploy-hook re-runs
+  ;; %fix-perms-hook to refresh ~/.local/share/certs/nug.peteches.co.uk.pem.
+  (service certbot-service-type
+           (certbot-configuration
+            (email "certbot@peteches.co.uk")
+            (certificates
+             (list
+              (certificate-configuration
+               (domains '("nug.peteches.co.uk"))
+               (deploy-hook %fix-perms-hook))))))
   (service comfyui-service-type
            (list
 	    (comfyui-configuration
