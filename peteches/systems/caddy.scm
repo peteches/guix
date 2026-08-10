@@ -107,6 +107,9 @@
                    (domain "sillytavern.ts.peteches.co.uk")
                    (upstream "nug.spaniel-cordylus.ts.net:8001"))
                   (caddy-reverse-proxy
+                   (domain "comfyui.ts.peteches.co.uk")
+                   (upstream "nug.spaniel-cordylus.ts.net:8188"))
+                  (caddy-reverse-proxy
                    (domain "pihole.ts.peteches.co.uk")
                    (upstream "pihole.spaniel-cordylus.ts.net:80/admin"))
                   (caddy-reverse-proxy
