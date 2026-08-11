@@ -421,7 +421,7 @@
                                            ;; that --emulate-fhs never populates,
                                            ;; and git fetches inside the
                                            ;; container fail TLS verification.
-                                           (@ (gnu packages certs) nss-certs)
+                                           (@ (gnu packages nss) nss-certs)
                                            python-pkg
                                            uv-pkg)
                                      extra-pkgs)))
