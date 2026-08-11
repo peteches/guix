@@ -415,6 +415,13 @@
                                            (@ (gnu packages version-control) git)
                                            c-compiler-pkg
                                            (@ (gnu packages linux) linux-libre-headers)
+                                           ;; Without this, SSL_CERT_FILE
+                                           ;; (see comfyui-environment) points at
+                                           ;; an /etc/ssl/certs/ca-certificates.crt
+                                           ;; that --emulate-fhs never populates,
+                                           ;; and git fetches inside the
+                                           ;; container fail TLS verification.
+                                           (@ (gnu packages certs) nss-certs)
                                            python-pkg
                                            uv-pkg)
                                      extra-pkgs)))
