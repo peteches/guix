@@ -12,7 +12,10 @@
 ;;; what `guix home' consumes.
 
 (define-module (peteches home configs claude-workstation-peteches)
-  #:use-module (peteches home modules claude-workstation))
+  #:use-module (guix gexp)
+  #:use-module ((peteches packages comfyui-mcp) #:select (node-comfyui-mcp))
+  #:use-module (peteches home modules claude-workstation)
+  #:use-module (peteches home modules claude))
 
 ;; Repos pre-cloned into ~/area_51/<name>.  Each entry is (NAME URL).
 ;; EDIT ME: add the repos this account works on, with real clone URLs.
@@ -25,7 +28,14 @@
   (make-claude-workstation-home
  #:git-name "Pete 'Peteches' McCabe"
  #:git-email "claude@peteches.co.uk"
- #:repos %peteches-repos))
+ #:repos %peteches-repos
+ ;; nug's always-on ComfyUI instance, reached via the Caddy reverse proxy
+ ;; (peteches/systems/caddy.scm) rather than nug's Tailscale host directly.
+ #:mcp-env '(("COMFYUI_URL" . "https://comfyui.ts.peteches.co.uk"))
+ #:mcp-servers
+ (list (home-claude-mcp-server
+        (name "comfyui")
+        (command (file-append node-comfyui-mcp "/bin/comfyui-mcp"))))))
 
 claude-workstation-peteches-home
 
