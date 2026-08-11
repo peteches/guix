@@ -82,8 +82,7 @@
   ;; ssh-agent only, so ssh:// would need an agent on every pulling machine.
   ;; No introduction: commits are unauthenticated and guix pull will say so.
   (url "https://git.ts.peteches.co.uk/git/critical-grind-campaign.git")
-  (branch "main")
-  (commit "ceb1ae7caf339a65676f1b70e38666f21e4f316f"))
+  (branch "main"))
 
  (channel
   (name 'guix-hpc-non-free)
