@@ -22,6 +22,7 @@
   #:use-module (guix gexp)
   #:use-module (guix records)
   #:use-module (guix packages)
+  #:use-module (guix profiles)
   #:use-module (gnu services)
   #:use-module (gnu services shepherd)
   #:use-module (gnu services base)
@@ -461,6 +462,16 @@
 ;; own bin/python3 symlink, an already's-been-through-uv package) would
 ;; otherwise be invisible inside the container.  `--expose=/gnu/store'
 ;; sidesteps having to enumerate every such path by hand.
+;;
+;; Packages are passed to `guix shell' as a prebuilt --profile=, not as bare
+;; names: the invoked guix-pkg binary only resolves names against its own
+;; bundled (gnu packages ...) tree, which does not include external
+;; channels like guix-science-nonfree — passing e.g. "cuda-toolkit" by name
+;; fails at runtime with "unknown package" even though the package resolved
+;; fine at reconfigure time via this file's own #:use-module. A profile is
+;; built from the actual package objects here (with whatever -L this was
+;; reconfigured with), so its store path already encodes the resolution and
+;; the container script only ever references it opaquely.
 (define (comfyui-container-runner-file config suffix env inner-command)
   (let* ((service-name (comfyui-configuration-service-name config))
          (uv-project-dir (comfyui-configuration-uv-project-dir config))
@@ -473,8 +484,7 @@
          (extra-pkgs (comfyui-configuration-container-extra-packages config))
          (extra-shares (comfyui-configuration-container-extra-shares config))
          (extra-exposes (comfyui-configuration-container-extra-exposes config))
-         (package-names (map package-name
-                             (append (list (@ (gnu packages base) coreutils)
+         (container-packages (append (list (@ (gnu packages base) coreutils)
                                            (@ (gnu packages bash) bash)
                                            (@ (gnu packages version-control) git)
                                            c-compiler-pkg
@@ -488,7 +498,11 @@
                                            (@ (gnu packages nss) nss-certs)
                                            python-pkg
                                            uv-pkg)
-                                     extra-pkgs)))
+                                     extra-pkgs))
+         (container-profile (profile
+                              (name (string-append service-name suffix
+                                                   "-container-profile"))
+                              (content (packages->manifest container-packages))))
          (static-args (append
                        (list "--container" "--emulate-fhs" "--network"
                              "--expose=/gnu/store"
@@ -500,8 +514,7 @@
                            (list (string-append "--share=" uv-env))
                            '())
                        (map (lambda (s) (string-append "--share=" s)) extra-shares)
-                       (map (lambda (s) (string-append "--expose=" s)) extra-exposes)
-                       package-names))
+                       (map (lambda (s) (string-append "--expose=" s)) extra-exposes)))
          (guix-pkg (@ (gnu packages package-management) guix)))
     (program-file
      (string-append service-name suffix "-container-runner")
@@ -529,6 +542,8 @@
                              (or (scandir "/dev") '())))
                 (args (append (list "shell")
                               (list #$@static-args)
+                              (list (string-append "--profile="
+                                                   #$container-profile))
                               nvidia-exposes
                               (map preserve-flag (list #$@env))
                               (list "--")
