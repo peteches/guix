@@ -125,6 +125,9 @@
                    (domain "radarr.ts.peteches.co.uk")
                    (upstream "arr.spaniel-cordylus.ts.net:7878"))
                   (caddy-reverse-proxy
+                   (domain "lidarr.ts.peteches.co.uk")
+                   (upstream "arr.spaniel-cordylus.ts.net:8686"))
+                  (caddy-reverse-proxy
                    (domain "nzbget.ts.peteches.co.uk")
                    (upstream "downloads.spaniel-cordylus.ts.net:6789"))
                   (caddy-reverse-proxy
