@@ -210,8 +210,7 @@
    unzip
    btop
    proxmox-scripts
-   (specification->package "imagemagick")
-   (specification->package "strawberry")))
+   (specification->package "imagemagick")))
 
 ;; 2) Shared services (with your existing configs).
 (define-public base-services
