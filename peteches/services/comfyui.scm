@@ -22,7 +22,6 @@
   #:use-module (guix gexp)
   #:use-module (guix records)
   #:use-module (guix packages)
-  #:use-module (guix profiles)
   #:use-module (gnu services)
   #:use-module (gnu services shepherd)
   #:use-module (gnu services base)
@@ -153,7 +152,18 @@
   ;; Extra Guix packages declared inside the FHS container alongside the
   ;; baseline (coreutils, bash, git, c-compiler-package,
   ;; linux-libre-headers, python-package, uv-package).  Add whatever a
-  ;; custom node's own compiled extensions need.
+  ;; custom node's own compiled extensions need to find on PATH.
+  ;; MUST come from the base Guix distribution ((gnu packages ...)) — these
+  ;; are resolved by name at container-runtime against whatever plain guix
+  ;; binary this system was built with, which knows nothing about
+  ;; externally-pulled channels (guix-science-nonfree, nonguix, ...); such a
+  ;; package resolves fine at reconfigure time (this module's own
+  ;; #:use-module sees it) but fails at runtime with "unknown package". For
+  ;; an external-channel package only needed via a known absolute path
+  ;; rather than on $PATH, reference it directly in
+  ;; extra-environment-variables instead (see install-sage-attention?'s
+  ;; CUDA_HOME example) — --expose=/gnu/store already makes any store path
+  ;; reachable inside the container without guix shell resolving it by name.
   (container-extra-packages comfyui-configuration-container-extra-packages
                             (default (list)))
   ;; Extra host paths writably bind-mounted into the container, beyond the
@@ -220,10 +230,16 @@
   ;; path that only responds to their node, making the CLI flag a no-op for
   ;; them anyway. SageAttention ships no universal prebuilt wheel — installing
   ;; it compiles a CUDA extension via nvcc at sync time, so the FHS container
-  ;; needs a real CUDA toolkit declared in container-extra-packages (e.g.
-  ;; (@ (guix-science-nonfree packages cuda) cuda), the same package
-  ;; colibri-engine-cuda builds against — see peteches/packages/colibri.scm)
-  ;; plus CUDA_HOME pointed at it via extra-environment-variables; the
+  ;; needs a real CUDA toolkit's nvcc reachable via CUDA_HOME (torch's own
+  ;; nvcc discovery checks CUDA_HOME before ever falling back to $PATH). Set
+  ;; CUDA_HOME in extra-environment-variables to a direct package reference
+  ;; (e.g. #~(string-append "CUDA_HOME=" #$(@ (guix-science-nonfree packages
+  ;; cuda) cuda)), the same package colibri-engine-cuda builds against — see
+  ;; peteches/packages/colibri.scm) — do NOT add that package to
+  ;; container-extra-packages, since guix shell can't resolve an
+  ;; external-channel package by name inside this FHS container (see
+  ;; container-extra-packages' own field comment) and --expose=/gnu/store
+  ;; already makes the referenced store path reachable regardless. The
   ;; baseline container only ships a plain C compiler (c-compiler-package),
   ;; not nvcc. Also verify that toolkit's version against SageAttention's
   ;; per-architecture CUDA floor (>=12.4 for FP8 on Ada, >=12.3 on Hopper,
@@ -463,15 +479,22 @@
 ;; otherwise be invisible inside the container.  `--expose=/gnu/store'
 ;; sidesteps having to enumerate every such path by hand.
 ;;
-;; Packages are passed to `guix shell' as a prebuilt --profile=, not as bare
-;; names: the invoked guix-pkg binary only resolves names against its own
-;; bundled (gnu packages ...) tree, which does not include external
-;; channels like guix-science-nonfree — passing e.g. "cuda-toolkit" by name
-;; fails at runtime with "unknown package" even though the package resolved
-;; fine at reconfigure time via this file's own #:use-module. A profile is
-;; built from the actual package objects here (with whatever -L this was
-;; reconfigured with), so its store path already encodes the resolution and
-;; the container script only ever references it opaquely.
+;; Packages are passed to `guix shell' as bare names, resolved by the
+;; invoked guix-pkg binary against its own bundled (gnu packages ...) tree
+;; — NOT against whatever channels this system happens to have pulled, and
+;; NOT via --profile=, which `guix shell --emulate-fhs' can never accept
+;; (it unconditionally injects an ad-hoc glibc-for-fhs package internally,
+;; and guix rejects any combination of --profile with other package
+;; options, no matter how few). Concretely: only packages from the base
+;; Guix distribution belong in container-extra-packages / c-compiler-package
+;; / python-package / uv-package — anything from an external channel
+;; (guix-science-nonfree, nonguix, ...) fails at runtime with "unknown
+;; package" even though it resolved fine at reconfigure time. For a package
+;; that's only needed via a known absolute path rather than on $PATH (e.g.
+;; CUDA_HOME for nvcc — see install-sage-attention?), reference it directly
+;; in extra-environment-variables instead: --expose=/gnu/store already makes
+;; any store path reachable inside the container without guix shell ever
+;; needing to resolve it by name.
 (define (comfyui-container-runner-file config suffix env inner-command)
   (let* ((service-name (comfyui-configuration-service-name config))
          (uv-project-dir (comfyui-configuration-uv-project-dir config))
@@ -484,7 +507,8 @@
          (extra-pkgs (comfyui-configuration-container-extra-packages config))
          (extra-shares (comfyui-configuration-container-extra-shares config))
          (extra-exposes (comfyui-configuration-container-extra-exposes config))
-         (container-packages (append (list (@ (gnu packages base) coreutils)
+         (package-names (map package-name
+                             (append (list (@ (gnu packages base) coreutils)
                                            (@ (gnu packages bash) bash)
                                            (@ (gnu packages version-control) git)
                                            c-compiler-pkg
@@ -498,11 +522,7 @@
                                            (@ (gnu packages nss) nss-certs)
                                            python-pkg
                                            uv-pkg)
-                                     extra-pkgs))
-         (container-profile (profile
-                              (name (string-append service-name suffix
-                                                   "-container-profile"))
-                              (content (packages->manifest container-packages))))
+                                     extra-pkgs)))
          (static-args (append
                        (list "--container" "--emulate-fhs" "--network"
                              "--expose=/gnu/store"
@@ -514,7 +534,8 @@
                            (list (string-append "--share=" uv-env))
                            '())
                        (map (lambda (s) (string-append "--share=" s)) extra-shares)
-                       (map (lambda (s) (string-append "--expose=" s)) extra-exposes)))
+                       (map (lambda (s) (string-append "--expose=" s)) extra-exposes)
+                       package-names))
          (guix-pkg (@ (gnu packages package-management) guix)))
     (program-file
      (string-append service-name suffix "-container-runner")
@@ -542,8 +563,6 @@
                              (or (scandir "/dev") '())))
                 (args (append (list "shell")
                               (list #$@static-args)
-                              (list (string-append "--profile="
-                                                   #$container-profile))
                               nvidia-exposes
                               (map preserve-flag (list #$@env))
                               (list "--")

@@ -236,12 +236,16 @@
 	     (runtime-packages (list uv))
 	     (open-firewall? #t)
 	     (container-extra-shares (list "/media/ColdStorage"))
-	     ;; nvcc + headers for SageAttention's build-from-source install —
-	     ;; the container's baseline only has a plain C compiler otherwise.
-	     ;; Same cuda package colibri-engine-cuda builds against
+	     ;; nvcc for SageAttention's build-from-source install, via
+	     ;; CUDA_HOME only — NOT container-extra-packages, since guix shell
+	     ;; can't resolve a guix-science-nonfree package by name inside the
+	     ;; FHS container (see comfyui.scm's container-extra-packages field
+	     ;; comment); torch's own nvcc discovery checks CUDA_HOME first, so
+	     ;; this direct store-path reference is all it needs, made reachable
+	     ;; by the container's existing --expose=/gnu/store. Same cuda
+	     ;; package colibri-engine-cuda builds against
 	     ;; (peteches/packages/colibri.scm), so it's already proven to work
 	     ;; against nug's RTX 4090 (sm_89, Ada).
-	     (container-extra-packages (list cuda))
 	     (extra-environment-variables
 	      (list #~(string-append "CUDA_HOME=" #$cuda)))
 	     ;; Package installed but the global --use-sage-attention flag is
