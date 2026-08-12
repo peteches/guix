@@ -26,6 +26,7 @@
   #:use-module (peteches systems network-mounts)
   #:use-module (gnu packages admin)
   #:use-module (gnu packages rust-apps)
+  #:use-module ((gnu packages linux) #:select (linux-libre-headers))
   #:use-module (guix-science-nonfree packages cuda))
 
 ;; Bring service types into scope for any host-specific additions.
@@ -256,8 +257,23 @@
 	     ;; /var/log/comfyui/comfyui/update.log's
 	     ;; "RuntimeError: ('The detected CUDA version...)" message, which
 	     ;; names both versions directly.
+	     ;;
+	     ;; CPATH is also required, separately: nvcc's own host-preprocessing
+	     ;; pass doesn't go through the gcc driver's normal default system
+	     ;; include search (confirmed live — a plain `gcc' invocation finds
+	     ;; <linux/limits.h> in the FHS-unioned /usr/include fine, but nvcc
+	     ;; invoking the same gcc for the CUDA-runtime-header preinclude
+	     ;; pass reports "fatal error: linux/limits.h: No such file or
+	     ;; directory" for that exact file). CPATH is Guix's own
+	     ;; native/non-FHS header-search convention and gets honored
+	     ;; regardless of how a build tool invokes the compiler internally,
+	     ;; so it fixes this generally for any custom node's C/CUDA build,
+	     ;; not just SageAttention's.
 	     (extra-environment-variables
-	      (list #~(string-append "CUDA_HOME=" #$cuda-13)))
+	      (list #~(string-append "CUDA_HOME=" #$cuda-13)
+		    #~(string-append "CPATH="
+				     #$(file-append linux-libre-headers
+						    "/include"))))
 	     ;; Package installed but the global --use-sage-attention flag is
 	     ;; deliberately left off (enable-sage-attention? default #f) — a
 	     ;; per-workflow node (e.g. KJNodes' "Patch Sage Attention") gives
