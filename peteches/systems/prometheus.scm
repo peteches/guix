@@ -225,6 +225,12 @@
                            (targets '("192.168.51.195:7878"))
                            (labels '(("instance" . "radarr")))))))
                   (prometheus-scrape-config
+                   (job-name "lidarr")
+                   (static-configs
+                    (list (prometheus-static-config
+                           (targets '("192.168.51.195:8686"))
+                           (labels '(("instance" . "lidarr")))))))
+                  (prometheus-scrape-config
                    (job-name "nzbget")
                    (static-configs
                     (list (prometheus-static-config

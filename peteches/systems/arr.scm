@@ -1,5 +1,5 @@
-;; arr.scm — Sonarr (TV) + Radarr (movies) on a Proxmox QEMU/KVM VM.
-;; Sonarr on port 8989, Radarr on port 7878, both via Tailscale.
+;; arr.scm — Sonarr (TV) + Radarr (movies) + Lidarr (music) on a Proxmox QEMU/KVM VM.
+;; Sonarr on port 8989, Radarr on port 7878, Lidarr on port 8686, all via Tailscale.
 ;;
 ;; Bootstrap note: the CIFS mount and SOPS secrets require the VM's age key
 ;; to be enrolled first.  See the deployment plan for the two-pass sequence.
@@ -17,6 +17,7 @@
   #:use-module (peteches services media-accounts)
   #:use-module (peteches services sonarr)
   #:use-module (peteches services radarr)
+  #:use-module (peteches services lidarr)
   #:use-module (peteches services restic)
   #:use-module (peteches services tailscale)
   #:use-module (sops secrets)
@@ -57,7 +58,7 @@
      (restic-vm-backup-configuration
       (vm-name "arr")
       (synology-host "nas.peteches.co.uk")
-      (backup-paths '("/var/lib/sonarr" "/var/lib/radarr"))
+      (backup-paths '("/var/lib/sonarr" "/var/lib/radarr" "/var/lib/lidarr"))
       (password-file "/run/secrets/restic-password")
       (ssh-key-file "/run/secrets/restic-ssh-key"))
      #:sops-secrets
@@ -97,6 +98,8 @@
                (sonarr-configuration))
       (service radarr-service-type
                (radarr-configuration))
+      (service lidarr-service-type
+               (lidarr-configuration))
       (service alloy-service-type
                (alloy-configuration
                 (hostname "arr.peteches.co.uk")
@@ -106,6 +109,7 @@
                                  (cons "/var/log/alloy.log" "alloy")
                                  (cons "/var/log/tailscaled-*.log" "tailscale")
                                  (cons "/var/log/sonarr.log" "sonarr")
-                                 (cons "/var/log/radarr.log" "radarr"))))))))))
+                                 (cons "/var/log/radarr.log" "radarr")
+                                 (cons "/var/log/lidarr.log" "lidarr"))))))))))
 
 arr-os
