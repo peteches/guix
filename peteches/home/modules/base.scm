@@ -166,6 +166,7 @@
    (specification->package "hyprlock")
    (specification->package "gsettings-desktop-schemas")
    (specification->package "beeper-bin")
+   (specification->package "feishin-bin")
    (specification->package "matugen")
    (specification->package "hyprcursor")
    (specification->package "xcur2png")
