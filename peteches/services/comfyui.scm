@@ -30,7 +30,8 @@
   #:use-module (gnu packages version-control)
   #:use-module (srfi srfi-1)
   #:use-module (peteches services firewall)
-  #:export (comfyui-configuration comfyui-configuration? comfyui-service-type))
+  #:export (comfyui-configuration comfyui-configuration? comfyui-service-type
+            comfyui-custom-node comfyui-custom-node?))
 
 ;;; ── Utilities ────────────────────────────────────────────────────────────
 
@@ -63,6 +64,24 @@
                                    (proc existing))) acc) acc
                     (cons cfg acc)))
               '() configs))
+
+;;; ── Custom node record type ──────────────────────────────────────────────
+
+;; git-ref names a branch or tag to track, not a commit — deliberately not
+;; pinned, so that `herd start <service-name>-update' can fast-forward it
+;; the same way it does the ComfyUI checkout itself (see
+;; comfyui-custom-nodes-update-gexp).  #f tracks the repo's default branch.
+(define-record-type* <comfyui-custom-node> comfyui-custom-node
+                     make-comfyui-custom-node
+  comfyui-custom-node?
+  (name comfyui-custom-node-name)
+  (git-repo-url comfyui-custom-node-git-repo-url)
+  (git-ref comfyui-custom-node-git-ref
+           (default #f))
+  ;; Whether to `uv pip install -r requirements.txt' from the node's own
+  ;; directory, when present, after cloning/pulling it.
+  (install-requirements? comfyui-custom-node-install-requirements?
+                         (default #t)))
 
 ;;; ── Record type ──────────────────────────────────────────────────────────
 
@@ -190,6 +209,49 @@
   ;; Install comfyui-manager and pass --enable-manager to the daemon.
   (enable-manager? comfyui-configuration-enable-manager?
                    (default #t))
+
+  ;; Install SageAttention (github.com/thu-ml/SageAttention) into the venv.
+  ;; Deliberately decoupled from enable-sage-attention? below: a per-workflow
+  ;; node (e.g. KJNodes' "Patch Sage Attention") calls the same `sageattention'
+  ;; library directly and needs it present regardless of whether ComfyUI's
+  ;; own global CLI flag is used — and several popular video-model wrappers
+  ;; (WanVideoWrapper, HunyuanVideoWrapper) implement their own attention
+  ;; path that only responds to their node, making the CLI flag a no-op for
+  ;; them anyway. SageAttention ships no universal prebuilt wheel — installing
+  ;; it compiles a CUDA extension via nvcc at sync time, so the FHS container
+  ;; needs a real CUDA toolkit declared in container-extra-packages (e.g.
+  ;; (@ (guix-science-nonfree packages cuda) cuda), the same package
+  ;; colibri-engine-cuda builds against — see peteches/packages/colibri.scm)
+  ;; plus CUDA_HOME pointed at it via extra-environment-variables; the
+  ;; baseline container only ships a plain C compiler (c-compiler-package),
+  ;; not nvcc. Also verify that toolkit's version against SageAttention's
+  ;; per-architecture CUDA floor (>=12.4 for FP8 on Ada, >=12.3 on Hopper,
+  ;; >=12.0 on Ampere, >=12.8 for Blackwell/SageAttention2++).
+  (install-sage-attention? comfyui-configuration-install-sage-attention?
+                           (default #f))
+  ;; Version pin for the sageattention PyPI sdist installed above.
+  (sage-attention-version comfyui-configuration-sage-attention-version
+                          (default "2.2.0"))
+  ;; Pass --use-sage-attention to the daemon, patching it in globally for
+  ;; every workflow instead of leaving attention-backend selection to a node.
+  ;; Requires install-sage-attention? #t (the flag alone does nothing without
+  ;; the package). Part of ComfyUI's mutually exclusive attention-backend
+  ;; argument group (--use-split-cross-attention, --use-quad-cross-attention,
+  ;; --use-pytorch-cross-attention, --use-flash-attention,
+  ;; --use-ck-attention) — don't also pass one of those via extra-args.
+  (enable-sage-attention? comfyui-configuration-enable-sage-attention?
+                          (default #f))
+
+  ;; Custom ComfyUI node packs to clone into <uv-project-dir>/custom_nodes,
+  ;; a list of comfyui-custom-node records.  Cloned (if missing) and had
+  ;; their own requirements.txt installed by both the sync and update
+  ;; shepherd services; the update service additionally fetches and
+  ;; fast-forwards (--ff-only) each one it already has a checkout of, same
+  ;; as it does for ComfyUI itself, so `herd start <service-name>-update'
+  ;; pulls custom nodes' latest commits too — see comfyui-custom-node's
+  ;; git-ref field comment for why these track a branch rather than pin.
+  (custom-nodes comfyui-configuration-custom-nodes
+                (default (list)))
 
   ;; Verbatim extra CLI arguments appended to the python main.py invocation.
   (extra-args comfyui-configuration-extra-args
@@ -324,6 +386,8 @@
                       (comfyui-configuration-disable-auto-launch? config))
           (maybe-flag "--enable-manager"
                       (comfyui-configuration-enable-manager? config))
+          (maybe-flag "--use-sage-attention"
+                      (comfyui-configuration-enable-sage-attention? config))
           (maybe-option "--tls-certfile"
                         (comfyui-configuration-ssl-certfile config))
           (maybe-option "--tls-keyfile"
@@ -530,11 +594,70 @@
       (use-modules (guix build utils))
       #$@(map comfyui-instance-activation configs)))
 
+(define (comfyui-custom-node-directory uv-project-dir node)
+  (string-append uv-project-dir "/custom_nodes/"
+                 (comfyui-custom-node-name node)))
+
+;; Clone NODE into uv-project-dir/custom_nodes if not already present.
+;; Idempotent — safe to call on every sync/update run.
+(define (comfyui-custom-node-clone-gexp uv-project-dir git-command node)
+  (let* ((dir (comfyui-custom-node-directory uv-project-dir node))
+         (ref (comfyui-custom-node-git-ref node))
+         (clone-args (append (if ref (list "--branch" ref) '())
+                             (list (comfyui-custom-node-git-repo-url node) dir))))
+    #~(unless (file-exists? (string-append #$dir "/.git"))
+        (let ((ret (system* #$git-command "clone" #$@clone-args)))
+          (unless (zero? ret)
+            (error "custom node clone failed with exit code" ret #$dir))))))
+
+;; Fetch and fast-forward an already-cloned NODE.  Silently does nothing if
+;; NODE has no checkout yet — comfyui-custom-node-clone-gexp (always run
+;; right after this, in comfyui-sync-steps-gexp) bootstraps that case
+;; instead, mirroring how the main ComfyUI checkout is handled.
+(define (comfyui-custom-node-pull-gexp uv-project-dir git-command node)
+  (let ((dir (comfyui-custom-node-directory uv-project-dir node)))
+    #~(when (file-exists? (string-append #$dir "/.git"))
+        (let ((ret (system* #$git-command "-C" #$dir "fetch" "--tags")))
+          (unless (zero? ret)
+            (error "custom node fetch failed with exit code" ret #$dir)))
+        (let ((ret (system* #$git-command "-C" #$dir "pull" "--ff-only")))
+          (unless (zero? ret)
+            (error "custom node pull failed with exit code" ret #$dir))))))
+
+(define (comfyui-custom-node-requirements-gexp uv-project-dir uv-command venv-dir node)
+  (let ((dir (comfyui-custom-node-directory uv-project-dir node)))
+    #~(let ((req (string-append #$dir "/requirements.txt")))
+        (when (file-exists? req)
+          (let ((ret (system* #$uv-command "pip" "install"
+                              "--python" #$venv-dir "-r" req)))
+            (unless (zero? ret)
+              (error "custom node requirements install failed with exit code"
+                     ret #$dir)))))))
+
+;; Fetch+fast-forward every custom node config already has a checkout of.
+;; Only meaningful from the update shepherd service — the sync service never
+;; calls this, since on a first run nothing is cloned yet to pull.
+(define (comfyui-custom-nodes-update-gexp config)
+  (let ((uv-project-dir (comfyui-configuration-uv-project-dir config))
+        (git-command (comfyui-configuration-git-command config))
+        (custom-nodes (comfyui-configuration-custom-nodes config)))
+    #~(begin
+        #$@(map (lambda (node)
+                  (comfyui-custom-node-pull-gexp uv-project-dir git-command node))
+                custom-nodes))))
+
 ;; Shared by the bootstrap sync runner and the manual update runner below:
 ;; resolve the uv environment against whatever commit is currently checked
 ;; out at uv-project-dir.
-(define (comfyui-sync-steps-gexp uv-command uv-sync-args uv-project-dir
-                                 venv-dir enable-manager?)
+(define (comfyui-sync-steps-gexp config venv-dir)
+  (let* ((uv-command (comfyui-configuration-uv-command config))
+         (uv-sync-args (comfyui-configuration-uv-sync-args config))
+         (uv-project-dir (comfyui-configuration-uv-project-dir config))
+         (git-command (comfyui-configuration-git-command config))
+         (enable-manager? (comfyui-configuration-enable-manager? config))
+         (install-sage-attention? (comfyui-configuration-install-sage-attention? config))
+         (sage-attention-version (comfyui-configuration-sage-attention-version config))
+         (custom-nodes (comfyui-configuration-custom-nodes config)))
   #~(begin
       ;; Drop --frozen when no lockfile exists yet
       ;; (e.g. after a fresh clone of a repo that
@@ -601,13 +724,44 @@
                            (error
                             "enable-manager? is #t but manager_requirements.txt not found at"
                             mgr-req))))
-             '())))
+             '())
+      ;; SageAttention has no universal prebuilt wheel, so this compiles a
+      ;; CUDA extension via nvcc — see the install-sage-attention? field
+      ;; comment for what the container needs for that to succeed.
+      ;; --no-build-isolation matches upstream's own install instructions
+      ;; (it needs the venv's already-installed torch visible at build time).
+      #$@(if install-sage-attention?
+             (list #~(let ((ret (system* #$uv-command
+                                 "pip"
+                                 "install"
+                                 "--python"
+                                 #$venv-dir
+                                 "--no-build-isolation"
+                                 #$(string-append "sageattention=="
+                                                  sage-attention-version))))
+                       (unless (zero? ret)
+                         (error
+                          "sageattention install failed with exit code"
+                          ret))))
+             '())
+      ;; Bootstrap any custom node not yet cloned, then install its
+      ;; requirements.txt if it has one.  Fetching/pulling ones already
+      ;; cloned is the update service's job (comfyui-custom-nodes-update-gexp),
+      ;; not this shared step — matches how the main ComfyUI checkout itself
+      ;; is only ever cloned here, never pulled.
+      #$@(append-map
+          (lambda (node)
+            (append (list (comfyui-custom-node-clone-gexp uv-project-dir
+                                                           git-command node))
+                    (if (comfyui-custom-node-install-requirements? node)
+                        (list (comfyui-custom-node-requirements-gexp
+                               uv-project-dir uv-command venv-dir node))
+                        '())))
+          custom-nodes))))
 
 (define (comfyui-sync-shepherd-service config)
   (let* ((service-name (comfyui-configuration-service-name config))
          (sync-name (string->symbol (string-append service-name "-sync")))
-         (uv-command (comfyui-configuration-uv-command config))
-         (uv-sync-args (comfyui-configuration-uv-sync-args config))
          (uv-project-dir (comfyui-configuration-uv-project-dir config))
          (git-command (comfyui-configuration-git-command config))
          (git-repo-url (comfyui-configuration-git-repo-url config))
@@ -618,7 +772,6 @@
          (uv-env (comfyui-configuration-uv-project-environment config))
          (venv-dir (or uv-env
                        (string-append uv-project-dir "/.venv")))
-         (enable-manager? (comfyui-configuration-enable-manager? config))
          ;; The store interpreter, used to *create* the venv — as opposed
          ;; to the daemon's UV_PYTHON, which points at the venv itself
          ;; once it exists (see comfyui-daemon-shepherd-service).
@@ -636,9 +789,7 @@
                                          (error
                                           "git clone failed with exit code"
                                           ret))))
-                                   #$(comfyui-sync-steps-gexp uv-command uv-sync-args
-                                                              uv-project-dir venv-dir
-                                                              enable-manager?))))
+                                   #$(comfyui-sync-steps-gexp config venv-dir))))
          (container-runner (comfyui-container-runner-file config "-sync" env
                                                            (list runner))))
     (shepherd-service (provision (list sync-name))
@@ -668,8 +819,6 @@
 (define (comfyui-update-shepherd-service config)
   (let* ((service-name (comfyui-configuration-service-name config))
          (update-name (string->symbol (string-append service-name "-update")))
-         (uv-command (comfyui-configuration-uv-command config))
-         (uv-sync-args (comfyui-configuration-uv-sync-args config))
          (uv-project-dir (comfyui-configuration-uv-project-dir config))
          (git-command (comfyui-configuration-git-command config))
          (user (comfyui-configuration-user config))
@@ -679,7 +828,6 @@
          (uv-env (comfyui-configuration-uv-project-environment config))
          (venv-dir (or uv-env
                        (string-append uv-project-dir "/.venv")))
-         (enable-manager? (comfyui-configuration-enable-manager? config))
          (python-env (list #~(string-append "UV_PYTHON="
                                             #$(file-append python-pkg
                                                            "/bin/python3"))))
@@ -706,9 +854,8 @@
                                      (unless (zero? ret)
                                        (error "git pull failed with exit code"
                                               ret)))
-                                   #$(comfyui-sync-steps-gexp uv-command uv-sync-args
-                                                              uv-project-dir venv-dir
-                                                              enable-manager?))))
+                                   #$(comfyui-custom-nodes-update-gexp config)
+                                   #$(comfyui-sync-steps-gexp config venv-dir))))
          (container-runner (comfyui-container-runner-file config "-update" env
                                                            (list runner))))
     (shepherd-service (provision (list update-name))

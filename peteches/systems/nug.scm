@@ -25,7 +25,8 @@
   #:use-module (peteches services sillytavern)
   #:use-module (peteches systems network-mounts)
   #:use-module (gnu packages admin)
-  #:use-module (gnu packages rust-apps))
+  #:use-module (gnu packages rust-apps)
+  #:use-module (guix-science-nonfree packages cuda))
 
 ;; Bring service types into scope for any host-specific additions.
 (use-service-modules base linux cups desktop networking ssh xorg)
@@ -234,7 +235,48 @@
 	     (extra-model-paths-config %comfyui-model-paths)
 	     (runtime-packages (list uv))
 	     (open-firewall? #t)
-	     (container-extra-shares (list "/media/ColdStorage")))))
+	     (container-extra-shares (list "/media/ColdStorage"))
+	     ;; nvcc + headers for SageAttention's build-from-source install —
+	     ;; the container's baseline only has a plain C compiler otherwise.
+	     ;; Same cuda package colibri-engine-cuda builds against
+	     ;; (peteches/packages/colibri.scm), so it's already proven to work
+	     ;; against nug's RTX 4090 (sm_89, Ada).
+	     (container-extra-packages (list cuda))
+	     (extra-environment-variables
+	      (list #~(string-append "CUDA_HOME=" #$cuda)))
+	     ;; Package installed but the global --use-sage-attention flag is
+	     ;; deliberately left off (enable-sage-attention? default #f) — a
+	     ;; per-workflow node (e.g. KJNodes' "Patch Sage Attention") gives
+	     ;; finer control and is what video-model wrappers actually expect;
+	     ;; see peteches/services/comfyui.scm's install-sage-attention?
+	     ;; field comment.
+	     (install-sage-attention? #t)
+	     (custom-nodes
+	      (list
+	       ;; KJNodes — includes the "Patch Sage Attention" node used to
+	       ;; apply SageAttention per-workflow instead of via the global
+	       ;; --use-sage-attention flag (deliberately left off above).
+	       (comfyui-custom-node
+		(name "ComfyUI-KJNodes")
+		(git-repo-url "https://github.com/kijai/ComfyUI-KJNodes"))
+	       ;; Spectrum: training-free diffusion acceleration via cached/
+	       ;; forecasted denoiser features, one repo per model backend.
+	       (comfyui-custom-node
+		(name "ComfyUI-Spectrum-Proper")
+		(git-repo-url "https://github.com/xmarre/ComfyUI-Spectrum-Proper"))
+	       (comfyui-custom-node
+		(name "ComfyUI-Spectrum-SDXL-Proper")
+		(git-repo-url "https://github.com/xmarre/ComfyUI-Spectrum-SDXL-Proper"))
+	       (comfyui-custom-node
+		(name "ComfyUI-Spectrum-WAN-Proper")
+		(git-repo-url "https://github.com/xmarre/ComfyUI-Spectrum-WAN-Proper"))
+	       (comfyui-custom-node
+		(name "ComfyUI-Spectrum-MiniMax-H3")
+		(git-repo-url "https://github.com/xmarre/ComfyUI-Spectrum-MiniMax-H3"))
+	       ;; LoadImageFromUrl / LoadVideoFromUrl.
+	       (comfyui-custom-node
+		(name "comfyui-art-venture")
+		(git-repo-url "https://github.com/sipherxyz/comfyui-art-venture")))))))
   ;; CUDA-enabled (colibri-engine-cuda, sm_89/Ada — see
   ;; peteches/packages/colibri.scm), capped at vram-gb 12: a static middle
   ;; ground, not a dynamic split — colibri has no live/signal-based VRAM
