@@ -246,7 +246,11 @@
   ;; >=12.0 on Ampere, >=12.8 for Blackwell/SageAttention2++).
   (install-sage-attention? comfyui-configuration-install-sage-attention?
                            (default #f))
-  ;; Version pin for the sageattention PyPI sdist installed above.
+  ;; Git tag pin for the install above. PyPI's `sageattention' package tops
+  ;; out at 1.0.6 — the 2.x line upstream's own README documents installing
+  ;; is git/source-only, never published to PyPI, so this installs directly
+  ;; from the tag `v<sage-attention-version>' on thu-ml/SageAttention rather
+  ;; than a PyPI version pin.
   (sage-attention-version comfyui-configuration-sage-attention-version
                           (default "2.2.0"))
   ;; Pass --use-sage-attention to the daemon, patching it in globally for
@@ -759,9 +763,11 @@
                             "enable-manager? is #t but manager_requirements.txt not found at"
                             mgr-req))))
              '())
-      ;; SageAttention has no universal prebuilt wheel, so this compiles a
-      ;; CUDA extension via nvcc — see the install-sage-attention? field
-      ;; comment for what the container needs for that to succeed.
+      ;; SageAttention has no universal prebuilt wheel and PyPI's release
+      ;; never went past 1.0.6, so this installs straight from a git tag
+      ;; (see sage-attention-version's field comment) and compiles a CUDA
+      ;; extension via nvcc — see the install-sage-attention? field comment
+      ;; for what the container needs for that to succeed.
       ;; --no-build-isolation matches upstream's own install instructions
       ;; (it needs the venv's already-installed torch visible at build time).
       #$@(if install-sage-attention?
@@ -771,8 +777,9 @@
                                  "--python"
                                  #$venv-dir
                                  "--no-build-isolation"
-                                 #$(string-append "sageattention=="
-                                                  sage-attention-version))))
+                                 #$(string-append
+                                    "git+https://github.com/thu-ml/SageAttention.git@v"
+                                    sage-attention-version))))
                        (unless (zero? ret)
                          (error
                           "sageattention install failed with exit code"
