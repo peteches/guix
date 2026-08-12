@@ -242,12 +242,22 @@
 	     ;; FHS container (see comfyui.scm's container-extra-packages field
 	     ;; comment); torch's own nvcc discovery checks CUDA_HOME first, so
 	     ;; this direct store-path reference is all it needs, made reachable
-	     ;; by the container's existing --expose=/gnu/store. Same cuda
-	     ;; package colibri-engine-cuda builds against
-	     ;; (peteches/packages/colibri.scm), so it's already proven to work
-	     ;; against nug's RTX 4090 (sm_89, Ada).
+	     ;; by the container's existing --expose=/gnu/store.
+	     ;;
+	     ;; cuda-13 (13.0.2), not the channel's default `cuda' (12.9,
+	     ;; colibri-engine-cuda's build-time dependency in
+	     ;; peteches/packages/colibri.scm — a separate, unrelated build) —
+	     ;; torch's cpp_extension build refuses to compile against a CUDA
+	     ;; toolkit that doesn't match the version torch.version.cuda
+	     ;; reports for whatever torch wheel `uv sync' resolved for
+	     ;; ComfyUI, and that was 13.0 as of the last sync. If a future
+	     ;; ComfyUI/torch bump resolves a different CUDA-tagged wheel, this
+	     ;; needs to be bumped to match — check
+	     ;; /var/log/comfyui/comfyui/update.log's
+	     ;; "RuntimeError: ('The detected CUDA version...)" message, which
+	     ;; names both versions directly.
 	     (extra-environment-variables
-	      (list #~(string-append "CUDA_HOME=" #$cuda)))
+	      (list #~(string-append "CUDA_HOME=" #$cuda-13)))
 	     ;; Package installed but the global --use-sage-attention flag is
 	     ;; deliberately left off (enable-sage-attention? default #f) — a
 	     ;; per-workflow node (e.g. KJNodes' "Patch Sage Attention") gives
