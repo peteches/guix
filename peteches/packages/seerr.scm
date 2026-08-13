@@ -1034,9 +1034,16 @@ with ~a~%"
                                              (string-join (make-list depth
                                                                      "..") "/"
                                                           'suffix))))
+                            ;; tsc's CommonJS downlevel transform for
+                            ;; dynamic import() calls (e.g. `await
+                            ;; import('@server/...')`) preserves the
+                            ;; source's single-quote style instead of
+                            ;; normalizing to double quotes the way
+                            ;; static imports do, so both quote
+                            ;; characters must be matched here.
                             (substitute* js-file
-                              (("\"@server/")
-                               (string-append "\"" prefix)))))
+                              (("([\"'])@server/" all quote)
+                               (string-append quote prefix)))))
                         (find-files "dist" "\\.js$"))
 
               (when (file-exists? "server/templates")
