@@ -97,6 +97,7 @@
     ultralytics: ultralytics/
     audio_encoders: audio_encoders/
     diffusers: diffusers/
+    LLavacheckpoints: LLavacheckpoints/
 "))
 
 (make-base-os
