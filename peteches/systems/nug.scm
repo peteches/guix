@@ -282,8 +282,16 @@
 		    ;; torch's own convention) — it needs CUDAToolkit_ROOT
 		    ;; explicitly, or `nvcc' fails with "CUDA Toolkit not
 		    ;; found" even though CUDA_HOME above is set correctly.
+		    ;; CUDAToolkit_ROOT alone finds the toolkit's headers/libs
+		    ;; but enable_language(CUDA) still needs the compiler
+		    ;; binary itself named explicitly via CMAKE_CUDA_COMPILER
+		    ;; (or CUDACXX) — without it CMake reports "No
+		    ;; CMAKE_CUDA_COMPILER could be found" despite the
+		    ;; toolkit having already been located successfully.
 		    #~(string-append "CMAKE_ARGS=-DGGML_CUDA=on -DCUDAToolkit_ROOT="
-				     #$cuda-13)))
+				     #$cuda-13
+				     " -DCMAKE_CUDA_COMPILER="
+				     #$(file-append cuda-13 "/bin/nvcc"))))
 	     ;; Package installed but the global --use-sage-attention flag is
 	     ;; deliberately left off (enable-sage-attention? default #f) — a
 	     ;; per-workflow node (e.g. KJNodes' "Patch Sage Attention") gives
