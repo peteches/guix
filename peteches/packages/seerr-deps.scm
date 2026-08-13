@@ -14,6 +14,7 @@
 (define-module (peteches packages seerr-deps)
   #:use-module (guix packages)
   #:use-module (guix download)
+  #:use-module (guix git-download)
   #:use-module (guix gexp)
   #:use-module ((guix licenses)
                 #:prefix license:)
@@ -24,6 +25,7 @@
   #:use-module (gnu packages commencement)
   #:use-module (gnu packages elf)
   #:use-module (gnu packages gcc)
+  #:use-module (gnu packages image-processing)
   #:use-module (gnu packages node)
   #:use-module (gnu packages node-xyz)
   #:use-module (gnu packages python)
@@ -40640,4 +40642,2794 @@ Next.js.")
     (synopsis "Tailwind CSS aspect-ratio plugin")
     (description
      "This package provides the official Tailwind CSS aspect-ratio plugin.")
+    (license license:expat)))
+
+;; ---------------------------------------------------------------------------
+;; seerrng migration additions -- new/bumped deps pulled in by the switch from
+;; seerr-team/seerr to snapetech/seerrng (adds Music/Books via Lidarr/Readarr,
+;; OIDC auth via openid-client, and a React Flow graph view via @xyflow/react).
+;; Versions pinned per seerrng v3.11.2's pnpm-lock.yaml.
+;; ---------------------------------------------------------------------------
+
+(define-public node-compressible-2.0.18
+  (package
+    (name "node-compressible")
+    (version "2.0.18")
+    (source
+     (origin
+       (method url-fetch)
+       (uri "https://registry.npmjs.org/compressible/-/compressible-2.0.18.tgz")
+       (sha256
+        (base32 "1mjr4010mlv5qim0n2by0gz5wiayscy7anaf712q19i4ha79syx5"))))
+    (build-system node-build-system)
+    (arguments
+     (list
+      #:tests? #f
+      #:phases
+      #~(modify-phases %standard-phases
+          (delete 'build)
+          (add-after 'patch-dependencies 'delete-dev-dependencies
+            (lambda _
+              (modify-json (delete-dependencies (list "nyc"
+                                                  "mocha"
+                                                  "eslint"
+                                                  "eslint-plugin-node"
+                                                  "eslint-plugin-import"
+                                                  "eslint-plugin-promise"
+                                                  "eslint-config-standard"
+                                                  "eslint-plugin-markdown"
+                                                  "eslint-plugin-standard"))))))))
+    (inputs (list node-mime-db-1.54.0))
+    (home-page "https://github.com/jshttp/compressible#readme")
+    (synopsis "Compressible Content-Type / mime checking")
+    (description "Compressible Content-Type / mime checking")
+    (license license:expat)))
+
+(define-public node-compression-1.8.1
+  (package
+    (name "node-compression")
+    (version "1.8.1")
+    (source
+     (origin
+       (method url-fetch)
+       (uri "https://registry.npmjs.org/compression/-/compression-1.8.1.tgz")
+       (sha256
+        (base32 "1mfmkma8n5qjqk46w1magrimqz379iz58zv8h6p2yj2kbga785l7"))))
+    (build-system node-build-system)
+    (arguments
+     (list
+      #:tests? #f
+      #:phases
+      #~(modify-phases %standard-phases
+          (delete 'build)
+          (add-after 'patch-dependencies 'delete-dev-dependencies
+            (lambda _
+              (modify-json (delete-dependencies (list "nyc"
+                                                  "after"
+                                                  "mocha"
+                                                  "eslint"
+                                                  "supertest"
+                                                  "eslint-plugin-node"
+                                                  "eslint-plugin-import"
+                                                  "eslint-plugin-promise"
+                                                  "eslint-config-standard"
+                                                  "eslint-plugin-markdown"
+                                                  "eslint-plugin-standard"))))))))
+    (inputs (list node-vary-1.1.2
+                  node-bytes-3.1.2
+                  node-debug-2.6.9
+                  node-negotiator-0.6.4
+                  node-on-headers-1.1.0
+                  node-safe-buffer-5.2.1
+                  node-compressible-2.0.18))
+    (home-page "https://github.com/expressjs/compression#readme")
+    (synopsis "Node.js compression middleware")
+    (description "Node.js compression middleware")
+    (license license:expat)))
+
+(define-public node-dompurify-3.4.12
+  (package
+    (name "node-dompurify")
+    (version "3.4.12")
+    (source
+     (origin
+       (method url-fetch)
+       (uri "https://registry.npmjs.org/dompurify/-/dompurify-3.4.12.tgz")
+       (sha256
+        (base32 "05hnfiywv66jz78g3yl4zjky9y4j9a5zlzwvsmsgqps3rpa5bljg"))))
+    (build-system node-build-system)
+    (arguments
+     (list
+      #:tests? #f
+      #:phases
+      #~(modify-phases %standard-phases
+          (delete 'build)
+          (add-before 'repack 'disable-lifecycle-scripts
+            (lambda _
+              (modify-json (delete-fields '("scripts.prepare")
+                                          #:strict? #f))))
+          (add-after 'patch-dependencies 'delete-dev-dependencies
+            (lambda _
+              (modify-json (delete-dependencies (list "xo"
+                                                  "nyc"
+                                                  "husky"
+                                                  "jsdom"
+                                                  "qunit"
+                                                  "tslib"
+                                                  "jquery"
+                                                  "rimraf"
+                                                  "rollup"
+                                                  "prettier"
+                                                  "cross-env"
+                                                  "happy-dom"
+                                                  "qunit-tap"
+                                                  "fast-check"
+                                                  "typescript"
+                                                  "@babel/core"
+                                                  "@types/node"
+                                                  "@types/estree"
+                                                  "@playwright/test"
+                                                  "@babel/preset-env"
+                                                  "rollup-plugin-dts"
+                                                  "@rollup/plugin-babel"
+                                                  "@rollup/plugin-terser"
+                                                  "babel-plugin-istanbul"
+                                                  "@rollup/plugin-replace"
+                                                  "eslint-config-prettier"
+                                                  "eslint-plugin-prettier"
+                                                  "@babel/preset-typescript"
+                                                  "@rollup/plugin-typescript"
+                                                  "@rollup/plugin-node-resolve"))))))))
+    (home-page "https://github.com/cure53/DOMPurify")
+    (synopsis "DOM-only, super-fast, uber-tolerant XSS sanitizer for HTML, MathML and SVG")
+    (description "DOMPurify is a DOM-only, super-fast, uber-tolerant XSS sanitizer for HTML, MathML and SVG.  It runs as JavaScript and works in all modern browsers, as well as in Node.js (via jsdom).")
+    (license (list license:mpl2.0 license:asl2.0))))
+
+(define-public node-ip-address-10.3.1
+  (package
+    (name "node-ip-address")
+    (version "10.3.1")
+    (source
+     (origin
+       (method url-fetch)
+       (uri "https://registry.npmjs.org/ip-address/-/ip-address-10.3.1.tgz")
+       (sha256
+        (base32 "1r938r1bfvipa9sphxsg5xvdwiz1b06z67c05hqim8gf7c3905xd"))))
+    (build-system node-build-system)
+    (arguments
+     (list
+      #:tests? #f
+      #:phases
+      #~(modify-phases %standard-phases
+          (delete 'build)
+          (add-after 'patch-dependencies 'delete-dev-dependencies
+            (lambda _
+              (modify-json (delete-dependencies (list "c8"
+                                                  "tsx"
+                                                  "chai"
+                                                  "mocha"
+                                                  "eslint"
+                                                  "typedoc"
+                                                  "eslint_d"
+                                                  "prettier"
+                                                  "typescript"
+                                                  "@types/chai"
+                                                  "@types/mocha"
+                                                  "source-map-support"
+                                                  "eslint-config-airbnb"
+                                                  "eslint-plugin-import"
+                                                  "eslint-config-prettier"
+                                                  "eslint-plugin-jsx-a11y"
+                                                  "eslint-plugin-prettier"
+                                                  "eslint-plugin-filenames"
+                                                  "@typescript-eslint/parser"
+                                                  "monocart-coverage-reports"
+                                                  "@typescript-eslint/eslint-plugin"
+                                                  "eslint-plugin-sort-imports-es6-autofix"))))))))
+    (home-page "https://github.com/beaugunderson/ip-address#readme")
+    (synopsis "A library for parsing IPv4 and IPv6 IP addresses in node and the browser.")
+    (description "A library for parsing IPv4 and IPv6 IP addresses in node and the browser.")
+    (license license:expat)))
+
+(define-public node-csstools-css-tokenizer-3.0.4
+  (package
+    (name "node-csstools-css-tokenizer")
+    (version "3.0.4")
+    (source
+     (origin
+       (method url-fetch)
+       (uri "https://registry.npmjs.org/@csstools/css-tokenizer/-/css-tokenizer-3.0.4.tgz")
+       (sha256
+        (base32 "0fa37zwkl3wq1sgwmp7az08rfmi9vsn35dnwm8hg7b5p279x94ha"))))
+    (build-system node-build-system)
+    (arguments
+     (list
+      #:tests? #f
+      #:phases
+      #~(modify-phases %standard-phases
+          (delete 'build))))
+    (home-page "https://github.com/csstools/postcss-plugins/tree/main/packages/css-tokenizer#readme")
+    (synopsis "Tokenize CSS")
+    (description "Tokenize CSS")
+    (license license:expat)))
+
+(define-public node-csstools-css-parser-algorithms-3.0.5
+  (package
+    (name "node-csstools-css-parser-algorithms")
+    (version "3.0.5")
+    (source
+     (origin
+       (method url-fetch)
+       (uri "https://registry.npmjs.org/@csstools/css-parser-algorithms/-/css-parser-algorithms-3.0.5.tgz")
+       (sha256
+        (base32 "0ziycl335azxca80kj87gadvl9jy7qqxa1a7nbj48m70spfqyh8i"))))
+    (build-system node-build-system)
+    (arguments
+     (list
+      #:tests? #f
+      #:phases
+      #~(modify-phases %standard-phases
+          (delete 'build))))
+    ;; css-tokenizer is a peerDependency, not a dependency -- patch-dependencies
+    ;; still merges and resolves it, but only if it's present as an input.
+    (inputs (list node-csstools-css-tokenizer-3.0.4))
+    (home-page "https://github.com/csstools/postcss-plugins/tree/main/packages/css-parser-algorithms#readme")
+    (synopsis "Algorithms to help you parse CSS from an array of tokens.")
+    (description "Algorithms to help you parse CSS from an array of tokens.")
+    (license license:expat)))
+
+(define-public node-csstools-css-calc-2.1.4
+  (package
+    (name "node-csstools-css-calc")
+    (version "2.1.4")
+    (source
+     (origin
+       (method url-fetch)
+       (uri "https://registry.npmjs.org/@csstools/css-calc/-/css-calc-2.1.4.tgz")
+       (sha256
+        (base32 "0dh26h4njpldkwvdvydjjzgcx2r2s9s5r5llhiwla09ixsxssw99"))))
+    (build-system node-build-system)
+    (arguments
+     (list
+      #:tests? #f
+      #:phases
+      #~(modify-phases %standard-phases
+          (delete 'build))))
+    ;; css-tokenizer/css-parser-algorithms are peerDependencies, not
+    ;; dependencies -- patch-dependencies still merges and resolves them, but
+    ;; only if they're present as inputs.
+    (inputs (list node-csstools-css-tokenizer-3.0.4
+                  node-csstools-css-parser-algorithms-3.0.5))
+    (home-page "https://github.com/csstools/postcss-plugins/tree/main/packages/css-calc#readme")
+    (synopsis "Solve CSS math expressions")
+    (description "Solve CSS math expressions")
+    (license license:expat)))
+
+(define-public node-csstools-color-helpers-5.1.0
+  (package
+    (name "node-csstools-color-helpers")
+    (version "5.1.0")
+    (source
+     (origin
+       (method url-fetch)
+       (uri "https://registry.npmjs.org/@csstools/color-helpers/-/color-helpers-5.1.0.tgz")
+       (sha256
+        (base32 "1anph2hgqfk728y94xadrbqizf08kyxfrbjw5i5qh3cd4rimypdr"))))
+    (build-system node-build-system)
+    (arguments
+     (list
+      #:tests? #f
+      #:phases
+      #~(modify-phases %standard-phases
+          (delete 'build))))
+    (home-page "https://github.com/csstools/postcss-plugins/tree/main/packages/color-helpers#readme")
+    (synopsis "Color helpers to ease transformation between formats, gamut, etc")
+    (description "Color helpers to ease transformation between formats, gamut, etc")
+    (license license:expat-0)))
+
+(define-public node-csstools-css-color-parser-3.1.0
+  (package
+    (name "node-csstools-css-color-parser")
+    (version "3.1.0")
+    (source
+     (origin
+       (method url-fetch)
+       (uri "https://registry.npmjs.org/@csstools/css-color-parser/-/css-color-parser-3.1.0.tgz")
+       (sha256
+        (base32 "1ni08ak9ffpd1v171pwqgklgckihk4z9xy192dr5nwwi18qnlba9"))))
+    (build-system node-build-system)
+    (arguments
+     (list
+      #:tests? #f
+      #:phases
+      #~(modify-phases %standard-phases
+          (delete 'build))))
+    ;; css-tokenizer/css-parser-algorithms are peerDependencies, not
+    ;; dependencies -- patch-dependencies still merges and resolves them, but
+    ;; only if they're present as inputs.
+    (inputs (list node-csstools-css-calc-2.1.4
+                  node-csstools-color-helpers-5.1.0
+                  node-csstools-css-tokenizer-3.0.4
+                  node-csstools-css-parser-algorithms-3.0.5))
+    (home-page "https://github.com/csstools/postcss-plugins/tree/main/packages/css-color-parser#readme")
+    (synopsis "Parse CSS color values")
+    (description "Parse CSS color values")
+    (license license:expat)))
+
+(define-public node-asamuzakjp-css-color-3.2.0
+  (package
+    (name "node-asamuzakjp-css-color")
+    (version "3.2.0")
+    (source
+     (origin
+       (method url-fetch)
+       (uri "https://registry.npmjs.org/@asamuzakjp/css-color/-/css-color-3.2.0.tgz")
+       (sha256
+        (base32 "0nc7lg83wjiy660whk3c8rgmgv6lnysc5mxah6qg1yji0rvx6nxn"))))
+    (build-system node-build-system)
+    (arguments
+     (list
+      #:tests? #f
+      #:phases
+      #~(modify-phases %standard-phases
+          (delete 'build)
+          (add-after 'patch-dependencies 'delete-dev-dependencies
+            (lambda _
+              (modify-json (delete-dependencies (list "knip"
+                                                  "tsup"
+                                                  "vite"
+                                                  "eslint"
+                                                  "rimraf"
+                                                  "vitest"
+                                                  "esbuild"
+                                                  "globals"
+                                                  "publint"
+                                                  "prettier"
+                                                  "typescript"
+                                                  "neostandard"
+                                                  "eslint-plugin-regexp"
+                                                  "@tanstack/vite-config"
+                                                  "@vitest/coverage-istanbul"))))))))
+    (inputs (list node-lru-cache-10.4.3
+                  node-csstools-css-calc-2.1.4
+                  node-csstools-css-tokenizer-3.0.4
+                  node-csstools-css-color-parser-3.1.0
+                  node-csstools-css-parser-algorithms-3.0.5))
+    (home-page "https://github.com/asamuzaK/cssColor#readme")
+    (synopsis "CSS color - Resolve and convert CSS colors.")
+    (description "CSS color - Resolve and convert CSS colors.")
+    (license license:expat)))
+
+(define-public node-rrweb-cssom-0.8.0
+  (package
+    (name "node-rrweb-cssom")
+    (version "0.8.0")
+    (source
+     (origin
+       (method url-fetch)
+       (uri "https://registry.npmjs.org/rrweb-cssom/-/rrweb-cssom-0.8.0.tgz")
+       (sha256
+        (base32 "0w13ja52qirv128p829nrhs8m5af6lp9iqz1diybq7snl7mmv5vb"))))
+    (build-system node-build-system)
+    (arguments
+     (list
+      #:tests? #f
+      #:phases
+      #~(modify-phases %standard-phases
+          (delete 'build)
+          (add-after 'patch-dependencies 'delete-dev-dependencies
+            (lambda _
+              (modify-json (delete-dependencies (list "@changesets/cli"
+                                                  "@changesets/changelog-github"))))))))
+    (home-page "https://github.com/rrweb-io/CSSOM#readme")
+    (synopsis "CSS Object Model implementation and CSS parser")
+    (description "CSS Object Model implementation and CSS parser")
+    (license license:expat)))
+
+(define-public node-cssstyle-4.6.0
+  (package
+    (name "node-cssstyle")
+    (version "4.6.0")
+    (source
+     (origin
+       (method url-fetch)
+       (uri "https://registry.npmjs.org/cssstyle/-/cssstyle-4.6.0.tgz")
+       (sha256
+        (base32 "0aarvrpijz4hnbhgyz16p3g3zd6m66yfliaklx4l9bvl62n8nsf3"))))
+    (build-system node-build-system)
+    (arguments
+     (list
+      #:tests? #f
+      #:phases
+      #~(modify-phases %standard-phases
+          (delete 'build)
+          (add-after 'patch-dependencies 'delete-dev-dependencies
+            (lambda _
+              (modify-json (delete-dependencies (list "eslint"
+                                                  "globals"
+                                                  "resolve"
+                                                  "prettier"
+                                                  "npm-run-all"
+                                                  "@babel/types"
+                                                  "@babel/parser"
+                                                  "@babel/traverse"
+                                                  "@babel/generator"
+                                                  "@domenic/eslint-config"
+                                                  "eslint-config-prettier"
+                                                  "eslint-plugin-prettier"))))))))
+    (inputs (list node-rrweb-cssom-0.8.0
+                  node-asamuzakjp-css-color-3.2.0))
+    (home-page "https://github.com/jsdom/cssstyle")
+    (synopsis "CSSStyleDeclaration Object Model implementation")
+    (description "CSSStyleDeclaration Object Model implementation")
+    (license license:expat)))
+
+(define-public node-tr46-5.1.1
+  (package
+    (name "node-tr46")
+    (version "5.1.1")
+    (source
+     (origin
+       (method url-fetch)
+       (uri "https://registry.npmjs.org/tr46/-/tr46-5.1.1.tgz")
+       (sha256
+        (base32 "1rnpwkbln8kq7zgbfx63j5l12cklvnzgqyhm5fbvzisrg47gmnv2"))))
+    (build-system node-build-system)
+    (arguments
+     (list
+      #:tests? #f
+      #:phases
+      #~(modify-phases %standard-phases
+          (delete 'build)
+          (add-after 'patch-dependencies 'delete-dev-dependencies
+            (lambda _
+              (modify-json (delete-dependencies (list "eslint"
+                                                  "globals"
+                                                  "regenerate"
+                                                  "@domenic/eslint-config"
+                                                  "@unicode/unicode-16.0.0"))))))))
+    (inputs (list node-punycode-2.3.1))
+    (home-page "https://github.com/jsdom/tr46#readme")
+    (synopsis "An implementation of the Unicode UTS #46: Unicode IDNA Compatibility Processing")
+    (description "An implementation of the Unicode UTS #46: Unicode IDNA Compatibility Processing")
+    (license license:expat)))
+
+(define-public node-webidl-conversions-7.0.0
+  (package
+    (name "node-webidl-conversions")
+    (version "7.0.0")
+    (source
+     (origin
+       (method url-fetch)
+       (uri "https://registry.npmjs.org/webidl-conversions/-/webidl-conversions-7.0.0.tgz")
+       (sha256
+        (base32 "0m743429c5hi2wmaq9mbc4bk02ss46bxkwlcqqn9xn8q21w14kgx"))))
+    (build-system node-build-system)
+    (arguments
+     (list
+      #:tests? #f
+      #:phases
+      #~(modify-phases %standard-phases
+          (delete 'build)
+          (add-after 'patch-dependencies 'delete-dev-dependencies
+            (lambda _
+              (modify-json (delete-dependencies (list "nyc"
+                                                  "mocha"
+                                                  "eslint"
+                                                  "@domenic/eslint-config"))))))))
+    (home-page "https://github.com/jsdom/webidl-conversions#readme")
+    (synopsis "Implements the WebIDL algorithms for converting to and from JavaScript values")
+    (description "Implements the WebIDL algorithms for converting to and from JavaScript values")
+    (license license:bsd-2)))
+
+(define-public node-whatwg-url-14.2.0
+  (package
+    (name "node-whatwg-url")
+    (version "14.2.0")
+    (source
+     (origin
+       (method url-fetch)
+       (uri "https://registry.npmjs.org/whatwg-url/-/whatwg-url-14.2.0.tgz")
+       (sha256
+        (base32 "0gl6mjgh71gm0j0m508zmf74pnvkmjjxpnzyv1f0mwashnlq4sdj"))))
+    (build-system node-build-system)
+    (arguments
+     (list
+      #:tests? #f
+      #:phases
+      #~(modify-phases %standard-phases
+          (delete 'build)
+          (add-before 'repack 'disable-lifecycle-scripts
+            (lambda _
+              (modify-json (delete-fields '("scripts.prepare")
+                                          #:strict? #f))))
+          (add-after 'patch-dependencies 'delete-dev-dependencies
+            (lambda _
+              (modify-json (delete-dependencies (list "c8"
+                                                  "eslint"
+                                                  "esbuild"
+                                                  "globals"
+                                                  "benchmark"
+                                                  "webidl2js"
+                                                  "@domenic/eslint-config"))))))))
+    (inputs (list node-tr46-5.1.1
+                  node-webidl-conversions-7.0.0))
+    (home-page "https://github.com/jsdom/whatwg-url#readme")
+    (synopsis "An implementation of the WHATWG URL Standard's URL API and parsing machinery")
+    (description "An implementation of the WHATWG URL Standard's URL API and parsing machinery")
+    (license license:expat)))
+
+(define-public node-data-urls-5.0.0
+  (package
+    (name "node-data-urls")
+    (version "5.0.0")
+    (source
+     (origin
+       (method url-fetch)
+       (uri "https://registry.npmjs.org/data-urls/-/data-urls-5.0.0.tgz")
+       (sha256
+        (base32 "0apmajnrzshq555qyj4w17fm1lk6p5kys5bbh70hg3ipm144cz10"))))
+    (build-system node-build-system)
+    (arguments
+     (list
+      #:tests? #f
+      #:phases
+      #~(modify-phases %standard-phases
+          (delete 'build)
+          (add-after 'patch-dependencies 'delete-dev-dependencies
+            (lambda _
+              (modify-json (delete-dependencies (list "c8"
+                                                  "eslint"
+                                                  "@domenic/eslint-config"))))))))
+    (inputs (list node-whatwg-url-14.2.0
+                  node-whatwg-mimetype-4.0.0))
+    (home-page "https://github.com/jsdom/data-urls#readme")
+    (synopsis "Parses data: URLs")
+    (description "Parses data: URLs")
+    (license license:expat)))
+
+(define-public node-html-encoding-sniffer-4.0.0
+  (package
+    (name "node-html-encoding-sniffer")
+    (version "4.0.0")
+    (source
+     (origin
+       (method url-fetch)
+       (uri "https://registry.npmjs.org/html-encoding-sniffer/-/html-encoding-sniffer-4.0.0.tgz")
+       (sha256
+        (base32 "1jylfynkzdgrjdxs25qlskgipninw6z9sdivg4daavf46pc7zj8i"))))
+    (build-system node-build-system)
+    (arguments
+     (list
+      #:tests? #f
+      #:phases
+      #~(modify-phases %standard-phases
+          (delete 'build)
+          (add-after 'patch-dependencies 'delete-dev-dependencies
+            (lambda _
+              (modify-json (delete-dependencies (list "eslint"
+                                                  "@domenic/eslint-config"))))))))
+    (inputs (list node-whatwg-encoding-3.1.1))
+    (home-page "https://github.com/jsdom/html-encoding-sniffer#readme")
+    (synopsis "Sniff the encoding from a HTML byte stream")
+    (description "Sniff the encoding from a HTML byte stream")
+    (license license:expat)))
+
+(define-public node-agent-base-7.1.3
+  (package
+    (name "node-agent-base")
+    (version "7.1.3")
+    (source
+     (origin
+       (method url-fetch)
+       (uri "https://registry.npmjs.org/agent-base/-/agent-base-7.1.3.tgz")
+       (sha256
+        (base32 "0r2c4v0gxv4pvzjz1m97z4ffipdacqsqgmpx99ghxy65cqf8njcr"))))
+    (build-system node-build-system)
+    (arguments
+     (list
+      #:tests? #f
+      #:phases
+      #~(modify-phases %standard-phases
+          (delete 'build)
+          (add-after 'patch-dependencies 'delete-dev-dependencies
+            (lambda _
+              (modify-json (delete-dependencies (list "ws"
+                                                  "jest"
+                                                  "ts-jest"
+                                                  "tsconfig"
+                                                  "@types/ws"
+                                                  "typescript"
+                                                  "@types/jest"
+                                                  "@types/node"
+                                                  "@types/debug"
+                                                  "async-listen"
+                                                  "@types/semver"))))))))
+    (home-page "https://github.com/TooTallNate/proxy-agents#readme")
+    (synopsis "Turn a function into an `http.Agent` instance")
+    (description "Turn a function into an `http.Agent` instance")
+    (license license:expat)))
+
+(define-public node-is-potential-custom-element-name-1.0.1
+  (package
+    (name "node-is-potential-custom-element-name")
+    (version "1.0.1")
+    (source
+     (origin
+       (method url-fetch)
+       (uri "https://registry.npmjs.org/is-potential-custom-element-name/-/is-potential-custom-element-name-1.0.1.tgz")
+       (sha256
+        (base32 "08c677pbqjj21h9n6p3m94rmgha0lr3410al6w9sy8k42fxjbr5n"))))
+    (build-system node-build-system)
+    (arguments
+     (list
+      #:tests? #f
+      #:phases
+      #~(modify-phases %standard-phases
+          (delete 'build)
+          (add-after 'patch-dependencies 'delete-dev-dependencies
+            (lambda _
+              (modify-json (delete-dependencies (list "mocha"
+                                                  "regenerate"))))))))
+    (home-page "https://github.com/mathiasbynens/is-potential-custom-element-name")
+    (synopsis "Check whether a given string matches the `PotentialCustomElementName` production as defined in the HTML Standard.")
+    (description "Check whether a given string matches the `PotentialCustomElementName` production as defined in the HTML Standard.")
+    (license license:expat)))
+
+(define-public node-nwsapi-2.2.23
+  (package
+    (name "node-nwsapi")
+    (version "2.2.23")
+    (source
+     (origin
+       (method url-fetch)
+       (uri "https://registry.npmjs.org/nwsapi/-/nwsapi-2.2.23.tgz")
+       (sha256
+        (base32 "1llbx5q2cfzriiny3q1sxz81k0x7ml9lxf7dcy13gbmnnd75l5ay"))))
+    (build-system node-build-system)
+    (arguments
+     (list
+      #:tests? #f
+      #:phases
+      #~(modify-phases %standard-phases
+          (delete 'build))))
+    (home-page "https://javascript.nwbox.com/nwsapi/")
+    (synopsis "Fast CSS Selectors API Engine")
+    (description "Fast CSS Selectors API Engine")
+    (license license:expat)))
+
+(define-public node-xmlchars-2.2.0
+  (package
+    (name "node-xmlchars")
+    (version "2.2.0")
+    (source
+     (origin
+       (method url-fetch)
+       (uri "https://registry.npmjs.org/xmlchars/-/xmlchars-2.2.0.tgz")
+       (sha256
+        (base32 "1a3daxxjcy0p0qbxcqp6d9z6h1czsab5xabanyavvr33i4lh1ydx"))))
+    (build-system node-build-system)
+    (arguments
+     (list
+      #:tests? #f
+      #:phases
+      #~(modify-phases %standard-phases
+          (delete 'build)
+          (add-after 'patch-dependencies 'delete-dev-dependencies
+            (lambda _
+              (modify-json (delete-dependencies (list "chai"
+                                                  "husky"
+                                                  "mocha"
+                                                  "tslint"
+                                                  "ts-node"
+                                                  "typescript"
+                                                  "@types/chai"
+                                                  "@types/mocha"
+                                                  "@commitlint/cli"
+                                                  "tslint-config-lddubeau"
+                                                  "@commitlint/config-angular"
+                                                  "conventional-changelog-cli"))))))))
+    (home-page "https://github.com/lddubeau/xmlchars#readme")
+    (synopsis "Utilities for determining if characters belong to character classes defined by the XML specs.")
+    (description "Utilities for determining if characters belong to character classes defined by the XML specs.")
+    (license license:expat)))
+
+(define-public node-saxes-6.0.0
+  (package
+    (name "node-saxes")
+    (version "6.0.0")
+    (source
+     (origin
+       (method url-fetch)
+       (uri "https://registry.npmjs.org/saxes/-/saxes-6.0.0.tgz")
+       (sha256
+        (base32 "1nwn5r953v568imgl8zz9bkr1ra67zkbilk5qdsx3jqwpvxm5pqw"))))
+    (build-system node-build-system)
+    (arguments
+     (list
+      #:tests? #f
+      #:phases
+      #~(modify-phases %standard-phases
+          (delete 'build)
+          (add-after 'patch-dependencies 'delete-dev-dependencies
+            (lambda _
+              (modify-json (delete-dependencies (list "tsd"
+                                                  "chai"
+                                                  "husky"
+                                                  "mocha"
+                                                  "eslint"
+                                                  "tslint"
+                                                  "ts-node"
+                                                  "typedoc"
+                                                  "typescript"
+                                                  "@types/chai"
+                                                  "@types/node"
+                                                  "@types/mocha"
+                                                  "@commitlint/cli"
+                                                  "simple-dist-tag"
+                                                  "eslint-plugin-react"
+                                                  "eslint-plugin-import"
+                                                  "eslint-plugin-jsx-a11y"
+                                                  "renovate-config-lddubeau"
+                                                  "tslint-microsoft-contrib"
+                                                  "@typescript-eslint/parser"
+                                                  "@xml-conformance-suite/js"
+                                                  "eslint-config-lddubeau-ts"
+                                                  "@commitlint/config-angular"
+                                                  "conventional-changelog-cli"
+                                                  "eslint-plugin-prefer-arrow"
+                                                  "eslint-config-lddubeau-base"
+                                                  "@xml-conformance-suite/mocha"
+                                                  "@typescript-eslint/eslint-plugin"
+                                                  "@xml-conformance-suite/test-data"
+                                                  "eslint-plugin-simple-import-sort"
+                                                  "eslint-import-resolver-typescript"
+                                                  "@typescript-eslint/eslint-plugin-tslint"))))))))
+    (inputs (list node-xmlchars-2.2.0))
+    (home-page "https://github.com/lddubeau/saxes#readme")
+    (synopsis "An evented streaming XML parser in JavaScript")
+    (description "An evented streaming XML parser in JavaScript")
+    (license license:isc)))
+
+(define-public node-symbol-tree-3.2.4
+  (package
+    (name "node-symbol-tree")
+    (version "3.2.4")
+    (source
+     (origin
+       (method url-fetch)
+       (uri "https://registry.npmjs.org/symbol-tree/-/symbol-tree-3.2.4.tgz")
+       (sha256
+        (base32 "1g2ap5vvjzp141idqnd5vpn3hzy3ihwr8vqivyxdn2yh00570sca"))))
+    (build-system node-build-system)
+    (arguments
+     (list
+      #:tests? #f
+      #:phases
+      #~(modify-phases %standard-phases
+          (delete 'build)
+          (add-after 'patch-dependencies 'delete-dev-dependencies
+            (lambda _
+              (modify-json (delete-dependencies (list "tape"
+                                                  "eslint"
+                                                  "istanbul"
+                                                  "coveralls"
+                                                  "babel-eslint"
+                                                  "jsdoc-to-markdown"
+                                                  "eslint-plugin-import"))))))))
+    (home-page "https://github.com/jsdom/js-symbol-tree#symbol-tree")
+    (synopsis "Turn any collection of objects into its own efficient tree or linked list using Symbol")
+    (description "Turn any collection of objects into its own efficient tree or linked list using Symbol")
+    (license license:expat)))
+
+(define-public node-tldts-core-6.1.86
+  (package
+    (name "node-tldts-core")
+    (version "6.1.86")
+    (source
+     (origin
+       (method url-fetch)
+       (uri "https://registry.npmjs.org/tldts-core/-/tldts-core-6.1.86.tgz")
+       (sha256
+        (base32 "117ykc56l4p8fdnz30ad55zrg3d60gvy1j24hf6c2z42mb84hm7p"))))
+    (build-system node-build-system)
+    (arguments
+     (list
+      #:tests? #f
+      #:phases
+      #~(modify-phases %standard-phases
+          (delete 'build)
+          (add-after 'patch-dependencies 'delete-dev-dependencies
+            (lambda _
+              (modify-json (delete-dependencies (list "nyc"
+                                                  "chai"
+                                                  "mocha"
+                                                  "rimraf"
+                                                  "rollup"
+                                                  "typescript"
+                                                  "@types/chai"
+                                                  "@types/node"
+                                                  "@types/mocha"
+                                                  "rollup-plugin-sourcemaps"
+                                                  "@rollup/plugin-typescript"
+                                                  "@rollup/plugin-node-resolve"))))))))
+    (home-page "https://github.com/remusao/tldts#readme")
+    (synopsis "tldts core primitives (internal module)")
+    (description "tldts core primitives (internal module)")
+    (license license:expat)))
+
+(define-public node-tldts-6.1.86
+  (package
+    (name "node-tldts")
+    (version "6.1.86")
+    (source
+     (origin
+       (method url-fetch)
+       (uri "https://registry.npmjs.org/tldts/-/tldts-6.1.86.tgz")
+       (sha256
+        (base32 "1inc42sdb05hwmkcb5yfnbrpgmd502d84r5v2lj9y72bv7d0znc0"))))
+    (build-system node-build-system)
+    (arguments
+     (list
+      #:tests? #f
+      #:phases
+      #~(modify-phases %standard-phases
+          (delete 'build)
+          (add-after 'patch-dependencies 'delete-dev-dependencies
+            (lambda _
+              (modify-json (delete-dependencies (list "nyc"
+                                                  "chai"
+                                                  "mocha"
+                                                  "rimraf"
+                                                  "rollup"
+                                                  "typescript"
+                                                  "@types/chai"
+                                                  "@types/node"
+                                                  "tldts-tests"
+                                                  "@types/mocha"
+                                                  "@rollup/plugin-terser"
+                                                  "rollup-plugin-sourcemaps"
+                                                  "@rollup/plugin-typescript"
+                                                  "@rollup/plugin-node-resolve"))))))))
+    (inputs (list node-tldts-core-6.1.86))
+    (home-page "https://github.com/remusao/tldts#readme")
+    (synopsis "Library to work against complex domain names, subdomains and URIs.")
+    (description "Library to work against complex domain names, subdomains and URIs.")
+    (license license:expat)))
+
+(define-public node-tough-cookie-5.1.2
+  (package
+    (name "node-tough-cookie")
+    (version "5.1.2")
+    (source
+     (origin
+       (method url-fetch)
+       (uri "https://registry.npmjs.org/tough-cookie/-/tough-cookie-5.1.2.tgz")
+       (sha256
+        (base32 "0fy4k81w678b4fsrv76l53i47v0rgkjb9rr624q4zlydr19fmfkk"))))
+    (build-system node-build-system)
+    (arguments
+     (list
+      #:tests? #f
+      #:phases
+      #~(modify-phases %standard-phases
+          (delete 'build)
+          (add-after 'patch-dependencies 'delete-dev-dependencies
+            (lambda _
+              (modify-json (delete-dependencies (list "jest"
+                                                  "vows"
+                                                  "async"
+                                                  "eslint"
+                                                  "globals"
+                                                  "ts-jest"
+                                                  "ts-node"
+                                                  "prettier"
+                                                  "@eslint/js"
+                                                  "genversion"
+                                                  "typescript"
+                                                  "@types/jest"
+                                                  "@types/node"
+                                                  "typescript-eslint"
+                                                  "eslint-plugin-import"
+                                                  "eslint-config-prettier"
+                                                  "eslint-plugin-prettier"
+                                                  "@microsoft/api-extractor"
+                                                  "@microsoft/api-documenter"
+                                                  "eslint-import-resolver-typescript"))))))))
+    (inputs (list node-tldts-6.1.86))
+    (home-page "https://github.com/salesforce/tough-cookie")
+    (synopsis "RFC6265 Cookies and Cookie Jar for node.js")
+    (description "RFC6265 Cookies and Cookie Jar for node.js")
+    (license license:bsd-3)))
+
+(define-public node-xml-name-validator-5.0.0
+  (package
+    (name "node-xml-name-validator")
+    (version "5.0.0")
+    (source
+     (origin
+       (method url-fetch)
+       (uri "https://registry.npmjs.org/xml-name-validator/-/xml-name-validator-5.0.0.tgz")
+       (sha256
+        (base32 "1gph2grgwmw7xi1mzaaj4qd10wpvmaml61d2iqraccmfim1b2h1x"))))
+    (build-system node-build-system)
+    (arguments
+     (list
+      #:tests? #f
+      #:phases
+      #~(modify-phases %standard-phases
+          (delete 'build)
+          (add-after 'patch-dependencies 'delete-dev-dependencies
+            (lambda _
+              (modify-json (delete-dependencies (list "eslint"
+                                                  "benchmark"
+                                                  "@domenic/eslint-config"))))))))
+    (home-page "https://github.com/jsdom/xml-name-validator#readme")
+    (synopsis "Validates whether a string matches the production for an XML name or qualified name")
+    (description "Validates whether a string matches the production for an XML name or qualified name")
+    (license license:asl2.0)))
+
+(define-public node-w3c-xmlserializer-5.0.0
+  (package
+    (name "node-w3c-xmlserializer")
+    (version "5.0.0")
+    (source
+     (origin
+       (method url-fetch)
+       (uri "https://registry.npmjs.org/w3c-xmlserializer/-/w3c-xmlserializer-5.0.0.tgz")
+       (sha256
+        (base32 "00xxzsz5qd800zj1g18xah2dnnylmamcg93pwqr8j8l2pcrhrskz"))))
+    (build-system node-build-system)
+    (arguments
+     (list
+      #:tests? #f
+      #:phases
+      #~(modify-phases %standard-phases
+          (delete 'build)
+          (add-after 'patch-dependencies 'delete-dev-dependencies
+            (lambda _
+              (modify-json (delete-dependencies (list "jsdom"
+                                                  "eslint"
+                                                  "@domenic/eslint-config"))))))))
+    (inputs (list node-xml-name-validator-5.0.0))
+    (home-page "https://github.com/jsdom/w3c-xmlserializer#readme")
+    (synopsis "A per-spec XML serializer implementation")
+    (description "A per-spec XML serializer implementation")
+    (license license:expat)))
+
+(define-public node-ws-8.21.0
+  (package
+    (name "node-ws")
+    (version "8.21.0")
+    (source
+     (origin
+       (method url-fetch)
+       (uri "https://registry.npmjs.org/ws/-/ws-8.21.0.tgz")
+       (sha256
+        (base32 "1kxl9vlkizjmvdqr4fj5mpa7b3dcnajdk80qabnhyfmf79mp52yh"))))
+    (build-system node-build-system)
+    (arguments
+     (list
+      #:tests? #f
+      #:phases
+      #~(modify-phases %standard-phases
+          (delete 'build)
+          (add-after 'patch-dependencies 'delete-dev-dependencies
+            (lambda _
+              (modify-json (delete-dependencies (list "nyc"
+                                                  "mocha"
+                                                  "eslint"
+                                                  "globals"
+                                                  "prettier"
+                                                  "benchmark"
+                                                  "@eslint/js"
+                                                  "bufferutil"
+                                                  "utf-8-validate"
+                                                  "eslint-config-prettier"
+                                                  "eslint-plugin-prettier"))))))))
+    (home-page "https://github.com/websockets/ws")
+    (synopsis "Simple to use, blazing fast and thoroughly tested websocket client and server for Node.js")
+    (description "Simple to use, blazing fast and thoroughly tested websocket client and server for Node.js")
+    (license license:expat)))
+
+(define-public node-jsdom-26.1.0
+  (package
+    (name "node-jsdom")
+    (version "26.1.0")
+    (source
+     (origin
+       (method url-fetch)
+       (uri "https://registry.npmjs.org/jsdom/-/jsdom-26.1.0.tgz")
+       (sha256
+        (base32 "0010355i5sy1zjy1x0nlyypcxbp4p32wr5va0ypc7pk8kxvv86an"))))
+    (build-system node-build-system)
+    (arguments
+     (list
+      #:tests? #f
+      #:phases
+      #~(modify-phases %standard-phases
+          (delete 'build)
+          (add-before 'repack 'disable-lifecycle-scripts
+            (lambda _
+              (modify-json (delete-fields '("scripts.prepare")
+                                          #:strict? #f))))
+          (add-after 'patch-dependencies 'delete-dev-dependencies
+            (lambda _
+              (modify-json (delete-dependencies (list "mocha"
+                                                  "pngjs"
+                                                  "yargs"
+                                                  "eslint"
+                                                  "globals"
+                                                  "js-yaml"
+                                                  "benchmark"
+                                                  "minimatch"
+                                                  "webidl2js"
+                                                  "server-destroy"
+                                                  "mocha-sugar-free"
+                                                  "eslint-plugin-html"
+                                                  "@domenic/eslint-config"
+                                                  ;; optional peerDependency,
+                                                  ;; not in devDependencies --
+                                                  ;; patch-dependencies would
+                                                  ;; otherwise leave it
+                                                  ;; unresolved.
+                                                  "canvas"))))))))
+    (inputs (list node-ws-8.21.0
+                  node-saxes-6.0.0
+                  node-nwsapi-2.2.23
+                  node-parse5-7.3.0
+                  node-cssstyle-4.6.0
+                  node-data-urls-5.0.0
+                  node-decimal-js-10.6.0
+                  node-whatwg-url-14.2.0
+                  node-rrweb-cssom-0.8.0
+                  node-symbol-tree-3.2.4
+                  node-tough-cookie-5.1.2
+                  node-whatwg-encoding-3.1.1
+                  node-whatwg-mimetype-4.0.0
+                  node-http-proxy-agent-7.0.2
+                  node-https-proxy-agent
+                  node-w3c-xmlserializer-5.0.0
+                  node-webidl-conversions-7.0.0
+                  node-xml-name-validator-5.0.0
+                  node-html-encoding-sniffer-4.0.0
+                  node-is-potential-custom-element-name-1.0.1))
+    (home-page "https://github.com/jsdom/jsdom#readme")
+    (synopsis "A JavaScript implementation of many web standards")
+    (description "A JavaScript implementation of many web standards")
+    (license license:expat)))
+
+(define-public node-jose-6.2.3
+  (package
+    (name "node-jose")
+    (version "6.2.3")
+    (source
+     (origin
+       (method url-fetch)
+       (uri "https://registry.npmjs.org/jose/-/jose-6.2.3.tgz")
+       (sha256
+        (base32 "19amggxlhcyffqqakbkq1f1yc2617smjjshv75jhciqqkzh8ni64"))))
+    (build-system node-build-system)
+    (arguments
+     (list
+      #:tests? #f
+      #:phases
+      #~(modify-phases %standard-phases
+          (delete 'build))))
+    (home-page "https://github.com/panva/jose")
+    (synopsis "JWA, JWS, JWE, JWT, JWK, JWKS for Node.js, Browser, Cloudflare Workers, Deno, Bun, and other Web-interoperable runtimes")
+    (description "JWA, JWS, JWE, JWT, JWK, JWKS for Node.js, Browser, Cloudflare Workers, Deno, Bun, and other Web-interoperable runtimes")
+    (license license:expat)))
+
+(define-public node-oauth4webapi-3.8.6
+  (package
+    (name "node-oauth4webapi")
+    (version "3.8.6")
+    (source
+     (origin
+       (method url-fetch)
+       (uri "https://registry.npmjs.org/oauth4webapi/-/oauth4webapi-3.8.6.tgz")
+       (sha256
+        (base32 "1nxwxqqrd86ms9j8640fmb4nmczsp7d65k9rgcvykxshzqj4z8ca"))))
+    (build-system node-build-system)
+    (arguments
+     (list
+      #:tests? #f
+      #:phases
+      #~(modify-phases %standard-phases
+          (delete 'build)
+          (add-after 'patch-dependencies 'delete-dev-dependencies
+            (lambda _
+              (modify-json (delete-dependencies (list "ava"
+                                                  "jose"
+                                                  "qunit"
+                                                  "undici"
+                                                  "esbuild"
+                                                  "typedoc"
+                                                  "archiver"
+                                                  "prettier"
+                                                  "raw-body"
+                                                  "@koa/cors"
+                                                  "happy-dom"
+                                                  "selfsigned"
+                                                  "timekeeper"
+                                                  "typescript"
+                                                  "@types/node"
+                                                  "@types/qunit"
+                                                  "tough-cookie"
+                                                  "oidc-provider"
+                                                  "patch-package"
+                                                  "ts-blank-space"
+                                                  "@playwright/test"
+                                                  "@types/koa__cors"
+                                                  "http-cookie-agent"
+                                                  "prettier-plugin-jsdoc"
+                                                  "typedoc-plugin-markdown"
+                                                  "typedoc-plugin-mdn-links"))))))))
+    (home-page "https://github.com/panva/oauth4webapi")
+    (synopsis "Low-Level OAuth 2 / OpenID Connect Client API for JavaScript Runtimes")
+    (description "Low-Level OAuth 2 / OpenID Connect Client API for JavaScript Runtimes")
+    (license license:expat)))
+
+(define-public node-openid-client-6.8.4
+  (package
+    (name "node-openid-client")
+    (version "6.8.4")
+    (source
+     (origin
+       (method url-fetch)
+       (uri "https://registry.npmjs.org/openid-client/-/openid-client-6.8.4.tgz")
+       (sha256
+        (base32 "0i81cj951fb1vmh74r2b4z8qdkxb0h3gfbi41vlynhdwasl1cg2p"))))
+    (build-system node-build-system)
+    (arguments
+     (list
+      #:tests? #f
+      #:phases
+      #~(modify-phases %standard-phases
+          (delete 'build)
+          (add-after 'patch-dependencies 'delete-dev-dependencies
+            (lambda _
+              (modify-json (delete-dependencies (list "ky"
+                                                  "ava"
+                                                  "qunit"
+                                                  "undici"
+                                                  "esbuild"
+                                                  "typedoc"
+                                                  "archiver"
+                                                  "prettier"
+                                                  "raw-body"
+                                                  "@koa/cors"
+                                                  "happy-dom"
+                                                  "selfsigned"
+                                                  "typescript"
+                                                  "@types/node"
+                                                  "@types/qunit"
+                                                  "tough-cookie"
+                                                  "oidc-provider"
+                                                  "patch-package"
+                                                  "@types/express"
+                                                  "ts-blank-space"
+                                                  "@types/passport"
+                                                  "@playwright/test"
+                                                  "@types/koa__cors"
+                                                  "http-cookie-agent"
+                                                  "@types/cookie-parser"
+                                                  "prettier-plugin-jsdoc"
+                                                  "@types/express-session"
+                                                  "typedoc-plugin-markdown"
+                                                  "typedoc-plugin-mdn-links"
+                                                  "@types/connect-ensure-login"))))))))
+    (inputs (list node-jose-6.2.3
+                  node-oauth4webapi-3.8.6))
+    (home-page "https://github.com/panva/openid-client")
+    (synopsis "OAuth 2 / OpenID Connect Client API for JavaScript Runtimes")
+    (description "OAuth 2 / OpenID Connect Client API for JavaScript Runtimes")
+    (license license:expat)))
+
+(define-public node-side-channel-list-1.0.0
+  (package
+    (name "node-side-channel-list")
+    (version "1.0.0")
+    (source
+     (origin
+       (method url-fetch)
+       (uri "https://registry.npmjs.org/side-channel-list/-/side-channel-list-1.0.0.tgz")
+       (sha256
+        (base32 "1k8wgnr29504nxwmh9p5d88462zdvc2y9nswjjlsrj7bqaq4w1sq"))))
+    (build-system node-build-system)
+    (arguments
+     (list
+      #:tests? #f
+      #:phases
+      #~(modify-phases %standard-phases
+          (delete 'build)
+          (add-after 'patch-dependencies 'delete-dev-dependencies
+            (lambda _
+              (modify-json (delete-dependencies (list "nyc"
+                                                  "tape"
+                                                  "eclint"
+                                                  "eslint"
+                                                  "evalmd"
+                                                  "encoding"
+                                                  "npmignore"
+                                                  "in-publish"
+                                                  "typescript"
+                                                  "@types/tape"
+                                                  "auto-changelog"
+                                                  "@ljharb/tsconfig"
+                                                  "safe-publish-latest"
+                                                  "@arethetypeswrong/cli"
+                                                  "@ljharb/eslint-config"
+                                                  "@types/object-inspect"))))))))
+    (inputs (list node-es-errors-1.3.0
+                  node-object-inspect-1.13.4))
+    (home-page "https://github.com/ljharb/side-channel-list#readme")
+    (synopsis "Store information about any JS value in a side channel, using a linked list")
+    (description "Store information about any JS value in a side channel, using a linked list")
+    (license license:expat)))
+
+(define-public node-es-object-atoms-1.1.1
+  (package
+    (name "node-es-object-atoms")
+    (version "1.1.1")
+    (source
+     (origin
+       (method url-fetch)
+       (uri "https://registry.npmjs.org/es-object-atoms/-/es-object-atoms-1.1.1.tgz")
+       (sha256
+        (base32 "1kkrwpp6nz2nc32zxin52xnngyg7qg38c5ljy5xyx2l1azby861y"))))
+    (build-system node-build-system)
+    (arguments
+     (list
+      #:tests? #f
+      #:phases
+      #~(modify-phases %standard-phases
+          (delete 'build)
+          (add-after 'patch-dependencies 'delete-dev-dependencies
+            (lambda _
+              (modify-json (delete-dependencies (list "nyc"
+                                                  "tape"
+                                                  "eclint"
+                                                  "eslint"
+                                                  "evalmd"
+                                                  "encoding"
+                                                  "npmignore"
+                                                  "in-publish"
+                                                  "typescript"
+                                                  "@types/tape"
+                                                  "auto-changelog"
+                                                  "@ljharb/tsconfig"
+                                                  "safe-publish-latest"
+                                                  "@ljharb/eslint-config"))))))))
+    (inputs (list node-es-errors-1.3.0))
+    (home-page "https://github.com/ljharb/es-object-atoms#readme")
+    (synopsis "ES Object-related atoms: Object, ToObject, RequireObjectCoercible")
+    (description "ES Object-related atoms: Object, ToObject, RequireObjectCoercible")
+    (license license:expat)))
+
+(define-public node-hasown-2.0.2
+  (package
+    (name "node-hasown")
+    (version "2.0.2")
+    (source
+     (origin
+       (method url-fetch)
+       (uri "https://registry.npmjs.org/hasown/-/hasown-2.0.2.tgz")
+       (sha256
+        (base32 "0zc0za6zy8y2iwy31ayzwmi4j912j382iwr9xsv09bhirp9c9kah"))))
+    (build-system node-build-system)
+    (arguments
+     (list
+      #:tests? #f
+      #:phases
+      #~(modify-phases %standard-phases
+          (delete 'build)
+          (add-after 'patch-dependencies 'delete-dev-dependencies
+            (lambda _
+              (modify-json (delete-dependencies (list "aud"
+                                                  "nyc"
+                                                  "tape"
+                                                  "eslint"
+                                                  "evalmd"
+                                                  "npmignore"
+                                                  "in-publish"
+                                                  "typescript"
+                                                  "@types/tape"
+                                                  "mock-property"
+                                                  "auto-changelog"
+                                                  "@ljharb/tsconfig"
+                                                  "safe-publish-latest"
+                                                  "@types/function-bind"
+                                                  "@types/mock-property"
+                                                  "@arethetypeswrong/cli"
+                                                  "@ljharb/eslint-config"))))))))
+    (inputs (list node-function-bind-1.1.2))
+    (home-page "https://github.com/inspect-js/hasOwn#readme")
+    (synopsis "A robust, ES3 compatible, \\\"has own property\\\" predicate.")
+    (description "A robust, ES3 compatible, \\\"has own property\\\" predicate.")
+    (license license:expat)))
+
+(define-public node-get-intrinsic-1.3.0
+  (package
+    (name "node-get-intrinsic")
+    (version "1.3.0")
+    (source
+     (origin
+       (method url-fetch)
+       (uri "https://registry.npmjs.org/get-intrinsic/-/get-intrinsic-1.3.0.tgz")
+       (sha256
+        (base32 "0i05g3xvqgv16ss19k3jprfnkqsln2n4m7wgn3xldzh09vjjfbk6"))))
+    (build-system node-build-system)
+    (arguments
+     (list
+      #:tests? #f
+      #:phases
+      #~(modify-phases %standard-phases
+          (delete 'build)
+          (add-after 'patch-dependencies 'delete-dev-dependencies
+            (lambda _
+              (modify-json (delete-dependencies (list "nyc"
+                                                  "tape"
+                                                  "eslint"
+                                                  "evalmd"
+                                                  "encoding"
+                                                  "for-each"
+                                                  "npmignore"
+                                                  "call-bound"
+                                                  "es-abstract"
+                                                  "mock-property"
+                                                  "auto-changelog"
+                                                  "object-inspect"
+                                                  "es-value-fixtures"
+                                                  "make-async-function"
+                                                  "safe-publish-latest"
+                                                  "@ljharb/eslint-config"
+                                                  "make-generator-function"
+                                                  "make-async-generator-function"))))))))
+    (inputs (list node-gopd-1.2.0
+                  node-hasown-2.0.2
+                  node-es-errors-1.3.0
+                  node-get-proto-1.0.1
+                  node-has-symbols-1.1.0
+                  node-function-bind-1.1.2
+                  node-es-object-atoms-1.1.1
+                  node-math-intrinsics-1.1.0
+                  node-es-define-property-1.0.1
+                  node-call-bind-apply-helpers-1.0.2))
+    (home-page "https://github.com/ljharb/get-intrinsic#readme")
+    (synopsis "Get and robustly cache all JS language-level intrinsics at first require time")
+    (description "Get and robustly cache all JS language-level intrinsics at first require time")
+    (license license:expat)))
+
+(define-public node-d3-dispatch-3.0.1
+  (package
+    (name "node-d3-dispatch")
+    (version "3.0.1")
+    (source
+     (origin
+       (method url-fetch)
+       (uri "https://registry.npmjs.org/d3-dispatch/-/d3-dispatch-3.0.1.tgz")
+       (sha256
+        (base32 "08zajzvv6l2fzqbm6pxyzhqq0dn8l0hwmxjpml49c3iy01f0n6ix"))))
+    (build-system node-build-system)
+    (arguments
+     (list
+      #:tests? #f
+      #:phases
+      #~(modify-phases %standard-phases
+          (delete 'build)
+          (add-after 'patch-dependencies 'delete-dev-dependencies
+            (lambda _
+              (modify-json (delete-dependencies (list "mocha"
+                                                  "eslint"
+                                                  "rollup"
+                                                  "rollup-plugin-terser"))))))))
+    (home-page "https://d3js.org/d3-dispatch/")
+    (synopsis "Register named callbacks and call them with arguments.")
+    (description "Register named callbacks and call them with arguments.")
+    (license license:isc)))
+
+(define-public node-d3-selection-3.0.0
+  (package
+    (name "node-d3-selection")
+    (version "3.0.0")
+    (source
+     (origin
+       (method url-fetch)
+       (uri "https://registry.npmjs.org/d3-selection/-/d3-selection-3.0.0.tgz")
+       (sha256
+        (base32 "1ww94z8k1a2zp63ywfkz7r1jbhsn5y49xblwx1nvf8ya1prp5y51"))))
+    (build-system node-build-system)
+    (arguments
+     (list
+      #:tests? #f
+      #:phases
+      #~(modify-phases %standard-phases
+          (delete 'build)
+          (add-after 'patch-dependencies 'delete-dev-dependencies
+            (lambda _
+              (modify-json (delete-dependencies (list "jsdom"
+                                                  "mocha"
+                                                  "eslint"
+                                                  "rollup"
+                                                  "rollup-plugin-terser"))))))))
+    (home-page "https://d3js.org/d3-selection/")
+    (synopsis "Data-driven DOM manipulation: select elements and join them to data.")
+    (description "Data-driven DOM manipulation: select elements and join them to data.")
+    (license license:isc)))
+
+(define-public node-d3-drag-3.0.0
+  (package
+    (name "node-d3-drag")
+    (version "3.0.0")
+    (source
+     (origin
+       (method url-fetch)
+       (uri "https://registry.npmjs.org/d3-drag/-/d3-drag-3.0.0.tgz")
+       (sha256
+        (base32 "1nylc1j29dbk1hp2vzp3shsj9hkamq7yr8zdlhsmy4w53p9wkk53"))))
+    (build-system node-build-system)
+    (arguments
+     (list
+      #:tests? #f
+      #:phases
+      #~(modify-phases %standard-phases
+          (delete 'build)
+          (add-after 'patch-dependencies 'delete-dev-dependencies
+            (lambda _
+              (modify-json (delete-dependencies (list "mocha"
+                                                  "eslint"
+                                                  "rollup"
+                                                  "rollup-plugin-terser"))))))))
+    (inputs (list node-d3-dispatch-3.0.1
+                  node-d3-selection-3.0.0))
+    (home-page "https://d3js.org/d3-drag/")
+    (synopsis "Drag and drop SVG, HTML or Canvas using mouse or touch input.")
+    (description "Drag and drop SVG, HTML or Canvas using mouse or touch input.")
+    (license license:isc)))
+
+(define-public node-d3-color-3.1.0
+  (package
+    (name "node-d3-color")
+    (version "3.1.0")
+    (source
+     (origin
+       (method url-fetch)
+       (uri "https://registry.npmjs.org/d3-color/-/d3-color-3.1.0.tgz")
+       (sha256
+        (base32 "0hivycjzy6vjl5p5p42l6dngpf6rzrrzrgs6cmlhxw6lkpcvq6yl"))))
+    (build-system node-build-system)
+    (arguments
+     (list
+      #:tests? #f
+      #:phases
+      #~(modify-phases %standard-phases
+          (delete 'build)
+          (add-after 'patch-dependencies 'delete-dev-dependencies
+            (lambda _
+              (modify-json (delete-dependencies (list "mocha"
+                                                  "eslint"
+                                                  "rollup"
+                                                  "rollup-plugin-terser"))))))))
+    (home-page "https://d3js.org/d3-color/")
+    (synopsis "Color spaces! RGB, HSL, Cubehelix, Lab and HCL (Lch).")
+    (description "Color spaces! RGB, HSL, Cubehelix, Lab and HCL (Lch).")
+    (license license:isc)))
+
+(define-public node-d3-interpolate-3.0.1
+  (package
+    (name "node-d3-interpolate")
+    (version "3.0.1")
+    (source
+     (origin
+       (method url-fetch)
+       (uri "https://registry.npmjs.org/d3-interpolate/-/d3-interpolate-3.0.1.tgz")
+       (sha256
+        (base32 "0cvwgjl4phgzjn5vqbbg5d23hp3x1gf5i1jipfh05l9w4f6zg3by"))))
+    (build-system node-build-system)
+    (arguments
+     (list
+      #:tests? #f
+      #:phases
+      #~(modify-phases %standard-phases
+          (delete 'build)
+          (add-after 'patch-dependencies 'delete-dev-dependencies
+            (lambda _
+              (modify-json (delete-dependencies (list "mocha"
+                                                  "eslint"
+                                                  "rollup"
+                                                  "rollup-plugin-terser"))))))))
+    (inputs (list node-d3-color-3.1.0))
+    (home-page "https://d3js.org/d3-interpolate/")
+    (synopsis "Interpolate numbers, colors, strings, arrays, objects, whatever!")
+    (description "Interpolate numbers, colors, strings, arrays, objects, whatever!")
+    (license license:isc)))
+
+(define-public node-d3-ease-3.0.1
+  (package
+    (name "node-d3-ease")
+    (version "3.0.1")
+    (source
+     (origin
+       (method url-fetch)
+       (uri "https://registry.npmjs.org/d3-ease/-/d3-ease-3.0.1.tgz")
+       (sha256
+        (base32 "0amyzp0pc56iap3z3qs5nsnp14plrhjzc51dmzp1nx4bmbjayjdj"))))
+    (build-system node-build-system)
+    (arguments
+     (list
+      #:tests? #f
+      #:phases
+      #~(modify-phases %standard-phases
+          (delete 'build)
+          (add-after 'patch-dependencies 'delete-dev-dependencies
+            (lambda _
+              (modify-json (delete-dependencies (list "mocha"
+                                                  "eslint"
+                                                  "rollup"
+                                                  "rollup-plugin-terser"))))))))
+    (home-page "https://d3js.org/d3-ease/")
+    (synopsis "Easing functions for smooth animation.")
+    (description "Easing functions for smooth animation.")
+    (license license:bsd-3)))
+
+(define-public node-d3-timer-3.0.1
+  (package
+    (name "node-d3-timer")
+    (version "3.0.1")
+    (source
+     (origin
+       (method url-fetch)
+       (uri "https://registry.npmjs.org/d3-timer/-/d3-timer-3.0.1.tgz")
+       (sha256
+        (base32 "01gdx03ryqqnlqf16ay57hpf4li74mwshrf3yhj7ysl7w40zkk85"))))
+    (build-system node-build-system)
+    (arguments
+     (list
+      #:tests? #f
+      #:phases
+      #~(modify-phases %standard-phases
+          (delete 'build)
+          (add-after 'patch-dependencies 'delete-dev-dependencies
+            (lambda _
+              (modify-json (delete-dependencies (list "mocha"
+                                                  "eslint"
+                                                  "rollup"
+                                                  "rollup-plugin-terser"))))))))
+    (home-page "https://d3js.org/d3-timer/")
+    (synopsis "An efficient queue capable of managing thousands of concurrent animations.")
+    (description "An efficient queue capable of managing thousands of concurrent animations.")
+    (license license:isc)))
+
+(define-public node-d3-transition-3.0.1
+  (package
+    (name "node-d3-transition")
+    (version "3.0.1")
+    (source
+     (origin
+       (method url-fetch)
+       (uri "https://registry.npmjs.org/d3-transition/-/d3-transition-3.0.1.tgz")
+       (sha256
+        (base32 "0k15w3f49xzk94xvg9p263lbglrzr21yqd06q2pq2manxpmbh3i6"))))
+    (build-system node-build-system)
+    (arguments
+     (list
+      #:tests? #f
+      #:phases
+      #~(modify-phases %standard-phases
+          (delete 'build)
+          (add-after 'patch-dependencies 'delete-dev-dependencies
+            (lambda _
+              (modify-json (delete-dependencies (list "jsdom"
+                                                  "mocha"
+                                                  "eslint"
+                                                  "rollup"
+                                                  "d3-selection"
+                                                  "rollup-plugin-terser"))))))))
+    (inputs (list node-d3-ease-3.0.1
+                  node-d3-color-3.1.0
+                  node-d3-timer-3.0.1
+                  node-d3-dispatch-3.0.1
+                  node-d3-interpolate-3.0.1))
+    (home-page "https://d3js.org/d3-transition/")
+    (synopsis "Animated transitions for D3 selections.")
+    (description "Animated transitions for D3 selections.")
+    (license license:isc)))
+
+(define-public node-d3-zoom-3.0.0
+  (package
+    (name "node-d3-zoom")
+    (version "3.0.0")
+    (source
+     (origin
+       (method url-fetch)
+       (uri "https://registry.npmjs.org/d3-zoom/-/d3-zoom-3.0.0.tgz")
+       (sha256
+        (base32 "118ghizj8lyc1sb8g6vsj7p30xvyra2g0v4w0sidd2a8bir2hvc4"))))
+    (build-system node-build-system)
+    (arguments
+     (list
+      #:tests? #f
+      #:phases
+      #~(modify-phases %standard-phases
+          (delete 'build)
+          (add-after 'patch-dependencies 'delete-dev-dependencies
+            (lambda _
+              (modify-json (delete-dependencies (list "jsdom"
+                                                  "mocha"
+                                                  "eslint"
+                                                  "rollup"
+                                                  "rollup-plugin-terser"))))))))
+    (inputs (list node-d3-drag-3.0.0
+                  node-d3-dispatch-3.0.1
+                  node-d3-selection-3.0.0
+                  node-d3-transition-3.0.1
+                  node-d3-interpolate-3.0.1))
+    (home-page "https://d3js.org/d3-zoom/")
+    (synopsis "Pan and zoom SVG, HTML or Canvas using mouse or touch input.")
+    (description "Pan and zoom SVG, HTML or Canvas using mouse or touch input.")
+    (license license:isc)))
+
+(define-public node-types-d3-selection-3.0.11
+  (package
+    (name "node-types-d3-selection")
+    (version "3.0.11")
+    (source
+     (origin
+       (method url-fetch)
+       (uri "https://registry.npmjs.org/@types/d3-selection/-/d3-selection-3.0.11.tgz")
+       (sha256
+        (base32 "1r61alg3v7rbfm03mhrsb3z1rwpg786j75sm5a5l4w65h2431sql"))))
+    (build-system node-build-system)
+    (arguments
+     (list
+      #:tests? #f
+      #:phases
+      #~(modify-phases %standard-phases
+          (delete 'build))))
+    (home-page "https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/d3-selection")
+    (synopsis "TypeScript definitions for d3-selection")
+    (description "TypeScript definitions for d3-selection")
+    (license license:expat)))
+
+(define-public node-types-d3-color-3.1.3
+  (package
+    (name "node-types-d3-color")
+    (version "3.1.3")
+    (source
+     (origin
+       (method url-fetch)
+       (uri "https://registry.npmjs.org/@types/d3-color/-/d3-color-3.1.3.tgz")
+       (sha256
+        (base32 "14k7zwvbdcflb1bqbk90qw6ckms2d9fbn2hyjspcjn2a1wlylwya"))))
+    (build-system node-build-system)
+    (arguments
+     (list
+      #:tests? #f
+      #:phases
+      #~(modify-phases %standard-phases
+          (delete 'build))))
+    (home-page "https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/d3-color")
+    (synopsis "TypeScript definitions for d3-color")
+    (description "TypeScript definitions for d3-color")
+    (license license:expat)))
+
+(define-public node-types-d3-drag-3.0.7
+  (package
+    (name "node-types-d3-drag")
+    (version "3.0.7")
+    (source
+     (origin
+       (method url-fetch)
+       (uri "https://registry.npmjs.org/@types/d3-drag/-/d3-drag-3.0.7.tgz")
+       (sha256
+        (base32 "0i029j101gshyr2n2zlmbkx3ag5jmfsggs5yknm6bl5im3jl90af"))))
+    (build-system node-build-system)
+    (arguments
+     (list
+      #:tests? #f
+      #:phases
+      #~(modify-phases %standard-phases
+          (delete 'build))))
+    (inputs (list node-types-d3-selection-3.0.11))
+    (home-page "https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/d3-drag")
+    (synopsis "TypeScript definitions for d3-drag")
+    (description "TypeScript definitions for d3-drag")
+    (license license:expat)))
+
+(define-public node-types-d3-interpolate-3.0.4
+  (package
+    (name "node-types-d3-interpolate")
+    (version "3.0.4")
+    (source
+     (origin
+       (method url-fetch)
+       (uri "https://registry.npmjs.org/@types/d3-interpolate/-/d3-interpolate-3.0.4.tgz")
+       (sha256
+        (base32 "05s2bhzaph07pg6l0jzcaqgh8lc18gsqiywkzb36311k7ry1400n"))))
+    (build-system node-build-system)
+    (arguments
+     (list
+      #:tests? #f
+      #:phases
+      #~(modify-phases %standard-phases
+          (delete 'build))))
+    (inputs (list node-types-d3-color-3.1.3))
+    (home-page "https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/d3-interpolate")
+    (synopsis "TypeScript definitions for d3-interpolate")
+    (description "TypeScript definitions for d3-interpolate")
+    (license license:expat)))
+
+(define-public node-types-d3-transition-3.0.9
+  (package
+    (name "node-types-d3-transition")
+    (version "3.0.9")
+    (source
+     (origin
+       (method url-fetch)
+       (uri "https://registry.npmjs.org/@types/d3-transition/-/d3-transition-3.0.9.tgz")
+       (sha256
+        (base32 "1nrh1jqxnvxkajjkj1rfbay4sd8wmzji4n3qh4y4f5bjffk4gfy2"))))
+    (build-system node-build-system)
+    (arguments
+     (list
+      #:tests? #f
+      #:phases
+      #~(modify-phases %standard-phases
+          (delete 'build))))
+    (inputs (list node-types-d3-selection-3.0.11))
+    (home-page "https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/d3-transition")
+    (synopsis "TypeScript definitions for d3-transition")
+    (description "TypeScript definitions for d3-transition")
+    (license license:expat)))
+
+(define-public node-types-d3-zoom-3.0.8
+  (package
+    (name "node-types-d3-zoom")
+    (version "3.0.8")
+    (source
+     (origin
+       (method url-fetch)
+       (uri "https://registry.npmjs.org/@types/d3-zoom/-/d3-zoom-3.0.8.tgz")
+       (sha256
+        (base32 "03vq9i86ix9d2ls481xhzxd2qss3xvyiypdpxdkbksz32v2gyhn3"))))
+    (build-system node-build-system)
+    (arguments
+     (list
+      #:tests? #f
+      #:phases
+      #~(modify-phases %standard-phases
+          (delete 'build))))
+    (inputs (list node-types-d3-selection-3.0.11
+                  node-types-d3-interpolate-3.0.4))
+    (home-page "https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/d3-zoom")
+    (synopsis "TypeScript definitions for d3-zoom")
+    (description "TypeScript definitions for d3-zoom")
+    (license license:expat)))
+
+(define-public node-xyflow-system-0.0.76
+  (package
+    (name "node-xyflow-system")
+    (version "0.0.76")
+    (source
+     (origin
+       (method url-fetch)
+       (uri "https://registry.npmjs.org/@xyflow/system/-/system-0.0.76.tgz")
+       (sha256
+        (base32 "1k2nc101yf8phzagd5gakp6iqfl4c72y8r713zdr2r1niv0ldiql"))))
+    (build-system node-build-system)
+    (arguments
+     (list
+      #:tests? #f
+      #:phases
+      #~(modify-phases %standard-phases
+          (delete 'build)
+          (add-after 'patch-dependencies 'delete-dev-dependencies
+            (lambda _
+              (modify-json (delete-dependencies (list "typescript"
+                                                  "@types/node"
+                                                  "@xyflow/tsconfig"
+                                                  "@xyflow/eslint-config"
+                                                  "@xyflow/rollup-config"))))))))
+    (inputs (list node-d3-drag-3.0.0
+                  node-d3-zoom-3.0.0
+                  node-d3-selection-3.0.0
+                  node-d3-interpolate-3.0.1
+                  ;; @types/d3-* are real dependencies (not dev/peer) per
+                  ;; @xyflow/system's own package.json, even though nothing
+                  ;; actually require()s them at runtime.
+                  node-types-d3-selection-3.0.11
+                  node-types-d3-drag-3.0.7
+                  node-types-d3-color-3.1.3
+                  node-types-d3-interpolate-3.0.4
+                  node-types-d3-transition-3.0.9
+                  node-types-d3-zoom-3.0.8))
+    (home-page "https://github.com/xyflow/xyflow#readme")
+    (synopsis "xyflow core system that powers React Flow and Svelte Flow.")
+    (description "xyflow core system that powers React Flow and Svelte Flow.")
+    (license license:expat)))
+
+(define-public node-classcat-5.0.5
+  (package
+    (name "node-classcat")
+    (version "5.0.5")
+    (source
+     (origin
+       (method url-fetch)
+       (uri "https://registry.npmjs.org/classcat/-/classcat-5.0.5.tgz")
+       (sha256
+        (base32 "097d0knvb9d81s7k6h54z2pp2jfkpvg8cf8qmg8f873w6n98k5p0"))))
+    (build-system node-build-system)
+    (arguments
+     (list
+      #:tests? #f
+      #:phases
+      #~(modify-phases %standard-phases
+          (delete 'build)
+          (add-before 'repack 'disable-lifecycle-scripts
+            (lambda _
+              (modify-json (delete-fields '("scripts.prepare")
+                                          #:strict? #f))))
+          (add-after 'patch-dependencies 'delete-dev-dependencies
+            (lambda _
+              (modify-json (delete-dependencies (list "c8"
+                                                  "twist"))))))))
+    (home-page "https://github.com/jorgebucaran/classcat#readme")
+    (synopsis "Build a class attribute string quickly.")
+    (description "Build a class attribute string quickly.")
+    (license license:expat)))
+
+(define-public node-zustand-4.5.7
+  (package
+    (name "node-zustand")
+    (version "4.5.7")
+    (source
+     (origin
+       (method url-fetch)
+       (uri "https://registry.npmjs.org/zustand/-/zustand-4.5.7.tgz")
+       (sha256
+        (base32 "0qz8chcgc6zr9xjaiqc6r4jd6vbsrshdx46j8a20xalpcdrvfh2j"))))
+    (build-system node-build-system)
+    (arguments
+     (list
+      #:tests? #f
+      #:phases
+      #~(modify-phases %standard-phases
+          (delete 'build)
+          ;; immer/react/@types/react are all optional peerDependencies (per
+          ;; peerDependenciesMeta) not mirrored in devDependencies --
+          ;; patch-dependencies would otherwise leave them unresolved.  React
+          ;; itself is already present in the top-level seerr node_modules.
+          (add-after 'patch-dependencies 'delete-optional-peer-dependencies
+            (lambda _
+              (modify-json (delete-dependencies (list "immer" "react"
+                                                  "@types/react"))))))))
+    (inputs (list node-use-sync-external-store-1.6.0))
+    (home-page "https://github.com/pmndrs/zustand")
+    (synopsis "🐻 Bear necessities for state management in React")
+    (description "🐻 Bear necessities for state management in React")
+    (license license:expat)))
+
+(define-public node-xyflow-react-12.10.2
+  (package
+    (name "node-xyflow-react")
+    (version "12.10.2")
+    (source
+     (origin
+       (method url-fetch)
+       (uri "https://registry.npmjs.org/@xyflow/react/-/react-12.10.2.tgz")
+       (sha256
+        (base32 "14b4gr5h82a27lncx14wwmlz9dnvszmx4gg5z87c9wyxvkqans5v"))))
+    (build-system node-build-system)
+    (arguments
+     (list
+      #:tests? #f
+      #:phases
+      #~(modify-phases %standard-phases
+          (delete 'build)
+          (add-after 'patch-dependencies 'delete-dev-dependencies
+            (lambda _
+              (modify-json (delete-dependencies (list "react"
+                                                  ;; required peerDependency,
+                                                  ;; not in devDependencies --
+                                                  ;; patch-dependencies would
+                                                  ;; otherwise leave it
+                                                  ;; unresolved.  react-dom is
+                                                  ;; already in the top-level
+                                                  ;; seerr node_modules.
+                                                  "react-dom"
+                                                  "cssnano"
+                                                  "postcss"
+                                                  "typescript"
+                                                  "@types/node"
+                                                  "postcss-cli"
+                                                  "@types/react"
+                                                  "autoprefixer"
+                                                  "postcss-import"
+                                                  "postcss-nested"
+                                                  "postcss-rename"
+                                                  "@types/react-dom"
+                                                  "@xyflow/tsconfig"
+                                                  "@xyflow/eslint-config"
+                                                  "@xyflow/rollup-config"
+                                                  "postcss-combine-duplicated-selectors"))))))))
+    (inputs (list node-zustand-4.5.7
+                  node-classcat-5.0.5
+                  node-xyflow-system-0.0.76))
+    (home-page "https://reactflow.dev")
+    (synopsis "React Flow - A highly customizable React library for building node-based editors and interactive flow charts.")
+    (description "React Flow - A highly customizable React library for building node-based editors and interactive flow charts.")
+    (license license:expat)))
+
+
+;; ---------------------------------------------------------------------------
+;; seerrng migration: bumped shared deps (axios, next(+swc+env), nodemailer,
+;; postcss, sharp, typeorm, ua-parser-js, undici, js-yaml) pinned per
+;; seerrng v3.11.2's pnpm-lock.yaml, plus nanoid-3.3.16 (postcss's new dep).
+;; The Next.js-internal exact postcss pin (8.4.31, unchanged) stays as-is;
+;; this new node-postcss-8.5.23 is for the app's own tailwind pipeline.
+;; ---------------------------------------------------------------------------
+
+(define-public node-nanoid-3.3.16
+  (package
+    (name "node-nanoid")
+    (version "3.3.16")
+    (source
+     (origin
+       (method url-fetch)
+       (uri "https://registry.npmjs.org/nanoid/-/nanoid-3.3.16.tgz")
+       (sha256
+        (base32 "1dpliwfdc34xcl7l3fqwzn1hi6i0yqganalsmcmg75fznrrggds2"))))
+    (build-system node-build-system)
+    (arguments
+     (list
+      #:tests? #f
+      #:phases
+      #~(modify-phases %standard-phases
+          (delete 'build))))
+    (home-page "https://github.com/ai/nanoid#readme")
+    (synopsis "A tiny (116 bytes), secure URL-friendly unique string ID generator")
+    (description "A tiny (116 bytes), secure URL-friendly unique string ID generator")
+    (license license:expat)))
+
+(define-public node-postcss-8.5.23
+  (package
+    (name "node-postcss")
+    (version "8.5.23")
+    (source
+     (origin
+       (method url-fetch)
+       (uri "https://registry.npmjs.org/postcss/-/postcss-8.5.23.tgz")
+       (sha256
+        (base32 "1wa40x661adr6xbnczwmdsdyw5gy5fzhk4y7w4s8rbqby57k5kyj"))))
+    (build-system node-build-system)
+    (arguments
+     (list
+      #:tests? #f
+      #:phases
+      #~(modify-phases %standard-phases
+          (delete 'build))))
+    (inputs (list node-source-map-js-1.2.1 node-picocolors-1.1.1
+                  node-nanoid-3.3.16))
+    (home-page "https://postcss.org/")
+    (synopsis "Tool for transforming styles with JS plugins")
+    (description "Tool for transforming styles with JS plugins")
+    (license license:expat)))
+(define-public node-next-env-16.2.11
+  (package
+    (name "node-next-env")
+    (version "16.2.11")
+    (source
+     (origin
+       (method url-fetch)
+       (uri "https://registry.npmjs.org/@next/env/-/env-16.2.11.tgz")
+       (sha256
+        (base32 "1jwgrslwby9zndxhvxmh3iv2i43wi664v14cpaac6lg9glkrjh8a"))))
+    (build-system node-build-system)
+    (arguments
+     (list
+      #:tests? #f
+      #:phases
+      #~(modify-phases %standard-phases
+          (delete 'build)
+          (add-before 'repack 'disable-lifecycle-scripts
+            (lambda _
+              (modify-json (delete-fields '("scripts.prepare"
+                                            "scripts.postinstall")
+                                          #:strict? #f))))
+          (add-after 'patch-dependencies 'delete-dev-dependencies
+            (lambda _
+              (modify-json (delete-dependencies '("dotenv" "@vercel/ncc"
+                                                  "dotenv-expand"))))))))
+    (home-page "https://github.com/vercel/next.js#readme")
+    (synopsis "Next.js dotenv file loading")
+    (description "Next.js dotenv file loading")
+    (license license:expat)))
+
+(define-public node-next-16.2.11
+  (package
+    (name "node-next")
+    (version "16.2.11")
+    (source
+     (origin
+       (method url-fetch)
+       (uri "https://registry.npmjs.org/next/-/next-16.2.11.tgz")
+       (sha256
+        (base32 "0f483j39mll2l2146ygz3r60ph5xaaaf0rc2ma88qf9c20fcy4pg"))))
+    (build-system node-build-system)
+    (arguments
+     (list
+      #:tests? #f
+      #:phases
+      #~(modify-phases %standard-phases
+          (delete 'build)
+          (add-before 'repack 'disable-lifecycle-scripts
+            (lambda _
+              (modify-json (delete-fields '("scripts.prepare"
+                                            "scripts.postinstall")
+                                          #:strict? #f))))
+          (add-after 'patch-dependencies 'delete-dev-dependencies
+            (lambda _
+              (modify-json (delete-dependencies '("ws" "arg"
+                                                  "msw"
+                                                  "ora"
+                                                  "tar"
+                                                  "zod"
+                                                  "conf"
+                                                  "glob"
+                                                  "send"
+                                                  "util"
+                                                  "acorn"
+                                                  "anser"
+                                                  "bytes"
+                                                  "debug"
+                                                  "fresh"
+                                                  "json5"
+                                                  "taskr"
+                                                  "assert"
+                                                  "buffer"
+                                                  "busboy"
+                                                  "cookie"
+                                                  "events"
+                                                  "is-wsl"
+                                                  "nanoid"
+                                                  "recast"
+                                                  "semver"
+                                                  "terser"
+                                                  "ci-info"
+                                                  "devalue"
+                                                  "find-up"
+                                                  "p-limit"
+                                                  "p-queue"
+                                                  "process"
+                                                  "webpack"
+                                                  "punycode"
+                                                  "raw-body"
+                                                  "unistore"
+                                                  "@next/swc"
+                                                  "@swc/core"
+                                                  "@types/ws"
+                                                  "commander"
+                                                  "cross-env"
+                                                  "gzip-size"
+                                                  "ipaddr.js"
+                                                  "is-docker"
+                                                  "neo-async"
+                                                  "picomatch"
+                                                  "storybook"
+                                                  "watchpack"
+                                                  "@next/font"
+                                                  "@swc/types"
+                                                  "async-sema"
+                                                  "cli-select"
+                                                  "css-loader"
+                                                  "css.escape"
+                                                  "http-proxy"
+                                                  "icss-utils"
+                                                  "image-size"
+                                                  "native-url"
+                                                  "source-map"
+                                                  "strip-ansi"
+                                                  "text-table"
+                                                  "typescript"
+                                                  "web-vitals"
+                                                  "@babel/core"
+                                                  "@jest/types"
+                                                  "@types/glob"
+                                                  "@types/send"
+                                                  "@vercel/ncc"
+                                                  "@vercel/nft"
+                                                  "async-retry"
+                                                  "client-only"
+                                                  "compression"
+                                                  "cross-spawn"
+                                                  "jest-worker"
+                                                  "sass-loader"
+                                                  "server-only"
+                                                  "shell-quote"
+                                                  "stream-http"
+                                                  "string-hash"
+                                                  "superstruct"
+                                                  "@babel/types"
+                                                  "@hapi/accept"
+                                                  "@rspack/core"
+                                                  "@taskr/clear"
+                                                  "@types/bytes"
+                                                  "@types/debug"
+                                                  "@types/fresh"
+                                                  "@types/react"
+                                                  "babel-loader"
+                                                  "browserslist"
+                                                  "comment-json"
+                                                  "content-type"
+                                                  "edge-runtime"
+                                                  "jsonwebtoken"
+                                                  "lodash.curry"
+                                                  "postcss-scss"
+                                                  "setimmediate"
+                                                  "source-map08"
+                                                  "style-loader"
+                                                  "ua-parser-js"
+                                                  "@taskr/esnext"
+                                                  "@types/cookie"
+                                                  "@types/lodash"
+                                                  "@types/semver"
+                                                  "ignore-loader"
+                                                  "loader-runner"
+                                                  "loader-utils2"
+                                                  "loader-utils3"
+                                                  "os-browserify"
+                                                  "react-refresh"
+                                                  "schema-utils2"
+                                                  "schema-utils3"
+                                                  "serve-handler"
+                                                  "vm-browserify"
+                                                  "@babel/runtime"
+                                                  "@types/ci-info"
+                                                  "axe-playwright"
+                                                  "domain-browser"
+                                                  "path-to-regexp"
+                                                  "string_decoder"
+                                                  "tty-browserify"
+                                                  "@babel/traverse"
+                                                  "@jest/transform"
+                                                  "@storybook/test"
+                                                  "@types/platform"
+                                                  "@types/react-is"
+                                                  "browserify-zlib"
+                                                  "path-browserify"
+                                                  "querystring-es3"
+                                                  "@babel/generator"
+                                                  "@napi-rs/triples"
+                                                  "@playwright/test"
+                                                  "@storybook/react"
+                                                  "@types/picomatch"
+                                                  "@types/react-dom"
+                                                  "http-proxy-agent"
+                                                  "https-browserify"
+                                                  "node-html-parser"
+                                                  "webpack-sources1"
+                                                  "webpack-sources3"
+                                                  "@babel/preset-env"
+                                                  "@storybook/blocks"
+                                                  "@types/text-table"
+                                                  "crypto-browserify"
+                                                  "https-proxy-agent"
+                                                  "source-map-loader"
+                                                  "stacktrace-parser"
+                                                  "stream-browserify"
+                                                  "timers-browserify"
+                                                  "@opentelemetry/api"
+                                                  "@types/babel__core"
+                                                  "@types/compression"
+                                                  "@types/cross-spawn"
+                                                  "@types/shell-quote"
+                                                  "data-uri-to-buffer"
+                                                  "postcss-preset-env"
+                                                  "@babel/preset-react"
+                                                  "@capsizecss/metrics"
+                                                  "@mswjs/interceptors"
+                                                  "@types/content-type"
+                                                  "@types/jsonwebtoken"
+                                                  "@types/lodash.curry"
+                                                  "@types/ua-parser-js"
+                                                  "content-disposition"
+                                                  "postcss-safe-parser"
+                                                  "regenerator-runtime"
+                                                  "@babel/eslint-parser"
+                                                  "@types/serve-handler"
+                                                  "constants-browserify"
+                                                  "postcss-value-parser"
+                                                  "strict-event-emitter"
+                                                  "zod-validation-error"
+                                                  "@edge-runtime/cookies"
+                                                  "@next/polyfill-module"
+                                                  "@storybook/addon-a11y"
+                                                  "@types/path-to-regexp"
+                                                  "@vercel/routing-utils"
+                                                  "postcss-modules-scope"
+                                                  "safe-stable-stringify"
+                                                  "terser-webpack-plugin"
+                                                  "@edge-runtime/ponyfill"
+                                                  "@storybook/test-runner"
+                                                  "@types/babel__template"
+                                                  "@types/babel__traverse"
+                                                  "cssnano-preset-default"
+                                                  "postcss-flexbugs-fixes"
+                                                  "postcss-modules-values"
+                                                  "@next/polyfill-nomodule"
+                                                  "@types/babel__generator"
+                                                  "@types/webpack-sources1"
+                                                  "mini-css-extract-plugin"
+                                                  "@babel/plugin-syntax-jsx"
+                                                  "@babel/preset-typescript"
+                                                  "@edge-runtime/primitives"
+                                                  "@types/babel__code-frame"
+                                                  "@base-ui-components/react"
+                                                  "@modelcontextprotocol/sdk"
+                                                  "@next/react-refresh-utils"
+                                                  "@storybook/react-webpack5"
+                                                  "@types/content-disposition"
+                                                  "@babel/plugin-syntax-bigint"
+                                                  "@storybook/addon-essentials"
+                                                  "babel-plugin-react-compiler"
+                                                  "@storybook/addon-interactions"
+                                                  "babel-plugin-transform-define"
+                                                  "@babel/plugin-syntax-typescript"
+                                                  "@babel/plugin-transform-runtime"
+                                                  "postcss-modules-extract-imports"
+                                                  "@types/express-serve-static-core"
+                                                  "postcss-modules-local-by-default"
+                                                  "@babel/plugin-syntax-dynamic-import"
+                                                  "@vercel/turbopack-ecmascript-runtime"
+                                                  "@babel/plugin-syntax-import-attributes"
+                                                  "@storybook/addon-webpack5-compiler-swc"
+                                                  "@babel/plugin-transform-class-properties"
+                                                  "@babel/plugin-transform-modules-commonjs"
+                                                  "@babel/plugin-transform-numeric-separator"
+                                                  "@babel/plugin-transform-object-rest-spread"
+                                                  "@babel/plugin-transform-export-namespace-from"
+                                                  "babel-plugin-transform-react-remove-prop-types"
+                                                  "react-dom"
+                                                  "react"
+                                                  "sass"))))))))
+    ;; Use the same react/react-dom instance as the top-level seerr package
+    ;; (19.2.6, not the 19.2.7 most of the tree uses).  Next's own SSG
+    ;; worker processes mount a RouterContext.Provider from whichever React
+    ;; copy Next itself is built against; if that differs from the copy the
+    ;; page code resolves to, useRouter()'s useContext() call sees a
+    ;; different Context object and returns null -- "NextRouter was not
+    ;; mounted" during static export, even though ordinary rendering
+    ;; (which doesn't depend on Context identity) still works.
+    (inputs (list node-baseline-browser-mapping-2.10.33
+                  node-caniuse-lite-1.0.30001793
+                  node-swc-helpers-0.5.15
+                  node-styled-jsx-5.1.6
+                  node-next-env-16.2.11
+                  node-postcss-8.4.31
+                  node-babel-plugin-react-compiler-1.0.0
+                  node-opentelemetry-api-1.9.1
+                  node-playwright-test-1.60.0
+                  node-react-dom-19.2.6
+                  node-react-19.2.6
+                  node-sass-1.100.0))
+    (home-page "https://nextjs.org")
+    (synopsis "The React Framework")
+    (description "The React Framework")
+    (license license:expat)))
+(define-public node-next-swc-linux-x64-gnu-16.2.11
+  (package
+    (name "node-next-swc-linux-x64-gnu")
+    (version "16.2.11")
+    (source
+     (origin
+       (method url-fetch)
+       (uri
+        "https://registry.npmjs.org/@next/swc-linux-x64-gnu/-/swc-linux-x64-gnu-16.2.11.tgz")
+       (sha256
+        (base32 "0aam8pq4iw9f89af97igwh2wx3by6mkc59l45vk2pv68cnvl76kv"))))
+    (build-system node-build-system)
+    (arguments
+     (list
+      #:tests? #f
+      #:phases
+      #~(modify-phases %standard-phases
+          (delete 'build)
+
+          ;; Patch the native Node addon so Guix can find its runtime libs.
+          ;; Do not set an interpreter: .node files are shared objects.
+          (add-after 'install 'patch-swc-runpath
+            (lambda* (#:key inputs outputs #:allow-other-keys)
+              (let* ((out (assoc-ref outputs "out"))
+                     (libc (assoc-ref inputs "glibc"))
+                     (gcc-lib (assoc-ref inputs "gcc:lib"))
+                     (swc (string-append out
+                           "/lib/node_modules/@next/swc-linux-x64-gnu/"
+                           "next-swc.linux-x64-gnu.node")))
+                (invoke "patchelf" "--set-rpath"
+                        (string-append libc "/lib:" gcc-lib "/lib") swc)))))))
+    (inputs `(("glibc" ,glibc)
+              ("gcc:lib" ,gcc "lib")))
+    (native-inputs (list patchelf))
+    (home-page "https://github.com/vercel/next.js#readme")
+    (synopsis "Native SWC binary for Next.js on x86_64 GNU/Linux")
+    (description
+     "This package provides the x86_64 GNU/Linux native SWC binary used by
+Next.js.")
+    (license license:expat)))
+(define-public node-nodemailer-9.0.1
+  (package
+    (name "node-nodemailer")
+    (version "9.0.1")
+    (source
+     (origin
+       (method url-fetch)
+       (uri "https://registry.npmjs.org/nodemailer/-/nodemailer-9.0.1.tgz")
+       (sha256
+        (base32 "18zj3azgxi4jmlbh2lm3daw6b247ixkdn8h7jdalkd9c6y2dv2xb"))))
+    (build-system node-build-system)
+    (arguments
+     (list
+      #:tests? #f
+      #:phases
+      #~(modify-phases %standard-phases
+          (delete 'build)
+          (add-before 'repack 'disable-lifecycle-scripts
+            (lambda _
+              (modify-json (delete-fields '("scripts.prepare"
+                                            "scripts.postinstall")
+                                          #:strict? #f))))
+          (add-after 'patch-dependencies 'delete-dev-dependencies
+            (lambda _
+              (modify-json (delete-dependencies '("c8" "libqp"
+                                                  "proxy"
+                                                  "bunyan"
+                                                  "eslint"
+                                                  "globals"
+                                                  "libmime"
+                                                  "prettier"
+                                                  "libbase64"
+                                                  "smtp-server"
+                                                  "proxy-test-server"
+                                                  "nodemailer-ntlm-auth"
+                                                  "@aws-sdk/client-sesv2"
+                                                  "eslint-config-prettier"))))))))
+    (home-page "https://nodemailer.com/")
+    (synopsis "Easy as cake e-mail sending from your Node.js applications")
+    (description "Easy as cake e-mail sending from your Node.js applications")
+    (license license:expat-0)))
+;; sharp needs libvips >= 8.18.3; Guix currently carries 8.17.0.  Local to
+;; this module (like comfyui-mcp.scm's own vips-for-sharp) so that bumping
+;; it does not rebuild every other vips consumer in the channel.
+(define-public vips-for-seerr-sharp
+  (package
+    (inherit vips)
+    (name "vips")
+    (version "8.18.3")
+    (source
+     (origin
+       (method git-fetch)
+       (uri (git-reference
+             (url "https://github.com/libvips/libvips")
+             (commit (string-append "v" version))))
+       (file-name (git-file-name "vips" version))
+       (sha256
+        (base32 "06np97dvcyw75v6pfiyr9z4jvyczch1jh7pdi59sk9yf1nm6jhnp"))))))
+
+;; sharp's prebuilt @img/sharp-linux-x64 binary blob segfaults immediately
+;; on dlopen() in this environment (likely a glibc/libstdc++ ABI mismatch
+;; with however upstream built it) -- confirmed via a standalone
+;; process.dlopen() reproduction, not just "module not found".  Build from
+;; source against the system libvips instead, following the same
+;; SHARP_FORCE_GLOBAL_LIBVIPS approach already proven out for
+;; node-sharp-native in comfyui-mcp.scm.
+(define-public node-sharp-0.35.0
+  (package
+    (name "node-sharp")
+    (version "0.35.0")
+    (source
+     (origin
+       (method url-fetch)
+       (uri "https://registry.npmjs.org/sharp/-/sharp-0.35.0.tgz")
+       (sha256
+        (base32 "0blqb6bs6nxdlcj16aiy3rw9cx98k2yx23s2caf4z211n4wdz2ci"))))
+    (build-system node-build-system)
+    (arguments
+     (list
+      #:tests? #f
+      #:phases
+      #~(modify-phases %standard-phases
+          (add-before 'repack 'disable-lifecycle-scripts
+            (lambda _
+              (modify-json (delete-fields '("scripts.prepare"
+                                            "scripts.postinstall")
+                                          #:strict? #f))))
+          (add-after 'patch-dependencies 'delete-dev-dependencies
+            (lambda _
+              (modify-json
+               ;; Every optionalDependency is a prebuilt binary for some
+               ;; platform, fetched from the registry.  We build instead.
+               (delete-fields '("optionalDependencies")
+                              #:strict? #f)
+               ;; node-addon-api is deliberately *kept*: binding.gyp
+               ;; resolves it at build time.  node-gyp is dropped so that
+               ;; no node_modules/.bin/node-gyp shadows the newer copy
+               ;; bundled with npm (see configure-native-build).
+               (delete-dependencies '("icc" "tsd"
+                                      "node-gyp"
+                                      "emnapi"
+                                      "tar-fs"
+                                      "@types/node"
+                                      "exif-reader"
+                                      "extract-zip"
+                                      "@cpplint/cli"
+                                      "@biomejs/biome"
+                                      "@emnapi/runtime"
+                                      "jsdoc-to-markdown"
+                                      "@img/sharp-libvips-dev"
+                                      "@img/sharp-libvips-win32-x64"
+                                      "@img/sharp-libvips-dev-wasm32"
+                                      "@img/sharp-libvips-win32-ia32"
+                                      "@img/sharp-libvips-win32-arm64")))))
+          (add-before 'build 'configure-native-build
+            (lambda* (#:key inputs #:allow-other-keys)
+              ;; binding.gyp evaluates *all* of its variables before
+              ;; picking a branch, including the prebuilt-libvips version
+              ;; it reads out of optionalDependencies -- which we deleted
+              ;; so npm would not try to fetch those binaries.  Put a stub
+              ;; back now that `npm install' has already run; only the
+              ;; unused prebuilt branch ever reads it.
+              (modify-json (lambda (meta)
+                             (assoc-set! meta "optionalDependencies"
+                                         (list (cons
+                                                "@img/sharp-libvips-linux-x64"
+                                                "1.3.0")))))
+              (let ((python (search-input-file inputs "/bin/python3")))
+                (setenv "PYTHON" python)
+                (setenv "npm_config_python" python))
+              (setenv "CC" "gcc")
+              (setenv "CXX" "g++")
+              ;; Skip the prebuilt-binary search entirely.
+              (setenv "SHARP_FORCE_GLOBAL_LIBVIPS" "1")
+              ;; The packaged node-gyp is older and its vendored gyp still
+              ;; imports `distutils' -- removed in Python 3.12.  npm ships
+              ;; a newer node-gyp that does not.  Put it on PATH (sharp
+              ;; spawns `node-gyp rebuild') and on NODE_PATH (install/
+              ;; build.js requires it to report a version).
+              (let* ((node (dirname (dirname (search-input-file inputs
+                                                                "/bin/node"))))
+                     (npm-modules (string-append node
+                                   "/lib/node_modules/npm/node_modules"))
+                     (bin (string-append (getcwd) "/../node-gyp-bin")))
+                (mkdir-p bin)
+                (call-with-output-file (string-append bin "/node-gyp")
+                  (lambda (port)
+                    (format port
+                     "#!/bin/sh
+exec ~a/bin/node ~a/node-gyp/bin/node-gyp.js \"$@\"
+" node
+                     npm-modules)))
+                (chmod (string-append bin "/node-gyp") #o755)
+                (setenv "PATH"
+                        (string-append bin ":"
+                                       (getenv "PATH")))
+                (setenv "NODE_PATH" npm-modules))))
+          ;; Must run after 'build (so the addon already exists at
+          ;; src/build/Release/*.node) but before the default 'install
+          ;; phase, which does `npm install ../package.tgz' -- npm
+          ;; re-applies package.json's "files" allowlist even when
+          ;; installing from a locally-built tarball, and sharp's "files"
+          ;; is ["dist" "install" "lib/index.d.ts" "src/*.{cc,h,gyp}"],
+          ;; which omits src/build entirely.  Without this, the freshly
+          ;; compiled addon gets silently dropped during install and
+          ;; sharp fails at runtime with "Could not load the sharp module".
+          ;; Also stop npm re-running the install script in the build
+          ;; environment of every dependent package that re-packages this
+          ;; sharp folder (it would try to rebuild the addon, in the
+          ;; store, with no network access).
+          (add-after 'build 'keep-compiled-addon
+            (lambda _
+              ;; gyp's own "COPY Release/sharp-linux-x64-0.35.0.node" step
+              ;; (from obj.target/) produces two byte-identical files; only
+              ;; one survives `npm install ../package.tgz' in the default
+              ;; 'install phase (content-addressed dedup, apparently keeps
+              ;; whichever isn't at this top-level path).  sharp.cjs's
+              ;; runtime lookup is
+              ;; require('../src/build/Release/sharp-linux-x64-0.35.0.node')
+              ;; (relative to dist/), so MOVE the compiled addon there
+              ;; instead of copying, leaving no duplicate content behind.
+              (delete-file
+               "src/build/Release/sharp-linux-x64-0.35.0.node")
+              (rename-file
+               "src/build/Release/obj.target/sharp-linux-x64-0.35.0.node"
+               "src/build/Release/sharp-linux-x64-0.35.0.node")
+              (modify-json (lambda (meta)
+                             (assoc-set! (assoc-remove! meta "files")
+                                         "scripts"
+                                         (assoc-set! (or (assoc-ref meta
+                                                                    "scripts")
+                                                         '()) "install"
+                                          "echo Guix: addon already built"))))))
+          ;; Fail the build loudly (rather than at seerr's own runtime) if
+          ;; the addon is ever missing from the installed output again.
+          (add-after 'install 'verify-addon-installed
+            (lambda* (#:key outputs #:allow-other-keys)
+              (search-input-file
+               outputs
+               "/lib/node_modules/sharp/src/build/Release/sharp-linux-x64-0.35.0.node")
+              #t)))))
+    (native-inputs (list pkg-config python))
+    (inputs (list vips-for-seerr-sharp node-node-addon-api-8.8.0
+                  node-detect-libc-2.1.2 node-img-colour-1.1.0
+                  node-semver-7.8.2))
+    (home-page "https://sharp.pixelplumbing.com")
+    (synopsis
+     "High performance Node.js image processing, the fastest module to resize JPEG, PNG, WebP, GIF, AVIF and TIFF images")
+    (description
+     "High performance Node.js image processing, the fastest module to resize JPEG, PNG, WebP, GIF, AVIF and TIFF images.  This
+package links against the system libvips rather than downloading a
+prebuilt copy.")
+    (license license:asl2.0)))
+
+(define-public node-typeorm-0.3.31
+  (package
+    (name "node-typeorm")
+    (version "0.3.31")
+    (source
+     (origin
+       (method url-fetch)
+       (uri "https://registry.npmjs.org/typeorm/-/typeorm-0.3.31.tgz")
+       (sha256
+        (base32 "1499pqkcvzzjzknkyr1jcrpmx3ys9hmhj7mldi406cf5v1g58cm5"))))
+    (build-system node-build-system)
+    (arguments
+     (list
+      #:tests? #f
+      #:phases
+      #~(modify-phases %standard-phases
+          ;; The npm tarball already contains the built JS output.  Avoid
+          ;; TypeORM's TypeScript/dev-tool build machinery.
+          (delete 'build)
+
+          ;; Must run before `configure', because `configure' invokes:
+          ;;
+          ;; npm --offline --ignore-scripts --install-links install
+          ;;
+          ;; npm 10 validates devEngines, and npm 7+ tries to resolve peer
+          ;; dependencies.  TypeORM lists many database drivers as optional peers,
+          ;; but npm still tries to resolve them unless we remove the peer metadata.
+          (add-after 'unpack 'relax-package-json
+            (lambda _
+              (modify-json (delete-fields '("devEngines" "devDependencies"
+                                            "peerDependencies"
+                                            "peerDependenciesMeta"
+                                            "optionalDependencies"
+                                            "scripts.prepare"
+                                            "scripts.postinstall")
+                                          #:strict? #f)))))))
+    (inputs (list node-app-root-path-3.1.0
+                  node-reflect-metadata-0.2.2
+                  node-sqltools-formatter-1.2.5
+                  node-sha-js-2.4.12
+                  node-dotenv-16.6.1
+                  node-dedent-1.7.2
+                  node-buffer-6.0.3
+                  node-yargs-17.7.2
+                  node-tslib-2.8.1
+                  node-debug-4.4.3
+                  node-dayjs-1.11.21
+                  node-ansis-4.3.1
+                  node-uuid-11.1.1
+                  node-glob-10.5.0
+                  node-sql-highlight-6.1.0))
+    (home-page "https://typeorm.io")
+    (synopsis "Data-Mapper ORM for TypeScript and ES2021+")
+    (description
+     "Data-Mapper ORM for TypeScript and ES2021+. Supports MySQL/MariaDB, PostgreSQL, MS SQL Server, Oracle, SAP HANA, SQLite, MongoDB databases.")
+    (license license:expat)))
+(define-public node-ua-parser-js-2.0.10
+  (package
+    (name "node-ua-parser-js")
+    (version "2.0.10")
+    (source
+     (origin
+       (method url-fetch)
+       (uri "https://registry.npmjs.org/ua-parser-js/-/ua-parser-js-2.0.10.tgz")
+       (sha256
+        (base32 "0v60lqa5f11ghncmlhaqj81j4sfbaffx8mscrwbininfap20ymhw"))))
+    (build-system node-build-system)
+    (arguments
+     (list
+      #:tests? #f
+      #:phases
+      #~(modify-phases %standard-phases
+          (delete 'build)
+          (add-before 'repack 'disable-lifecycle-scripts
+            (lambda _
+              (modify-json (delete-fields '("scripts.prepare"
+                                            "scripts.postinstall")
+                                          #:strict? #f))))
+          (add-after 'patch-dependencies 'delete-dev-dependencies
+            (lambda _
+              (modify-json (delete-dependencies '("tsd" "mocha"
+                                                  "eslint"
+                                                  "jshint"
+                                                  "requirejs"
+                                                  "uglify-js"
+                                                  "safe-regex"
+                                                  "@babel/parser"
+                                                  "lockfile-lint"
+                                                  "@babel/traverse"
+                                                  "@playwright/test"
+                                                  "nyc"
+                                                  "@jazzer.js/core"))))))))
+    (inputs (list node-is-standalone-pwa-0.1.1 node-detect-europe-js-0.1.2
+                  node-ua-is-frozen-0.1.2))
+    (home-page "https://uaparser.dev")
+    (synopsis
+     "Detect Browser, Engine, OS, CPU, and Device type/model from User-Agent & Client Hints data. Supports browser & node.js environment")
+    (description
+     "Detect Browser, Engine, OS, CPU, and Device type/model from User-Agent & Client Hints data. Supports browser & node.js environment")
+    (license license:agpl3+)))
+
+(define-public node-undici-8.10.0
+  (package
+    (name "node-undici")
+    (version "8.10.0")
+    (source
+     (origin
+       (method url-fetch)
+       (uri "https://registry.npmjs.org/undici/-/undici-8.10.0.tgz")
+       (sha256
+        (base32 "1g769ngjcwmrjna468pkd2yd5h2c6x2kkm86y1k3saxd2xncawlx"))))
+    (build-system node-build-system)
+    (arguments
+     (list
+      #:tests? #f
+      #:phases
+      #~(modify-phases %standard-phases
+          (delete 'build)
+          (add-before 'repack 'disable-lifecycle-scripts
+            (lambda _
+              (modify-json (delete-fields '("scripts.prepare"
+                                            "scripts.postinstall")
+                                          #:strict? #f))))
+          (add-after 'patch-dependencies 'delete-dev-dependencies
+            (lambda _
+              (modify-json (delete-dependencies '("c8" "ws"
+                                                  "tsd"
+                                                  "borp"
+                                                  "jest"
+                                                  "husky"
+                                                  "proxy"
+                                                  "eslint"
+                                                  "esbuild"
+                                                  "cross-env"
+                                                  "dns-packet"
+                                                  "fast-check"
+                                                  "node-forge"
+                                                  "typescript"
+                                                  "@types/node"
+                                                  "neostandard"
+                                                  "jsondiffpatch"
+                                                  "@fastify/busboy"
+                                                  "abort-controller"
+                                                  "@matteo.collina/tspl"
+                                                  "@sinonjs/fake-timers"
+                                                  "@metcoder95/https-pem"))))))))
+    (home-page "https://undici.nodejs.org")
+    (synopsis "An HTTP/1.1 client, written from scratch for Node.js")
+    (description "An HTTP/1.1 client, written from scratch for Node.js")
+    (license license:expat)))
+(define-public node-js-yaml-4.3.0
+  (package
+    (name "node-js-yaml")
+    (version "4.3.0")
+    (source
+     (origin
+       (method url-fetch)
+       (uri "https://registry.npmjs.org/js-yaml/-/js-yaml-4.3.0.tgz")
+       (sha256
+        (base32 "1rpsplprciliax3msz9dmglkp6fw8cl21z9lr4gf9lkd94sfx545"))))
+    (build-system node-build-system)
+    (arguments
+     (list
+      #:tests? #f
+      #:phases
+      #~(modify-phases %standard-phases
+          (delete 'build)
+          (add-before 'repack 'disable-lifecycle-scripts
+            (lambda _
+              (modify-json (delete-fields '("scripts.prepare"
+                                            "scripts.postinstall")
+                                          #:strict? #f))))
+          (add-after 'patch-dependencies 'delete-dev-dependencies
+            (lambda _
+              (modify-json (delete-dependencies '("c8" "vite"
+                                                  "eslint"
+                                                  "gh-pages"
+                                                  "tinybench"
+                                                  "codemirror"
+                                                  "fast-check"
+                                                  "@babel/core"
+                                                  "@babel/preset-env"
+                                                  "@rollup/plugin-commonjs"
+                                                  "@rollup/plugin-terser"
+                                                  "workerpool"
+                                                  "neostandard"
+                                                  "vite-plugin-singlefile"
+                                                  "vite-plugin-node-polyfills"))))))))
+    (inputs (list node-argparse-2.0.1))
+    (home-page "https://github.com/nodeca/js-yaml#readme")
+    (synopsis "YAML 1.2 parser and serializer")
+    (description "YAML 1.2 parser and serializer")
+    (license license:expat)))
+(define-public node-axios-1.18.0
+  (package
+    (name "node-axios")
+    (version "1.18.0")
+    (source
+     (origin
+       (method url-fetch)
+       (uri "https://registry.npmjs.org/axios/-/axios-1.18.0.tgz")
+       (sha256
+        (base32 "1ksphcx3k4ic7c0bbgxm69mff9vg39r59bgvzbrc3hyb5775zn2w"))))
+    (build-system node-build-system)
+    (arguments
+     (list
+      #:tests? #f
+      #:phases
+      #~(modify-phases %standard-phases
+          (delete 'build)
+          (add-before 'repack 'disable-lifecycle-scripts
+            (lambda _
+              (modify-json (delete-fields '("scripts.prepare"
+                                            "scripts.postinstall")
+                                          #:strict? #f))))
+          (add-after 'patch-dependencies 'delete-dev-dependencies
+            (lambda _
+              (modify-json (delete-dependencies '("gulp" "acorn"
+                                                  "chalk"
+                                                  "husky"
+                                                  "eslint"
+                                                  "multer"
+                                                  "rollup"
+                                                  "vitest"
+                                                  "express"
+                                                  "globals"
+                                                  "dev-null"
+                                                  "fs-extra"
+                                                  "minimist"
+                                                  "prettier"
+                                                  "cross-env"
+                                                  "@eslint/js"
+                                                  "formidable"
+                                                  "get-stream"
+                                                  "playwright"
+                                                  "selfsigned"
+                                                  "typescript"
+                                                  "@babel/core"
+                                                  "body-parser"
+                                                  "lint-staged"
+                                                  "formdata-node"
+                                                  "@commitlint/cli"
+                                                  "@vitest/browser"
+                                                  "stream-throttle"
+                                                  "@babel/preset-env"
+                                                  "@rollup/plugin-json"
+                                                  "@rollup/plugin-alias"
+                                                  "@rollup/plugin-babel"
+                                                  "@rollup/plugin-terser"
+                                                  "@rollup/plugin-commonjs"
+                                                  "abortcontroller-polyfill"
+                                                  "rollup-plugin-bundle-size"
+                                                  "@vitest/browser-playwright"
+                                                  "@rollup/plugin-node-resolve"
+                                                  "@commitlint/config-conventional"))))))))
+    (inputs (list node-https-proxy-agent-5.0.1 node-follow-redirects-1.16.0
+                  node-proxy-from-env-2.1.0 node-form-data-4.0.5))
+    (home-page "https://axios-http.com")
+    (synopsis "Promise based HTTP client for the browser and node.js")
+    (description "Promise based HTTP client for the browser and node.js")
     (license license:expat)))

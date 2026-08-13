@@ -3,6 +3,11 @@
 ;; Seerr is a Node.js/TypeScript application with a Next.js frontend and
 ;; Express backend.  Upstream uses pnpm, but this package avoids networked
 ;; package-manager activity and wires dependencies from Guix inputs instead.
+;;
+;; Built from the seerrng fork (github.com/snapetech/seerrng), which adds
+;; Music (Lidarr) and Books (Readarr) requests on top of upstream Seerr's
+;; Movies/TV (Radarr/Sonarr) support.  seerrng also adds OIDC auth
+;; (openid-client) and a React Flow graph view (@xyflow/react).
 
 (define-module (peteches packages seerr)
   #:use-module ((guix licenses)
@@ -21,16 +26,16 @@
 (define-public seerr
   (package
     (name "seerr")
-    (version "3.3.0")
+    (version "3.11.2")
     (source
      (origin
        (method git-fetch)
        (uri (git-reference
-             (url "https://github.com/seerr-team/seerr")
+             (url "https://github.com/snapetech/seerrng")
              (commit (string-append "v" version))))
        (file-name (git-file-name name version))
        (sha256
-        (base32 "0l18w45rm8csjjhizrz46px47pvrkbx1zxf98fi15pg0s7v22l59"))))
+        (base32 "0syzgx4w769p2c09vfr8sn6yyz1j57xwr9rw76z8cb7qc6hcfpz7"))))
     (build-system node-build-system)
     (inputs (list node
 
@@ -53,20 +58,21 @@
                   node-react-spring-shared-10.0.4
                   node-react-spring-rafz-10.0.4
                   node-seerr-team-react-tailwindcss-datepicker-1.3.4
-                  node-supercharge-request-ip-1.2.0
                   node-svgr-webpack-8.1.0
                   node-tanem-react-nprogress-6.0.3
                   node-ace-builds-1.43.6
-                  node-axios-1.15.0
+                  node-axios-1.18.0
                   node-axios-rate-limit-1.9.0
                   node-bcrypt-6.0.0
                   node-bowser-2.14.1
+                  node-compression-1.8.1
                   node-connect-typeorm-2.0.0
                   node-cookie-parser-1.4.7
                   node-copy-to-clipboard-4.0.0
                   node-country-flag-icons-1.6.16
                   node-cronstrue-3.14.0
                   node-dns-caching-0.2.9
+                  node-dompurify-3.4.12
                   node-email-templates-13.0.1
                   node-express-5.2.1
                   node-express-openapi-validator-5.6.2
@@ -77,21 +83,25 @@
                   node-http-proxy-agent-7.0.2
                   node-https-proxy-agent-7.0.6
                   node-humanize-duration-3.33.2
-                  node-js-yaml-4.2.0
+                  node-ip-address-10.3.1
+                  node-js-yaml-4.3.0
+                  node-jsdom-26.1.0
                   node-lodash-4.18.1
                   node-mime-4.1.0
                   node-nanoid-5.1.7
-                  node-next-16.2.6
+                  node-next-16.2.11
 
                   ;; Native SWC binding used by Next.js.
-                  node-next-swc-linux-x64-gnu-16.2.6
+                  node-next-swc-linux-x64-gnu-16.2.11
 
                   node-node-cache-5.1.2
                   node-node-schedule-2.1.1
-                  node-nodemailer-8.0.5
+                  node-nodemailer-9.0.1
+                  node-openid-client-6.8.4
                   node-openpgp-6.3.0
                   node-pg-8.20.0
                   node-pug-3.0.4
+                  node-qs-6.15.2
                   node-react-19.2.6
                   node-react-ace-14.0.1
                   node-react-animate-height-3.2.3
@@ -109,10 +119,11 @@
                   node-react-use-clipboard-1.0.9
                   node-reflect-metadata-0.2.2
                   node-semver-7.7.4
-                  node-sharp-0.34.5
+                  node-sharp-0.35.0
                   node-sqlite3-5.1.7
                   node-swagger-ui-express-5.0.1
                   node-swr-2.4.1
+                  node-xyflow-react-12.10.2
 
                   ;; Tailwind/PostCSS stack used by tailwind.config.js and Next's
                   ;; Webpack CSS pipeline.
@@ -128,7 +139,7 @@
                   node-lodash-merge-4.6.2
                   node-lodash-castarray-4.4.0
                   node-lodash-isplainobject-4.0.6
-                  node-postcss-8.4.31
+                  node-postcss-8.5.23
                   node-autoprefixer-10.5.0
                   node-dayjs-1.11.21
 
@@ -159,9 +170,9 @@
                   node-arg-5.0.2
 
                   node-tailwind-merge-2.6.1
-                  node-typeorm-0.3.29
-                  node-ua-parser-js-2.0.9
-                  node-undici-8.1.0
+                  node-typeorm-0.3.31
+                  node-ua-parser-js-2.0.10
+                  node-undici-8.10.0
                   node-validator-13.15.35
                   node-web-push-3.6.7
                   node-wink-jaro-distance-2.0.0
@@ -183,7 +194,14 @@
                   (srfi srfi-1))
       #:phases
       #~(modify-phases %standard-phases
-          
+          ;; This default phase looks up outputs/lib/node_modules/<name>/
+          ;; using package.json's own "name" field, which for the seerrng
+          ;; fork is "seerrng" -- but the custom 'install phase below places
+          ;; files under .../seerr/ (matching the Guix package name).  It's
+          ;; only a defensive node-gyp-rebuild guard for packages consumed
+          ;; as inputs by other node packages, irrelevant for this leaf app.
+          (delete 'avoid-node-gyp-rebuild)
+
           (add-before 'patch-dependencies 'enter-package-json-directory
             (lambda _
               (unless (file-exists? "package.json")
@@ -316,7 +334,14 @@
                   ;; Node.js finds 2.3.1 first and csso crashes on init.
                   ;; Must be writable so fix-direct-node-module-links can
                   ;; replace the 2.3.1 directory with a symlink to 2.2.1.
-                  "@svgr/webpack"))
+                  "@svgr/webpack"
+                  ;; openid-client, jose, and oauth4webapi are all ESM
+                  ;; ("type": "module"); must be writable so their internal
+                  ;; 'import' statements resolve peers from build-tree
+                  ;; node_modules/ instead of the store path.
+                  "openid-client"
+                  "jose"
+                  "oauth4webapi"))
 
               (define (writable-node-package? module-name)
                 (member module-name writable-node-packages))
@@ -960,7 +985,15 @@ with ~a~%"
           ;; Build the frontend and backend.
           (replace 'build
             (lambda _
-              (setenv "NODE_ENV" "development")
+              ;; NODE_ENV=production (not "development" as in 'configure) --
+              ;; Next's static-export/automatic-static-optimization pass
+              ;; behaves differently in dev mode and throws "NextRouter was
+              ;; not mounted" for plain dynamic pages (no getStaticPaths)
+              ;; that call useRouter() at render time, e.g. AuthorDetails,
+              ;; PersonDetails.  The runtime wrapper already runs the app
+              ;; itself with NODE_ENV=production, so this just makes the
+              ;; build step consistent with how the app actually executes.
+              (setenv "NODE_ENV" "production")
               (setenv "NEXT_TELEMETRY_DISABLED" "1")
               (setenv "NEXT_SKIP_NATIVE_POSTINSTALL" "1")
               ;; Symlinked packages resolve ESM imports from the symlink location
@@ -1063,11 +1096,12 @@ exec ~a dist/index.js \"$@\"
                 (chmod wrapper #o755)
                 #t))))))
 
-    (home-page "https://docs.seerr.dev/")
-    (synopsis "Media request manager for Jellyfin, Sonarr, and Radarr")
+    (home-page "https://github.com/snapetech/seerrng")
+    (synopsis "Media request manager for Jellyfin, Sonarr, Radarr, Lidarr, and Readarr")
     (description
      "Seerr is a request management and media discovery tool that integrates
 with Jellyfin, Sonarr, and Radarr to allow users to request movies and TV
 shows from a self-hosted media server.  It is the merged successor to
-Overseerr and Jellyseerr.")
+Overseerr and Jellyseerr.  This package builds the seerrng fork, which adds
+Music (Lidarr) and Books (Readarr) requests on top of upstream Seerr.")
     (license expat)))
