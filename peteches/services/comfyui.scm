@@ -81,7 +81,15 @@
   ;; Whether to `uv pip install -r requirements.txt' from the node's own
   ;; directory, when present, after cloning/pulling it.
   (install-requirements? comfyui-custom-node-install-requirements?
-                         (default #t)))
+                         (default #t))
+  ;; Additional requirements-*.txt filenames (relative to the node's own
+  ;; directory) to `uv pip install -r' after requirements.txt, when
+  ;; present. Some node packs split optional/heavy deps (e.g. a GGUF/
+  ;; llama.cpp backend) into a separate file precisely so a plain install
+  ;; doesn't pull them in — list it here to opt in. Ignored when
+  ;; install-requirements? is #f.
+  (extra-requirements-files comfyui-custom-node-extra-requirements-files
+                            (default '())))
 
 ;;; ── Record type ──────────────────────────────────────────────────────────
 
@@ -663,14 +671,25 @@
             (error "custom node pull failed with exit code" ret #$dir))))))
 
 (define (comfyui-custom-node-requirements-gexp uv-project-dir uv-command venv-dir node)
-  (let ((dir (comfyui-custom-node-directory uv-project-dir node)))
-    #~(let ((req (string-append #$dir "/requirements.txt")))
-        (when (file-exists? req)
-          (let ((ret (system* #$uv-command "pip" "install"
-                              "--python" #$venv-dir "-r" req)))
-            (unless (zero? ret)
-              (error "custom node requirements install failed with exit code"
-                     ret #$dir)))))))
+  (let ((dir (comfyui-custom-node-directory uv-project-dir node))
+        (extra-files (comfyui-custom-node-extra-requirements-files node)))
+    #~(begin
+        (let ((req (string-append #$dir "/requirements.txt")))
+          (when (file-exists? req)
+            (let ((ret (system* #$uv-command "pip" "install"
+                                "--python" #$venv-dir "-r" req)))
+              (unless (zero? ret)
+                (error "custom node requirements install failed with exit code"
+                       ret #$dir)))))
+        #$@(map (lambda (filename)
+                  #~(let ((req (string-append #$dir "/" #$filename)))
+                      (when (file-exists? req)
+                        (let ((ret (system* #$uv-command "pip" "install"
+                                            "--python" #$venv-dir "-r" req)))
+                          (unless (zero? ret)
+                            (error "custom node extra requirements install failed with exit code"
+                                   ret #$dir))))))
+                extra-files))))
 
 ;; Fetch+fast-forward every custom node config already has a checkout of.
 ;; Only meaningful from the update shepherd service — the sync service never

@@ -274,7 +274,11 @@
 	      (list #~(string-append "CUDA_HOME=" #$cuda-13)
 		    #~(string-append "CPATH="
 				     #$(file-append linux-libre-headers
-						    "/include"))))
+						    "/include"))
+		    ;; Makes ComfyUI_VLM_nodes' llama-cpp-python source build
+		    ;; (see its custom-node entry below) target the CUDA
+		    ;; backend instead of GGML's CPU-only default.
+		    "CMAKE_ARGS=-DGGML_CUDA=on"))
 	     ;; Package installed but the global --use-sage-attention flag is
 	     ;; deliberately left off (enable-sage-attention? default #f) — a
 	     ;; per-workflow node (e.g. KJNodes' "Patch Sage Attention") gives
@@ -322,10 +326,17 @@
 	       ;; writing: LLMLoader runs llama.cpp in-process (no external
 	       ;; server), feeding LLMSampler/LLMPromptGenerator/
 	       ;; CreativeArtPromptGenerator/Suggester. VLMJSONExtract (same
-	       ;; pack) parses Suggester's raw JSON output.
+	       ;; pack) parses Suggester's raw JSON output. llama-cpp-python
+	       ;; itself is split into requirements-llama-cpp.txt (not
+	       ;; requirements.txt) so a plain install doesn't pull in a
+	       ;; from-source compile by default — opt in via
+	       ;; extra-requirements-files. CMAKE_ARGS below (in
+	       ;; extra-environment-variables) makes that source build target
+	       ;; CUDA instead of the GGML CPU backend.
 	       (comfyui-custom-node
 		(name "ComfyUI_VLM_nodes")
-		(git-repo-url "https://github.com/gokayfem/ComfyUI_VLM_nodes")))))))
+		(git-repo-url "https://github.com/gokayfem/ComfyUI_VLM_nodes")
+		(extra-requirements-files (list "requirements-llama-cpp.txt"))))))))
   ;; CUDA-enabled (colibri-engine-cuda, sm_89/Ada — see
   ;; peteches/packages/colibri.scm), capped at vram-gb 12: a static middle
   ;; ground, not a dynamic split — colibri has no live/signal-based VRAM
