@@ -316,7 +316,15 @@
 	       ;; LoadImageFromUrl / LoadVideoFromUrl.
 	       (comfyui-custom-node
 		(name "comfyui-art-venture")
-		(git-repo-url "https://github.com/sipherxyz/comfyui-art-venture")))))))
+		(git-repo-url "https://github.com/sipherxyz/comfyui-art-venture"))
+	       ;; Local GGUF LLM loader for MiniMax H3 / Qwen-Image prompt
+	       ;; writing: LLMLoader runs llama.cpp in-process (no external
+	       ;; server), feeding LLMSampler/LLMPromptGenerator/
+	       ;; CreativeArtPromptGenerator/Suggester. VLMJSONExtract (same
+	       ;; pack) parses Suggester's raw JSON output.
+	       (comfyui-custom-node
+		(name "ComfyUI_VLM_nodes")
+		(git-repo-url "https://github.com/gokayfem/ComfyUI_VLM_nodes")))))))
   ;; CUDA-enabled (colibri-engine-cuda, sm_89/Ada — see
   ;; peteches/packages/colibri.scm), capped at vram-gb 12: a static middle
   ;; ground, not a dynamic split — colibri has no live/signal-based VRAM
