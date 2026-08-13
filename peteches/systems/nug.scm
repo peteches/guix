@@ -289,6 +289,16 @@
 	       (comfyui-custom-node
 		(name "ComfyUI-KJNodes")
 		(git-repo-url "https://github.com/kijai/ComfyUI-KJNodes"))
+	       ;; rgthree-comfy — workflow QoL: Power Lora Loader, Fast Groups
+	       ;; Bypasser/Muter, context/reroute nodes.
+	       (comfyui-custom-node
+		(name "rgthree-comfy")
+		(git-repo-url "https://github.com/rgthree/rgthree-comfy"))
+	       ;; VideoHelperSuite — VHS_LoadVideo/VHS_VideoCombine load/encode
+	       ;; nodes used by the video workflows alongside KJNodes.
+	       (comfyui-custom-node
+		(name "ComfyUI-VideoHelperSuite")
+		(git-repo-url "https://github.com/Kosinkadink/ComfyUI-VideoHelperSuite"))
 	       ;; Spectrum: training-free diffusion acceleration via cached/
 	       ;; forecasted denoiser features, one repo per model backend.
 	       (comfyui-custom-node
