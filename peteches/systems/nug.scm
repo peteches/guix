@@ -277,8 +277,13 @@
 						    "/include"))
 		    ;; Makes ComfyUI_VLM_nodes' llama-cpp-python source build
 		    ;; (see its custom-node entry below) target the CUDA
-		    ;; backend instead of GGML's CPU-only default.
-		    "CMAKE_ARGS=-DGGML_CUDA=on"))
+		    ;; backend instead of GGML's CPU-only default. CMake's
+		    ;; FindCUDAToolkit doesn't consult CUDA_HOME (that's
+		    ;; torch's own convention) — it needs CUDAToolkit_ROOT
+		    ;; explicitly, or `nvcc' fails with "CUDA Toolkit not
+		    ;; found" even though CUDA_HOME above is set correctly.
+		    #~(string-append "CMAKE_ARGS=-DGGML_CUDA=on -DCUDAToolkit_ROOT="
+				     #$cuda-13)))
 	     ;; Package installed but the global --use-sage-attention flag is
 	     ;; deliberately left off (enable-sage-attention? default #f) — a
 	     ;; per-workflow node (e.g. KJNodes' "Patch Sage Attention") gives
