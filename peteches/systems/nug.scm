@@ -358,7 +358,16 @@
 	       ;; the TTS category registered in %comfyui-model-paths above.
 	       (comfyui-custom-node
 		(name "TTS-Audio-Suite")
-		(git-repo-url "https://github.com/diodiogod/TTS-Audio-Suite")))))))
+		(git-repo-url "https://github.com/diodiogod/TTS-Audio-Suite"))
+	       ;; Semitone pitch-shift for layered voice-design mixes (e.g. a
+	       ;; tritone doubling of a TTS Text render before AudioMerge) —
+	       ;; TTS-Audio-Suite's own pitch control lives inside its RVC
+	       ;; engine and requires a pretrained per-voice .pth model, which
+	       ;; doesn't exist for a freshly-designed voice. Lightweight,
+	       ;; pure-CPU phase vocoder — no torchaudio/ML dependency.
+	       (comfyui-custom-node
+		(name "comfyui-audio-pitch")
+		(git-repo-url "https://github.com/Takenoko3333/comfyui-audio-pitch")))))))
   ;; CUDA-enabled (colibri-engine-cuda, sm_89/Ada — see
   ;; peteches/packages/colibri.scm), capped at vram-gb 12: a static middle
   ;; ground, not a dynamic split — colibri has no live/signal-based VRAM
