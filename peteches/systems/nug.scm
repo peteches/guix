@@ -98,6 +98,7 @@
     audio_encoders: audio_encoders/
     diffusers: diffusers/
     LLavacheckpoints: LLavacheckpoints/
+    TTS: TTS/
 "))
 
 (make-base-os
@@ -349,7 +350,15 @@
 	       (comfyui-custom-node
 		(name "ComfyUI_VLM_nodes")
 		(git-repo-url "https://github.com/gokayfem/ComfyUI_VLM_nodes")
-		(extra-requirements-files (list "requirements-llama-cpp.txt"))))))))
+		(extra-requirements-files (list "requirements-llama-cpp.txt")))
+	       ;; Voice generation: Qwen3-TTS VoiceDesign (unique voice from a
+	       ;; text description) feeding ChatterBox's zero-shot voice
+	       ;; conversion (clone that sample onto our own performance
+	       ;; recordings, no per-voice training). Model files go under
+	       ;; the TTS category registered in %comfyui-model-paths above.
+	       (comfyui-custom-node
+		(name "TTS-Audio-Suite")
+		(git-repo-url "https://github.com/diodiogod/TTS-Audio-Suite")))))))
   ;; CUDA-enabled (colibri-engine-cuda, sm_89/Ada — see
   ;; peteches/packages/colibri.scm), capped at vram-gb 12: a static middle
   ;; ground, not a dynamic split — colibri has no live/signal-based VRAM
