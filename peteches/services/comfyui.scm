@@ -89,7 +89,21 @@
   ;; doesn't pull them in — list it here to opt in. Ignored when
   ;; install-requirements? is #f.
   (extra-requirements-files comfyui-custom-node-extra-requirements-files
-                            (default '())))
+                            (default '()))
+  ;; Bare package specs (e.g. "omnivoice", "somepkg==1.2.3") to
+  ;; `uv pip install --no-deps' individually, after requirements.txt and
+  ;; extra-requirements-files. Some node packs deliberately exclude a
+  ;; package from requirements.txt and install it separately with
+  ;; --no-deps themselves (via their own install.py, which our sync
+  ;; service does not run) specifically so pip doesn't reshape already-
+  ;; pinned shared deps — e.g. TTS-Audio-Suite's requirements.txt says of
+  ;; omnivoice: "We install official OmniVoice separately to avoid
+  ;; letting pip reshape shared deps". List such packages here to opt in.
+  ;; Unlike extra-requirements-files, this always runs regardless of
+  ;; install-requirements?, since each entry is its own explicit,
+  ;; individually-scoped install rather than part of the bulk install.
+  (extra-pip-packages comfyui-custom-node-extra-pip-packages
+                      (default '())))
 
 ;;; ── Record type ──────────────────────────────────────────────────────────
 
@@ -691,6 +705,22 @@
                                    ret #$dir))))))
                 extra-files))))
 
+;; Individually `uv pip install --no-deps' each of NODE's
+;; extra-pip-packages. No file-exists? guard needed here (unlike the
+;; requirements-files case above) — there's no file to check for, just a
+;; bare package spec to install every run.
+(define (comfyui-custom-node-extra-pip-packages-gexp uv-project-dir uv-command venv-dir node)
+  (let ((dir (comfyui-custom-node-directory uv-project-dir node))
+        (packages (comfyui-custom-node-extra-pip-packages node)))
+    #~(begin
+        #$@(map (lambda (pkg)
+                  #~(let ((ret (system* #$uv-command "pip" "install"
+                                        "--python" #$venv-dir "--no-deps" #$pkg)))
+                      (unless (zero? ret)
+                        (error "custom node extra pip package install failed with exit code"
+                               ret #$dir #$pkg))))
+                packages))))
+
 ;; Fetch+fast-forward every custom node config already has a checkout of.
 ;; Only meaningful from the update shepherd service — the sync service never
 ;; calls this, since on a first run nothing is cloned yet to pull.
@@ -805,10 +835,12 @@
                           ret))))
              '())
       ;; Bootstrap any custom node not yet cloned, then install its
-      ;; requirements.txt if it has one.  Fetching/pulling ones already
-      ;; cloned is the update service's job (comfyui-custom-nodes-update-gexp),
-      ;; not this shared step — matches how the main ComfyUI checkout itself
-      ;; is only ever cloned here, never pulled.
+      ;; requirements.txt if it has one, then install any extra-pip-packages.
+      ;; Fetching/pulling ones already cloned is the update service's job
+      ;; (comfyui-custom-nodes-update-gexp), not this shared step — matches
+      ;; how the main ComfyUI checkout itself is only ever cloned here,
+      ;; never pulled. extra-pip-packages installs unconditionally — see
+      ;; that field's comment on <comfyui-custom-node>.
       #$@(append-map
           (lambda (node)
             (append (list (comfyui-custom-node-clone-gexp uv-project-dir
@@ -816,7 +848,9 @@
                     (if (comfyui-custom-node-install-requirements? node)
                         (list (comfyui-custom-node-requirements-gexp
                                uv-project-dir uv-command venv-dir node))
-                        '())))
+                        '())
+                    (list (comfyui-custom-node-extra-pip-packages-gexp
+                           uv-project-dir uv-command venv-dir node))))
           custom-nodes))))
 
 (define (comfyui-sync-shepherd-service config)
