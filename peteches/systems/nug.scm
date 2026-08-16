@@ -356,9 +356,21 @@
 	       ;; conversion (clone that sample onto our own performance
 	       ;; recordings, no per-voice training). Model files go under
 	       ;; the TTS category registered in %comfyui-model-paths above.
+	       ;; extra-pip-packages: OmniVoice's `omnivoice' PyPI package is
+	       ;; deliberately left out of TTS-Audio-Suite's own
+	       ;; requirements.txt ("We install official OmniVoice separately
+	       ;; to avoid letting pip reshape shared deps") — upstream's own
+	       ;; install.py installs it standalone with --no-deps, which our
+	       ;; sync service doesn't run. Without this, OmniVoice's engine
+	       ;; node fails at runtime with "ModuleNotFoundError: No module
+	       ;; named 'omnivoice'" — hit this trying OmniVoice's documented
+	       ;; "british accent" instruct attribute (k2-fsa/OmniVoice model
+	       ;; card), the one engine in this suite with real trained accent
+	       ;; control rather than delivery/tone-only instructions.
 	       (comfyui-custom-node
 		(name "TTS-Audio-Suite")
-		(git-repo-url "https://github.com/diodiogod/TTS-Audio-Suite"))
+		(git-repo-url "https://github.com/diodiogod/TTS-Audio-Suite")
+		(extra-pip-packages (list "omnivoice")))
 	       ;; Semitone pitch-shift for layered voice-design mixes (e.g. a
 	       ;; tritone doubling of a TTS Text render before AudioMerge) —
 	       ;; TTS-Audio-Suite's own pitch control lives inside its RVC
