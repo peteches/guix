@@ -150,8 +150,14 @@
      (requirement (list 'user-processes (wsc-wireguard-service-name config)))
      (documentation
       "microsocks SOCKS5 proxy; traffic it originates is fwmark-routed over WireGuard.")
+     ;; No -w: it whitelists IPs to BYPASS -u/-P auth, so on its own
+     ;; (without -u/-P at all) microsocks rejects it as invalid usage
+     ;; ("-1/-w options must be used together with user/pass") and exits 1.
+     ;; Access here is already restricted by BIND (127.0.0.1) alone, and
+     ;; with no -u/-P microsocks runs unauthenticated for anything that can
+     ;; reach that address, which is exactly what's wanted.
      (start #~(make-forkexec-constructor
-               (list #$microsocks "-i" #$bind "-p" #$port "-w" #$bind)
+               (list #$microsocks "-i" #$bind "-p" #$port)
                #:user #$(wsc-socks-user config)
                #:group #$(wsc-socks-user config)
                #:log-file #$(wsc-log-file config)
