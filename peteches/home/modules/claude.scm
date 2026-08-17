@@ -51,14 +51,33 @@
   (filter (lambda (e) (not (member e '("." ".."))))
           (scandir directory)))
 
+;; ENTRY is a top-level child of DIR (e.g. "skills", "CLAUDE.md"). A plain
+;; file becomes one (DST FILE-LIKE) pair as before. A directory is expanded
+;; one level -- each of ITS children becomes its own pair -- rather than
+;; being symlinked whole. That lets an account's #:extra-claude-files add a
+;; sibling entry *inside* "skills" or "agents" (e.g. an account-specific
+;; skill) without colliding with this directory's own contents: two
+;; home-files entries can't both claim ".claude/skills" (one as a single
+;; whole-directory symlink, the other needing it to be a real directory to
+;; hold a nested entry) -- home-files-service-type only conflicts if two
+;; entries share the exact same destination path, and per-child entries
+;; never do.
+(define (home-claude-entry dir entry)
+  (let ((src (string-append dir "/" entry)))
+    (if (file-is-directory? src)
+        (map (lambda (child)
+               (let ((child-src (string-append src "/" child)))
+                 (list (string-append ".claude/" entry "/" child)
+                       (local-file child-src
+                                   #:recursive? (file-is-directory? child-src)))))
+             (directory-children src))
+        (list (list (string-append ".claude/" entry) (local-file src))))))
+
 (define (home-claude-files-service config)
   (let ((dir (home-claude-configuration-config-directory config)))
     (if dir
-        (map (lambda (entry)
-               (let ((src (string-append dir "/" entry))
-                     (dst (string-append ".claude/" entry)))
-                 `(,dst ,(local-file src #:recursive? (file-is-directory? src)))))
-             (directory-children dir))
+        (append-map (lambda (entry) (home-claude-entry dir entry))
+                    (directory-children dir))
         '())))
 
 (define (home-claude-activation-service config)
