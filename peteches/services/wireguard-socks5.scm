@@ -54,6 +54,16 @@
   (interface        wsc-interface (default "wg0"))
   ;; Path to the decrypted wg-quick config file (a sops-secret's #:path).
   (config-file       wsc-config-file)
+  ;; The wg-quick secret's sops-secret KEY (a single string, e.g. "wg0-conf"
+  ;; -- must match the (key '("...")) used for it in claude-workstation.scm).
+  ;; Used ONLY to compute the exact per-secret shepherd service
+  ;; ("sops-secret-<key>") this tunnel waits on, instead of the generic
+  ;; `sops-secrets' aggregate -- which only reports started once EVERY
+  ;; secret on the machine (tailscale auth-key, criticalgrind's Plane/
+  ;; Outline keys, ...) has decrypted. Depending on the aggregate meant an
+  ;; unrelated secret failing (e.g. tailscale's) blocked the tunnel even
+  ;; though its own wg0-conf secret had already decrypted fine.
+  (sops-key          wsc-sops-key (default "wg0-conf"))
   (wireguard         wsc-wireguard-package (default wireguard-tools))
   (socks-package     wsc-socks-package (default microsocks))
   ;; Dedicated system user microsocks runs as; also the nftables `meta skuid'
@@ -80,6 +90,12 @@
 (define (wsc-wireguard-service-name config)
   (symbol-append 'wireguard- (string->symbol (wsc-interface config))))
 
+;; Matches sops-guix's own (sops-secret->shepherd-service-name), which is
+;; "sops-secret-" ++ (key->file-name key) -- for a single-string key list
+;; (our case) that's just "sops-secret-" ++ the key string verbatim.
+(define (wsc-sops-secret-service-name config)
+  (symbol-append 'sops-secret- (string->symbol (wsc-sops-key config))))
+
 (define (wsc-accounts config)
   (let ((user (wsc-socks-user config)))
     (list (user-group (name user) (system? #t))
@@ -96,7 +112,8 @@
          (config-file (wsc-config-file config)))
     (shepherd-service
      (provision (list (wsc-wireguard-service-name config)))
-     (requirement '(user-processes networking sops-secrets))
+     (requirement (list 'user-processes 'networking
+                        (wsc-sops-secret-service-name config)))
      (documentation
       (string-append "WireGuard tunnel " (wsc-interface config)
                      " (split-tunnel; entire config decrypted from SOPS)"))
