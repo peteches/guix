@@ -76,7 +76,18 @@
   ;; `ip rule add fwmark ... table ...' / `ip route add default dev %i
   ;; table ...' lines.
   (fwmark            wsc-fwmark (default 51820))
-  (log-file          wsc-log-file (default "/var/log/microsocks.log"))
+  (socks-log-file    wsc-socks-log-file (default "/var/log/microsocks.log"))
+  ;; wg-quick's start/stop run as an inline lambda (not
+  ;; make-forkexec-constructor, since wg-quick is one-shot and exits
+  ;; immediately -- there's no long-running process for shepherd to track),
+  ;; so there's no #:log-file keyword to hand it. Its output -- including
+  ;; wg-quick's own "[#] <command>" trace lines and any `die' error message
+  ;; -- is instead captured here by redirecting Guile's current output/
+  ;; error ports (which system*'s child inherits) for the duration of the
+  ;; call. `herd status -n' only shows a transient in-memory buffer that
+  ;; can miss messages (e.g. nothing at all when wg-quick dies before its
+  ;; first `cmd()' trace); this file persists across restarts.
+  (wg-log-file       wsc-wg-log-file (default "/var/log/wireguard-wg0.log"))
   ;; Off by default: the tunnel and proxy do NOT come up on boot or on
   ;; `herd reload' -- start them explicitly with `herd start wireguard-wg0'
   ;; and `herd start socks5-proxy' when you actually want the tunnel, and
@@ -103,6 +114,20 @@
 
 (define (wsc-wireguard-service-name config)
   (symbol-append 'wireguard- (string->symbol (wsc-interface config))))
+
+;; BODY is a gexp for a thunk (a `(lambda () ...)' expression, unevaluated).
+;; Returns a gexp that opens LOG-FILE (creating/appending), redirects
+;; current-output-port/current-error-port to it for BODY's dynamic extent
+;; -- so system*'s forked children, which inherit Guile's current ports,
+;; land their stdout/stderr there too -- then closes it again.
+(define (wsc-logged log-file body)
+  #~(let ((log (open-file #$log-file "a")))
+      (dynamic-wind
+       (lambda () #t)
+       (lambda ()
+         (with-output-to-port log
+           (lambda () (with-error-to-port log #$body))))
+       (lambda () (close-port log)))))
 
 ;; Matches sops-guix's own (sops-secret->shepherd-service-name), which is
 ;; "sops-secret-" ++ (key->file-name key) -- for a single-string key list
@@ -132,8 +157,11 @@
       (string-append "WireGuard tunnel " (wsc-interface config)
                      " (split-tunnel; entire config decrypted from SOPS)"))
      (start #~(lambda _
-                (setenv "PATH" #$(wsc-wg-quick-path-env config))
-                (zero? (system* #$wg-quick "up" #$config-file))))
+                #$(wsc-logged
+                   (wsc-wg-log-file config)
+                   #~(lambda ()
+                       (setenv "PATH" #$(wsc-wg-quick-path-env config))
+                       (zero? (system* #$wg-quick "up" #$config-file))))))
      ;; wg-quick runs under `set -e -o pipefail' and executes PreDown
      ;; hooks BEFORE actually deleting the interface (cmd_down): if a
      ;; PreDown command fails (e.g. removing a policy-routing rule/route
@@ -145,8 +173,11 @@
      ;; Reflect the real exit status instead: #f only if `wg-quick down'
      ;; actually succeeded.
      (stop #~(lambda _
-               (setenv "PATH" #$(wsc-wg-quick-path-env config))
-               (not (zero? (system* #$wg-quick "down" #$config-file)))))
+               #$(wsc-logged
+                  (wsc-wg-log-file config)
+                  #~(lambda ()
+                      (setenv "PATH" #$(wsc-wg-quick-path-env config))
+                      (not (zero? (system* #$wg-quick "down" #$config-file)))))))
      (auto-start? (wsc-auto-start? config))
      (respawn? #f))))
 
@@ -169,7 +200,7 @@
                (list #$microsocks "-i" #$bind "-p" #$port)
                #:user #$(wsc-socks-user config)
                #:group #$(wsc-socks-user config)
-               #:log-file #$(wsc-log-file config)
+               #:log-file #$(wsc-socks-log-file config)
                #:environment-variables (list #$%path-env)))
      (stop #~(make-kill-destructor))
      (auto-start? (wsc-auto-start? config)))))
