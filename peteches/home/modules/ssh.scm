@@ -220,4 +220,9 @@
 		     (name "claude-workstation-cg")
 		     (host-name "192.168.51.205")
 		     (user "criticalgrind")
+		     (identity-file "~/.ssh/id_ed25519"))
+		    (openssh-host
+		     (name "claude-workstation-ygo")
+		     (host-name "192.168.51.205")
+		     (user "ygo")
 		     (identity-file "~/.ssh/id_ed25519")))))))

@@ -1,15 +1,17 @@
-;; claude-workstation.scm — headless VM hosting Claude Code for two accounts.
+;; claude-workstation.scm — headless VM hosting Claude Code for three accounts.
 ;;
-;; One VM, two login users, one per Anthropic account:
+;; One VM, three login users, one per identity:
 ;;   peteches      — the personal account (the baseline %vm-peteches-user
 ;;                   that every VM already gets from vm-base.scm)
 ;;   criticalgrind — the Critical Grind work account (added here)
+;;   ygo           — Peter McCabe's ygo.ai identity (added here)
 ;;
 ;; Each user runs their OWN `guix home reconfigure' against a config in
 ;; peteches/home/configs/:
 ;;   claude-workstation-peteches.scm
 ;;   claude-workstation-criticalgrind.scm
-;; Both instantiate the shared constructor in
+;;   claude-workstation-ygo.scm
+;; All three instantiate the shared constructor in
 ;; (peteches home modules claude-workstation): it installs claude-code,
 ;; symlinks ~/.claude from configs/claude/defaults, registers that account's
 ;; MCP servers, and pre-clones repos into ~/area_51/<repo>.
@@ -49,6 +51,7 @@
   #:use-module (gnu services guix)
   #:use-module (peteches home configs claude-workstation-peteches)
   #:use-module (peteches home configs claude-workstation-criticalgrind)
+  #:use-module (peteches home configs claude-workstation-ygo)
   #:export (claude-workstation-os))
 
 ;; Console-recovery user for the criticalgrind account.  Same shape as
@@ -65,6 +68,18 @@
    (supplementary-groups '("wheel" "netdev"))
    (password "$6$yk5pnJr/ECPPOvGv$/HoWZNE7fWDslHHIVHAcaxk0AyhnthoHGhs3RrXaXqvVL8W5UI9OUVHndx4RfSqnWnnPw/.q2KhkfrPRKkw.11")))
 
+;; Console-recovery user for the ygo account.  Same shape as %criticalgrind-user
+;; and reuses the same pre-hashed console password -- day-to-day access is
+;; SSH key-only.
+(define %ygo-user
+  (user-account
+   (name "ygo")
+   (comment "Peter McCabe (ygo.ai account)")
+   (group "users")
+   (home-directory "/home/ygo")
+   (supplementary-groups '("wheel" "netdev"))
+   (password "$6$yk5pnJr/ECPPOvGv$/HoWZNE7fWDslHHIVHAcaxk0AyhnthoHGhs3RrXaXqvVL8W5UI9OUVHndx4RfSqnWnnPw/.q2KhkfrPRKkw.11")))
+
 (define-public claude-workstation-os
   (operating-system
    (inherit
@@ -75,7 +90,7 @@
      ;; Offload needs a guix-build.yaml secret + nug authorized-key that do
      ;; not exist until first boot; enabling half of it fails silently.
      #:with-nug-offload? #f
-     #:users-extra (list %criticalgrind-user)
+     #:users-extra (list %criticalgrind-user %ygo-user)
      ;; Tailscale unattended join.  The auth-key is a SHARED sops secret
      ;; (secrets/shared/tailscale.yaml), decrypted at boot with the VM's own
      ;; age key.  The VM pipeline must add this host's age key as a recipient
@@ -126,14 +141,18 @@
      (list
       (service guix-home-service-type
        `(("peteches" ,claude-workstation-peteches-home)
-         ("criticalgrind" ,claude-workstation-criticalgrind-home)))
+         ("criticalgrind" ,claude-workstation-criticalgrind-home)
+         ("ygo" ,claude-workstation-ygo-home)))
       ;; Authorize the same admin keys (nug + nyarlothotep) for the
-      ;; criticalgrind user, so `ssh criticalgrind@…' works key-only just
-      ;; like the peteches account.  openssh-service-type coalesces this with
-      ;; the peteches entry vm-base already sets.
+      ;; criticalgrind and ygo users, so `ssh criticalgrind@…' / `ssh ygo@…'
+      ;; work key-only just like the peteches account.  openssh-service-type
+      ;; coalesces this with the peteches entry vm-base already sets.
       (simple-service 'criticalgrind-authorized-keys
                       openssh-service-type
                       `(("criticalgrind" ,@%vm-peteches-authorized-keys)))
+      (simple-service 'ygo-authorized-keys
+                      openssh-service-type
+                      `(("ygo" ,@%vm-peteches-authorized-keys)))
       ;; Claude reaches Anthropic outbound; the base firewall permits
       ;; established/related + output and opens ssh inbound.  Tailscale needs
       ;; no inbound rule here: ssh over the tailnet still lands on tcp/22
