@@ -272,7 +272,7 @@ exec -a \"$0\" \"${MOZ_APP_DIR}/firefox\" \"$@\"
                                                                            id
                                                                            "\":{"
                                                                            "\"installation_mode\":\"force_installed\","
-                                                                           "\"install_file\":\""
+                                                                           "\"install_url\":\"file://"
                                                                            path
                                                                            "\"}")))
                                                                       ids))
