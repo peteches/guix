@@ -3,8 +3,8 @@
 ;;; `base-firefox-profiles' is the live export, consumed by the
 ;;; firefox-service-type in (peteches home modules base).  Three profiles:
 ;;;   Default   — blank homepage.
-;;;   ygo       — Peter McCabe's ygo.ai identity; Gmail/Calendar as homepage,
-;;;               no extensions yet.
+;;;   ygo       — Peter McCabe's ygo.ai identity; Gmail/Calendar/Notion/Slack
+;;;               as homepage, 1Password X extension.
 ;;;   Other     — routed through the local Tor SOCKS proxy (127.0.0.1:9050,
 ;;;               provided by tor-service-type in (peteches systems base)).
 ;;;               DoH is forced off (network.trr.mode 5) and WebRTC disabled
@@ -14,8 +14,8 @@
 ;;; are unused — nothing imports them, and base-firefox-global-prefs is
 ;;; entirely commented out besides.  The .xpi files they reference
 ;;; (DarkReader, uBlock Origin, PassFF) are therefore NOT installed into any
-;;; profile — none of the profiles currently carry any extensions.  Wire
-;;; them into the firefox-configuration if you want them back.
+;;; profile; only ygo's 1Password X extension is.  Wire them into the
+;;; firefox-configuration if you want them back.
 ;;;
 ;;; Extensions are pinned .xpi files under firefox-extensions/, keyed by
 ;;; addon ID.  Updating one means replacing the file and its version in the
@@ -31,10 +31,12 @@
 		    #:prefs '(("browser.startup.homepage" . "about:blank")))
 
    (firefox-profile "ygo" "ygo"
+		    #:extensions `(("{d634138d-c276-4fc8-924b-40a0ea21d284}"
+				    . ,(local-file "./firefox-extensions/1password-x-password-manager-8.12.32.33.xpi")))
 		    #:prefs '(
 			      ;; Startup: open specific pages
 			      ("browser.startup.page"                                 . 1) ; 1 = homepage(s)
-			      ("browser.startup.homepage"                             . "https://mail.google.com/|https://calendar.google.com/")))
+			      ("browser.startup.homepage"                             . "https://mail.google.com/|https://calendar.google.com/|https://notion.com|https://app.slack.com/client/T036KF3KZHA")))
 
    (firefox-profile "Other"   "other"
 		    #:prefs '(
