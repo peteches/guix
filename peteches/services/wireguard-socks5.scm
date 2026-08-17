@@ -87,6 +87,20 @@
 (define %path-env
   "PATH=/run/setuid-programs:/run/current-system/profile/bin:/run/current-system/profile/sbin")
 
+;; wg-quick's Guix wrapper hardcodes absolute paths for ip/iptables/
+;; procps/openresolv/coreutils, but internally still calls bare `wg' (for
+;; `wg set'/`addconf'/`showconf') relying on inherited PATH. The start/stop
+;; procedures below run as an inline lambda directly under shepherd's own
+;; (minimal) process environment rather than via make-forkexec-constructor,
+;; so unlike every other service in this repo PATH is never otherwise set
+;; here -- without this, `wg-quick up' fails because `wg' can't be found.
+;; Returns a gexp evaluating to the PATH string (not a plain string: it
+;; references a package's store output, which only resolves inside a gexp).
+(define (wsc-wg-quick-path-env config)
+  #~(string-append #$(file-append (wsc-wireguard-package config) "/bin")
+                    ":/run/setuid-programs:/run/current-system/profile/bin:"
+                    "/run/current-system/profile/sbin"))
+
 (define (wsc-wireguard-service-name config)
   (symbol-append 'wireguard- (string->symbol (wsc-interface config))))
 
@@ -118,8 +132,10 @@
       (string-append "WireGuard tunnel " (wsc-interface config)
                      " (split-tunnel; entire config decrypted from SOPS)"))
      (start #~(lambda _
+                (setenv "PATH" #$(wsc-wg-quick-path-env config))
                 (zero? (system* #$wg-quick "up" #$config-file))))
      (stop #~(lambda _
+               (setenv "PATH" #$(wsc-wg-quick-path-env config))
                (system* #$wg-quick "down" #$config-file)
                #f))
      (auto-start? (wsc-auto-start? config))
