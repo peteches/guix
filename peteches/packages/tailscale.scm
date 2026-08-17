@@ -9,7 +9,7 @@
 (define-public tailscale
   (package
     (name "tailscale")
-    (version "1.94.1")
+    (version "1.102.2")
     (supported-systems '("x86_64-linux"))
     (source
      (origin
@@ -17,7 +17,7 @@
        (uri (string-append "https://pkgs.tailscale.com/stable/tailscale_"
                            version "_amd64.tgz"))
        (sha256
-        (base32 "0726s9v2lfq6fi378g9cci87qq1x73s0z0dfg9j98byjssy0gnc4"))))
+        (base32 "1n04mcwfnh8pzcrhmmmr88yn0719abk0210y7awzg5fyz09dwb5d"))))
     (build-system copy-build-system)
     (arguments
      (list
