@@ -7,9 +7,14 @@
 ;;;
 ;;; Conventions:
 ;;;   - One `define-public <name>-machine' per VM, added to %all-machines.
-;;;   - `host-name' is the static LAN IP (see proxmox-vms.org for the
-;;;     authoritative inventory).  VMs are addressed by IP, not DNS, so a
-;;;     pihole outage cannot break deploys.
+;;;   - `host-name' is the VM's Tailscale MagicDNS name
+;;;     (<short-hostname>.spaniel-cordylus.ts.net, matching the ".ts" aliases
+;;;     in (peteches home modules ssh)).  Every deployed VM runs
+;;;     tailscale-service-type with no explicit --hostname override, so its
+;;;     tailnet name is always its OS host-name's leading label.  Deploys
+;;;     therefore work from anywhere the deploying machine's tailscale is up,
+;;;     not just the home LAN; see proxmox-vms.org for the LAN IPs if you
+;;;     need to fall back to them (e.g. tailscale itself is down).
 ;;;   - `user' is always "peteches", who has passwordless sudo via the
 ;;;     sudoers-file set in (peteches systems vm-base).
 ;;;   - `host-key' can only be filled in after the VM's first boot:
@@ -55,7 +60,7 @@
    (environment managed-host-environment-type)
    (configuration
     (machine-ssh-configuration
-     (host-name "192.168.51.187")
+     (host-name "prometheus.spaniel-cordylus.ts.net")
      (host-key "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAINxQwnyL7Fm08s8UwzXXuSwbahwySM//Jv2jxpfmryHj")
      (system "x86_64-linux")
      (user "peteches")
@@ -67,7 +72,7 @@
    (environment managed-host-environment-type)
    (configuration
     (machine-ssh-configuration
-     (host-name "192.168.51.188")
+     (host-name "grafana.spaniel-cordylus.ts.net")
      (host-key "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIA3sVMg8QH+g6Xtj2NmIzV90gbkSPMiCnlaaAJx+a7tG")
      (system "x86_64-linux")
      (user "peteches")
@@ -79,7 +84,7 @@
    (environment managed-host-environment-type)
    (configuration
     (machine-ssh-configuration
-     (host-name "192.168.51.190")
+     (host-name "loki.spaniel-cordylus.ts.net")
      (host-key "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAII2AxOh6ksCO2dnP+S92mNnOR76J/ewMW1QrhkSvN/Xx")
      (system "x86_64-linux")
      (user "peteches")
@@ -91,7 +96,7 @@
    (environment managed-host-environment-type)
    (configuration
     (machine-ssh-configuration
-     (host-name "192.168.51.189")
+     (host-name "pihole.spaniel-cordylus.ts.net")
      (host-key "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAII5+ZCQgM0b8HJjRmzN2bpDkbtwqdbgop+g4ZiB4ZqjH")
      (system "x86_64-linux")
      (user "peteches")
@@ -103,7 +108,7 @@
    (environment managed-host-environment-type)
    (configuration
     (machine-ssh-configuration
-     (host-name "192.168.51.191")
+     (host-name "git.spaniel-cordylus.ts.net")
      (host-key "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAII/nIMuSdo5NHolPHogjR+xrudcnpLFROLYc6fpL+fkp")
      (system "x86_64-linux")
      (user "peteches")
@@ -115,7 +120,7 @@
    (environment managed-host-environment-type)
    (configuration
     (machine-ssh-configuration
-     (host-name "192.168.51.192")
+     (host-name "jellyfin.spaniel-cordylus.ts.net")
      (host-key "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIO0K7C2Fom+JtznRuvkCn1oIrjMy5ASD9tE5Ag8buO2Q")
      (system "x86_64-linux")
      (user "peteches")
@@ -127,7 +132,7 @@
    (environment managed-host-environment-type)
    (configuration
     (machine-ssh-configuration
-     (host-name "192.168.51.193")
+     (host-name "caddy.spaniel-cordylus.ts.net")
      (host-key "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIKFIxCigw2WFpZwTOWa075uT1IdGMbdCFGs4tCsNzNEz") ; fill in after new-vm Phase 6: ssh-keyscan 192.168.51.193
      (system "x86_64-linux")
      (user "peteches")
@@ -139,7 +144,7 @@
    (environment managed-host-environment-type)
    (configuration
     (machine-ssh-configuration
-     (host-name "192.168.51.194")
+     (host-name "prowlarr.spaniel-cordylus.ts.net")
      (host-key "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIHiYZARBCM47v7xWtaEhYRQNwfHK0ch6UnzOlaqnhIyA")
      (system "x86_64-linux")
      (user "peteches")
@@ -151,7 +156,7 @@
    (environment managed-host-environment-type)
    (configuration
     (machine-ssh-configuration
-     (host-name "192.168.51.195")
+     (host-name "arr.spaniel-cordylus.ts.net")
      (host-key "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAILv1EPh7kKTpPwuOBQPvyPiJ1XZ5Nd7SRzYMNEBewtNv")
      (system "x86_64-linux")
      (user "peteches")
@@ -163,7 +168,7 @@
    (environment managed-host-environment-type)
    (configuration
     (machine-ssh-configuration
-     (host-name "192.168.51.196")
+     (host-name "downloads.spaniel-cordylus.ts.net")
      (host-key "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIF1K5LlMCN5seUpx5CRZOmZHvi7JR0NbijQtACHbBGaC")
      (system "x86_64-linux")
      (user "peteches")
@@ -176,7 +181,7 @@
    (environment managed-host-environment-type)
    (configuration
     (machine-ssh-configuration
-     (host-name "192.168.51.197")
+     (host-name "rustdesk.spaniel-cordylus.ts.net")
      (host-key "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIKcfUmsDVPcwbgd52PCaDDKyTMW/usAXACJHGg9cu2Wu")
      (system "x86_64-linux")
      (user "peteches")
@@ -188,7 +193,7 @@
    (environment managed-host-environment-type)
    (configuration
     (machine-ssh-configuration
-     (host-name "192.168.51.198")
+     (host-name "concourse-db.spaniel-cordylus.ts.net")
      (host-key "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIEdDypH5/tQh+ZXp5vNk8bnADKgSJ03GglQRc4mWfkMt")
      (system "x86_64-linux")
      (user "peteches")
@@ -200,7 +205,7 @@
    (environment managed-host-environment-type)
    (configuration
     (machine-ssh-configuration
-     (host-name "192.168.51.199")
+     (host-name "concourse-web01.spaniel-cordylus.ts.net")
      (host-key "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIBi4OydXz+VS2GhJ3tG8SEbI8MtY9C62iGYD3DBjYGsq")
      (system "x86_64-linux")
      (user "peteches")
@@ -212,7 +217,7 @@
    (environment managed-host-environment-type)
    (configuration
     (machine-ssh-configuration
-     (host-name "192.168.51.200")
+     (host-name "concourse-worker01.spaniel-cordylus.ts.net")
      (host-key "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFaB9+BPAly8+5hdeufEvQFzr+XhJSND9LxMHRqVbE7B")
      (system "x86_64-linux")
      (user "peteches")
@@ -224,7 +229,7 @@
    (environment managed-host-environment-type)
    (configuration
     (machine-ssh-configuration
-     (host-name "192.168.51.201")
+     (host-name "vault.spaniel-cordylus.ts.net")
      (host-key "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIInM3jubj/B/ghMJumiBPKtY3AFAj4NCzzoFa57RXdWc")
      (system "x86_64-linux")
      (user "peteches")
@@ -236,7 +241,7 @@
    (environment managed-host-environment-type)
    (configuration
     (machine-ssh-configuration
-     (host-name "192.168.51.203")
+     (host-name "critical-grind-outline.spaniel-cordylus.ts.net")
      (host-key "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJMkUD28mvqVRXcx+uvbPdahm+DEfhl6EvbIudm6KhyM")
      (system "x86_64-linux")
      (user "peteches")
@@ -248,7 +253,7 @@
    (environment managed-host-environment-type)
    (configuration
     (machine-ssh-configuration
-     (host-name "192.168.51.204")
+     (host-name "plane.spaniel-cordylus.ts.net")
      (host-key "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIHB4zbOzy5fOWq/js8TgZGi1CIXPOAHMkR4imLhKBYYt")
      (system "x86_64-linux")
      (user "peteches")
@@ -260,7 +265,7 @@
    (environment managed-host-environment-type)
    (configuration
     (machine-ssh-configuration
-     (host-name "192.168.51.202")
+     (host-name "critical-grind-campaign.spaniel-cordylus.ts.net")
      (host-key "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIIZyL51uII6JZ9C75dHa0cWYHWJp5qgdddbWp+E1UnME")
      (system "x86_64-linux")
      (user "peteches")
@@ -272,7 +277,7 @@
    (environment managed-host-environment-type)
    (configuration
     (machine-ssh-configuration
-     (host-name "192.168.51.205")
+     (host-name "claude-workstation.spaniel-cordylus.ts.net")
      ;; TODO: ssh-keyscan 192.168.51.205 after first boot and replace this.
      ;; The VM pipeline provisions the host; guix deploy refuses on mismatch.
      (host-key "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIKJiP5mksOP24+DCSLHsDxy0Ge3V33eNTVTJq0VyvJwj")

@@ -18,11 +18,11 @@ exec guix repl -- "$0" "$@"
 ;;; All other arguments are forwarded verbatim to `guix deploy'.
 ;;;
 ;;; Examples:
-;;;   scripts/deploy.scm -h git                          ; by machine name
-;;;   scripts/deploy.scm --hosts 192.168.51.187          ; by IP
-;;;   scripts/deploy.scm --hosts "192.168.51.18[78]"     ; regex on IP
-;;;   scripts/deploy.scm -h "prometheus,loki" --dry-run  ; OR + passthrough
-;;;   scripts/deploy.scm -h "host-name=192.168.51.19[01]"
+;;;   scripts/deploy.scm -h git                                    ; by machine name
+;;;   scripts/deploy.scm --hosts prometheus.spaniel-cordylus.ts.net ; by tailnet name
+;;;   scripts/deploy.scm --hosts "concourse-.*\.ts\.net"            ; regex on tailnet name
+;;;   scripts/deploy.scm -h "prometheus,loki" --dry-run            ; OR + passthrough
+;;;   scripts/deploy.scm -h "host-name=concourse-.*"
 
 (use-modules (ice-9 regex))
 
