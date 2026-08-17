@@ -47,6 +47,7 @@
   #:use-module (peteches services alloy)
   #:use-module (peteches services firewall)
   #:use-module (peteches services tailscale)
+  #:use-module (peteches services wireguard-socks5)
   #:use-module (sops secrets)
   #:use-module (gnu services guix)
   #:use-module (peteches home configs claude-workstation-peteches)
@@ -102,6 +103,19 @@
        (key '("auth-key"))
        (file (local-file "../../secrets/shared/tailscale.yaml"))
        (path "/run/secrets/tailscale-auth-key")
+       (permissions #o400))
+      ;; Full wg-quick config (private key, peer public key, endpoint,
+      ;; tunnel address, and the Table=off + fwmark policy-routing
+      ;; PostUp/PreDown lines) as ONE opaque secret value -- see
+      ;; (peteches services wireguard-socks5) and docs/secrets-management.org
+      ;; for the expected wg0.conf template. The path MUST be named
+      ;; "wg0.conf" (basename "wg0") to match the "wg0" interface name used
+      ;; below, since wg-quick derives the interface name from the config
+      ;; file's basename.
+      (sops-secret
+       (key '("wg0-conf"))
+       (file (local-file "../../secrets/hosts/claude-workstation/wireguard.yaml"))
+       (path "/run/secrets/wg0.conf")
        (permissions #o400))
       ;; criticalgrind's Plane/Outline MCP keys, decrypted here with this
       ;; VM's own age key. secrets/hosts/claude-workstation/critical-grind.env
@@ -161,6 +175,13 @@
                (list (tailscale-instance-configuration
                       (name "peteches")
                       (auth-key-file "/run/secrets/tailscale-auth-key"))))
+      ;; Split-tunnel WireGuard behind a local SOCKS5 proxy (127.0.0.1:1080).
+      ;; The system default route is untouched -- only processes that dial
+      ;; the SOCKS5 proxy get routed over the tunnel. See
+      ;; (peteches services wireguard-socks5).
+      (service wireguard-socks5-service-type
+               (wireguard-socks5-configuration
+                (config-file "/run/secrets/wg0.conf")))
       (service alloy-service-type
                (alloy-configuration
                 (hostname "claude-workstation.peteches.co.uk")

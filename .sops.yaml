@@ -134,3 +134,10 @@ creation_rules:
   - path_regex: secrets/hosts/claude-workstation/critical-grind\.env$
     pgp: "5FFB7006A36B0AEDE8D08E3753B1E002546A642A"
     age: "age1gcrgp0sy04kdxuyn2rmkeknx32jvw55yku8v0mwyhypagds5z9jqz0h0z2"
+
+  # WireGuard tunnel config for claude-workstation (see
+  # peteches/services/wireguard-socks5.scm) -- decrypted with this VM's own
+  # age key at boot, same reasoning as critical-grind.env above.
+  - path_regex: secrets/hosts/claude-workstation/wireguard\.yaml$
+    pgp: "5FFB7006A36B0AEDE8D08E3753B1E002546A642A"
+    age: "age1gcrgp0sy04kdxuyn2rmkeknx32jvw55yku8v0mwyhypagds5z9jqz0h0z2"
