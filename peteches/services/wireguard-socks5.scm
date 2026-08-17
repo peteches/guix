@@ -134,10 +134,19 @@
      (start #~(lambda _
                 (setenv "PATH" #$(wsc-wg-quick-path-env config))
                 (zero? (system* #$wg-quick "up" #$config-file))))
+     ;; wg-quick runs under `set -e -o pipefail' and executes PreDown
+     ;; hooks BEFORE actually deleting the interface (cmd_down): if a
+     ;; PreDown command fails (e.g. removing a policy-routing rule/route
+     ;; that, for whatever reason, doesn't exist), the script aborts right
+     ;; there and the interface is never deleted. Reporting success
+     ;; unconditionally here would let the interface leak while shepherd
+     ;; believes it's stopped -- the next `start' then fails outright,
+     ;; since wg-quick refuses to create an interface that already exists.
+     ;; Reflect the real exit status instead: #f only if `wg-quick down'
+     ;; actually succeeded.
      (stop #~(lambda _
                (setenv "PATH" #$(wsc-wg-quick-path-env config))
-               (system* #$wg-quick "down" #$config-file)
-               #f))
+               (not (zero? (system* #$wg-quick "down" #$config-file)))))
      (auto-start? (wsc-auto-start? config))
      (respawn? #f))))
 
