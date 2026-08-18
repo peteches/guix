@@ -27,6 +27,7 @@
 ;;; #:secret-env-vars below — see criticalgrind's config for an example.
 
 (define-module (peteches home modules claude-workstation)
+  #:use-module (ice-9 match)
   #:use-module (gnu home)
   #:use-module (gnu home services)
   #:use-module (gnu home services shells)
@@ -140,6 +141,87 @@
            (stop #~(make-kill-destructor))
            (respawn? #t))))))
 
+;; --- Herdr standing spaces (opt-in, peteches only in practice) ---------
+;; herdr's socket API has no declarative "start these workspaces" config,
+;; so this builds a shell script that idempotently recreates a fixed set of
+;; named spaces (herdr's term for what the sidebar calls a "workspace")
+;; against the LOCAL herdr-server socket once it is up, then starts Claude
+;; Code in each via herdr's native agent integration so it shows up in the
+;; sidebar and participates in resume_agents_on_restore. Two of the four
+;; spaces sudo into another account first -- see this module's docstring
+;; for why peteches/criticalgrind/ygo are separate OS users -- so a single
+;; `herdr --remote` session as peteches reaches every account without a
+;; herdr-server autostart per account (see
+;; configs/hypr/peteches/apps/herdr.lua).
+(define (herdr-spaces-bootstrap-script specs)
+  "SPECS is a list of (NAME RELATIVE-PATH SUDO-USER) triples. NAME becomes
+both the space label and the herdr agent name (must match
+[a-z][a-z0-9_-]{0,31} and be unique among live agents). RELATIVE-PATH is
+relative to $HOME -- the calling account's home when SUDO-USER is #f,
+otherwise SUDO-USER's, since `sudo -iu' switches HOME (and cwd) to that
+account's home before the relative cd runs."
+  (define (ensure-call spec)
+    (match spec
+      ((name relative-path sudo-user)
+       (string-append "ensure_space \"" name "\" \"" relative-path "\" \""
+                       (or sudo-user "") "\"\n"))))
+  (mixed-text-file
+   "herdr-spaces-bootstrap.sh"
+   "#!/bin/sh\nset -eu\n\n"
+   "HERDR=" (file-append herdr "/bin/herdr") "\n"
+   "JQ=" (file-append jq "/bin/jq") "\n"
+   "SUDO=/run/setuid-programs/sudo\n\n"
+   "wait_for_socket() {\n"
+   "  i=0\n"
+   "  while [ \"$i\" -lt 30 ]; do\n"
+   "    \"$HERDR\" workspace list >/dev/null 2>&1 && return 0\n"
+   "    i=$((i + 1))\n"
+   "    sleep 1\n"
+   "  done\n"
+   "  return 1\n"
+   "}\n\n"
+   ;; A space already exists (matched by label) on a shepherd restart or a
+   ;; second run of this one-shot -- skip it rather than duplicating it.
+   "ensure_space() {\n"
+   "  name=\"$1\"; relpath=\"$2\"; sudo_user=\"$3\"\n"
+   "  existing=$(\"$HERDR\" workspace list | \"$JQ\" -r --arg n \"$name\" \\\n"
+   "    '.result.workspaces[] | select(.label==$n) | .workspace_id' | head -n1)\n"
+   "  [ -n \"$existing\" ] && return 0\n"
+   "  created=$(\"$HERDR\" workspace create --cwd \"$HOME\" --label \"$name\" --no-focus)\n"
+   "  pane=$(printf '%s' \"$created\" | \"$JQ\" -r '.result.root_pane.pane_id')\n"
+   "  marker=\"__herdr_ready_${name}__\"\n"
+   "  if [ -n \"$sudo_user\" ]; then\n"
+   "    cmd=\"$SUDO -iu $sudo_user -- bash -lc 'cd $relpath && echo $marker && exec bash'\"\n"
+   "  else\n"
+   "    cmd=\"cd $relpath && echo $marker\"\n"
+   "  fi\n"
+   "  \"$HERDR\" pane run \"$pane\" \"$cmd\"\n"
+   "  \"$HERDR\" pane wait-output \"$pane\" --match \"$marker\" --timeout 30000 >/dev/null 2>&1 || true\n"
+   "  \"$HERDR\" agent start \"$name\" --kind claude --pane \"$pane\" >/dev/null 2>&1 || true\n"
+   "}\n\n"
+   "wait_for_socket || exit 0\n\n"
+   (apply string-append (map ensure-call specs))))
+
+(define (herdr-spaces-services specs)
+  "Shepherd one-shot service that runs HERDR-SPACES-BOOTSTRAP-SCRIPT once
+herdr-server is up. No-op when SPECS is empty."
+  (if (null? specs)
+      '()
+      (list
+       (simple-service
+        'herdr-spaces-bootstrap
+        home-shepherd-service-type
+        (list (shepherd-service
+               (provision '(herdr-spaces-bootstrap))
+               (requirement '(herdr-server))
+               (one-shot? #t)
+               (auto-start? #t)
+               (documentation
+                "Idempotently ensure this account's standing herdr spaces exist, each running Claude Code.")
+               (start #~(lambda _
+                          (zero? (system* #$(file-append bash "/bin/bash")
+                                           #$(herdr-spaces-bootstrap-script specs)))))))))))
+
 (define (anvil-mcp-servers)
   "The two anvil MCP bridges, matching the container registration."
   (let ((script    (file-append emacs-anvil "/bin/anvil-stdio.sh"))
@@ -250,7 +332,8 @@ unset _claude_completion
           (extra-packages '())
           (extra-claude-files '())
           (with-anvil? #t)
-          (with-herdr? #t))
+          (with-herdr? #t)
+          (herdr-spaces '()))
   "Return a headless home-environment for one Claude account on
 claude-workstation.  REPOS is a list of (NAME URL) cloned into ~/area_51.
 MCP-SERVERS is a list of <home-claude-mcp-server> (the anvil bridges are added
@@ -271,7 +354,13 @@ replacing) the shared configs/claude/defaults set -- for an account-specific
 agent, skill or similar that doesn't belong to any one project (a project's
 own CLAUDE.md/.claude/agents/ takes precedence over an account-wide file for
 project-specific instructions). A RELATIVE-PATH colliding with a defaults/
-entry is a build-time error, not a silent override."
+entry is a build-time error, not a silent override. HERDR-SPACES is a list
+of (NAME RELATIVE-PATH SUDO-USER) triples (see
+herdr-spaces-bootstrap-script) -- when non-empty and WITH-HERDR?, a
+shepherd one-shot idempotently creates these herdr workspaces once the
+server is up and starts Claude Code in each. Only meaningful for an
+account other clients reach via `herdr --remote' (currently just
+peteches -- see configs/hypr/peteches/apps/herdr.lua)."
   (home-environment
    (packages (append %claude-workstation-base-packages
                      (if with-anvil? (list emacs-no-x emacs-anvil) '())
@@ -361,4 +450,7 @@ entry is a build-time error, not a silent override."
                                             (cdr pair)))
                                     extra-claude-files))))
      (if with-anvil? (anvil-services) '())
-     (if with-herdr? (herdr-services) '())))))
+     (if with-herdr? (herdr-services) '())
+     (if (and with-herdr? (not (null? herdr-spaces)))
+         (herdr-spaces-services herdr-spaces)
+         '())))))

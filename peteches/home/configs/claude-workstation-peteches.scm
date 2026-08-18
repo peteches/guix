@@ -22,7 +22,20 @@
 ;; SSH URLs need this user's key + known_hosts on the VM at reconfigure time;
 ;; a clone that can't authenticate just warns and retries next reconfigure.
 (define %peteches-repos
-  '(("guix"         "git@github.com:peteches/guix")))
+  '(("guix" "git@github.com:peteches/guix")
+    ("bas"  "git@git.peteches.co.uk:bas")))
+
+;; The 4 standing herdr spaces for this account's `herdr --remote' session
+;; (see configs/hypr/peteches/apps/herdr.lua, which now only autostarts
+;; this one account rather than one alacritty window per account). Each
+;; entry is (NAME RELATIVE-PATH SUDO-USER) -- see
+;; herdr-spaces-bootstrap-script in (peteches home modules
+;; claude-workstation) for the exact semantics.
+(define %peteches-herdr-spaces
+  '(("guix" "area_51/guix" #f)
+    ("bas"  "area_51/bas"  #f)
+    ("critical-grind-campaign" "area_51/critical-grind-campaign" "criticalgrind")
+    ("ygocloud" "area_51/ygocloud" "ygo")))
 
 (define-public claude-workstation-peteches-home
   (make-claude-workstation-home
@@ -35,7 +48,8 @@
  #:mcp-servers
  (list (home-claude-mcp-server
         (name "comfyui")
-        (command (file-append node-comfyui-mcp "/bin/comfyui-mcp"))))))
+        (command (file-append node-comfyui-mcp "/bin/comfyui-mcp"))))
+ #:herdr-spaces %peteches-herdr-spaces))
 
 claude-workstation-peteches-home
 
