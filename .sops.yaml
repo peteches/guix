@@ -90,6 +90,39 @@ creation_rules:
     pgp: "5FFB7006A36B0AEDE8D08E3753B1E002546A642A"
     age: "age1g3nsny7xdewga8eatwtapelwn058035s4jwa3lhehh2eu4zzpf3sjvqpsu"
 
+  # Public half of the peteches automation SSH keypair. Its own
+  # independently-growable recipient list (every VM's age key) rather than
+  # the general secrets/shared/.*\.yaml$ rule below, since it must reach
+  # every VM including several not in that list (claude-workstation,
+  # concourse-*, plane). make-vm-os in peteches/systems/vm-base.scm
+  # decrypts this unconditionally on every VM and wires it into sshd's
+  # AuthorizedKeysFile for the peteches user (see #:automation-key-extra-
+  # users for the additional criticalgrind/ygo grant on claude-workstation
+  # only). Must sit before the general rule below -- sops uses
+  # first-match-wins.
+  - path_regex: secrets/shared/peteches-automation-ssh-pub\.yaml$
+    pgp: "5FFB7006A36B0AEDE8D08E3753B1E002546A642A"
+    age:
+      - age1z7alg2ssx9n5nzgnnyac4hvd6yaga00tlw4je72jlfch3hafdg5st7enrl  # arr
+      - age1ed7uvjrv2t6k0ytc8raqsm7jvlpdxls82xf2h45ptdwdwxkqacjq2rkf64  # caddy
+      - age1gcrgp0sy04kdxuyn2rmkeknx32jvw55yku8v0mwyhypagds5z9jqz0h0z2  # claude-workstation
+      - age1ar8xxu5scxwta7qzqc6e6unnl7uqn6e0wkjsgduw72lwgrvg8ezqayl4xn  # concourse-db
+      - age127sr66dp0za797zes24lxlsj4pvc5nn0097mpcdmrckf468ycfdsjrhe6g  # concourse-web01
+      - age10kxy6jf4agmzn8sg9v0mje859exfxhr7p0tpfznuvg52tgak4p2qkzadm5  # concourse-worker01
+      - age1ytrfl4a94j2c4xtms7at982tsptdp2z65ss3l8frg0dwcnlns45q7v5uv8  # critical-grind-campaign
+      - age1g3nsny7xdewga8eatwtapelwn058035s4jwa3lhehh2eu4zzpf3sjvqpsu  # critical-grind-outline
+      - age1ssely7qxd0yjrdukl6xjns2gal43nm3n3zulpxzgdsuzd8z85u5qguvlna  # downloads
+      - age1drdf9gte6s33vrdq6sa7j55qtuznq33f2edfm8p2jw7kvshmx3ks8v0qmt  # git
+      - age1gd29zcp8xpm92aprc03u8a959zlmavue768gxstxu0ykhxh87e3sywr4jj  # grafana
+      - age12kqksjf5cjh8y3l70r2jzzxz3gdv9wda7jylvk46vqrfd6hgqy4qz6ntc7  # jellyfin
+      - age16chm6mdzyn5u38epes5jgct35edal282dst59s3f48umzelkueustn6xsm  # loki
+      - age1euvhmllrqrn7xxuphtjp74l08u8kvflx83ky4n4j2f4egyylgdxswn7095  # pihole
+      - age15cnry6833ujv0dpz3szm4sv6y6ga4vltaxw5kty8vcfgck96cq7qd5n9gy  # plane
+      - age15pfq0a37378fv4s2htwyzsdavksjyfq2mvmz62sk65fxpt4qqu4s7xyjpz  # prometheus
+      - age18qc9n2dlah5z6vda3x9qrwjpgz8armuqz5456vekegvut6ez4q5quvwhf3  # prowlarr
+      - age1fww7z7rv5rtm0e3jwd5scquaxkz28mwx53mu8e85etfwj7ssqp6qzc4n7r  # rustdesk
+      - age14wrglclq4jcp5jx2vkz5evt0fmjl32zuzq86hmnt5hn6pcl02dyq9qhkew  # vault
+
   # Same reasoning as the colibri rule below: its own independently-growable
   # recipient list, not the general secrets/shared/.*\.yaml$ one.
   - path_regex: secrets/shared/sillytavern\.yaml$
@@ -150,34 +183,3 @@ creation_rules:
     pgp: "5FFB7006A36B0AEDE8D08E3753B1E002546A642A"
     age: "age1gcrgp0sy04kdxuyn2rmkeknx32jvw55yku8v0mwyhypagds5z9jqz0h0z2"
 
-  # Public half of the peteches automation SSH keypair. Its own
-  # independently-growable recipient list (every VM's age key) rather than
-  # the general secrets/shared/.*\.yaml$ rule below, since it must reach
-  # every VM including several not in that list (claude-workstation,
-  # concourse-*, plane). make-vm-os in peteches/systems/vm-base.scm
-  # decrypts this unconditionally on every VM and wires it into sshd's
-  # AuthorizedKeysFile for the peteches user (see #:automation-key-extra-
-  # users for the additional criticalgrind/ygo grant on claude-workstation
-  # only).
-  - path_regex: secrets/shared/peteches-automation-ssh-pub\.yaml$
-    pgp: "5FFB7006A36B0AEDE8D08E3753B1E002546A642A"
-    age:
-      - age1z7alg2ssx9n5nzgnnyac4hvd6yaga00tlw4je72jlfch3hafdg5st7enrl  # arr
-      - age1ed7uvjrv2t6k0ytc8raqsm7jvlpdxls82xf2h45ptdwdwxkqacjq2rkf64  # caddy
-      - age1gcrgp0sy04kdxuyn2rmkeknx32jvw55yku8v0mwyhypagds5z9jqz0h0z2  # claude-workstation
-      - age1ar8xxu5scxwta7qzqc6e6unnl7uqn6e0wkjsgduw72lwgrvg8ezqayl4xn  # concourse-db
-      - age127sr66dp0za797zes24lxlsj4pvc5nn0097mpcdmrckf468ycfdsjrhe6g  # concourse-web01
-      - age10kxy6jf4agmzn8sg9v0mje859exfxhr7p0tpfznuvg52tgak4p2qkzadm5  # concourse-worker01
-      - age1ytrfl4a94j2c4xtms7at982tsptdp2z65ss3l8frg0dwcnlns45q7v5uv8  # critical-grind-campaign
-      - age1g3nsny7xdewga8eatwtapelwn058035s4jwa3lhehh2eu4zzpf3sjvqpsu  # critical-grind-outline
-      - age1ssely7qxd0yjrdukl6xjns2gal43nm3n3zulpxzgdsuzd8z85u5qguvlna  # downloads
-      - age1drdf9gte6s33vrdq6sa7j55qtuznq33f2edfm8p2jw7kvshmx3ks8v0qmt  # git
-      - age1gd29zcp8xpm92aprc03u8a959zlmavue768gxstxu0ykhxh87e3sywr4jj  # grafana
-      - age12kqksjf5cjh8y3l70r2jzzxz3gdv9wda7jylvk46vqrfd6hgqy4qz6ntc7  # jellyfin
-      - age16chm6mdzyn5u38epes5jgct35edal282dst59s3f48umzelkueustn6xsm  # loki
-      - age1euvhmllrqrn7xxuphtjp74l08u8kvflx83ky4n4j2f4egyylgdxswn7095  # pihole
-      - age15cnry6833ujv0dpz3szm4sv6y6ga4vltaxw5kty8vcfgck96cq7qd5n9gy  # plane
-      - age15pfq0a37378fv4s2htwyzsdavksjyfq2mvmz62sk65fxpt4qqu4s7xyjpz  # prometheus
-      - age18qc9n2dlah5z6vda3x9qrwjpgz8armuqz5456vekegvut6ez4q5quvwhf3  # prowlarr
-      - age1fww7z7rv5rtm0e3jwd5scquaxkz28mwx53mu8e85etfwj7ssqp6qzc4n7r  # rustdesk
-      - age14wrglclq4jcp5jx2vkz5evt0fmjl32zuzq86hmnt5hn6pcl02dyq9qhkew  # vault
