@@ -138,9 +138,17 @@
 ;; Build the activation gexp that clones REPOS — a list of (NAME URL)
 ;; two-element lists — into ~/area_51/NAME, skipping any already present.
 (define (repos-activation repos)
-  (let ((git (file-append git "/bin/git")))
+  (let ((git (file-append git "/bin/git"))
+        (ssh (file-append openssh "/bin/ssh")))
     #~(begin
         (use-modules (ice-9 format))
+        ;; guix-home-service-type runs this activation via shepherd with a
+        ;; minimal PATH that doesn't include openssh's store directory. `git
+        ;; clone' over ssh:// forks `ssh' by looking it up on PATH, so an
+        ;; ssh:// clone here fails with "error: cannot run ssh: No such file
+        ;; or directory" even though `git' itself was found (it's invoked by
+        ;; absolute path). Point git at ssh's absolute path explicitly.
+        (setenv "GIT_SSH_COMMAND" #$ssh)
         (let* ((home (getenv "HOME"))
                (base (string-append home "/area_51")))
           (unless (file-exists? base) (mkdir base))
