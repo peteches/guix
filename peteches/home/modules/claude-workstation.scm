@@ -291,13 +291,27 @@ entry is a build-time error, not a silent override."
                (home-bash-configuration
                 (guix-defaults? #t)
                 (environment-variables
-                 '(("PATH" . "$HOME/.local/bin:$PATH")
-                   ("XDG_RUNTIME_DIR" . "$HOME/.cache/xdg-runtime")))
+                 '(("PATH" . "$HOME/.local/bin:$PATH")))
                 (bashrc
                  (cons claude-completion-bashrc
                        (if (null? secret-env-vars)
                            '()
                            (list (secret-env-bashrc secret-env-vars)))))))
+      ;; XDG_RUNTIME_DIR must go through home-environment-variables-service-type
+      ;; (which lands in ~/.guix-home/setup-environment, sourced by ~/.profile),
+      ;; NOT home-bash-configuration's own environment-variables field. Guix
+      ;; Home's ~/.profile does:
+      ;;   . $HOME_ENVIRONMENT/setup-environment
+      ;;   $HOME_ENVIRONMENT/on-first-login
+      ;; while ~/.bash_profile only sources ~/.profile and ~/.bashrc BEFORE
+      ;; applying home-bash-configuration's own environment-variables field --
+      ;; so a bash-scoped export here would still be unset when on-first-login
+      ;; (which starts shepherd-for-home, anvil and herdr-server) runs its
+      ;; XDG_RUNTIME_DIR check, producing the "XDG_RUNTIME_DIR doesn't exists"
+      ;; warning even with the tmpfs mounted underneath it.
+      (simple-service 'xdg-runtime-dir
+                      home-environment-variables-service-type
+                      '(("XDG_RUNTIME_DIR" . "$HOME/.cache/xdg-runtime")))
       (simple-service 'mcp-env
                       home-environment-variables-service-type
                       mcp-env)
