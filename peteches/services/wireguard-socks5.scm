@@ -23,6 +23,20 @@
 ;; routed over the tunnel; the host's own default route and DNS resolver
 ;; (e.g. Tailscale's MagicDNS at 100.100.100.100) are completely untouched.
 ;;
+;; The namespace's ONLY connection to anywhere is that veth pair, but the
+;; WireGuard kernel module's own encrypted UDP packets (the handshake and
+;; every subsequent packet to the peer's real endpoint) still need a real
+;; path to the actual internet -- wg0 can't bootstrap its own tunnel through
+;; itself. So wsc-netns-shepherd-service also: (1) turns the host into a NAT
+;; gateway for the netns (net.ipv4.ip_forward=1, enabled directly by the
+;; start procedure, plus a masquerade rule and forward-chain accepts added
+;; via firewall-service-type -- see wsc-firewall-rules), and (2) seeds a
+;; plain default route inside the namespace via the veth's host-side address
+;; BEFORE wg-quick ever runs, so wg-quick's own peer traffic has somewhere
+;; to go. Once wg0 comes up, its own default route (from AllowedIPs) takes
+;; over for everything else in the namespace; the veth-gateway route is only
+;; ever used by the tunnel's own handshake/keepalive traffic.
+;;
 ;; Independent DNS: Linux bind-mounts /etc/netns/<name>/resolv.conf over
 ;; /etc/resolv.conf for anything run via `ip netns exec <name> ...' (that's
 ;; what makes it "independent" -- it's a kernel/iproute2 mechanism, not
@@ -40,15 +54,17 @@
 ;; Everything else on the VM keeps using its normal default route and DNS.
 ;;
 ;; None of the three shepherd services auto-start (auto-start? defaults to
-;; #f). Bring the tunnel up on demand, innermost-last:
-;;   herd start netns-wg0
+;; #f). Bring the tunnel up on demand, innermost-last -- note the netns
+;; service is named after NETNS, i.e. "netns-wg0ns" with the defaults, not
+;; "netns-wg0":
+;;   herd start netns-wg0ns
 ;;   herd start wireguard-wg0
 ;;   herd start socks5-proxy
 ;; and tear it down outermost-first:
 ;;   herd stop socks5-proxy
 ;;   herd stop wireguard-wg0
-;;   herd stop netns-wg0
-;; If `netns-wg0' fails partway through (e.g. veth creation fails after the
+;;   herd stop netns-wg0ns
+;; If `netns-wg0ns' fails partway through (e.g. veth creation fails after the
 ;; namespace itself was created), it can leave the namespace or a host-side
 ;; veth behind; clean up by hand with `ip netns delete wg0ns' and/or
 ;; `ip link delete veth-wg0h' before retrying.
@@ -64,6 +80,7 @@
   #:use-module (gnu packages skarnet) ;s6 (s6-setuidgid)
   #:use-module (gnu packages vpn)     ;wireguard-tools
   #:use-module (gnu packages web)     ;microsocks
+  #:use-module (peteches services firewall)
   #:export (wireguard-socks5-configuration
             make-wireguard-socks5-configuration
             wireguard-socks5-configuration?
@@ -194,6 +211,35 @@
 (define (wsc-veth-netns-ip config)
   (car (string-split (wsc-veth-netns-address config) #\/)))
 
+;; Same idea, for the host side -- this is the gateway address the
+;; namespace routes its own (non-tunnel) traffic through, i.e. the
+;; WireGuard kernel module's own handshake/keepalive packets to the peer's
+;; real endpoint. See wsc-netns-shepherd-service and wsc-firewall-rules.
+(define (wsc-veth-host-ip config)
+  (car (string-split (wsc-veth-host-address config) #\/)))
+
+;; NAT-gateway rules for the host: masquerade traffic sourced from the
+;; namespace's veth address as it leaves via the host's real interface, and
+;; explicitly allow it through the forward chain (the base firewall's
+;; forward chain has policy drop with no rules of its own). Scoped tightly
+;; to the veth's own fixed address, not a wider subnet -- see
+;; wsc-veth-netns-ip. This complements, but doesn't replace,
+;; net.ipv4.ip_forward=1, which wsc-netns-shepherd-service's start
+;; procedure sets directly (a single global on/off switch, not something
+;; nftables controls).
+(define (wsc-firewall-rules config)
+  (let ((netns-ip (wsc-veth-netns-ip config))
+        (veth-host (wsc-veth-host config)))
+    (nftables-rules
+     (nat-postrouting
+      (list (string-append "ip saddr " netns-ip " masquerade comment \"wg0ns egress\"")))
+     (forward
+      (list (string-append "iifname \"" veth-host "\" ip saddr " netns-ip
+                            " accept comment \"wg0ns egress\"")
+            (string-append "oifname \"" veth-host
+                            "\" ct state { established, related } accept"
+                            " comment \"wg0ns return traffic\""))))))
+
 (define (wsc-accounts config)
   (let ((user (wsc-socks-user config)))
     (list (user-group (name user) (system? #t))
@@ -218,6 +264,7 @@
          (veth-netns (wsc-veth-netns config))
          (host-address (wsc-veth-host-address config))
          (netns-address (wsc-veth-netns-address config))
+         (host-ip (wsc-veth-host-ip config))
          (ip (file-append iproute "/sbin/ip")))
     (shepherd-service
      (provision (list (wsc-netns-service-name config)))
@@ -241,6 +288,12 @@
                      (lambda args (unless (file-exists? dir) (apply throw args))))
                    (call-with-output-file (string-append dir "/resolv.conf")
                      (lambda (port) (display #$%openresolv-signature-line port))))
+                 ;; A single global switch (not per-namespace, not nftables) --
+                 ;; without it the kernel never forwards packets between the
+                 ;; veth and the host's real interface at all, no matter what
+                 ;; NAT/forward rules exist.
+                 (call-with-output-file "/proc/sys/net/ipv4/ip_forward"
+                   (lambda (port) (display "1" port)))
                  (and (zero? (system* #$ip "netns" "add" #$netns))
                       (zero? (system* #$ip "link" "add" #$veth-host
                                        "type" "veth" "peer" "name" #$veth-netns))
@@ -252,7 +305,15 @@
                       (zero? (system* #$ip "netns" "exec" #$netns
                                        #$ip "link" "set" #$veth-netns "up"))
                       (zero? (system* #$ip "netns" "exec" #$netns
-                                       #$ip "link" "set" "lo" "up")))))))
+                                       #$ip "link" "set" "lo" "up"))
+                      ;; wg-quick's own default route (installed once wg0
+                      ;; comes up, via AllowedIPs) covers everything else in
+                      ;; the namespace -- this one exists solely so the
+                      ;; WireGuard kernel module's OWN traffic to the peer's
+                      ;; real endpoint has a way out before that happens.
+                      (zero? (system* #$ip "netns" "exec" #$netns
+                                       #$ip "route" "add" "default"
+                                       "via" #$host-ip "dev" #$veth-netns)))))))
      ;; Deleting the host-side veth also removes its (still-attached) peer
      ;; if it never made it into the namespace; deleting the namespace tears
      ;; down wg0 and anything else still running inside it. Reflect the
@@ -361,4 +422,6 @@ are left untouched.")
                        (service-extension shepherd-root-service-type
                                           wsc-shepherd-services)
                        (service-extension profile-service-type
-                                          wsc-profile)))))
+                                          wsc-profile)
+                       (service-extension firewall-service-type
+                                          wsc-firewall-rules)))))
