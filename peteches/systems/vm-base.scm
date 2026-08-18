@@ -69,6 +69,7 @@
 ;; terraform, age-keys).
 
 (define-module (peteches systems vm-base)
+  #:use-module (srfi srfi-13)
   #:use-module (guix gexp)
   #:use-module (gnu system)
   #:use-module (gnu system accounts)
@@ -182,6 +183,23 @@
            "ip protocol icmp accept comment \"icmpv4\""
            "ip6 nexthdr ipv6-icmp accept comment \"icmpv6\""))))
 
+;; Public half of the peteches automation SSH keypair, decrypted on every
+;; VM (unless #:with-automation-key? #f) into this path and consulted only
+;; for the "peteches" user's login attempts -- see the Match block below.
+;; The matching private key lives ONLY on claude-workstation (see
+;; peteches/systems/claude-workstation.scm and docs/secrets-management.org)
+;; so peteches there can reach any VM's peteches account, plus (via
+;; #:automation-key-extra-users) the criticalgrind/ygo accounts.
+(define %automation-authorized-key-path
+  "/run/secrets/peteches-automation-ssh-key.pub")
+
+(define %automation-authorized-key-secret
+  (sops-secret
+   (key '("public-key"))
+   (file (local-file "../../secrets/shared/peteches-automation-ssh-pub.yaml"))
+   (path %automation-authorized-key-path)
+   (permissions #o444)))
+
 (define* (make-vm-os
           #:key host-name bootloader file-systems
           (mapped-devices '())
@@ -197,18 +215,24 @@
           (nameservers %vm-nameservers)
           (sops-secrets '())
           (with-nug-offload? #t)
-          (with-nvidia? #f))
+          (with-nvidia? #f)
+          (with-automation-key? #t)
+          (automation-key-extra-users '()))
   (let* ((nonguix-services (if with-nonguix? (list (nonguix-substitute-service)) '()))
          (restic-services
           (if restic-config
               (list (service restic-vm-backup-service-type restic-config))
               '()))
+         (all-sops-secrets
+          (if with-automation-key?
+              (cons %automation-authorized-key-secret sops-secrets)
+              sops-secrets))
          (sops-services
-          (if (not (null? sops-secrets))
+          (if (not (null? all-sops-secrets))
               (list (service sops-secrets-service-type
                              (sops-service-configuration
                               (age-key-file "/etc/age/keys.txt")
-                              (secrets sops-secrets))))
+                              (secrets all-sops-secrets))))
               '()))
          (nvidia-packages
           (if with-nvidia?
@@ -235,7 +259,22 @@
             (service openssh-service-type
                      (openssh-configuration
                       (authorized-keys
-                       `(("peteches" ,@%vm-peteches-authorized-keys)))))
+                       `(("peteches" ,@%vm-peteches-authorized-keys)))
+                      ;; AuthorizedKeysFile with a literal (non-%u) path
+                      ;; applies to EVERY user's login attempt, which would
+                      ;; turn the automation key into a skeleton key for
+                      ;; every local account -- the Match block scopes the
+                      ;; extra file to just the intended usernames.
+                      (extra-content
+                       (if with-automation-key?
+                           (string-append
+                            "Match User "
+                            (string-join
+                             (cons "peteches" automation-key-extra-users) ",")
+                            "\n  AuthorizedKeysFile .ssh/authorized_keys .ssh/authorized_keys2 /etc/ssh/authorized_keys.d/%u "
+                            %automation-authorized-key-path
+                            "\n")
+                           ""))))
             (if ipv4-address
                 (service static-networking-service-type
                          (list (static-networking

@@ -115,6 +115,7 @@
      ;; Offload needs a guix-build.yaml secret + nug authorized-key that do
      ;; not exist until first boot; enabling half of it fails silently.
      #:with-nug-offload? #f
+     #:automation-key-extra-users '("criticalgrind" "ygo")
      #:users-extra (list %criticalgrind-user %ygo-user)
      ;; Tailscale unattended join.  The auth-key is a SHARED sops secret
      ;; (secrets/shared/tailscale.yaml), decrypted at boot with the VM's own
@@ -161,7 +162,22 @@
        (user "criticalgrind")
        (group "users")
        (permissions #o400)
-       (path "/run/secrets/outline-api-key")))
+       (path "/run/secrets/outline-api-key"))
+      ;; Private half of the peteches automation SSH keypair -- see
+      ;; %automation-authorized-key-secret in vm-base.scm for the public
+      ;; half, decrypted on every VM. Only claude-workstation ever
+      ;; decrypts the private half: peteches uses it (via
+      ;; %peteches-automation-ssh-key in (peteches home modules
+      ;; claude-workstation)) to reach the criticalgrind/ygo accounts
+      ;; locally, and any other VM's peteches account, without borrowing a
+      ;; desktop's admin key.
+      (sops-secret
+       (key '("private-key"))
+       (file (local-file "../../secrets/hosts/claude-workstation/peteches-automation-ssh.yaml"))
+       (user "peteches")
+       (group "users")
+       (permissions #o400)
+       (path "/run/secrets/peteches-automation-ssh-key")))
      #:bootloader
      (bootloader-configuration
       (bootloader grub-efi-removable-bootloader)

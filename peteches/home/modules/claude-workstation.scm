@@ -144,33 +144,51 @@
 ;; --- Herdr standing spaces (opt-in, peteches only in practice) ---------
 ;; herdr's socket API has no declarative "start these workspaces" config,
 ;; so this builds a shell script that idempotently recreates a fixed set of
-;; named spaces (herdr's term for what the sidebar calls a "workspace")
-;; against the LOCAL herdr-server socket once it is up, then starts Claude
-;; Code in each via herdr's native agent integration so it shows up in the
-;; sidebar and participates in resume_agents_on_restore. Two of the four
-;; spaces sudo into another account first -- see this module's docstring
-;; for why peteches/criticalgrind/ygo are separate OS users -- so a single
-;; `herdr --remote` session as peteches reaches every account without a
-;; herdr-server autostart per account (see
-;; configs/hypr/peteches/apps/herdr.lua).
+;; named spaces (herdr's term for what the sidebar calls a "workspace").
+;;
+;; Two of the four spaces belong to a DIFFERENT account (criticalgrind/ygo
+;; -- see this module's docstring for why they're separate OS users). An
+;; earlier version of this script reached them via `sudo -iu`, but that
+;; fails on two independent grounds: `herdr agent start` refuses a pane
+;; whose foreground process is `sudo` (its monitor-process architecture
+;; means the real shell it spawns is never the process herdr's detection
+;; sees), and even the self-report path Claude Code's own hook uses can't
+;; connect to peteches's herdr.sock (mode 0600, owned by peteches -- a
+;; process running as criticalgrind can't open it regardless of what env
+;; vars survive the sudo boundary). Both were confirmed by hand against
+;; the running claude-workstation VM before rewriting this.
+;;
+;; The fix: never cross the account boundary at the socket level. For a
+;; REMOTE-USER space, ensure_remote_space SSHes into that account's OWN
+;; herdr server (as itself, over loopback, using
+;; AUTOMATION-SSH-IDENTITY -- see %automation-authorized-key-secret in
+;; (peteches systems vm-base)) and creates+tracks the workspace there,
+;; where the socket is that account's own and every native mechanism
+;; (agent start, the self-report hook) just works. Only then does it
+;; create a purely COSMETIC pane in the calling account's own session and
+;; nest-attach into that already-tracked remote session with `herdr
+;; --remote`, which needs experimental.allow_nested = true locally (set
+;; below) since it is itself launched from inside a herdr-managed pane.
 (define (herdr-spaces-bootstrap-script specs)
-  "SPECS is a list of (NAME RELATIVE-PATH SUDO-USER) triples. NAME becomes
-both the space label and the herdr agent name (must match
-[a-z][a-z0-9_-]{0,31} and be unique among live agents). RELATIVE-PATH is
-relative to $HOME -- the calling account's home when SUDO-USER is #f,
-otherwise SUDO-USER's, since `sudo -iu' switches HOME (and cwd) to that
-account's home before the relative cd runs."
+  "SPECS is a list of (NAME RELATIVE-PATH REMOTE-USER) triples. NAME
+becomes both the space label and the herdr agent name (must match
+[a-z][a-z0-9_-]{0,31} and be unique among live agents, on whichever
+server it ends up tracked). RELATIVE-PATH is relative to $HOME -- the
+calling account's home when REMOTE-USER is #f, otherwise REMOTE-USER's
+own home on ITS OWN herdr server."
   (define (ensure-call spec)
     (match spec
-      ((name relative-path sudo-user)
-       (string-append "ensure_space \"" name "\" \"" relative-path "\" \""
-                       (or sudo-user "") "\"\n"))))
+      ((name relative-path #f)
+       (string-append "ensure_local_space \"" name "\" \"" relative-path "\"\n"))
+      ((name relative-path remote-user)
+       (string-append "ensure_remote_space \"" name "\" \"" relative-path
+                       "\" \"" remote-user "\"\n"))))
   (mixed-text-file
    "herdr-spaces-bootstrap.sh"
    "#!/bin/sh\nset -eu\n\n"
    "HERDR=" (file-append herdr "/bin/herdr") "\n"
    "JQ=" (file-append jq "/bin/jq") "\n"
-   "SUDO=/run/setuid-programs/sudo\n\n"
+   "SSH=" (file-append openssh "/bin/ssh") "\n\n"
    "wait_for_socket() {\n"
    "  i=0\n"
    "  while [ \"$i\" -lt 30 ]; do\n"
@@ -182,32 +200,71 @@ account's home before the relative cd runs."
    "}\n\n"
    ;; A space already exists (matched by label) on a shepherd restart or a
    ;; second run of this one-shot -- skip it rather than duplicating it.
-   "ensure_space() {\n"
-   "  name=\"$1\"; relpath=\"$2\"; sudo_user=\"$3\"\n"
+   "ensure_local_space() {\n"
+   "  name=\"$1\"; relpath=\"$2\"\n"
    "  existing=$(\"$HERDR\" workspace list | \"$JQ\" -r --arg n \"$name\" \\\n"
    "    '.result.workspaces[] | select(.label==$n) | .workspace_id' | head -n1)\n"
    "  [ -n \"$existing\" ] && return 0\n"
    "  created=$(\"$HERDR\" workspace create --cwd \"$HOME\" --label \"$name\" --no-focus)\n"
    "  pane=$(printf '%s' \"$created\" | \"$JQ\" -r '.result.root_pane.pane_id')\n"
    "  marker=\"__herdr_ready_${name}__\"\n"
-   "  if [ -n \"$sudo_user\" ]; then\n"
-   "    cmd=\"$SUDO -iu $sudo_user -- bash -lc 'cd $relpath && echo $marker && exec bash'\"\n"
-   "  else\n"
-   "    cmd=\"cd $relpath && echo $marker\"\n"
-   "  fi\n"
-   "  \"$HERDR\" pane run \"$pane\" \"$cmd\"\n"
+   "  \"$HERDR\" pane run \"$pane\" \"cd $relpath && echo $marker\"\n"
    "  \"$HERDR\" pane wait-output \"$pane\" --match \"$marker\" --timeout 30000 >/dev/null 2>&1 || true\n"
    "  \"$HERDR\" agent start \"$name\" --kind claude --pane \"$pane\" >/dev/null 2>&1 || true\n"
+   "}\n\n"
+   "ensure_remote_space() {\n"
+   "  name=\"$1\"; relpath=\"$2\"; remote_user=\"$3\"; target=\"$remote_user@localhost\"\n"
+   "  remote_existing=$(\"$SSH\" \"$target\" herdr workspace list | \"$JQ\" -r --arg n \"$name\" \\\n"
+   "    '.result.workspaces[] | select(.label==$n) | .workspace_id' | head -n1)\n"
+   "  if [ -z \"$remote_existing\" ]; then\n"
+   "    remote_created=$(\"$SSH\" \"$target\" \"herdr workspace create --cwd \\$HOME/$relpath --label $name --no-focus\")\n"
+   "    remote_pane=$(printf '%s' \"$remote_created\" | \"$JQ\" -r '.result.root_pane.pane_id')\n"
+   "    \"$SSH\" \"$target\" \"herdr agent start $name --kind claude --pane $remote_pane\" >/dev/null 2>&1 || true\n"
+   "  fi\n"
+   "  local_existing=$(\"$HERDR\" workspace list | \"$JQ\" -r --arg n \"$name\" \\\n"
+   "    '.result.workspaces[] | select(.label==$n) | .workspace_id' | head -n1)\n"
+   "  [ -n \"$local_existing\" ] && return 0\n"
+   "  created=$(\"$HERDR\" workspace create --cwd \"$HOME\" --label \"$name\" --no-focus)\n"
+   "  pane=$(printf '%s' \"$created\" | \"$JQ\" -r '.result.root_pane.pane_id')\n"
+   "  \"$HERDR\" pane run \"$pane\" \"exec $HERDR --remote $target\"\n"
    "}\n\n"
    "wait_for_socket || exit 0\n\n"
    (apply string-append (map ensure-call specs))))
 
+;; herdr's own config.toml has no include mechanism (see
+;; configs/matugen/templates/herdr-config.toml, which is why the desktop
+;; accounts get it via matugen instead), so on the VM accounts -- which
+;; have no wallpaper/matugen pipeline at all -- this appends the one line
+;; nesting needs directly, idempotently, leaving any hand-edited content
+;; alone.
+(define (herdr-allow-nested-activation)
+  #~(begin
+      (use-modules (ice-9 textual-ports) (srfi srfi-13))
+      (let* ((home (getenv "HOME"))
+             (config-dir (string-append home "/.config/herdr"))
+             (config-file (string-append config-dir "/config.toml"))
+             (marker "allow_nested = true")
+             (existing (if (file-exists? config-file)
+                           (call-with-input-file config-file get-string-all)
+                           "")))
+        (mkdir-p config-dir)
+        (unless (string-contains existing marker)
+          (call-with-output-file config-file
+            (lambda (port)
+              (display existing port)
+              (display "\n[experimental]\nallow_nested = true\n" port)))))))
+
 (define (herdr-spaces-services specs)
   "Shepherd one-shot service that runs HERDR-SPACES-BOOTSTRAP-SCRIPT once
-herdr-server is up. No-op when SPECS is empty."
+herdr-server is up, after ensuring experimental.allow_nested is set (any
+REMOTE-USER space nest-attaches via `herdr --remote`). No-op when SPECS is
+empty."
   (if (null? specs)
       '()
       (list
+       (simple-service 'herdr-allow-nested
+                       home-activation-service-type
+                       (herdr-allow-nested-activation))
        (simple-service
         'herdr-spaces-bootstrap
         home-shepherd-service-type
@@ -333,7 +390,8 @@ unset _claude_completion
           (extra-claude-files '())
           (with-anvil? #t)
           (with-herdr? #t)
-          (herdr-spaces '()))
+          (herdr-spaces '())
+          (automation-ssh-identity #f))
   "Return a headless home-environment for one Claude account on
 claude-workstation.  REPOS is a list of (NAME URL) cloned into ~/area_51.
 MCP-SERVERS is a list of <home-claude-mcp-server> (the anvil bridges are added
@@ -360,7 +418,12 @@ herdr-spaces-bootstrap-script) -- when non-empty and WITH-HERDR?, a
 shepherd one-shot idempotently creates these herdr workspaces once the
 server is up and starts Claude Code in each. Only meaningful for an
 account other clients reach via `herdr --remote' (currently just
-peteches -- see configs/hypr/peteches/apps/herdr.lua)."
+peteches -- see configs/hypr/peteches/apps/herdr.lua). AUTOMATION-SSH-
+IDENTITY is a runtime path (typically a sops-decrypted /run/secrets/...
+path) to the private half of the peteches automation SSH keypair -- see
+%automation-authorized-key-secret in (peteches systems vm-base). When set,
+it becomes the IdentityFile for any `ssh <user>@localhost', which is how
+HERDR-SPACES reaches the criticalgrind/ygo accounts' own herdr servers."
   (home-environment
    (packages (append %claude-workstation-base-packages
                      (if with-anvil? (list emacs-no-x emacs-anvil) '())
@@ -431,7 +494,20 @@ peteches -- see configs/hypr/peteches/apps/herdr.lua)."
       (service home-openssh-service-type
                (home-openssh-configuration
                 (known-hosts2
-                 (list (local-file "claude-workstation-known-hosts")))))
+                 (list (local-file "claude-workstation-known-hosts")
+                       (local-file "claude-workstation-loopback-known-hosts")))
+                ;; Only peteches passes AUTOMATION-SSH-IDENTITY: a single
+                ;; Host block applies to any `ssh <user>@localhost`
+                ;; regardless of the requested user, since IdentityFile is
+                ;; host-scoped, not user-scoped -- see
+                ;; herdr-spaces-bootstrap-script, which connects as
+                ;; criticalgrind@localhost / ygo@localhost.
+                (hosts
+                 (if automation-ssh-identity
+                     (list (openssh-host
+                            (name "localhost")
+                            (identity-file automation-ssh-identity)))
+                     '()))))
       (simple-service 'clone-area51-repos
                       home-activation-service-type
                       (repos-activation repos))

@@ -28,14 +28,24 @@
 ;; The 4 standing herdr spaces for this account's `herdr --remote' session
 ;; (see configs/hypr/peteches/apps/herdr.lua, which now only autostarts
 ;; this one account rather than one alacritty window per account). Each
-;; entry is (NAME RELATIVE-PATH SUDO-USER) -- see
+;; entry is (NAME RELATIVE-PATH REMOTE-USER) -- see
 ;; herdr-spaces-bootstrap-script in (peteches home modules
-;; claude-workstation) for the exact semantics.
+;; claude-workstation) for the exact semantics; REMOTE-USER spaces are
+;; tracked on THAT account's own herdr server, reached over loopback SSH
+;; using %automation-ssh-key below.
 (define %peteches-herdr-spaces
   '(("guix" "area_51/guix" #f)
     ("bas"  "area_51/bas"  #f)
     ("critical-grind-campaign" "area_51/critical-grind-campaign" "criticalgrind")
     ("ygocloud" "area_51/ygocloud" "ygo")))
+
+;; Decrypted at system boot from secrets/hosts/claude-workstation/
+;; peteches-automation-ssh.yaml (see peteches/systems/claude-workstation.scm
+;; and docs/secrets-management.org) -- the private half of the automation
+;; keypair whose public half every VM authorizes for peteches (and, here,
+;; also criticalgrind/ygo -- see #:automation-key-extra-users in
+;; peteches/systems/claude-workstation.scm).
+(define %automation-ssh-key "/run/secrets/peteches-automation-ssh-key")
 
 (define-public claude-workstation-peteches-home
   (make-claude-workstation-home
@@ -49,7 +59,8 @@
  (list (home-claude-mcp-server
         (name "comfyui")
         (command (file-append node-comfyui-mcp "/bin/comfyui-mcp"))))
- #:herdr-spaces %peteches-herdr-spaces))
+ #:herdr-spaces %peteches-herdr-spaces
+ #:automation-ssh-identity %automation-ssh-key))
 
 claude-workstation-peteches-home
 
