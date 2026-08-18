@@ -20,12 +20,12 @@
   #:use-module (peteches repository)
   #:use-module (peteches home modules claude-workstation))
 
-;; EDIT ME: the repos this account works on. Plain HTTPS clone URL -- no SSH
-;; key needed for a public repo; a clone that can't authenticate just warns
-;; and retries next reconfigure (see repos-activation in
-;; (peteches home modules claude-workstation)).
+;; EDIT ME: the repos this account works on. SSH clone URL -- requires an
+;; SSH key authorized against the repo loaded for this account; a clone
+;; that can't authenticate just warns and retries next reconfigure (see
+;; repos-activation in (peteches home modules claude-workstation)).
 (define %ygo-repos
-  '(("ygocloud" "https://github.com/ygotrips/ygocloud")))
+  '(("ygocloud" "git@github.com:ygotrips/ygocloud.git")))
 
 (define-public claude-workstation-ygo-home
   (make-claude-workstation-home
