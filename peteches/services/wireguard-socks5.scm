@@ -1,32 +1,57 @@
 ;; peteches/services/wireguard-socks5.scm
 ;;
-;; Split-tunnel WireGuard, exposed only through a local SOCKS5 proxy.
+;; Split-tunnel WireGuard, exposed only through a local SOCKS5 proxy -- both
+;; confined to their OWN network namespace with their own independent DNS
+;; resolver.
 ;;
 ;; Unlike Guix's own `wireguard-service-type' (which takes peers/keys as
 ;; literal Scheme values baked into the derivation), this service treats the
 ;; ENTIRE wg-quick config file as opaque: private key, peer public key,
-;; endpoint, tunnel address and the policy-routing PostUp/PreDown commands
-;; all live in a single SOPS secret decrypted to a path on disk (normally
-;; /run/secrets/wg0.conf via #:sops-secrets). This module never sees any of
-;; that content -- only the path.
+;; endpoint, tunnel address all live in a single SOPS secret decrypted to a
+;; path on disk (normally /run/secrets/wg0.conf via #:sops-secrets). This
+;; module never sees any of that content -- only the path.
 ;;
-;; Split-tunnel design: the secret's wg-quick config MUST set `Table = off',
-;; so bringing the interface up does NOT touch the system's default route
-;; ("does not capture all traffic"). Only processes that explicitly dial the
-;; local SOCKS5 proxy (microsocks, run as a dedicated system user) get routed
-;; over the tunnel: an nftables `route' hook marks packets owned by that user
-;; with FWMARK, and a policy-routing rule -- set up by the secret's own
-;; PostUp/PreDown, using the SAME fwmark/table number as this service's
-;; default (51820) -- sends FWMARK'd traffic out via the WireGuard interface.
-;; See docs/secrets-management.org for the wg0.conf template and the exact
-;; PostUp/PreDown lines expected to match FWMARK.
+;; Isolation design: `wg0' is created inside a dedicated network namespace
+;; (default "wg0ns"), connected to the host only by a veth pair. Because
+;; nothing else lives in that namespace, an ordinary wg-quick default route
+;; (from `AllowedIPs = 0.0.0.0/0' in the secret's [Peer] section) already
+;; sends ALL of the namespace's traffic over the tunnel -- no `Table = off',
+;; fwmark, or policy-routing PostUp/PreDown commands are needed the way the
+;; previous (single-netns, nftables-skuid-mark) design required. `microsocks'
+;; also runs inside that namespace, bound to the netns side of the veth, so
+;; only processes that explicitly dial it (from the host, over the veth) get
+;; routed over the tunnel; the host's own default route and DNS resolver
+;; (e.g. Tailscale's MagicDNS at 100.100.100.100) are completely untouched.
 ;;
-;; Everything else on the VM keeps using its normal default route.
+;; Independent DNS: Linux bind-mounts /etc/netns/<name>/resolv.conf over
+;; /etc/resolv.conf for anything run via `ip netns exec <name> ...' (that's
+;; what makes it "independent" -- it's a kernel/iproute2 mechanism, not
+;; something this module has to fake). This service seeds that file with
+;; ONLY openresolv's own signature line (see %openresolv-signature-line
+;; below) before wg-quick ever runs, which is enough to make an ordinary
+;; `DNS = ...' line in the wg0-conf secret work exactly as wg-quick
+;; documents it -- `resolvconf -a' regenerates the namespace's private
+;; resolv.conf from that DNS server, reached over the tunnel by the
+;; namespace's own default route, never touching the host's resolver.
+;; DNS configuration itself lives entirely in the secret, same as every
+;; other tunnel parameter. See docs/secrets-management.org for the current
+;; wg0.conf template.
 ;;
-;; Neither shepherd service auto-starts (auto-start? defaults to #f): bring
-;; the tunnel up on demand with `herd start wireguard-wg0' then
-;; `herd start socks5-proxy', and tear it down with `herd stop socks5-proxy'
-;; then `herd stop wireguard-wg0' when done.
+;; Everything else on the VM keeps using its normal default route and DNS.
+;;
+;; None of the three shepherd services auto-start (auto-start? defaults to
+;; #f). Bring the tunnel up on demand, innermost-last:
+;;   herd start netns-wg0
+;;   herd start wireguard-wg0
+;;   herd start socks5-proxy
+;; and tear it down outermost-first:
+;;   herd stop socks5-proxy
+;;   herd stop wireguard-wg0
+;;   herd stop netns-wg0
+;; If `netns-wg0' fails partway through (e.g. veth creation fails after the
+;; namespace itself was created), it can leave the namespace or a host-side
+;; veth behind; clean up by hand with `ip netns delete wg0ns' and/or
+;; `ip link delete veth-wg0h' before retrying.
 
 (define-module (peteches services wireguard-socks5)
   #:use-module (guix gexp)
@@ -35,9 +60,10 @@
   #:use-module (gnu services shepherd)
   #:use-module (gnu system shadow)
   #:use-module (gnu packages admin)   ;shadow (nologin)
+  #:use-module (gnu packages linux)   ;iproute
+  #:use-module (gnu packages skarnet) ;s6 (s6-setuidgid)
   #:use-module (gnu packages vpn)     ;wireguard-tools
   #:use-module (gnu packages web)     ;microsocks
-  #:use-module (peteches services firewall)
   #:export (wireguard-socks5-configuration
             make-wireguard-socks5-configuration
             wireguard-socks5-configuration?
@@ -66,37 +92,58 @@
   (sops-key          wsc-sops-key (default "wg0-conf"))
   (wireguard         wsc-wireguard-package (default wireguard-tools))
   (socks-package     wsc-socks-package (default microsocks))
-  ;; Dedicated system user microsocks runs as; also the nftables `meta skuid'
-  ;; match, so packets it originates get FWMARK'd for policy routing.
+  ;; Dedicated system user microsocks runs as inside the namespace (dropped
+  ;; to via s6-setuidgid, since entering the namespace itself requires root
+  ;; -- see wsc-socks-shepherd-service).
   (socks-user        wsc-socks-user (default "socks5"))
-  (socks-bind        wsc-socks-bind (default "127.0.0.1"))
   (socks-port        wsc-socks-port (default 1080))
-  ;; fwmark AND routing-table id used by the mark rule below. The secret's
-  ;; wg-quick PostUp/PreDown must use this exact same number for its
-  ;; `ip rule add fwmark ... table ...' / `ip route add default dev %i
-  ;; table ...' lines.
-  (fwmark            wsc-fwmark (default 51820))
+  ;; Name of the dedicated network namespace housing wg0 and microsocks.
+  (netns             wsc-netns (default "wg0ns"))
+  ;; veth pair connecting the host to the namespace. Host-side name/address
+  ;; live in the host's (default) namespace; netns-side live inside NETNS.
+  ;; Interface names must stay <=15 chars (kernel IFNAMSIZ limit).
+  (veth-host         wsc-veth-host (default "veth-wg0h"))
+  (veth-netns        wsc-veth-netns (default "veth-wg0n"))
+  (veth-host-address  wsc-veth-host-address (default "10.200.0.1/30"))
+  (veth-netns-address wsc-veth-netns-address (default "10.200.0.2/30"))
   (socks-log-file    wsc-socks-log-file (default "/var/log/microsocks.log"))
-  ;; wg-quick's start/stop run as an inline lambda (not
-  ;; make-forkexec-constructor, since wg-quick is one-shot and exits
-  ;; immediately -- there's no long-running process for shepherd to track),
-  ;; so there's no #:log-file keyword to hand it. Its output -- including
-  ;; wg-quick's own "[#] <command>" trace lines and any `die' error message
-  ;; -- is instead captured here by redirecting Guile's current output/
-  ;; error ports (which system*'s child inherits) for the duration of the
-  ;; call. `herd status -n' only shows a transient in-memory buffer that
-  ;; can miss messages (e.g. nothing at all when wg-quick dies before its
-  ;; first `cmd()' trace); this file persists across restarts.
+  ;; wg-quick's start/stop and the netns/veth setup/teardown all run as
+  ;; inline lambdas (not make-forkexec-constructor), since each is a
+  ;; one-shot sequence of commands that exits immediately -- there's no
+  ;; long-running process for shepherd to track), so there's no #:log-file
+  ;; keyword to hand them. Their output is instead captured by redirecting
+  ;; Guile's current output/error ports (which system*'s children inherit)
+  ;; for the duration of the call -- see wsc-logged. `herd status -n' only
+  ;; shows a transient in-memory buffer that can miss messages; these files
+  ;; persist across restarts.
   (wg-log-file       wsc-wg-log-file (default "/var/log/wireguard-wg0.log"))
-  ;; Off by default: the tunnel and proxy do NOT come up on boot or on
-  ;; `herd reload' -- start them explicitly with `herd start wireguard-wg0'
-  ;; and `herd start socks5-proxy' when you actually want the tunnel, and
-  ;; `herd stop' the two (proxy first) when done. Set to #t only if this VM
-  ;; should always route via SOCKS5 automatically.
+  (netns-log-file    wsc-netns-log-file (default "/var/log/wireguard-netns.log"))
+  ;; Off by default: the namespace, tunnel and proxy do NOT come up on boot
+  ;; or on `herd reload' -- start them explicitly (see the module
+  ;; docstring for the three-step order) when the tunnel is actually
+  ;; wanted, and `herd stop' them in reverse when done. Set to #t only if
+  ;; this VM should always route via SOCKS5 automatically.
   (auto-start?       wsc-auto-start? (default #f)))
 
 (define %path-env
   "PATH=/run/setuid-programs:/run/current-system/profile/bin:/run/current-system/profile/sbin")
+
+;; openresolv (bundled with wireguard-tools, and unconditionally on
+;; wg-quick's own hardcoded PATH regardless of namespace) refuses to touch
+;; /etc/resolv.conf unless its FIRST LINE already reads exactly this --
+;; otherwise it assumes the file is externally managed (e.g. Tailscale's
+;; MagicDNS stamp on the host) and aborts wg-quick under `set -e' with
+;; "signature mismatch: ...". Seeding the namespace's private resolv.conf
+;; with just this line before wg-quick ever runs makes an ordinary
+;; `DNS = ...' line in the wg0-conf secret work as documented: `resolvconf
+;; -a' (called by wg-quick's PostUp) sees a file it already "owns" and
+;; regenerates it with the real nameserver(s) -- see
+;; lib/resolvconf/libc in the openresolv package for the exact check.
+;; NOTE: this is openresolv's own internal marker, not a documented public
+;; contract -- if a future openresolv release changes it, this silently
+;; stops working and DNS= fails again exactly like the original Tailscale
+;; collision, just against this file instead.
+(define %openresolv-signature-line "# Generated by resolvconf\n")
 
 ;; wg-quick's Guix wrapper hardcodes absolute paths for ip/iptables/
 ;; procps/openresolv/coreutils, but internally still calls bare `wg' (for
@@ -114,6 +161,9 @@
 
 (define (wsc-wireguard-service-name config)
   (symbol-append 'wireguard- (string->symbol (wsc-interface config))))
+
+(define (wsc-netns-service-name config)
+  (symbol-append 'netns- (string->symbol (wsc-netns config))))
 
 ;; BODY is a gexp for a thunk (a `(lambda () ...)' expression, unevaluated).
 ;; Returns a gexp that opens LOG-FILE (creating/appending), redirects
@@ -135,6 +185,15 @@
 (define (wsc-sops-secret-service-name config)
   (symbol-append 'sops-secret- (string->symbol (wsc-sops-key config))))
 
+;; Strips the /NN prefix length off an "ip addr"-style CIDR string, e.g.
+;; "10.200.0.2/30" -> "10.200.0.2" -- used as the bind address for
+;; microsocks inside the namespace (the netns side of the veth), so the
+;; proxy is reachable from the host but NOT from the WireGuard peer (which
+;; can otherwise reach anything the namespace owns, since AllowedIPs is
+;; 0.0.0.0/0).
+(define (wsc-veth-netns-ip config)
+  (car (string-split (wsc-veth-netns-address config) #\/)))
+
 (define (wsc-accounts config)
   (let ((user (wsc-socks-user config)))
     (list (user-group (name user) (system? #t))
@@ -142,100 +201,164 @@
             (name user)
             (group user)
             (system? #t)
-            (comment "SOCKS5 proxy egressing over WireGuard")
+            (comment "SOCKS5 proxy egressing over WireGuard (netns-isolated)")
             (home-directory "/var/empty")
             (shell (file-append shadow "/sbin/nologin"))))))
 
+;; Creates the dedicated network namespace, its veth link to the host, and
+;; its independent /etc/netns/<name>/resolv.conf (seeded with just
+;; openresolv's signature line -- see %openresolv-signature-line -- so
+;; `DNS = ...' in the secret can populate the rest). Nothing else lives in
+;; this namespace, so once wg0 goes up inside it (wsc-wireguard-shepherd-
+;; service) a plain wg-quick default route already sends everything out
+;; the tunnel -- no fwmark or policy routing required.
+(define (wsc-netns-shepherd-service config)
+  (let* ((netns (wsc-netns config))
+         (veth-host (wsc-veth-host config))
+         (veth-netns (wsc-veth-netns config))
+         (host-address (wsc-veth-host-address config))
+         (netns-address (wsc-veth-netns-address config))
+         (ip (file-append iproute "/sbin/ip")))
+    (shepherd-service
+     (provision (list (wsc-netns-service-name config)))
+     (requirement '(user-processes networking))
+     (documentation
+      (string-append "Network namespace \"" netns
+                     "\" housing the WireGuard interface and SOCKS5 proxy, "
+                     "connected to the host only by a veth pair, with its "
+                     "own independent DNS resolver."))
+     (start
+      #~(lambda _
+          #$(wsc-logged
+             (wsc-netns-log-file config)
+             #~(lambda ()
+                 (let ((dir (string-append "/etc/netns/" #$netns)))
+                   (catch 'system-error
+                     (lambda () (mkdir "/etc/netns"))
+                     (lambda args (unless (file-exists? "/etc/netns") (apply throw args))))
+                   (catch 'system-error
+                     (lambda () (mkdir dir))
+                     (lambda args (unless (file-exists? dir) (apply throw args))))
+                   (call-with-output-file (string-append dir "/resolv.conf")
+                     (lambda (port) (display #$%openresolv-signature-line port))))
+                 (and (zero? (system* #$ip "netns" "add" #$netns))
+                      (zero? (system* #$ip "link" "add" #$veth-host
+                                       "type" "veth" "peer" "name" #$veth-netns))
+                      (zero? (system* #$ip "link" "set" #$veth-netns "netns" #$netns))
+                      (zero? (system* #$ip "addr" "add" #$host-address "dev" #$veth-host))
+                      (zero? (system* #$ip "link" "set" #$veth-host "up"))
+                      (zero? (system* #$ip "netns" "exec" #$netns
+                                       #$ip "addr" "add" #$netns-address "dev" #$veth-netns))
+                      (zero? (system* #$ip "netns" "exec" #$netns
+                                       #$ip "link" "set" #$veth-netns "up"))
+                      (zero? (system* #$ip "netns" "exec" #$netns
+                                       #$ip "link" "set" "lo" "up")))))))
+     ;; Deleting the host-side veth also removes its (still-attached) peer
+     ;; if it never made it into the namespace; deleting the namespace tears
+     ;; down wg0 and anything else still running inside it. Reflect the
+     ;; real exit status of the namespace deletion, same reasoning as
+     ;; wg-quick's stop below: report success only if it actually happened.
+     (stop
+      #~(lambda _
+          #$(wsc-logged
+             (wsc-netns-log-file config)
+             #~(lambda ()
+                 (system* #$ip "link" "delete" #$veth-host)
+                 (not (zero? (system* #$ip "netns" "delete" #$netns)))))))
+     (auto-start? (wsc-auto-start? config))
+     (respawn? #f))))
+
 (define (wsc-wireguard-shepherd-service config)
   (let* ((wg-quick (file-append (wsc-wireguard-package config) "/bin/wg-quick"))
-         (config-file (wsc-config-file config)))
+         (config-file (wsc-config-file config))
+         (netns (wsc-netns config))
+         (ip (file-append iproute "/sbin/ip")))
     (shepherd-service
      (provision (list (wsc-wireguard-service-name config)))
-     (requirement (list 'user-processes 'networking
+     (requirement (list 'user-processes
+                        (wsc-netns-service-name config)
                         (wsc-sops-secret-service-name config)))
      (documentation
       (string-append "WireGuard tunnel " (wsc-interface config)
-                     " (split-tunnel; entire config decrypted from SOPS)"))
+                     " inside network namespace \"" netns "\""
+                     " (entire config decrypted from SOPS)"))
      (start #~(lambda _
                 #$(wsc-logged
                    (wsc-wg-log-file config)
                    #~(lambda ()
                        (setenv "PATH" #$(wsc-wg-quick-path-env config))
-                       (zero? (system* #$wg-quick "up" #$config-file))))))
+                       (zero? (system* #$ip "netns" "exec" #$netns
+                                        #$wg-quick "up" #$config-file))))))
      ;; wg-quick runs under `set -e -o pipefail' and executes PreDown
      ;; hooks BEFORE actually deleting the interface (cmd_down): if a
-     ;; PreDown command fails (e.g. removing a policy-routing rule/route
-     ;; that, for whatever reason, doesn't exist), the script aborts right
-     ;; there and the interface is never deleted. Reporting success
-     ;; unconditionally here would let the interface leak while shepherd
-     ;; believes it's stopped -- the next `start' then fails outright,
-     ;; since wg-quick refuses to create an interface that already exists.
-     ;; Reflect the real exit status instead: #f only if `wg-quick down'
-     ;; actually succeeded.
+     ;; PreDown command fails, the script aborts right there and the
+     ;; interface is never deleted. Reporting success unconditionally here
+     ;; would let the interface leak while shepherd believes it's stopped
+     ;; -- the next `start' then fails outright, since wg-quick refuses to
+     ;; create an interface that already exists. Reflect the real exit
+     ;; status instead: #f only if `wg-quick down' actually succeeded.
      (stop #~(lambda _
                #$(wsc-logged
                   (wsc-wg-log-file config)
                   #~(lambda ()
                       (setenv "PATH" #$(wsc-wg-quick-path-env config))
-                      (not (zero? (system* #$wg-quick "down" #$config-file)))))))
+                      (not (zero? (system* #$ip "netns" "exec" #$netns
+                                             #$wg-quick "down" #$config-file)))))))
      (auto-start? (wsc-auto-start? config))
      (respawn? #f))))
 
 (define (wsc-socks-shepherd-service config)
   (let* ((microsocks (file-append (wsc-socks-package config) "/bin/microsocks"))
-         (bind (wsc-socks-bind config))
-         (port (number->string (wsc-socks-port config))))
+         (netns (wsc-netns config))
+         (bind (wsc-veth-netns-ip config))
+         (port (number->string (wsc-socks-port config)))
+         (ip (file-append iproute "/sbin/ip"))
+         (setuidgid (file-append s6 "/bin/s6-setuidgid"))
+         (user (wsc-socks-user config)))
     (shepherd-service
      (provision '(socks5-proxy))
      (requirement (list 'user-processes (wsc-wireguard-service-name config)))
      (documentation
-      "microsocks SOCKS5 proxy; traffic it originates is fwmark-routed over WireGuard.")
-     ;; No -w: it whitelists IPs to BYPASS -u/-P auth, so on its own
-     ;; (without -u/-P at all) microsocks rejects it as invalid usage
-     ;; ("-1/-w options must be used together with user/pass") and exits 1.
-     ;; Access here is already restricted by BIND (127.0.0.1) alone, and
-     ;; with no -u/-P microsocks runs unauthenticated for anything that can
-     ;; reach that address, which is exactly what's wanted.
+      (string-append "microsocks SOCKS5 proxy, running inside network "
+                     "namespace \"" netns "\" -- all its traffic, including "
+                     "its own DNS lookups, is confined to the tunnel."))
+     ;; `ip netns exec' must run as root (entering a namespace needs
+     ;; CAP_SYS_ADMIN), so privilege can only be dropped to socks-user AFTER
+     ;; that -- s6-setuidgid does exactly that hand-off, execing microsocks
+     ;; in place once it has switched uid/gid/groups. No -w: it whitelists
+     ;; IPs to BYPASS -u/-P auth, so on its own (without -u/-P at all)
+     ;; microsocks rejects it as invalid usage and exits 1. Access here is
+     ;; already restricted to whatever can reach BIND over the veth alone,
+     ;; and with no -u/-P microsocks runs unauthenticated for anything that
+     ;; can, which is exactly what's wanted.
      (start #~(make-forkexec-constructor
-               (list #$microsocks "-i" #$bind "-p" #$port)
-               #:user #$(wsc-socks-user config)
-               #:group #$(wsc-socks-user config)
+               (list #$ip "netns" "exec" #$netns
+                     #$setuidgid #$user
+                     #$microsocks "-i" #$bind "-p" #$port)
                #:log-file #$(wsc-socks-log-file config)
                #:environment-variables (list #$%path-env)))
      (stop #~(make-kill-destructor))
      (auto-start? (wsc-auto-start? config)))))
 
 (define (wsc-shepherd-services config)
-  (list (wsc-wireguard-shepherd-service config)
+  (list (wsc-netns-shepherd-service config)
+        (wsc-wireguard-shepherd-service config)
         (wsc-socks-shepherd-service config)))
 
-(define (wsc-firewall-rules config)
-  (let ((user (wsc-socks-user config))
-        (mark (number->string (wsc-fwmark config))))
-    (nftables-rules
-     (raw (list (string-append
-                 "table inet wireguard-socks5-mark {\n"
-                 "  chain output {\n"
-                 "    type route hook output priority mangle; policy accept;\n"
-                 "    meta skuid \"" user "\" meta mark set " mark "\n"
-                 "  }\n"
-                 "}\n"))))))
-
 (define (wsc-profile config)
-  (list (wsc-wireguard-package config) (wsc-socks-package config)))
+  (list (wsc-wireguard-package config) (wsc-socks-package config) iproute s6))
 
 (define-public wireguard-socks5-service-type
   (service-type (name 'wireguard-socks5)
                 (description
                  "Split-tunnel WireGuard whose entire config comes from a
-SOPS secret, reachable only via a local SOCKS5 proxy (microsocks) -- the
-system's default route is left untouched.")
+SOPS secret, isolated in its own network namespace along with a local
+SOCKS5 proxy (microsocks) -- the system's default route and DNS resolver
+are left untouched.")
                 (extensions
                  (list (service-extension account-service-type
                                           wsc-accounts)
                        (service-extension shepherd-root-service-type
                                           wsc-shepherd-services)
-                       (service-extension firewall-service-type
-                                          wsc-firewall-rules)
                        (service-extension profile-service-type
                                           wsc-profile)))))

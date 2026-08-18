@@ -105,10 +105,12 @@
        (path "/run/secrets/tailscale-auth-key")
        (permissions #o400))
       ;; Full wg-quick config (private key, peer public key, endpoint,
-      ;; tunnel address, and the Table=off + fwmark policy-routing
-      ;; PostUp/PreDown lines) as ONE opaque secret value -- see
-      ;; (peteches services wireguard-socks5) and docs/secrets-management.org
-      ;; for the expected wg0.conf template. The path MUST be named
+      ;; tunnel address) as ONE opaque secret value -- see (peteches
+      ;; services wireguard-socks5) and docs/secrets-management.org for the
+      ;; expected wg0.conf template. wg0 runs inside its own network
+      ;; namespace, so the template no longer needs Table/PostUp/PreDown
+      ;; lines -- a plain default route via wg0 already sends everything in
+      ;; that namespace over the tunnel. The path MUST be named
       ;; "wg0.conf" (basename "wg0") to match the "wg0" interface name used
       ;; below, since wg-quick derives the interface name from the config
       ;; file's basename.
