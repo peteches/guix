@@ -185,6 +185,7 @@
    (specification->package "playerctl")
    (specification->package "ddcutil")
    (specification->package "pavucontrol-qt")
+   (specification->package "python-minimal")
    recutils
    eza
    fly

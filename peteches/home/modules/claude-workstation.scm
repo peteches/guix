@@ -54,6 +54,7 @@
   #:use-module ((gnu packages base) #:select (coreutils))
   #:use-module ((gnu packages less) #:select (less))
   #:use-module ((gnu packages bash) #:select (bash))
+  #:use-module ((gnu packages python) #:select (python-minimal))
   #:use-module (peteches repository)
   #:use-module (peteches packages claude-code)
   #:use-module (peteches packages claude-completion)
@@ -65,7 +66,7 @@
 
 (define %claude-workstation-base-packages
   (list claude-code claude-completion git openssh node ripgrep jq curl
-        coreutils less graphify herdr))
+        coreutils less graphify herdr python-minimal))
 
 ;; --- Anvil headless emacs daemon --------------------------------------
 ;; Bakes emacs-anvil's site-lisp onto the load-path directly so it needs
