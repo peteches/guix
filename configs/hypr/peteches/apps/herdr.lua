@@ -1,14 +1,15 @@
 -- autostart three herdr remote sessions, one per claude-workstation
 -- account, each in its own alacritty window.  Host aliases below are the
--- ones defined in (peteches home modules ssh) -- see ssh.scm's
--- claude-workstation / claude-workstation-cg / claude-workstation-ygo
--- entries (peteches / criticalgrind / ygo respectively). herdr resolves
--- these through the normal SSH config, so no extra herdr-specific
--- connection setup is needed.
+-- .ts ones defined in (peteches home modules ssh) -- see ssh.scm's
+-- claude-workstation.ts / claude-workstation-cg.ts /
+-- claude-workstation-ygo.ts entries (peteches / criticalgrind / ygo
+-- respectively), which resolve over Tailscale rather than the LAN IP.
+-- herdr resolves these through the normal SSH config, so no extra
+-- herdr-specific connection setup is needed.
 local accounts = {
-  "claude-workstation",     -- peteches
-  "claude-workstation-cg",  -- criticalgrind
-  "claude-workstation-ygo", -- ygo
+  "claude-workstation.ts",     -- peteches
+  "claude-workstation-cg.ts",  -- criticalgrind
+  "claude-workstation-ygo.ts", -- ygo
 }
 
 hl.on("hyprland.start", function()

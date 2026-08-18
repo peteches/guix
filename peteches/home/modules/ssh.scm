@@ -222,6 +222,11 @@
 		     (user "criticalgrind")
 		     (identity-file "~/.ssh/id_ed25519"))
 		    (openssh-host
+		     (name "claude-workstation-cg.ts")
+		     (host-name "claude-workstation.spaniel-cordylus.ts.net")
+		     (user "criticalgrind")
+		     (identity-file "~/.ssh/id_ed25519"))
+		    (openssh-host
 		     (name "claude-workstation-ygo")
 		     (host-name "192.168.51.205")
 		     (user "ygo")
