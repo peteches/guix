@@ -212,10 +212,20 @@ own home on ITS OWN herdr server."
    "  \"$HERDR\" pane wait-output \"$pane\" --match \"$marker\" --timeout 30000 >/dev/null 2>&1 || true\n"
    "  \"$HERDR\" agent start \"$name\" --kind claude --pane \"$pane\" >/dev/null 2>&1 || true\n"
    "}\n\n"
+   ;; Guix Home's on-first-login (the thing that starts shepherd-for-home,
+   ;; and with it that account's OWN herdr-server) only fires for a login
+   ;; shell -- ~/.bash_profile sources ~/.profile, which a plain
+   ;; non-interactive `ssh target cmd` never reads. `bash -lc' forces
+   ;; that, and the inner wait loop covers the gap between shepherd-for-
+   ;; home starting and its herdr-server actually accepting connections,
+   ;; so this is the one call in this script that has to succeed cold
+   ;; (fresh boot, target account never yet logged in) -- everything else
+   ;; in ensure_remote_space assumes the socket it just proved reachable.
    "ensure_remote_space() {\n"
    "  name=\"$1\"; relpath=\"$2\"; remote_user=\"$3\"; target=\"$remote_user@localhost\"\n"
-   "  remote_existing=$(\"$SSH\" \"$target\" herdr workspace list | \"$JQ\" -r --arg n \"$name\" \\\n"
-   "    '.result.workspaces[] | select(.label==$n) | .workspace_id' | head -n1)\n"
+   "  remote_existing=$(\"$SSH\" \"$target\" bash -lc \\\n"
+   "    'i=0; while ! herdr workspace list >/dev/null 2>&1; do i=$((i + 1)); [ \"$i\" -ge 30 ] && exit 1; sleep 1; done; herdr workspace list' \\\n"
+   "    | \"$JQ\" -r --arg n \"$name\" '.result.workspaces[] | select(.label==$n) | .workspace_id' | head -n1)\n"
    "  if [ -z \"$remote_existing\" ]; then\n"
    "    remote_created=$(\"$SSH\" \"$target\" \"herdr workspace create --cwd \\$HOME/$relpath --label $name --no-focus\")\n"
    "    remote_pane=$(printf '%s' \"$remote_created\" | \"$JQ\" -r '.result.root_pane.pane_id')\n"
