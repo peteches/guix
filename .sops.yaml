@@ -125,6 +125,7 @@ creation_rules:
       - age1g3nsny7xdewga8eatwtapelwn058035s4jwa3lhehh2eu4zzpf3sjvqpsu  # critical-grind-outline
       - age15cnry6833ujv0dpz3szm4sv6y6ga4vltaxw5kty8vcfgck96cq7qd5n9gy  # plane
       - age1ytrfl4a94j2c4xtms7at982tsptdp2z65ss3l8frg0dwcnlns45q7v5uv8  # critical-grind-campaign
+      - age1gcrgp0sy04kdxuyn2rmkeknx32jvw55yku8v0mwyhypagds5z9jqz0h0z2  # claude-workstation
 
   # criticalgrind's Plane/Outline MCP keys: decrypted directly on
   # claude-workstation at system boot (its own age key, see
@@ -135,9 +136,6 @@ creation_rules:
     pgp: "5FFB7006A36B0AEDE8D08E3753B1E002546A642A"
     age: "age1gcrgp0sy04kdxuyn2rmkeknx32jvw55yku8v0mwyhypagds5z9jqz0h0z2"
 
-  # WireGuard tunnel config for claude-workstation (see
-  # peteches/services/wireguard-socks5.scm) -- decrypted with this VM's own
-  # age key at boot, same reasoning as critical-grind.env above.
-  - path_regex: secrets/hosts/claude-workstation/wireguard\.yaml$
+  - path_regex: secrets/hosts/claude-workstation/.*\.yaml$
     pgp: "5FFB7006A36B0AEDE8D08E3753B1E002546A642A"
     age: "age1gcrgp0sy04kdxuyn2rmkeknx32jvw55yku8v0mwyhypagds5z9jqz0h0z2"
