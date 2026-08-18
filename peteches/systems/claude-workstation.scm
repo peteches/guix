@@ -55,6 +55,30 @@
   #:use-module (peteches home configs claude-workstation-ygo)
   #:export (claude-workstation-os))
 
+;; This VM has no elogind/PAM session management (vm-base.scm starts from
+;; bare %base-services, not %desktop-services), so nothing ever creates
+;; /run/user/<uid> -- and /run itself isn't even tmpfs here, only /dev/shm
+;; is. (peteches home modules claude-workstation) points each account's
+;; XDG_RUNTIME_DIR at ~/.cache/xdg-runtime instead, since that's always
+;; writable, but that directory lives on the root ext4 filesystem and
+;; therefore survives reboots -- which silently breaks Guix Home's
+;; on-first-login bootstrap (the script that starts shepherd-for-home,
+;; supervising anvil and herdr): it's guarded by a flag file inside that
+;; same directory, meant to fire once per boot, that without a real tmpfs
+;; there only ever fires once for the account's entire lifetime. A small
+;; per-account tmpfs mounted at that exact path restores real "cleared
+;; every boot" semantics without pulling in elogind's full PAM/D-Bus
+;; session stack. UIDs are static for these three accounts (verified via
+;; `id`): peteches=1000, criticalgrind=1001, ygo=1002.
+(define (xdg-runtime-tmpfs user uid)
+  (file-system
+   (mount-point (string-append "/home/" user "/.cache/xdg-runtime"))
+   (device "none")
+   (type "tmpfs")
+   (options (string-append "size=64M,mode=0700,uid=" (number->string uid)
+                            ",gid=998"))
+   (check? #f)))
+
 ;; Console-recovery user for the criticalgrind account.  Same shape as
 ;; %vm-peteches-user (vm-base.scm): day-to-day access is SSH key-only, so this
 ;; pre-hashed password exists only for the Proxmox console.  It reuses the
@@ -152,7 +176,10 @@
       (file-system
         (mount-point "/")
         (device "/dev/vda2")
-        (type "ext4")))
+        (type "ext4"))
+      (xdg-runtime-tmpfs "peteches" 1000)
+      (xdg-runtime-tmpfs "criticalgrind" 1001)
+      (xdg-runtime-tmpfs "ygo" 1002))
      #:extra-services
      (list
       (service guix-home-service-type
