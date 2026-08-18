@@ -15,6 +15,12 @@ hl.define_submap("leader_workspaces",
 			description = "Toggle music workspace",
 		})
 
+		hl.bind("h", Lib.dispatch_and_reset(
+			hl.dsp.workspace.toggle_special("herdr")
+		), {
+			description = "Toggle herdr workspace",
+		})
+
 		hl.bind("l", hl.dsp.submap("leader_layout"), {
 			description = "layout workspace submap",
 		})

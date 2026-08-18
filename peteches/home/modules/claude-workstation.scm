@@ -60,11 +60,12 @@
   #:use-module (peteches home modules claude)
   #:use-module (peteches packages emacs-anvil)
   #:use-module (peteches packages graphify)
+  #:use-module (peteches packages herdr)
   #:export (make-claude-workstation-home))
 
 (define %claude-workstation-base-packages
   (list claude-code claude-completion git openssh node ripgrep jq curl
-        coreutils less graphify))
+        coreutils less graphify herdr))
 
 ;; --- Anvil headless emacs daemon --------------------------------------
 ;; Bakes emacs-anvil's site-lisp onto the load-path directly so it needs
@@ -110,6 +111,31 @@
                       (or (getenv "XDG_CONFIG_HOME")
                           (string-append (getenv "HOME") "/.config"))
                       "/emacs/daemon.log")))
+           (stop #~(make-kill-destructor))
+           (respawn? #t))))))
+
+;; --- Herdr headless server ---------------------------------------------
+;; `herdr server` runs the persistent-session server in the foreground --
+;; the same shape as `emacs --fg-daemon' above, so it fits the same
+;; make-forkexec-constructor pattern.  Its own client-side logging
+;; (~/.config/herdr/herdr.log et al) is separate from this shepherd log,
+;; which only catches anything printed before that takes over.
+(define (herdr-services)
+  "shepherd service supervising a per-account headless herdr server."
+  (list
+   (simple-service
+    'herdr-server
+    home-shepherd-service-type
+    (list (shepherd-service
+           (provision '(herdr-server))
+           (documentation "Headless herdr server for persistent agent sessions.")
+           (start #~(make-forkexec-constructor
+                     (list #$(file-append herdr "/bin/herdr") "server")
+                     #:log-file
+                     (string-append
+                      (or (getenv "XDG_CONFIG_HOME")
+                          (string-append (getenv "HOME") "/.config"))
+                      "/herdr/shepherd.log")))
            (stop #~(make-kill-destructor))
            (respawn? #t))))))
 
@@ -222,12 +248,18 @@ unset _claude_completion
           (secret-env-vars '())
           (extra-packages '())
           (extra-claude-files '())
-          (with-anvil? #t))
+          (with-anvil? #t)
+          (with-herdr? #t))
   "Return a headless home-environment for one Claude account on
 claude-workstation.  REPOS is a list of (NAME URL) cloned into ~/area_51.
 MCP-SERVERS is a list of <home-claude-mcp-server> (the anvil bridges are added
 automatically when WITH-ANVIL?, and graphify unconditionally).  MCP-ENV is a
 NON-SECRET alist of environment variables the MCP servers inherit.
+WITH-HERDR? (default #t) supervises a per-account `herdr server' under
+home-shepherd, so Claude Code sessions started inside it survive an SSH
+disconnect and can be reattached later -- either locally on the VM or via
+`herdr --remote <account>@claude-workstation' from another machine, which
+tunnels over the same SSH auth already configured for this account.
 SECRET-ENV-VARS is an alist of (ENV-VAR .
 RUN-SECRETS-PATH): at shell startup each ENV-VAR is exported from the contents
 of RUN-SECRETS-PATH (normally a sops-secret's /run/secrets/... path) if that
@@ -313,4 +345,5 @@ entry is a build-time error, not a silent override."
                                       (list (string-append ".claude/" (car pair))
                                             (cdr pair)))
                                     extra-claude-files))))
-     (if with-anvil? (anvil-services) '())))))
+     (if with-anvil? (anvil-services) '())
+     (if with-herdr? (herdr-services) '())))))
