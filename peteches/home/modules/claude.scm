@@ -9,7 +9,10 @@
 ;;;   2. Registers `mcp-servers' by shelling out to `claude mcp add' during
 ;;;      home activation — removing then re-adding each one so the entry
 ;;;      always reflects current config.  The `remove' is expected to fail
-;;;      on first run; its exit status is deliberately ignored.
+;;;      on first run; its exit status is deliberately ignored.  Each server
+;;      is either `stdio' (a local COMMAND/ARGS, the default) or `http' (a
+;;      hosted endpoint registered by URL, e.g. Linear/Notion/Granola's
+;;      remote MCP servers) — see <home-claude-mcp-server>.
 ;;;
 ;;; Why (2) shells out rather than writing ~/.claude.json directly: that
 ;;; file is also written by Claude Code itself at runtime (project history,
@@ -30,13 +33,20 @@
             home-claude-configuration
             home-claude-mcp-server))
 
+;; TRANSPORT is "stdio" (default) or "http". stdio servers run a local
+;; COMMAND/ARGS; http servers are hosted endpoints registered by URL only
+;; (COMMAND/ARGS unused) — OAuth for these happens interactively the first
+;; time the account runs `/mcp` inside a Claude Code session, not at
+;; activation time, so no secret wiring is needed here.
 (define-record-type* <home-claude-mcp-server>
   home-claude-mcp-server make-home-claude-mcp-server
   home-claude-mcp-server?
-  (name    home-claude-mcp-server-name)
-  (command home-claude-mcp-server-command)
-  (args    home-claude-mcp-server-args  (default '()))
-  (scope   home-claude-mcp-server-scope (default "user")))
+  (name      home-claude-mcp-server-name)
+  (command   home-claude-mcp-server-command   (default #f))
+  (args      home-claude-mcp-server-args      (default '()))
+  (transport home-claude-mcp-server-transport (default "stdio"))
+  (url       home-claude-mcp-server-url       (default #f))
+  (scope     home-claude-mcp-server-scope     (default "user")))
 
 (define-record-type* <home-claude-configuration>
   home-claude-configuration make-home-claude-configuration
@@ -85,22 +95,34 @@
          (claude-bin (file-append claude-code "/bin/claude")))
     #~(begin
         #$@(map (lambda (server)
-                  (let ((name  (home-claude-mcp-server-name server))
-                        (scope (home-claude-mcp-server-scope server))
-                        (cmd   (home-claude-mcp-server-command server))
-                        (args  (home-claude-mcp-server-args server)))
-                    #~(begin
-                        ;; Remove existing entry; non-zero exit is harmless.
-                        (system* #$claude-bin
-                                 "mcp" "remove" "--scope" #$scope #$name)
-                        ;; Re-add with current config.  -- separates claude
-                        ;; flags from the subprocess command and its args.
-                        (apply system*
-                               #$claude-bin "mcp" "add"
-                               "--scope" #$scope
-                               "--transport" "stdio"
-                               #$name "--" #$cmd
-                               (list #$@args)))))
+                  (let* ((name      (home-claude-mcp-server-name server))
+                         (scope     (home-claude-mcp-server-scope server))
+                         (transport (home-claude-mcp-server-transport server))
+                         (cmd       (home-claude-mcp-server-command server))
+                         (args      (home-claude-mcp-server-args server))
+                         (url       (home-claude-mcp-server-url server)))
+                    (if (string=? transport "stdio")
+                        #~(begin
+                            ;; Remove existing entry; non-zero exit is harmless.
+                            (system* #$claude-bin
+                                     "mcp" "remove" "--scope" #$scope #$name)
+                            ;; Re-add with current config.  -- separates claude
+                            ;; flags from the subprocess command and its args.
+                            (apply system*
+                                   #$claude-bin "mcp" "add"
+                                   "--scope" #$scope
+                                   "--transport" "stdio"
+                                   #$name "--" #$cmd
+                                   (list #$@args)))
+                        ;; http (or other remote) transport: URL only, no
+                        ;; local command. OAuth happens later via `/mcp'.
+                        #~(begin
+                            (system* #$claude-bin
+                                     "mcp" "remove" "--scope" #$scope #$name)
+                            (system* #$claude-bin "mcp" "add"
+                                     "--scope" #$scope
+                                     "--transport" #$transport
+                                     #$name #$url)))))
                 servers))))
 
 (define-public home-claude-service-type

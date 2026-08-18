@@ -13,12 +13,20 @@
 ;;; to the peteches/criticalgrind configs, so only ygo's Claude knows it
 ;;; exists.
 ;;;
+;;; Also registers Linear, Notion and Granola as `http'-transport MCP
+;;; servers -- all three are hosted, OAuth-authenticated endpoints (not
+;;; local packages), so there is no package to build and no API key to
+;;; wire through sops-secrets. Registration just points Claude Code at the
+;;; URL; the first `/mcp' run inside a session on this account opens the
+;;; OAuth flow interactively.
+;;;
 ;;; Evaluates to a bare `home-environment' as its final expression.
 
 (define-module (peteches home configs claude-workstation-ygo)
   #:use-module (guix gexp)
   #:use-module (peteches repository)
-  #:use-module (peteches home modules claude-workstation))
+  #:use-module (peteches home modules claude-workstation)
+  #:use-module (peteches home modules claude))
 
 ;; EDIT ME: the repos this account works on. SSH clone URL -- requires an
 ;; SSH key authorized against the repo loaded for this account; a clone
@@ -27,11 +35,28 @@
 (define %ygo-repos
   '(("ygocloud" "git@github.com:ygotrips/ygocloud.git")))
 
+;; Linear, Notion and Granola all ship hosted MCP servers reached over
+;; Streamable HTTP with browser-based OAuth -- see the module docstring.
+(define %ygo-mcp-servers
+  (list (home-claude-mcp-server
+         (name "linear")
+         (transport "http")
+         (url "https://mcp.linear.app/mcp"))
+        (home-claude-mcp-server
+         (name "notion")
+         (transport "http")
+         (url "https://mcp.notion.com/mcp"))
+        (home-claude-mcp-server
+         (name "granola")
+         (transport "http")
+         (url "https://mcp.granola.ai/mcp"))))
+
 (define-public claude-workstation-ygo-home
   (make-claude-workstation-home
    #:git-name "Peter McCabe"
    #:git-email "peter.mccabe@ygo.ai"
    #:repos %ygo-repos
+   #:mcp-servers %ygo-mcp-servers
    #:extra-claude-files
    (list (cons "skills/wireguard-socks5/SKILL.md"
                (local-file (source-path
