@@ -322,3 +322,112 @@ deeplinks back into Grafana.
 Tool groups are selected with @option{--enabled-tools}, and
 @option{--disable-write} restricts the server to read-only operations.")
     (license license:asl2.0)))
+
+;; ------------------------------
+;; Slack MCP (Go)
+;; ------------------------------
+;;
+;; Same fixed-output vendor-derivation shape as mcp-grafana above: the
+;; go.mod graph pulls in the full charmbracelet TUI stack (bubbletea, huh,
+;; lipgloss, …), rusq/slackdump, openai-go and golang.ngrok.com/ngrok, so
+;; one-package-per-Go-module is not practical here either.
+
+(define slack-mcp-server-version
+  "1.3.0")
+
+(define slack-mcp-server-source
+  (origin
+    (method git-fetch)
+    (uri (git-reference
+          (url "https://github.com/korotovsky/slack-mcp-server")
+          (commit (string-append "v" slack-mcp-server-version))))
+    (file-name (git-file-name "slack-mcp-server" slack-mcp-server-version))
+    (sha256 (base32 "1kmi7fsx6nvq42qjm3cnd6bz1qqg91rzv8ksqrd7n1bllp4gm1r3"))))
+
+(define slack-mcp-server-vendor
+  (computed-file (string-append "slack-mcp-server-"
+                                slack-mcp-server-version "-vendor")
+                 (with-imported-modules '((guix build utils))
+                                        #~(begin
+                                            (use-modules (guix build utils))
+                                            (setenv "PATH"
+                                                    (string-append #$go-1.26
+                                                                   "/bin:"
+                                                                   #$git-minimal
+                                                                   "/bin"))
+                                            (setenv "HOME" "/tmp")
+                                            (setenv "GOPATH" "/tmp/gopath")
+                                            (setenv "GOCACHE" "/tmp/gocache")
+                                            (setenv "GOMODCACHE"
+                                                    "/tmp/gomodcache")
+                                            (setenv "GOTOOLCHAIN" "local")
+                                            (setenv "GOFLAGS" "-mod=mod")
+                                            (setenv "SSL_CERT_DIR"
+                                                    #$(file-append nss-certs
+                                                       "/etc/ssl/certs"))
+                                            (copy-recursively
+                                             #$slack-mcp-server-source
+                                             "/tmp/src")
+                                            (for-each make-file-writable
+                                                      (find-files "/tmp/src"
+                                                                  #:directories?
+                                                                  #t))
+                                            (chdir "/tmp/src")
+                                            (invoke "go" "mod" "vendor")
+                                            (copy-recursively
+                                             "/tmp/src/vendor"
+                                             #$output)))
+                 #:options `(#:hash-algo sha256
+                             #:recursive? #t
+                             #:hash ,(base32
+                                      "0gw179yyzd9qam2n5p7ybks92kn4ac47crm030kbz85x6cw13r7s")
+                             #:local-build? #t)))
+
+(define-public slack-mcp-server
+  (package
+    (name "slack-mcp-server")
+    (version slack-mcp-server-version)
+    (source slack-mcp-server-source)
+    (build-system gnu-build-system)
+    (arguments
+     (list
+      ;; Upstream's suite exercises real Slack API calls (slackdump,
+      ;; slackauth) and needs live xoxc/xoxd/xoxp credentials; nothing here
+      ;; can supply those in a build sandbox.
+      #:tests? #f
+      #:phases
+      #~(modify-phases %standard-phases
+          (delete 'configure)
+          (delete 'check)
+          (add-after 'unpack 'install-vendor
+            (lambda _
+              (copy-recursively #$slack-mcp-server-vendor "vendor")))
+          (replace 'build
+            (lambda _
+              (setenv "HOME" "/tmp")
+              (setenv "GOCACHE" "/tmp/gocache")
+              (setenv "GOTOOLCHAIN" "local")
+              (setenv "GOFLAGS" "-mod=vendor")
+              (setenv "GOPROXY" "off")
+              (invoke "go"
+                      "build"
+                      "-ldflags"
+                      "-s -w"
+                      "-o"
+                      "slack-mcp-server"
+                      "./cmd/slack-mcp-server")))
+          (replace 'install
+            (lambda _
+              (install-file "slack-mcp-server"
+                            (string-append #$output "/bin")))))))
+    (native-inputs (list go-1.26))
+    (home-page "https://github.com/korotovsky/slack-mcp-server")
+    (synopsis "MCP server for Slack workspaces")
+    (description
+     "This package provides a Model Context Protocol server for Slack.  It
+lets MCP clients read channel history and threads, search messages, list
+channels and users, post messages and manage reactions (both gated behind
+explicit opt-in environment variables), subject to whichever Slack token
+type it is given: a bot token (@code{xoxb-}), a user OAuth token
+(@code{xoxp-}), or a browser session token pair (@code{xoxc-}/@code{xoxd-}).")
+    (license license:expat)))

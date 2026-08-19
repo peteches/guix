@@ -24,6 +24,9 @@
 ;; FIRST-BOOT TODO (none of these can be done before the VM exists):
 ;;   * age-keys/claude-workstation.pub + a .sops.yaml creation rule, then wire
 ;;     any sops-secrets (e.g. the Plane/Outline API keys for criticalgrind).
+;;   * create + encrypt secrets/hosts/claude-workstation/slack.yaml (ygo's
+;;     Slack MCP xoxp- token) -- see the #:sops-secrets entry below for the
+;;     exact `sops -e -i' invocation.
 ;;   * flip #:with-nug-offload? back to #t once a guix-build.yaml secret AND
 ;;     the VM's guix-offload public key in nug.scm both exist (half-wiring it
 ;;     fails silently — see vm-base.scm).
@@ -166,6 +169,23 @@
        (group "users")
        (permissions #o400)
        (path "/run/secrets/outline-api-key"))
+      ;; ygo's Slack MCP token. secrets/hosts/claude-workstation/slack.yaml
+      ;; does NOT exist yet -- create it before the next `guix system
+      ;; reconfigure`/redeploy of this VM:
+      ;;   printf 'xoxp-token: xoxp-...\n' > secrets/hosts/claude-workstation/slack.yaml
+      ;;   sops -e -i secrets/hosts/claude-workstation/slack.yaml
+      ;; It is picked up automatically by the existing
+      ;; `secrets/hosts/claude-workstation/.*\.yaml$` creation_rule in
+      ;; .sops.yaml (both this VM's age key and the operator's PGP key as
+      ;; recipients) -- no .sops.yaml change needed. See
+      ;; docs/secrets-management.org.
+      (sops-secret
+       (key '("xoxp-token"))
+       (file (local-file "../../secrets/hosts/claude-workstation/slack.yaml"))
+       (user "ygo")
+       (group "users")
+       (permissions #o400)
+       (path "/run/secrets/slack-mcp-xoxp-token"))
       ;; Private half of the peteches automation SSH keypair -- see
       ;; %automation-authorized-key-secret in vm-base.scm for the public
       ;; half, decrypted on every VM. Only claude-workstation ever

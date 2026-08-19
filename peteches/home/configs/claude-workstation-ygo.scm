@@ -33,6 +33,7 @@
   #:use-module ((gnu packages containers) #:select (podman))
   #:use-module (peteches packages go-tools)
   #:use-module (peteches packages yarn)
+  #:use-module ((peteches packages mcp) #:select (slack-mcp-server))
   #:use-module (peteches repository)
   #:use-module (peteches home modules claude-workstation)
   #:use-module (peteches home modules claude))
@@ -58,7 +59,15 @@
         (home-claude-mcp-server
          (name "granola")
          (transport "http")
-         (url "https://mcp.granola.ai/mcp"))))
+         (url "https://mcp.granola.ai/mcp"))
+        ;; Slack, unlike the three above, has no hosted OAuth MCP endpoint --
+        ;; it runs locally (stdio) and reads its auth token from the
+        ;; environment. SLACK_MCP_XOXP_TOKEN below (via #:secret-env-vars)
+        ;; supplies it; see claude-workstation.scm's #:sops-secrets for
+        ;; where /run/secrets/slack-mcp-xoxp-token comes from.
+        (home-claude-mcp-server
+         (name "slack")
+         (command (file-append slack-mcp-server "/bin/slack-mcp-server")))))
 
 (define-public claude-workstation-ygo-home
   (make-claude-workstation-home
@@ -72,6 +81,11 @@
    ;; extensions in claude-workstation.scm.
    #:extra-packages (list go go-golangci-lint yarn podman)
    #:mcp-servers %ygo-mcp-servers
+   ;; Secret: sops-decrypted at system boot into /run/secrets/... (see
+   ;; #:sops-secrets in peteches/systems/claude-workstation.scm), exported
+   ;; into the shell from there -- never baked into the store. The slack MCP
+   ;; server (spawned by Claude Code, a child of this shell) inherits it.
+   #:secret-env-vars '(("SLACK_MCP_XOXP_TOKEN" . "/run/secrets/slack-mcp-xoxp-token"))
    #:extra-claude-files
    (list (cons "skills/wireguard-socks5/SKILL.md"
                (local-file (source-path
