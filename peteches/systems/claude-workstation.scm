@@ -39,12 +39,15 @@
   #:use-module (gnu services ssh)
   #:use-module (gnu services base)
   #:use-module (gnu services containers)
+  #:use-module (gnu services databases)
   #:use-module (gnu services shepherd)
   #:use-module (gnu system)
   #:use-module (gnu system accounts)
   #:use-module (gnu system shadow)
   #:use-module (gnu system file-systems)
   #:use-module (gnu system keyboard)
+  #:use-module ((gnu packages databases) #:select (postgresql-16))
+  #:use-module (peteches packages postgres-extensions)
   #:use-module (peteches systems vm-base)
   #:use-module (peteches services alloy)
   #:use-module (peteches services firewall)
@@ -106,6 +109,15 @@
    (home-directory "/home/ygo")
    (supplementary-groups '("wheel" "netdev"))
    (password "$6$yk5pnJr/ECPPOvGv$/HoWZNE7fWDslHHIVHAcaxk0AyhnthoHGhs3RrXaXqvVL8W5UI9OUVHndx4RfSqnWnnPw/.q2KhkfrPRKkw.11")))
+
+;; Matches the old ygo-dev-postgres container's POSTGRES_HOST_AUTH_METHOD=
+;; trust: loopback-only dev database, so no password required either via
+;; the unix socket or over 127.0.0.1/::1 TCP.
+(define %ygo-dev-pg-hba
+  (plain-file "pg_hba.conf"
+              "local   all     all                     trust\n\
+host    all     all     127.0.0.1/32            trust\n\
+host    all     all     ::1/128                 trust\n"))
 
 (define-public claude-workstation-os
   (operating-system
@@ -325,10 +337,13 @@
                                   (plain-file "containers-storage.conf"
                                               "[storage]\ndriver = \"vfs\"\n"))))
 
-      ;; Host directories backing each container's data volume, created and
-      ;; owned by the uid/gid each official image runs its daemon as (999:999
-      ;; for all three -- postgres, timescaledb and redis's upstream images
-      ;; all create that user).
+      ;; Host directories backing each remaining container's data volume,
+      ;; created and owned by the uid/gid each official image runs its
+      ;; daemon as (999:999 for both timescaledb and redis's upstream
+      ;; images). Postgres itself moved to a native postgresql-service-type
+      ;; instance below (needs postgis + pg_cron, neither of which come as
+      ;; a ready-made Docker image combo) -- it manages its own
+      ;; /var/lib/postgresql/data.
       (simple-service 'ygo-dev-db-dirs
                       activation-service-type
                       #~(begin
@@ -337,8 +352,7 @@
                            (lambda (dir)
                              (mkdir-p dir)
                              (chown dir 999 999))
-                           '("/var/lib/ygo-dev-db/postgres"
-                             "/var/lib/ygo-dev-db/timescaledb"
+                           '("/var/lib/ygo-dev-db/timescaledb"
                              "/var/lib/ygo-dev-db/redis"))))
 
       ;; Loopback-only DNAT still traverses the FORWARD chain once Podman
@@ -352,18 +366,39 @@
                                       "iifname \"podman0\" accept"
                                       "oifname \"podman0\" accept"))))
 
-      (simple-service 'ygo-dev-postgres
-                      oci-service-type
-                      (oci-extension
-                       (containers
-                        (list (oci-container-configuration
-                               (image "docker.io/library/postgres:16")
-                               (provision "ygo-dev-postgres")
-                               (requirement '(networking file-systems))
-                               (log-file "/var/log/ygo-dev-postgres.log")
-                               (environment '(("POSTGRES_HOST_AUTH_METHOD" . "trust")))
-                               (ports (list "127.0.0.1:5432:5432"))
-                               (volumes (list "/var/lib/ygo-dev-db/postgres:/var/lib/postgresql/data")))))))
+      ;; Native PostgreSQL 16 instance for ygo's schema.sql/content-schema.sql
+      ;; (port 5432) -- needs postgis and pg_cron as loadable extensions,
+      ;; which no upstream Docker image bundles together, so this replaces
+      ;; the old docker.io/library/postgres:16 container. Pinned to
+      ;; postgresql-16 (not Guix's default postgresql-14) to match that old
+      ;; container and the still-Docker-based ygo-dev-timescaledb sibling
+      ;; below (timescale/timescaledb:latest-pg16) -- postgis-16 and
+      ;; pg-cron (peteches packages postgres-extensions) are both built
+      ;; against postgresql-16 specifically for this reason: Postgres
+      ;; extensions are ABI-locked to the major version they're compiled
+      ;; against. fuzzystrmatch, ltree and pg_trgm are contrib modules
+      ;; Guix's postgresql package already builds and installs, so they
+      ;; need no extension-packages entry of their own.
+      ;;
+      ;; pg_cron needs shared_preload_libraries set (it registers a
+      ;; background worker at server start, not just a loadable .so) --
+      ;; cron.database_name defaults to "postgres"; add it to extra-config
+      ;; below if the app's cron jobs live in a different database.
+      ;;
+      ;; %ygo-dev-pg-hba mirrors the old container's
+      ;; POSTGRES_HOST_AUTH_METHOD=trust; listen_addresses defaults to
+      ;; localhost, matching the container's 127.0.0.1-only port mapping,
+      ;; so no firewall rule is needed here (unlike the podman0 DNAT rule
+      ;; the two remaining containers still need).
+      (service postgresql-service-type
+               (postgresql-configuration
+                (postgresql postgresql-16)
+                (extension-packages (list postgis-16 pg-cron))
+                (config-file
+                 (postgresql-config-file
+                  (hba-file %ygo-dev-pg-hba)
+                  (extra-config
+                   '(("shared_preload_libraries" "pg_cron")))))))
 
       (simple-service 'ygo-dev-timescaledb
                       oci-service-type
@@ -395,11 +430,14 @@
       (service alloy-service-type
                (alloy-configuration
                 (hostname "claude-workstation.peteches.co.uk")
+                ;; The native ygo-dev-postgres instance has no log-files
+                ;; entry of its own -- postgresql-config-file's
+                ;; log_destination defaults to "syslog", so its output
+                ;; already lands in /var/log/messages above.
                 (log-files (list (cons "/var/log/messages" "syslog")
                                  (cons "/var/log/prometheus-node-exporter.log" "node-exporter")
                                  (cons "/var/log/ntpd.log" "ntpd")
                                  (cons "/var/log/alloy.log" "alloy")
-                                 (cons "/var/log/ygo-dev-postgres.log" "ygo-dev-postgres")
                                  (cons "/var/log/ygo-dev-timescaledb.log" "ygo-dev-timescaledb")
                                  (cons "/var/log/ygo-dev-redis.log" "ygo-dev-redis"))))))))))
 
