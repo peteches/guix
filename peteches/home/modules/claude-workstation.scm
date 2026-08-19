@@ -199,14 +199,30 @@ own home on ITS OWN herdr server."
    "  return 1\n"
    "}\n\n"
    ;; A space already exists (matched by label) on a shepherd restart or a
-   ;; second run of this one-shot -- skip it rather than duplicating it.
+   ;; second run of this one-shot -- but a herdr server restart (as opposed
+   ;; to a client detach) brings panes back EMPTY, with no process inside
+   ;; them, unless herdr's own native session-resume fires (which needs a
+   ;; supported CLI version and a previously-reported session ref -- see
+   ;; herdr-agent-state.sh). An existing label therefore does NOT imply a
+   ;; live claude agent; reuse the workspace's existing pane and (re)start
+   ;; claude in it whenever `herdr pane list` shows no `.agent=="claude"'
+   ;; entry there, instead of returning early on label match alone -- that
+   ;; early return was confirmed live (2026-08-19) to leave standing spaces
+   ;; permanently claude-less after any boot where the space already existed
+   ;; but its agent hadn't (re)started.
    "ensure_local_space() {\n"
    "  name=\"$1\"; relpath=\"$2\"\n"
    "  existing=$(\"$HERDR\" workspace list | \"$JQ\" -r --arg n \"$name\" \\\n"
    "    '.result.workspaces[] | select(.label==$n) | .workspace_id' | head -n1)\n"
-   "  [ -n \"$existing\" ] && return 0\n"
-   "  created=$(\"$HERDR\" workspace create --cwd \"$HOME\" --label \"$name\" --no-focus)\n"
-   "  pane=$(printf '%s' \"$created\" | \"$JQ\" -r '.result.root_pane.pane_id')\n"
+   "  if [ -n \"$existing\" ]; then\n"
+   "    has_agent=$(\"$HERDR\" pane list --workspace \"$existing\" | \"$JQ\" -r \\\n"
+   "      '.result.panes[] | select(.agent==\"claude\") | .pane_id' | head -n1)\n"
+   "    [ -n \"$has_agent\" ] && return 0\n"
+   "    pane=$(\"$HERDR\" pane list --workspace \"$existing\" | \"$JQ\" -r '.result.panes[0].pane_id')\n"
+   "  else\n"
+   "    created=$(\"$HERDR\" workspace create --cwd \"$HOME\" --label \"$name\" --no-focus)\n"
+   "    pane=$(printf '%s' \"$created\" | \"$JQ\" -r '.result.root_pane.pane_id')\n"
+   "  fi\n"
    "  marker=\"__herdr_ready_${name}__\"\n"
    "  \"$HERDR\" pane run \"$pane\" \"cd $relpath && echo $marker\"\n"
    "  \"$HERDR\" pane wait-output \"$pane\" --match \"$marker\" --timeout 30000 >/dev/null 2>&1 || true\n"
@@ -221,19 +237,40 @@ own home on ITS OWN herdr server."
    ;; so this is the one call in this script that has to succeed cold
    ;; (fresh boot, target account never yet logged in) -- everything else
    ;; in ensure_remote_space assumes the socket it just proved reachable.
+   ;; Same "label exists != agent running" fix as ensure_local_space, applied
+   ;; twice here: once to the REMOTE account's own claude agent, and once to
+   ;; the LOCAL cosmetic pane, whose only job is to stay nest-attached via a
+   ;; live `herdr --remote $target' process. A herdr server restart on
+   ;; either side clears the pane back to a plain shell without killing the
+   ;; workspace/label, so re-check the actual foreground process
+   ;; (`herdr pane process-info') rather than trusting the label.\n"
    "ensure_remote_space() {\n"
    "  name=\"$1\"; relpath=\"$2\"; remote_user=\"$3\"; target=\"$remote_user@localhost\"\n"
    "  remote_existing=$(\"$SSH\" \"$target\" bash -lc \\\n"
    "    'i=0; while ! herdr workspace list >/dev/null 2>&1; do i=$((i + 1)); [ \"$i\" -ge 30 ] && exit 1; sleep 1; done; herdr workspace list' \\\n"
    "    | \"$JQ\" -r --arg n \"$name\" '.result.workspaces[] | select(.label==$n) | .workspace_id' | head -n1)\n"
-   "  if [ -z \"$remote_existing\" ]; then\n"
+   "  if [ -n \"$remote_existing\" ]; then\n"
+   "    remote_has_agent=$(\"$SSH\" \"$target\" \"herdr pane list --workspace $remote_existing\" | \"$JQ\" -r \\\n"
+   "      '.result.panes[] | select(.agent==\"claude\") | .pane_id' | head -n1)\n"
+   "    if [ -z \"$remote_has_agent\" ]; then\n"
+   "      remote_pane=$(\"$SSH\" \"$target\" \"herdr pane list --workspace $remote_existing\" | \"$JQ\" -r '.result.panes[0].pane_id')\n"
+   "      \"$SSH\" \"$target\" \"herdr agent start $name --kind claude --pane $remote_pane\" >/dev/null 2>&1 || true\n"
+   "    fi\n"
+   "  else\n"
    "    remote_created=$(\"$SSH\" \"$target\" \"herdr workspace create --cwd \\$HOME/$relpath --label $name --no-focus\")\n"
    "    remote_pane=$(printf '%s' \"$remote_created\" | \"$JQ\" -r '.result.root_pane.pane_id')\n"
    "    \"$SSH\" \"$target\" \"herdr agent start $name --kind claude --pane $remote_pane\" >/dev/null 2>&1 || true\n"
    "  fi\n"
    "  local_existing=$(\"$HERDR\" workspace list | \"$JQ\" -r --arg n \"$name\" \\\n"
    "    '.result.workspaces[] | select(.label==$n) | .workspace_id' | head -n1)\n"
-   "  [ -n \"$local_existing\" ] && return 0\n"
+   "  if [ -n \"$local_existing\" ]; then\n"
+   "    local_pane=$(\"$HERDR\" pane list --workspace \"$local_existing\" | \"$JQ\" -r '.result.panes[0].pane_id')\n"
+   "    fg=$(\"$HERDR\" pane process-info --pane \"$local_pane\" | \"$JQ\" -r \\\n"
+   "      '.result.process_info.foreground_processes[0].name // empty')\n"
+   "    [ \"$fg\" = \"herdr\" ] && return 0\n"
+   "    \"$HERDR\" pane run \"$local_pane\" \"exec $HERDR --remote $target\"\n"
+   "    return 0\n"
+   "  fi\n"
    "  created=$(\"$HERDR\" workspace create --cwd \"$HOME\" --label \"$name\" --no-focus)\n"
    "  pane=$(printf '%s' \"$created\" | \"$JQ\" -r '.result.root_pane.pane_id')\n"
    "  \"$HERDR\" pane run \"$pane\" \"exec $HERDR --remote $target\"\n"
