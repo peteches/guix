@@ -59,6 +59,22 @@
 ;;                        file -- delete /swapfile and reconfigure to pick
 ;;                        up the new size.
 ;;   #:swap-size-mb       DEFAULT #f (match RAM, see #:with-swap? above).
+;;   #:with-generation-gc? DEFAULT #t — a weekly local mcron job (see
+;;                        scripts/generation-gc, packaged as
+;;                        (peteches packages generation-gc)) that deletes
+;;                        all but the most recent #:generation-gc-keep
+;;                        system generations and runs `guix gc`. Written
+;;                        after diagnosing jellyfin's dead guix-daemon:
+;;                        unchecked generations accumulate forever and
+;;                        eventually exhaust the filesystem's inode table,
+;;                        which then blocks every guix operation -- including
+;;                        the cleanup that would fix it. Runs entirely
+;;                        locally as root; no SSH, no automation key, no
+;;                        fleet-wide coordination needed.
+;;   #:generation-gc-keep DEFAULT 4 — generations to retain (see above).
+;;   #:generation-gc-schedule DEFAULT "23 3 * * 0" (Sundays 03:23,
+;;                        deliberately off :00/:30) — vixie-cron string
+;;                        passed straight to mcron's `job`.
 ;;
 ;; Baseline every VM gets: openssh (key-only, nug + nyarlothotep enrolled),
 ;; ntpd, qemu-guest-agent, nftables firewall (%vm-base-firewall: ssh + 9100
@@ -98,12 +114,14 @@
   #:use-module (gnu services ssh)
   #:use-module (gnu services monitoring)
   #:use-module (gnu services virtualization)
+  #:use-module (gnu services mcron)
   #:use-module (gnu packages admin)
   #:use-module (gnu packages linux)
   #:use-module (peteches systems common)
   #:use-module (peteches services firewall)
   #:use-module (peteches services restic)
   #:use-module (peteches services cifs)
+  #:use-module (peteches packages generation-gc)
   #:use-module (sops secrets)
   #:use-module (sops services sops)
   #:use-module (gnu services linux)
@@ -267,13 +285,27 @@ time.  A no-op on subsequent boots."
           (with-automation-key? #t)
           (automation-key-extra-users '())
           (with-swap? #t)
-          (swap-size-mb #f))
+          (swap-size-mb #f)
+          (with-generation-gc? #t)
+          (generation-gc-keep 4)
+          (generation-gc-schedule "23 3 * * 0"))
   (let* ((nonguix-services (if with-nonguix? (list (nonguix-substitute-service)) '()))
          (swap-services
           (if with-swap?
               (list (simple-service 'swap-file
                                     activation-service-type
                                     (swap-file-activation swap-size-mb)))
+              '()))
+         (generation-gc-services
+          (if with-generation-gc?
+              (list (simple-service 'generation-gc
+                                    mcron-service-type
+                                    (list #~(job #$generation-gc-schedule
+                                                 (lambda ()
+                                                   (system* #$(file-append generation-gc
+                                                                           "/bin/generation-gc")
+                                                            "--keep"
+                                                            #$(number->string generation-gc-keep)))))))
               '()))
          (restic-services
           (if restic-config
@@ -368,6 +400,7 @@ time.  A no-op on subsequent boots."
            sops-services
            nvidia-services
            swap-services
+           generation-gc-services
            extra-services)))
     (operating-system
       (kernel kernel)

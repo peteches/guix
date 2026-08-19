@@ -1,0 +1,47 @@
+#!/bin/sh
+# generation-gc -- delete all but the last N system generations, then guix gc.
+#
+# Usage: generation-gc [--keep N]
+#
+# Runs entirely locally as root (invoked from a system mcron job -- see
+# %vm-generation-gc-service in peteches/systems/vm-base.scm). Every VM in
+# this repo gets this baked in via make-vm-os.
+#
+# Written after diagnosing jellyfin's dead guix-daemon: unchecked system
+# generations accumulate forever, eventually exhausting the filesystem's
+# inode table and blocking every guix operation -- including the cleanup
+# that would have fixed it. Keeping N generations bounds that growth.
+set -u
+
+PATH=/run/current-system/profile/bin:/run/current-system/profile/sbin:$PATH
+export PATH
+
+KEEP=4
+if [ "${1:-}" = "--keep" ]; then
+  KEEP="$2"
+fi
+
+generations=$(guix system list-generations 2>&1)
+status=$?
+if [ "$status" -ne 0 ]; then
+  echo "generation-gc: guix system list-generations failed:" >&2
+  echo "$generations" >&2
+  exit 1
+fi
+
+current=$(echo "$generations" | grep -oE 'Generation [0-9]+' | tail -1 | awk '{print $2}')
+if [ -z "$current" ]; then
+  echo "generation-gc: could not parse current generation number" >&2
+  exit 1
+fi
+
+delete_upto=$((current - KEEP))
+if [ "$delete_upto" -ge 1 ]; then
+  echo "generation-gc: deleting generations 1..$delete_upto (keeping last $KEEP of $current)"
+  guix system delete-generations "1..$delete_upto"
+else
+  echo "generation-gc: only $current generation(s) present, nothing to delete (keep=$KEEP)"
+fi
+
+echo "generation-gc: running guix gc"
+guix gc
