@@ -518,7 +518,7 @@ module "claude-workstation" {
   disk = {
     datastore_id = "local-lvm"
     interface    = "virtio0"
-    size         = 50
+    size         = 100
   }
 
   network_device = {
