@@ -64,11 +64,13 @@
   #:use-module (peteches packages graphify)
   #:use-module (peteches packages herdr)
   #:use-module (peteches packages github-cli)
+  #:use-module (peteches packages onepassword-cli)
   #:export (make-claude-workstation-home))
 
 (define %claude-workstation-base-packages
   (list claude-code claude-completion git openssh node ripgrep jq curl
-        coreutils less graphify herdr python-minimal github-cli))
+        coreutils less graphify herdr python-minimal github-cli
+        onepassword-cli))
 
 ;; --- Anvil headless emacs daemon --------------------------------------
 ;; Bakes emacs-anvil's site-lisp onto the load-path directly so it needs
