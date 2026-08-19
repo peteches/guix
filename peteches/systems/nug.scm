@@ -486,6 +486,17 @@
             (compression '(("zstd" 9)))
             (advertise? #t)
             (cache "/var/cache/guix/publish")))
+  ;; Trusts claude-workstation's Guix archive signing key so nug's daemon
+  ;; accepts store items it sends during offload -- separate from the SSH
+  ;; guix-offload key above, which only grants login. Without this, offload
+  ;; connects fine but every export fails with "unauthorized public key"
+  ;; and silently falls back to a local build.
+  (simple-service 'guix-offload-signing-keys
+                  guix-service-type
+                  (guix-extension
+                   (authorized-keys
+                    (list (plain-file "claude-workstation-signing-key.pub"
+                                      "(public-key \n (ecc \n  (curve Ed25519)\n  (q #EFED7FDADFFF4E2559977AFD10310E21C4EEF7685C6297595D5333CBEF037EDE#)\n  )\n )\n")))))
   (simple-service 'guix-offload-authorized-keys
                   openssh-service-type
                   `(("guix-offload"
