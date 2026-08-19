@@ -54,6 +54,21 @@
   #:use-module (peteches systems claude-workstation)
   )
 
+;; SSH private key used to connect out to every machine below. Nug and
+;; nyarlothotep (the desktop deploy coordinators) each have their own
+;; personal keypair at the conventional path, already enrolled in every
+;; VM's %vm-peteches-authorized-keys (vm-base.scm). claude-workstation has
+;; no such personal key, but it does decrypt the private half of the
+;; fleet-wide "peteches automation" keypair at boot (see
+;; %automation-authorized-key-secret in peteches/systems/vm-base.scm) --
+;; every VM already trusts its public half for the peteches login. Use it
+;; when present so `guix deploy'/scripts/deploy.scm works unmodified from
+;; whichever host runs it.
+(define %deploy-identity
+  (if (file-exists? "/run/secrets/peteches-automation-ssh-key")
+      "/run/secrets/peteches-automation-ssh-key"
+      "/home/peteches/.ssh/id_ed25519"))
+
 (define-public prometheus-machine
   (machine
    (operating-system prometheus-os)
@@ -64,7 +79,7 @@
      (host-key "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAINxQwnyL7Fm08s8UwzXXuSwbahwySM//Jv2jxpfmryHj")
      (system "x86_64-linux")
      (user "peteches")
-     (identity "/home/peteches/.ssh/id_ed25519")))))
+     (identity %deploy-identity)))))
 
 (define-public grafana-machine
   (machine
@@ -76,7 +91,7 @@
      (host-key "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIA3sVMg8QH+g6Xtj2NmIzV90gbkSPMiCnlaaAJx+a7tG")
      (system "x86_64-linux")
      (user "peteches")
-     (identity "/home/peteches/.ssh/id_ed25519")))))
+     (identity %deploy-identity)))))
 
 (define-public loki-machine
   (machine
@@ -88,7 +103,7 @@
      (host-key "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAII2AxOh6ksCO2dnP+S92mNnOR76J/ewMW1QrhkSvN/Xx")
      (system "x86_64-linux")
      (user "peteches")
-     (identity "/home/peteches/.ssh/id_ed25519")))))
+     (identity %deploy-identity)))))
 
 (define-public pihole-machine
   (machine
@@ -100,7 +115,7 @@
      (host-key "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAII5+ZCQgM0b8HJjRmzN2bpDkbtwqdbgop+g4ZiB4ZqjH")
      (system "x86_64-linux")
      (user "peteches")
-     (identity "/home/peteches/.ssh/id_ed25519")))))
+     (identity %deploy-identity)))))
 
 (define-public git-machine
   (machine
@@ -112,7 +127,7 @@
      (host-key "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAII/nIMuSdo5NHolPHogjR+xrudcnpLFROLYc6fpL+fkp")
      (system "x86_64-linux")
      (user "peteches")
-     (identity "/home/peteches/.ssh/id_ed25519")))))
+     (identity %deploy-identity)))))
 
 (define-public jellyfin-machine
   (machine
@@ -124,7 +139,7 @@
      (host-key "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIO0K7C2Fom+JtznRuvkCn1oIrjMy5ASD9tE5Ag8buO2Q")
      (system "x86_64-linux")
      (user "peteches")
-     (identity "/home/peteches/.ssh/id_ed25519")))))
+     (identity %deploy-identity)))))
 
 (define-public caddy-machine
   (machine
@@ -136,7 +151,7 @@
      (host-key "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIKFIxCigw2WFpZwTOWa075uT1IdGMbdCFGs4tCsNzNEz") ; fill in after new-vm Phase 6: ssh-keyscan 192.168.51.193
      (system "x86_64-linux")
      (user "peteches")
-     (identity "/home/peteches/.ssh/id_ed25519")))))
+     (identity %deploy-identity)))))
 
 (define-public prowlarr-machine
   (machine
@@ -148,7 +163,7 @@
      (host-key "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIHiYZARBCM47v7xWtaEhYRQNwfHK0ch6UnzOlaqnhIyA")
      (system "x86_64-linux")
      (user "peteches")
-     (identity "/home/peteches/.ssh/id_ed25519")))))
+     (identity %deploy-identity)))))
 
 (define-public arr-machine
   (machine
@@ -160,7 +175,7 @@
      (host-key "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAILv1EPh7kKTpPwuOBQPvyPiJ1XZ5Nd7SRzYMNEBewtNv")
      (system "x86_64-linux")
      (user "peteches")
-     (identity "/home/peteches/.ssh/id_ed25519")))))
+     (identity %deploy-identity)))))
 
 (define-public downloads-machine
   (machine
@@ -172,7 +187,7 @@
      (host-key "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIF1K5LlMCN5seUpx5CRZOmZHvi7JR0NbijQtACHbBGaC")
      (system "x86_64-linux")
      (user "peteches")
-     (identity "/home/peteches/.ssh/id_ed25519")))))
+     (identity %deploy-identity)))))
 
 
 (define-public rustdesk-machine
@@ -185,7 +200,7 @@
      (host-key "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIKcfUmsDVPcwbgd52PCaDDKyTMW/usAXACJHGg9cu2Wu")
      (system "x86_64-linux")
      (user "peteches")
-     (identity "/home/peteches/.ssh/id_ed25519")))))
+     (identity %deploy-identity)))))
 
 (define-public concourse-db-machine
   (machine
@@ -197,7 +212,7 @@
      (host-key "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIEdDypH5/tQh+ZXp5vNk8bnADKgSJ03GglQRc4mWfkMt")
      (system "x86_64-linux")
      (user "peteches")
-     (identity "/home/peteches/.ssh/id_ed25519")))))
+     (identity %deploy-identity)))))
 
 (define-public concourse-web01-machine
   (machine
@@ -209,7 +224,7 @@
      (host-key "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIBi4OydXz+VS2GhJ3tG8SEbI8MtY9C62iGYD3DBjYGsq")
      (system "x86_64-linux")
      (user "peteches")
-     (identity "/home/peteches/.ssh/id_ed25519")))))
+     (identity %deploy-identity)))))
 
 (define-public concourse-worker01-machine
   (machine
@@ -221,7 +236,7 @@
      (host-key "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFaB9+BPAly8+5hdeufEvQFzr+XhJSND9LxMHRqVbE7B")
      (system "x86_64-linux")
      (user "peteches")
-     (identity "/home/peteches/.ssh/id_ed25519")))))
+     (identity %deploy-identity)))))
 
 (define-public vault-machine
   (machine
@@ -233,7 +248,7 @@
      (host-key "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIInM3jubj/B/ghMJumiBPKtY3AFAj4NCzzoFa57RXdWc")
      (system "x86_64-linux")
      (user "peteches")
-     (identity "/home/peteches/.ssh/id_ed25519")))))
+     (identity %deploy-identity)))))
 
 (define-public critical-grind-outline-machine
   (machine
@@ -245,7 +260,7 @@
      (host-key "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJMkUD28mvqVRXcx+uvbPdahm+DEfhl6EvbIudm6KhyM")
      (system "x86_64-linux")
      (user "peteches")
-     (identity "/home/peteches/.ssh/id_ed25519")))))
+     (identity %deploy-identity)))))
 
 (define-public plane-machine
   (machine
@@ -257,7 +272,7 @@
      (host-key "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIHB4zbOzy5fOWq/js8TgZGi1CIXPOAHMkR4imLhKBYYt")
      (system "x86_64-linux")
      (user "peteches")
-     (identity "/home/peteches/.ssh/id_ed25519")))))
+     (identity %deploy-identity)))))
 
 (define-public critical-grind-campaign-machine
   (machine
@@ -269,7 +284,7 @@
      (host-key "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIIZyL51uII6JZ9C75dHa0cWYHWJp5qgdddbWp+E1UnME")
      (system "x86_64-linux")
      (user "peteches")
-     (identity "/home/peteches/.ssh/id_ed25519")))))
+     (identity %deploy-identity)))))
 
 (define-public claude-workstation-machine
   (machine
@@ -283,7 +298,7 @@
      (host-key "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIKJiP5mksOP24+DCSLHsDxy0Ge3V33eNTVTJq0VyvJwj")
      (system "x86_64-linux")
      (user "peteches")
-     (identity "/home/peteches/.ssh/id_ed25519")))))
+     (identity %deploy-identity)))))
 
 (define-public %all-machines
   (list prometheus-machine
