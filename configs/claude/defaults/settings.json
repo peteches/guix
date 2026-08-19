@@ -1,5 +1,8 @@
 {
   "theme": "dark",
+  "permissions": {
+    "defaultMode": "auto"
+  },
   "hooks": {
     "SessionStart": [
       {
