@@ -261,7 +261,7 @@
 	       (build-accounts 20)
 	       (extra-options '("--max-jobs=20"))
 	       (substitute-urls
-		(append (list "http://nug.peteches.co.uk:3000")
+		(append (list "http://nug.spaniel-cordylus.ts.net:3000")
 			%default-substitute-urls))
 	       (authorized-keys
 		(append (list (local-file "./nug-substitute-key.pub"))

@@ -42,7 +42,7 @@
 ;; Used by vm-base.scm and base.scm via (guix-configuration (build-machines ...)).
 (define-public %nug-build-machine
   #~(build-machine
-     (name "nug.peteches.co.uk")
+     (name "nug.spaniel-cordylus.ts.net")
      (systems '("x86_64-linux"))
      (user "guix-offload")
      (private-key "/run/secrets/guix-offload-key")
@@ -56,7 +56,7 @@
                   guix-service-type
                   (guix-extension
                    (substitute-urls
-                    (append (list "http://nug.peteches.co.uk:3000")
+                    (append (list "http://nug.spaniel-cordylus.ts.net:3000")
                             %default-substitute-urls))
                    (authorized-keys
                     (list (plain-file "nug-coordinator.pub"
