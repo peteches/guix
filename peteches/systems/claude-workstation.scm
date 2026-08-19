@@ -192,6 +192,27 @@ host    all     all     ::1/128                 trust\n"))
        (group "users")
        (permissions #o400)
        (path "/run/secrets/slack-mcp-xoxp-token"))
+      ;; ygo's 1Password CLI (op) auth: a service-account token, not an
+      ;; interactive session -- no expiry, no master-password prompt, just
+      ;; an env var op reads per invocation (see (peteches packages
+      ;; onepassword-cli)). secrets/hosts/claude-workstation/onepassword.yaml
+      ;; does NOT exist yet -- create it before the next `guix system
+      ;; reconfigure`/redeploy of this VM (generate the token itself from
+      ;; the 1Password web console: Settings -> Developer -> Service
+      ;; Accounts):
+      ;;   printf 'token: ops_...\n' > secrets/hosts/claude-workstation/onepassword.yaml
+      ;;   sops -e -i secrets/hosts/claude-workstation/onepassword.yaml
+      ;; Picked up automatically by the existing
+      ;; `secrets/hosts/claude-workstation/.*\.yaml$` creation_rule in
+      ;; .sops.yaml -- no .sops.yaml change needed. See
+      ;; docs/secrets-management.org.
+      (sops-secret
+       (key '("token"))
+       (file (local-file "../../secrets/hosts/claude-workstation/onepassword.yaml"))
+       (user "ygo")
+       (group "users")
+       (permissions #o400)
+       (path "/run/secrets/op-service-account-token"))
       ;; Private half of the peteches automation SSH keypair -- see
       ;; %automation-authorized-key-secret in vm-base.scm for the public
       ;; half, decrypted on every VM. Only claude-workstation ever

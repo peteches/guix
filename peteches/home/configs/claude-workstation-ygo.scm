@@ -92,11 +92,15 @@
    ;; allows posting to any channel the xoxp- token can see; set it to a
    ;; comma-separated channel-ID allowlist instead to scope it down.
    #:mcp-env '(("SLACK_MCP_ADD_MESSAGE_TOOL" . "true"))
-   ;; Secret: sops-decrypted at system boot into /run/secrets/... (see
+   ;; Secrets: sops-decrypted at system boot into /run/secrets/... (see
    ;; #:sops-secrets in peteches/systems/claude-workstation.scm), exported
    ;; into the shell from there -- never baked into the store. The slack MCP
-   ;; server (spawned by Claude Code, a child of this shell) inherits it.
-   #:secret-env-vars '(("SLACK_MCP_XOXP_TOKEN" . "/run/secrets/slack-mcp-xoxp-token"))
+   ;; server (spawned by Claude Code, a child of this shell) inherits
+   ;; SLACK_MCP_XOXP_TOKEN the same way; OP_SERVICE_ACCOUNT_TOKEN is read
+   ;; directly by the `op' CLI (peteches packages onepassword-cli) on every
+   ;; invocation -- no interactive sign-in, no session to expire.
+   #:secret-env-vars '(("SLACK_MCP_XOXP_TOKEN"      . "/run/secrets/slack-mcp-xoxp-token")
+                        ("OP_SERVICE_ACCOUNT_TOKEN" . "/run/secrets/op-service-account-token"))
    #:extra-claude-files
    (list (cons "skills/wireguard-socks5/SKILL.md"
                (local-file (source-path
