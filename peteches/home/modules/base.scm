@@ -90,7 +90,7 @@
   #:use-module (peteches packages claude-completion)
   #:use-module (peteches packages emacs-anvil)
   #:use-module (peteches packages graphify)
-  #:use-module (peteches packages herdr)
+  #:use-module (peteches packages herdr-mx)
   #:use-module ((peteches packages comfyui-mcp) #:select (node-comfyui-mcp))
   #:use-module (peteches packages rustdesk)
   #:use-module (peteches packages concourse)
@@ -161,7 +161,7 @@
    claude-completion
    emacs-anvil
    graphify
-   herdr
+   herdr-mx
    rustdesk
    dank-material-shell
    mako
