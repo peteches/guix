@@ -48,3 +48,41 @@ style = "Bold Italic"
 style = { shape = "Block", blinking = "Off" }
 unfocused_hollow = true
 thickness = 0.15
+
+# Emacs-style keybindings.
+#
+# Copy/paste use Ctrl+Shift+C/V, Shift+Insert and Control+Y — these are
+# left outside vi mode since they need to work while typing normally, and
+# Ctrl+C alone must stay untouched (SIGINT). Control+Y shadows readline's
+# own C-y (yank last kill) at the shell prompt — accepted tradeoff so
+# paste is usable while typing, not just in vi mode.
+#
+# Movement/selection use Emacs mnemonics but are scoped to vi mode
+# (toggle with the Alacritty default Ctrl+Shift+Space) because C-a/C-e/
+# C-f/C-b/C-n/C-p/C-w/C-space are already bound by your shell's readline/
+# zle emacs keymap during normal typing — binding them outside vi mode
+# would break line editing at the prompt.
+[keyboard]
+bindings = [
+  { key = "C", mods = "Control|Shift", action = "Copy" },
+  { key = "V", mods = "Control|Shift", action = "Paste" },
+  { key = "Insert", mods = "Shift", action = "Paste" },
+  { key = "Y", mods = "Control", action = "Paste" },
+
+  # Movement (vi mode only)
+  { key = "F", mods = "Control", mode = "Vi", action = "Right" },
+  { key = "B", mods = "Control", mode = "Vi", action = "Left" },
+  { key = "N", mods = "Control", mode = "Vi", action = "Down" },
+  { key = "P", mods = "Control", mode = "Vi", action = "Up" },
+  { key = "F", mods = "Alt", mode = "Vi", action = "WordRight" },
+  { key = "B", mods = "Alt", mode = "Vi", action = "WordLeft" },
+  { key = "A", mods = "Control", mode = "Vi", action = "First" },
+  { key = "E", mods = "Control", mode = "Vi", action = "Last" },
+
+  # Selection / copy (vi mode only) — C-Space sets the mark like Emacs,
+  # M-w and C-w copy the region, C-g clears it like keyboard-quit.
+  { key = "Space", mods = "Control", mode = "Vi", action = "ToggleNormalSelection" },
+  { key = "W", mods = "Alt", mode = "Vi", action = "Copy" },
+  { key = "W", mods = "Control", mode = "Vi", action = "Copy" },
+  { key = "G", mods = "Control", mode = "Vi", action = "ClearSelection" },
+]
