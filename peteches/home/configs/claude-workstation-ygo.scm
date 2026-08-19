@@ -24,6 +24,15 @@
 
 (define-module (peteches home configs claude-workstation-ygo)
   #:use-module (guix gexp)
+  ;; Import packages directly instead of `specification->package'.  A top-level
+  ;; `specification->package' fires `fold-packages' over `%package-module-path',
+  ;; which `guix deploy'/`guix system' populate with the repo (`-L .'); the scan
+  ;; then re-enters this half-loaded module tree and every module fails to bind.
+  ;; See the note in (peteches home modules claude-workstation).
+  #:use-module ((gnu packages golang) #:select (go))
+  #:use-module ((gnu packages containers) #:select (podman))
+  #:use-module (peteches packages go-tools)
+  #:use-module (peteches packages yarn)
   #:use-module (peteches repository)
   #:use-module (peteches home modules claude-workstation)
   #:use-module (peteches home modules claude))
@@ -56,6 +65,12 @@
    #:git-name "Peter McCabe"
    #:git-email "peter.mccabe@ygo.ai"
    #:repos %ygo-repos
+   ;; go/go-golangci-lint/yarn for the ygocloud toolchain; podman so this
+   ;; account can also drive containers ad hoc (`podman ps' etc against its
+   ;; own rootless storage) on top of the always-on dev Postgres/TimescaleDB/
+   ;; Redis containers managed at the system level -- see the oci-service-type
+   ;; extensions in claude-workstation.scm.
+   #:extra-packages (list go go-golangci-lint yarn podman)
    #:mcp-servers %ygo-mcp-servers
    #:extra-claude-files
    (list (cons "skills/wireguard-socks5/SKILL.md"

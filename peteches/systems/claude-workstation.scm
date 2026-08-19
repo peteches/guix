@@ -38,6 +38,9 @@
   #:use-module (gnu bootloader grub)
   #:use-module (gnu services)
   #:use-module (gnu services ssh)
+  #:use-module (gnu services base)
+  #:use-module (gnu services containers)
+  #:use-module (gnu services shepherd)
   #:use-module (gnu system)
   #:use-module (gnu system accounts)
   #:use-module (gnu system shadow)
@@ -193,6 +196,16 @@
         (mount-point "/")
         (device "/dev/vda2")
         (type "ext4"))
+      ;; cgroup2 mount required by Podman/crun for the dev database
+      ;; containers below (see plane.scm / critical-grind-outline.scm for
+      ;; the same requirement).
+      (file-system
+        (mount-point "/sys/fs/cgroup")
+        (device "cgroup2")
+        (type "cgroup2")
+        (flags '(no-exec no-suid no-dev))
+        (check? #f)
+        (create-mount-point? #t))
       (xdg-runtime-tmpfs "peteches" 1000)
       (xdg-runtime-tmpfs "criticalgrind" 1001)
       (xdg-runtime-tmpfs "ygo" 1002))
@@ -227,12 +240,142 @@
       (service wireguard-socks5-service-type
                (wireguard-socks5-configuration
                 (config-file "/run/secrets/wg0.conf")))
+
+      ;; Dev databases for the ygo account: rootful Podman OCI containers
+      ;; (same shape as plane.scm / critical-grind-outline.scm), bound to
+      ;; loopback only since this is local dev tooling, not a network
+      ;; service. POSTGRES_HOST_AUTH_METHOD=trust / no Redis password: safe
+      ;; only because nothing but 127.0.0.1 can reach these ports (see the
+      ;; firewall rules below), so no SOPS secret is warranted here.
+      ;;
+      ;; Required by oci-service-type with Podman running as root.
+      (simple-service 'cgroup-group
+                      account-service-type
+                      (list (user-group
+                             (name "cgroup")
+                             (system? #t))))
+
+      (service oci-service-type
+               (oci-configuration
+                (runtime 'podman)
+                (user "root")))
+
+      ;; Stub shepherd services required by oci-service-type that would
+      ;; otherwise depend on elogind (which conflicts with Shepherd-managed
+      ;; PAM during deploy) -- see plane.scm / critical-grind-outline.scm.
+      (simple-service 'cgroup-stubs
+                      shepherd-root-service-type
+                      (list
+                       (shepherd-service
+                        (provision '(cgroups2-fs-owner))
+                        (one-shot? #t)
+                        (start #~(lambda _ #t))
+                        (documentation "Stub."))
+                       (shepherd-service
+                        (provision '(cgroups2-limits))
+                        (one-shot? #t)
+                        (start #~(lambda _ #t))
+                        (documentation "Stub."))
+                       (shepherd-service
+                        (provision '(rootless-podman-shared-root-fs))
+                        (one-shot? #t)
+                        (start #~(lambda _ #t))
+                        (documentation "Stub."))
+                       (shepherd-service
+                        (provision '(dbus-system))
+                        (one-shot? #t)
+                        (start #~(lambda _ #t))
+                        (documentation "Stub."))))
+
+      ;; Podman requires a trust policy for image pulls.
+      (simple-service 'containers-policy
+                      etc-service-type
+                      (list (list "containers/policy.json"
+                                  (plain-file "containers-policy.json"
+                                              "{\"default\":[{\"type\":\"insecureAcceptAnything\"}]}"))
+                            ;; linux-libre has no overlayfs or FUSE support on
+                            ;; this VM; vfs is the only working storage driver
+                            ;; (see plane.scm).
+                            (list "containers/storage.conf"
+                                  (plain-file "containers-storage.conf"
+                                              "[storage]\ndriver = \"vfs\"\n"))))
+
+      ;; Host directories backing each container's data volume, created and
+      ;; owned by the uid/gid each official image runs its daemon as (999:999
+      ;; for all three -- postgres, timescaledb and redis's upstream images
+      ;; all create that user).
+      (simple-service 'ygo-dev-db-dirs
+                      activation-service-type
+                      #~(begin
+                          (use-modules (guix build utils))
+                          (for-each
+                           (lambda (dir)
+                             (mkdir-p dir)
+                             (chown dir 999 999))
+                           '("/var/lib/ygo-dev-db/postgres"
+                             "/var/lib/ygo-dev-db/timescaledb"
+                             "/var/lib/ygo-dev-db/redis"))))
+
+      ;; Loopback-only DNAT still traverses the FORWARD chain once Podman
+      ;; rewrites the destination onto the podman0 bridge, so this is needed
+      ;; even though nothing off-VM can reach these ports (see
+      ;; critical-grind-outline.scm for the identical rule).
+      (simple-service 'ygo-dev-db-firewall
+                      firewall-service-type
+                      (nftables-rules
+                       (forward (list "ct state { established, related } accept"
+                                      "iifname \"podman0\" accept"
+                                      "oifname \"podman0\" accept"))))
+
+      (simple-service 'ygo-dev-postgres
+                      oci-service-type
+                      (oci-extension
+                       (containers
+                        (list (oci-container-configuration
+                               (image "docker.io/library/postgres:16")
+                               (provision "ygo-dev-postgres")
+                               (requirement '(networking file-systems))
+                               (log-file "/var/log/ygo-dev-postgres.log")
+                               (environment '(("POSTGRES_HOST_AUTH_METHOD" . "trust")))
+                               (ports (list "127.0.0.1:5432:5432"))
+                               (volumes (list "/var/lib/ygo-dev-db/postgres:/var/lib/postgresql/data")))))))
+
+      (simple-service 'ygo-dev-timescaledb
+                      oci-service-type
+                      (oci-extension
+                       (containers
+                        (list (oci-container-configuration
+                               (image "docker.io/timescale/timescaledb:latest-pg16")
+                               (provision "ygo-dev-timescaledb")
+                               (requirement '(networking file-systems))
+                               (log-file "/var/log/ygo-dev-timescaledb.log")
+                               (environment '(("POSTGRES_HOST_AUTH_METHOD" . "trust")))
+                               ;; Host 5433 -> container 5432: TimescaleDB is a
+                               ;; Postgres image and listens on 5432 internally.
+                               (ports (list "127.0.0.1:5433:5432"))
+                               (volumes (list "/var/lib/ygo-dev-db/timescaledb:/var/lib/postgresql/data")))))))
+
+      (simple-service 'ygo-dev-redis
+                      oci-service-type
+                      (oci-extension
+                       (containers
+                        (list (oci-container-configuration
+                               (image "docker.io/library/redis:7")
+                               (provision "ygo-dev-redis")
+                               (requirement '(networking file-systems))
+                               (log-file "/var/log/ygo-dev-redis.log")
+                               (ports (list "127.0.0.1:6379:6379"))
+                               (volumes (list "/var/lib/ygo-dev-db/redis:/data")))))))
+
       (service alloy-service-type
                (alloy-configuration
                 (hostname "claude-workstation.peteches.co.uk")
                 (log-files (list (cons "/var/log/messages" "syslog")
                                  (cons "/var/log/prometheus-node-exporter.log" "node-exporter")
                                  (cons "/var/log/ntpd.log" "ntpd")
-                                 (cons "/var/log/alloy.log" "alloy"))))))))))
+                                 (cons "/var/log/alloy.log" "alloy")
+                                 (cons "/var/log/ygo-dev-postgres.log" "ygo-dev-postgres")
+                                 (cons "/var/log/ygo-dev-timescaledb.log" "ygo-dev-timescaledb")
+                                 (cons "/var/log/ygo-dev-redis.log" "ygo-dev-redis"))))))))))
 
 claude-workstation-os
