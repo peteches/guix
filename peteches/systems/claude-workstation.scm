@@ -27,10 +27,6 @@
 ;;   * create + encrypt secrets/hosts/claude-workstation/slack.yaml (ygo's
 ;;     Slack MCP xoxp- token) -- see the #:sops-secrets entry below for the
 ;;     exact `sops -e -i' invocation.
-;;   * flip #:with-nug-offload? back to #t once a guix-build.yaml secret AND
-;;     the VM's guix-offload public key in nug.scm both exist (half-wiring it
-;;     fails silently — see vm-base.scm).
-;;   * fill the host-key in machines.scm (ssh-keyscan after first boot).
 ;; See CLAUDE.md "Adding a New VM" for the remaining fleet-integration files
 ;; (ssh.scm, machines.scm, scripts/deploy.scm, pihole.scm, monitored-hosts,
 ;; prometheus.scm, proxmox-vms.org, infra/terraform).
@@ -118,9 +114,7 @@
      #:host-name "claude-workstation.peteches.co.uk"
      #:ipv4-address "192.168.51.205/23"
      #:ipv6-address "2a10:d582:ef59::111/64"
-     ;; Offload needs a guix-build.yaml secret + nug authorized-key that do
-     ;; not exist until first boot; enabling half of it fails silently.
-     #:with-nug-offload? #f
+     #:with-nug-offload? #t
      #:automation-key-extra-users '("criticalgrind" "ygo")
      #:users-extra (list %criticalgrind-user %ygo-user)
      ;; Tailscale unattended join.  The auth-key is a SHARED sops secret
@@ -200,7 +194,18 @@
        (user "peteches")
        (group "users")
        (permissions #o400)
-       (path "/run/secrets/peteches-automation-ssh-key")))
+       (path "/run/secrets/peteches-automation-ssh-key"))
+      ;; Private half of the guix-offload keypair, encrypted for this VM's
+      ;; own age key -- see the matching public half added to
+      ;; guix-offload-authorized-keys in peteches/systems/nug.scm. Same
+      ;; shape as every other VM's guix-build.yaml (see arr.scm, caddy.scm,
+      ;; etc.); nug is reachable over Tailscale now, so this VM can offload
+      ;; too.
+      (sops-secret
+       (key '("ssh-private-key"))
+       (file (local-file "../../secrets/hosts/claude-workstation/guix-build.yaml"))
+       (path "/run/secrets/guix-offload-key")
+       (permissions #o400)))
      #:bootloader
      (bootloader-configuration
       (bootloader grub-efi-removable-bootloader)

@@ -489,6 +489,7 @@
   (simple-service 'guix-offload-authorized-keys
                   openssh-service-type
                   `(("guix-offload"
+                     ,(plain-file "claude-workstation-offload.pub" "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIIVVAw63bjPSR1Pmm8MixkVZgNYty3IrWbJMyWe7CEVo guix-offload@claude-workstation\n")
                      ,(plain-file "arr-offload.pub" "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJCmWvNZoNQhpVpeYU6VXtYcrtS8XfgrK5S5WCs5OtM1 guix-offload@arr\n")
                      ,(plain-file "nyarlothotep.pub" "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIEP+/uHdoUNfL+LuniZGTEwPJkxvSgDpuR58yxfw/u74 guix-build@nyarlothotep\n")
                      ,(plain-file "caddy-offload.pub" "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJ5OyvcOFlI3lnunv9FzkOms2CO9i7y12EnSSBDmp6ob guix-offload@caddy\n")
