@@ -46,6 +46,19 @@
 ;;                        guix-offload public key must be listed in
 ;;                        peteches/systems/nug.scm's authorized_keys service.
 ;;   #:with-nvidia?       nonguix NVIDIA driver + CUDA (jellyfin, for NVENC).
+;;   #:with-swap?         DEFAULT #t — a /swapfile on the root filesystem,
+;;                        created (fallocate + mkswap) by a one-shot
+;;                        activation service the first time it's missing.
+;;                        Sized to match the VM's total RAM, read from
+;;                        /proc/meminfo AT ACTIVATION TIME (not from any
+;;                        number in this repo) -- so it tracks whatever
+;;                        Terraform actually gave the VM with no separate
+;;                        value to keep in sync. Pass #:swap-size-mb to
+;;                        override with a fixed size instead.
+;;                        A VM memory resize does NOT resize an existing
+;;                        file -- delete /swapfile and reconfigure to pick
+;;                        up the new size.
+;;   #:swap-size-mb       DEFAULT #f (match RAM, see #:with-swap? above).
 ;;
 ;; Baseline every VM gets: openssh (key-only, nug + nyarlothotep enrolled),
 ;; ntpd, qemu-guest-agent, nftables firewall (%vm-base-firewall: ssh + 9100
@@ -157,6 +170,41 @@
                                 (equal? db "hosts")))))
                    %nscd-default-caches))))
 
+;; /swapfile lives on the root filesystem -- every VM's root is /dev/vda2
+;; ext4 (see CLAUDE.md), so this path is safe to hard-code across the fleet.
+(define %vm-swap-file "/swapfile")
+
+(define (swap-file-activation size-mb)
+  "Return a gexp that creates and formats %VM-SWAP-FILE the first time it's
+missing.  SIZE-MB, if a number, fixes the file size; if #f, the size
+matches the VM's total RAM as reported by /proc/meminfo at activation
+time.  A no-op on subsequent boots."
+  #~(begin
+      (use-modules (guix build utils) (ice-9 rdelim) (srfi srfi-13))
+      (define (mem-total-mb)
+        (call-with-input-file "/proc/meminfo"
+          (lambda (port)
+            (let loop ()
+              (let ((line (read-line port)))
+                (if (eof-object? line)
+                    (error "swap-file-activation: MemTotal not found in /proc/meminfo")
+                    (if (string-prefix? "MemTotal:" line)
+                        (quotient
+                         (string->number
+                          (car (filter (lambda (s) (not (string-null? s)))
+                                       (string-split
+                                        (substring line (string-length "MemTotal:"))
+                                        #\space))))
+                         1024)
+                        (loop))))))))
+      (unless (file-exists? #$%vm-swap-file)
+        (let ((mb (or #$size-mb (mem-total-mb))))
+          (invoke #$(file-append util-linux "/bin/fallocate")
+                  "-l" (string-append (number->string mb) "M")
+                  #$%vm-swap-file)
+          (chmod #$%vm-swap-file #o600)
+          (invoke #$(file-append util-linux "/sbin/mkswap") #$%vm-swap-file)))))
+
 (define %vm-interface   "eth0")
 ;; The LAN is a /23 (192.168.50.0/23), so the .50.x gateway and the .51.x
 ;; VM addresses are on the same subnet.  Every VM passes a /23 prefix in
@@ -217,8 +265,16 @@
           (with-nug-offload? #t)
           (with-nvidia? #f)
           (with-automation-key? #t)
-          (automation-key-extra-users '()))
+          (automation-key-extra-users '())
+          (with-swap? #t)
+          (swap-size-mb #f))
   (let* ((nonguix-services (if with-nonguix? (list (nonguix-substitute-service)) '()))
+         (swap-services
+          (if with-swap?
+              (list (simple-service 'swap-file
+                                    activation-service-type
+                                    (swap-file-activation swap-size-mb)))
+              '()))
          (restic-services
           (if restic-config
               (list (service restic-vm-backup-service-type restic-config))
@@ -311,6 +367,7 @@
            restic-services
            sops-services
            nvidia-services
+           swap-services
            extra-services)))
     (operating-system
       (kernel kernel)
@@ -349,4 +406,7 @@
             (build-machines (if with-nug-offload? (list %nug-build-machine) '()))))))
       (mapped-devices mapped-devices)
       (file-systems (append file-systems %base-file-systems))
+      (swap-devices (if with-swap?
+                        (list (swap-space (target %vm-swap-file)))
+                        '()))
       (bootloader bootloader))))
