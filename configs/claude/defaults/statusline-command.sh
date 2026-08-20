@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 input=$(cat)
+printf '%s' "$input" > "$HOME/.claude/.statusline-last-input.json" 2>/dev/null
 cwd=$(echo "$input" | jq -r '.workspace.current_dir // empty')
 [ -z "$cwd" ] && cwd=$(pwd)
 
