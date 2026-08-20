@@ -108,7 +108,7 @@ time, timezone conversion and relative-time tools to MCP clients.  Set
 ;; for a real external library (Guix's `postgresql') rather than a vendored
 ;; one. libpq's wire protocol is stable across server versions, so the
 ;; default `postgresql' package is fine to build against even though the
-;; ygo VM's dev database runs postgresql-16.
+;; ygo VM's dev database runs postgresql-17.
 (define-public node-libpq-1.11.0
   (package
     (name "node-libpq")

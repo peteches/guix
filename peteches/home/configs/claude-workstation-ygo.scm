@@ -91,7 +91,7 @@
         ;; @modelcontextprotocol/server-postgres, registered twice -- the
         ;; database is a positional CLI arg, not something the package
         ;; itself can multiplex, so each dev database gets its own entry.
-        ;; Both point at claude-workstation.scm's native Postgres 16
+        ;; Both point at claude-workstation.scm's native Postgres 17
         ;; instance (127.0.0.1:5432, POSTGRES_HOST_AUTH_METHOD=trust for
         ;; all roles -- see %ygo-dev-pg-hba), connecting as the "postgres"
         ;; superuser since no app-specific role is provisioned there.

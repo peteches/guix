@@ -1,10 +1,13 @@
 ;;; peteches/packages/postgres-extensions.scm — PostgreSQL extensions for
-;;; claude-workstation's native postgresql-16 instance (see
+;;; claude-workstation's native postgresql-17 instance (see
 ;;; peteches/systems/claude-workstation.scm). Postgres extensions are
 ;;; ABI-locked to the major server version they're built against, so both
-;;; packages here are pinned to postgresql-16 explicitly rather than the
+;;; packages here are pinned to postgresql-17 explicitly rather than the
 ;;; Guix default `postgresql' (= postgresql-14) -- mixing them means the
-;;; server refuses to load the extension at all.
+;;; server refuses to load the extension at all. Bumping the native
+;;; server's major version again later (e.g. once Guix packages
+;;; postgresql-18) means repeating this same rename-and-repoint dance for
+;;; both packages below.
 ;;;
 ;;; pg_cron is a plain PGXS extension (like pgvector in upstream Guix's own
 ;;; (gnu packages databases)): `make' picks up pg_config from the
@@ -14,8 +17,8 @@
 ;;; same as pgvector does.
 ;;;
 ;;; postgis (gnu packages geo) is already packaged upstream, but built
-;;; against the bare `postgresql' (14) input -- postgis-16 below is a
-;;; local rebuild against postgresql-16, otherwise identical.
+;;; against the bare `postgresql' (14) input -- postgis-17 below is a
+;;; local rebuild against postgresql-17, otherwise identical.
 
 (define-module (peteches packages postgres-extensions)
   #:use-module (guix packages)
@@ -27,7 +30,7 @@
                 #:prefix license:)
   #:use-module (gnu packages databases)
   #:use-module (gnu packages geo)
-  #:export (pg-cron postgis-16))
+  #:export (pg-cron postgis-17))
 
 (define-public pg-cron
   (package
@@ -73,7 +76,7 @@
                 ;; to the control file's default_version.
                 (for-each (lambda (file) (install-file file extension))
                           (find-files "." "^pg_cron--.*\\.sql$"))))))))
-    (inputs (list postgresql-16))
+    (inputs (list postgresql-17))
     (home-page "https://github.com/citusdata/pg_cron")
     (synopsis "Job scheduler extension for PostgreSQL")
     (description
@@ -86,11 +89,11 @@ since it registers a background worker at server start.")
               "https://github.com/citusdata/pg_cron/blob/master/LICENSE"))))
 
 ;; Same package as upstream Guix's postgis, just built against
-;; postgresql-16 instead of the bare `postgresql' (14) it normally links
+;; postgresql-17 instead of the bare `postgresql' (14) it normally links
 ;; against -- Postgres extensions are ABI-locked to their major version.
-(define-public postgis-16
+(define-public postgis-17
   (package
     (inherit postgis)
-    (name "postgis-16")
+    (name "postgis-17")
     (inputs (modify-inputs (package-inputs postgis)
-              (replace "postgresql" postgresql-16)))))
+              (replace "postgresql" postgresql-17)))))

@@ -54,7 +54,7 @@
   #:use-module (gnu system shadow)
   #:use-module (gnu system file-systems)
   #:use-module (gnu system keyboard)
-  #:use-module ((gnu packages databases) #:select (postgresql-16))
+  #:use-module ((gnu packages databases) #:select (postgresql-17))
   #:use-module (peteches packages postgres-extensions)
   #:use-module (peteches systems vm-base)
   #:use-module (peteches services alloy)
@@ -395,19 +395,36 @@ host    all     all     ::1/128                 trust\n"))
                                       "iifname \"podman0\" accept"
                                       "oifname \"podman0\" accept"))))
 
-      ;; Native PostgreSQL 16 instance for ygo's schema.sql/content-schema.sql
+      ;; Native PostgreSQL 17 instance for ygo's schema.sql/content-schema.sql
       ;; (port 5432) -- needs postgis and pg_cron as loadable extensions,
       ;; which no upstream Docker image bundles together, so this replaces
       ;; the old docker.io/library/postgres:16 container. Pinned to
-      ;; postgresql-16 (not Guix's default postgresql-14) to match that old
-      ;; container and the still-Docker-based ygo-dev-timescaledb sibling
-      ;; below (timescale/timescaledb:latest-pg16) -- postgis-16 and
+      ;; postgresql-17 (not Guix's default postgresql-14) -- postgis-17 and
       ;; pg-cron (peteches packages postgres-extensions) are both built
-      ;; against postgresql-16 specifically for this reason: Postgres
+      ;; against postgresql-17 specifically for this reason: Postgres
       ;; extensions are ABI-locked to the major version they're compiled
-      ;; against. fuzzystrmatch, ltree and pg_trgm are contrib modules
-      ;; Guix's postgresql package already builds and installs, so they
-      ;; need no extension-packages entry of their own.
+      ;; against. The still-Docker-based ygo-dev-timescaledb sibling below
+      ;; remains on timescale/timescaledb:latest-pg16 -- it's a separate
+      ;; instance on its own port (5433/its own data volume), not part of
+      ;; this native server, so it isn't affected by this pin.
+      ;; fuzzystrmatch, ltree and pg_trgm are contrib modules Guix's
+      ;; postgresql package already builds and installs, so they need no
+      ;; extension-packages entry of their own.
+      ;;
+      ;; data-directory is namespaced by major version
+      ;; (/var/lib/postgresql/17/data, not the default /var/lib/postgresql/
+      ;; data) so that bumping the major version again later -- e.g. once
+      ;; Guix packages postgresql-18 (not yet available in this repo's
+      ;; pinned channel as of this writing) -- is just: bump the version
+      ;; symbol here and in postgres-extensions.scm, and add a new
+      ;; .../<N>/data path. Guix's postgresql-service-type only runs initdb
+      ;; when data-directory doesn't already exist, so the new version
+      ;; always comes up as a fresh, empty cluster at its own path rather
+      ;; than refusing to start against a previous major version's on-disk
+      ;; format; the previous version's directory is simply left behind,
+      ;; unmanaged. ygo's dev databases are disposable (schema.sql/
+      ;; content-schema.sql re-seed them), so no dump/restore migration is
+      ;; carried out here -- they're just recreated fresh after each bump.
       ;;
       ;; pg_cron needs shared_preload_libraries set (it registers a
       ;; background worker at server start, not just a loadable .so) --
@@ -421,8 +438,9 @@ host    all     all     ::1/128                 trust\n"))
       ;; the two remaining containers still need).
       (service postgresql-service-type
                (postgresql-configuration
-                (postgresql postgresql-16)
-                (extension-packages (list postgis-16 pg-cron))
+                (postgresql postgresql-17)
+                (data-directory "/var/lib/postgresql/17/data")
+                (extension-packages (list postgis-17 pg-cron))
                 (config-file
                  (postgresql-config-file
                   (hba-file %ygo-dev-pg-hba)
