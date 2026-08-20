@@ -3,6 +3,11 @@
   "permissions": {
     "defaultMode": "auto"
   },
+  "statusLine": {
+    "type": "command",
+    "command": "~/.claude/statusline-command.sh",
+    "padding": 0
+  },
   "hooks": {
     "SessionStart": [
       {

@@ -3,6 +3,15 @@ input=$(cat)
 cwd=$(echo "$input" | jq -r '.workspace.current_dir // empty')
 [ -z "$cwd" ] && cwd=$(pwd)
 
+model_suffix=""
+model=$(echo "$input" | jq -r '.model.display_name // empty')
+[ -n "$model" ] && model_suffix=" [$model]"
+
+branch_suffix=""
+branch=$(git -C "$cwd" branch --show-current 2>/dev/null)
+[ -z "$branch" ] && branch=$(git -C "$cwd" rev-parse --short HEAD 2>/dev/null)
+[ -n "$branch" ] && branch_suffix=" ($branch)"
+
 ctx_suffix=""
 used=$(echo "$input" | jq -r '.context_window.used_percentage // empty')
 [ -n "$used" ] && ctx_suffix=$(printf " [ctx: %.0f%%]" "$used")
@@ -44,7 +53,7 @@ seven_d_str=""
 [ -n "$five_h_str" ] || [ -n "$seven_d_str" ] && \
     rate_suffix=" [${five_h_str}${five_h_str:+${seven_d_str:+ }}${seven_d_str}]"
 
-printf '%s@%s %s%s%s%s%s' \
-    "$(whoami)" "$(hostname -s)" "$cwd" \
+printf '%s@%s %s%s%s%s%s%s%s' \
+    "$(whoami)" "$(hostname -s)" "$cwd" "$branch_suffix" \
     "${GUIX_ENVIRONMENT:+ [env]}" \
-    "$ctx_suffix" "$cost_suffix" "$rate_suffix"
+    "$model_suffix" "$ctx_suffix" "$cost_suffix" "$rate_suffix"
