@@ -34,7 +34,7 @@
   #:use-module ((gnu packages golang) #:select (go))
   #:use-module ((gnu packages golang-apps) #:select (gopls))
   #:use-module ((gnu packages debug) #:select (delve))
-  #:use-module ((gnu packages databases) #:select (postgresql pgcli))
+  #:use-module ((gnu packages databases) #:select (postgresql-17 pgcli))
   #:use-module ((gnu packages commencement) #:select (gcc-toolchain))
   #:use-module (peteches home modules claude-workstation)
   #:use-module (peteches home modules claude))
@@ -59,7 +59,13 @@
  ;; debugger, and PostgreSQL client tooling for the campaign app's database.
  ;; cgo and `go test -race` need a C toolchain -- drop gcc-toolchain if the
  ;; project stays pure Go (pgx/lib-pq are) and never runs the race detector.
- #:extra-packages (list go gopls delve postgresql pgcli gcc-toolchain)
+ ;; postgresql-17 here is a client-version choice for consistency with
+ ;; claude-workstation's other accounts (ygo), not a match to what this
+ ;; client actually talks to -- critical-grind-campaign.scm's own native
+ ;; server is still on the bare `postgresql' (= postgresql-14) default.
+ ;; Harmless either way: libpq's wire protocol is stable across server
+ ;; versions.
+ #:extra-packages (list go gopls delve postgresql-17 pgcli gcc-toolchain)
  ;; Non-secret only.  The Plane SDK appends /api/v1 to PLANE_BASE_URL itself.
  #:mcp-env '(("PLANE_BASE_URL"       . "https://plane.ts.peteches.co.uk")
              ("PLANE_WORKSPACE_SLUG" . "critical-grind")

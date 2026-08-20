@@ -38,7 +38,7 @@
   ;; See the note in (peteches home modules claude-workstation).
   #:use-module ((gnu packages golang) #:select (go))
   #:use-module ((gnu packages containers) #:select (podman))
-  #:use-module ((gnu packages databases) #:select (postgresql redis))
+  #:use-module ((gnu packages databases) #:select (postgresql-17 redis))
   #:use-module (peteches packages go-tools)
   #:use-module (peteches packages yarn)
   #:use-module ((peteches packages mcp) #:select (slack-mcp-server))
@@ -121,12 +121,14 @@
    ;; account can also drive containers ad hoc (`podman ps' etc against its
    ;; own rootless storage) on top of the always-on dev Postgres/TimescaleDB/
    ;; Redis containers managed at the system level -- see the oci-service-type
-   ;; extensions in claude-workstation.scm. postgresql/redis are pulled in
+   ;; extensions in claude-workstation.scm. postgresql-17/redis are pulled in
    ;; purely for their client binaries (psql, redis-cli) to talk to those
    ;; same dev containers on 127.0.0.1:5432/5433/6379 -- neither package has
    ;; a lighter client-only variant in this channel (same tradeoff
-   ;; criticalgrind's config already makes for psql).
-   #:extra-packages (list go go-golangci-lint yarn podman postgresql redis)
+   ;; criticalgrind's config already makes for psql). Pinned to postgresql-17
+   ;; specifically (not the bare `postgresql' = postgresql-14 default) so
+   ;; `psql --version' matches the native server it actually talks to.
+   #:extra-packages (list go go-golangci-lint yarn podman postgresql-17 redis)
    #:mcp-servers %ygo-mcp-servers
    ;; Non-secret feature flag: the slack-mcp-server binary registers
    ;; conversations_add_message (message posting) only when this is set --
