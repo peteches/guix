@@ -6,7 +6,7 @@
 ;;   criticalgrind — the Critical Grind work account (added here)
 ;;   ygo           — Peter McCabe's ygo.ai identity (added here)
 ;;
-;; Each user runs their OWN `guix home reconfigure' against a config in
+;; Each account has its own home-environment config in
 ;; peteches/home/configs/:
 ;;   claude-workstation-peteches.scm
 ;;   claude-workstation-criticalgrind.scm
@@ -15,6 +15,14 @@
 ;; (peteches home modules claude-workstation): it installs claude-code,
 ;; symlinks ~/.claude from configs/claude/defaults, registers that account's
 ;; MCP servers, and pre-clones repos into ~/area_51/<repo>.
+;;
+;; None of the three need a separate `guix home reconfigure' -- the
+;; `guix-home-service-type' instance down in claude-workstation-os's
+;; #:extra-services wires all three home-environment values directly into
+;; this system, so `guix system reconfigure'/`guix deploy' activates all of
+;; them (as guix-home-<account> shepherd services) in the same run as the
+;; system itself. Editing a home config here only needs a system-level
+;; redeploy, via scripts/deploy.scm -- see CLAUDE.md.
 ;;
 ;; WHY separate OS users rather than the container-session wrapper: each user
 ;; gets its own ~/.claude.json (auth + per-project state), so the two accounts

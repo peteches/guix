@@ -1,12 +1,19 @@
 ;;; Home config for the `peteches' account on claude-workstation.
 ;;;
-;;; Run ON THE VM, as the peteches user:
+;;; NOT applied via a standalone `guix home reconfigure' on the VM --
+;;; claude-workstation-os wires this value straight into its own
+;;; `guix-home-service-type' instance (see peteches/systems/claude-
+;;; workstation.scm), so a system-level `guix system reconfigure'/`guix
+;;; deploy' (scripts/deploy.scm) activates it as the guix-home-peteches
+;;; shepherd service in the same run. Editing this file just needs a
+;;; redeploy of claude-workstation, same as any other change to that system.
+;;;
+;;; (Manual fallback, e.g. to test a change before a full redeploy: run ON
+;;; THE VM as the peteches user --
 ;;;   guix home -L ~/area_51/guix reconfigure \
 ;;;     ~/area_51/guix/peteches/home/configs/claude-workstation-peteches.scm
-;;;
-;;; Bootstrap (first time only — this config clones the OTHER repos, but the
-;;; guix checkout it lives in must already exist): clone the guix repo by hand
-;;; into ~/area_51/guix, then run the command above.
+;;; -- which needs the guix repo cloned by hand into ~/area_51/guix first,
+;;; since this config clones the OTHER repos but not the one it lives in.)
 ;;;
 ;;; Evaluates to a bare `home-environment' as its final expression, which is
 ;;; what `guix home' consumes.
