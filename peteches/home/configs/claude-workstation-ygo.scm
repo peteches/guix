@@ -48,19 +48,28 @@
 
 ;; Linear, Notion and Granola all ship hosted MCP servers reached over
 ;; Streamable HTTP with browser-based OAuth -- see the module docstring.
+;;
+;; #:oauth-scopes pins the scope string each provider needs requested at
+;; sign-in -- in particular Granola's must include "offline_access", or
+;; Claude Code 2.1.196+ falls back to the provider's bare advertised
+;; scopes_supported and mints a grant with no refresh token, silently
+;; expiring the session.
 (define %ygo-mcp-servers
   (list (home-claude-mcp-server
          (name "linear")
          (transport "http")
-         (url "https://mcp.linear.app/mcp"))
+         (url "https://mcp.linear.app/mcp")
+         (oauth-scopes "read write openid email"))
         (home-claude-mcp-server
          (name "notion")
          (transport "http")
-         (url "https://mcp.notion.com/mcp"))
+         (url "https://mcp.notion.com/mcp")
+         (oauth-scopes "default"))
         (home-claude-mcp-server
          (name "granola")
          (transport "http")
-         (url "https://mcp.granola.ai/mcp"))
+         (url "https://mcp.granola.ai/mcp")
+         (oauth-scopes "openid profile email offline_access"))
         ;; Slack, unlike the three above, has no hosted OAuth MCP endpoint --
         ;; it runs locally (stdio) and reads its auth token from the
         ;; environment. SLACK_MCP_XOXP_TOKEN below (via #:secret-env-vars)

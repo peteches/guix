@@ -7,12 +7,23 @@
 ;;;      home-files-service-type.  Called with configs/claude/defaults in
 ;;;      (peteches home modules base).
 ;;;   2. Registers `mcp-servers' by shelling out to `claude mcp add' during
-;;;      home activation — removing then re-adding each one so the entry
-;;;      always reflects current config.  The `remove' is expected to fail
-;;;      on first run; its exit status is deliberately ignored.  Each server
-;;      is either `stdio' (a local COMMAND/ARGS, the default) or `http' (a
-;;      hosted endpoint registered by URL, e.g. Linear/Notion/Granola's
-;;      remote MCP servers) — see <home-claude-mcp-server>.
+;;;      home activation.  Each server is either `stdio' (a local
+;;;      COMMAND/ARGS, the default) or `http' (a hosted endpoint registered
+;;;      by URL, e.g. Linear/Notion/Granola's remote MCP servers) — see
+;;;      <home-claude-mcp-server>.
+;;;
+;;;      stdio servers are removed then re-added every activation so the
+;;;      entry always reflects current config; the `remove' is expected to
+;;;      fail on first run and its exit status is deliberately ignored.
+;;;
+;;;      http servers are handled idempotently instead: activation skips
+;;;      remove/add when `~/.claude.json' already has this name registered
+;;;      against the same URL.  A blind remove/add here would reset the
+;;;      entry to url-only on every activation, discarding the OAuth grant
+;;;      the account got via `/mcp' and the `oauth.scopes' hint below —
+;;;      `claude mcp add' has no flag for it, so when OAUTH-SCOPES is set
+;;;      activation patches it into `~/.claude.json' with `jq' after the
+;;;      entry exists.
 ;;;
 ;;; Why (2) shells out rather than writing ~/.claude.json directly: that
 ;;; file is also written by Claude Code itself at runtime (project history,
@@ -28,6 +39,8 @@
   #:use-module (guix records)
   #:use-module (ice-9 ftw)
   #:use-module (srfi srfi-1)
+  #:use-module ((gnu packages bash) #:select (bash))
+  #:use-module ((gnu packages web) #:select (jq))
   #:use-module (peteches packages claude-code)
   #:export (home-claude-service-type
             home-claude-configuration
@@ -38,15 +51,22 @@
 ;; (COMMAND/ARGS unused) — OAuth for these happens interactively the first
 ;; time the account runs `/mcp` inside a Claude Code session, not at
 ;; activation time, so no secret wiring is needed here.
+;;
+;; OAUTH-SCOPES (http only) is not a secret — it is the space-separated
+;; scope string the provider expects (e.g. one that includes
+;; "offline_access" so the resulting grant carries a refresh token). It is
+;; a hint for the OAuth flow, not a credential; leave it #f for a provider
+;; whose default scope is already correct.
 (define-record-type* <home-claude-mcp-server>
   home-claude-mcp-server make-home-claude-mcp-server
   home-claude-mcp-server?
-  (name      home-claude-mcp-server-name)
-  (command   home-claude-mcp-server-command   (default #f))
-  (args      home-claude-mcp-server-args      (default '()))
-  (transport home-claude-mcp-server-transport (default "stdio"))
-  (url       home-claude-mcp-server-url       (default #f))
-  (scope     home-claude-mcp-server-scope     (default "user")))
+  (name         home-claude-mcp-server-name)
+  (command      home-claude-mcp-server-command      (default #f))
+  (args         home-claude-mcp-server-args         (default '()))
+  (transport    home-claude-mcp-server-transport    (default "stdio"))
+  (url          home-claude-mcp-server-url          (default #f))
+  (oauth-scopes home-claude-mcp-server-oauth-scopes (default #f))
+  (scope        home-claude-mcp-server-scope        (default "user")))
 
 (define-record-type* <home-claude-configuration>
   home-claude-configuration make-home-claude-configuration
@@ -90,17 +110,45 @@
                     (directory-children dir))
         '())))
 
+;; Positional-arg bash script backing the http branch below. Takes
+;; NAME URL SCOPE TRANSPORT OAUTH-SCOPES CLAUDE-BIN JQ-BIN as $1..$7.
+;; Registers the server only if `~/.claude.json' doesn't already have this
+;; name pointed at this URL -- see the module docstring for why a blind
+;; remove/add is wrong for http servers -- then, if OAUTH-SCOPES is
+;; non-empty, patches it into that entry's `oauth.scopes' with jq (no
+;; `claude mcp add' flag exists for it).
+(define %home-claude-http-mcp-script "\
+set -eu
+name=\"$1\"; url=\"$2\"; scope=\"$3\"; transport=\"$4\"; oauth_scopes=\"$5\"
+claude_bin=\"$6\"; jq_bin=\"$7\"
+cfg=\"$HOME/.claude.json\"
+cur_url=$(\"$jq_bin\" -r --arg n \"$name\" '.mcpServers[$n].url // empty' \"$cfg\" 2>/dev/null || true)
+if [ \"$cur_url\" != \"$url\" ]; then
+  \"$claude_bin\" mcp remove --scope \"$scope\" \"$name\" || true
+  \"$claude_bin\" mcp add --scope \"$scope\" --transport \"$transport\" \"$name\" \"$url\"
+fi
+if [ -n \"$oauth_scopes\" ]; then
+  tmp=\"$cfg.oauth-scopes.tmp\"
+  \"$jq_bin\" --arg n \"$name\" --arg s \"$oauth_scopes\" \\
+    '.mcpServers[$n].oauth.scopes = $s' \"$cfg\" > \"$tmp\" && mv \"$tmp\" \"$cfg\"
+fi
+")
+
 (define (home-claude-activation-service config)
   (let* ((servers    (home-claude-configuration-mcp-servers config))
-         (claude-bin (file-append claude-code "/bin/claude")))
+         (claude-bin (file-append claude-code "/bin/claude"))
+         (bash-bin   (file-append bash "/bin/bash"))
+         (jq-bin     (file-append jq "/bin/jq")))
     #~(begin
         #$@(map (lambda (server)
-                  (let* ((name      (home-claude-mcp-server-name server))
-                         (scope     (home-claude-mcp-server-scope server))
-                         (transport (home-claude-mcp-server-transport server))
-                         (cmd       (home-claude-mcp-server-command server))
-                         (args      (home-claude-mcp-server-args server))
-                         (url       (home-claude-mcp-server-url server)))
+                  (let* ((name         (home-claude-mcp-server-name server))
+                         (scope        (home-claude-mcp-server-scope server))
+                         (transport    (home-claude-mcp-server-transport server))
+                         (cmd          (home-claude-mcp-server-command server))
+                         (args         (home-claude-mcp-server-args server))
+                         (url          (home-claude-mcp-server-url server))
+                         (oauth-scopes (or (home-claude-mcp-server-oauth-scopes server)
+                                           "")))
                     (if (string=? transport "stdio")
                         #~(begin
                             ;; Remove existing entry; non-zero exit is harmless.
@@ -114,15 +162,13 @@
                                    "--transport" "stdio"
                                    #$name "--" #$cmd
                                    (list #$@args)))
-                        ;; http (or other remote) transport: URL only, no
-                        ;; local command. OAuth happens later via `/mcp'.
-                        #~(begin
-                            (system* #$claude-bin
-                                     "mcp" "remove" "--scope" #$scope #$name)
-                            (system* #$claude-bin "mcp" "add"
-                                     "--scope" #$scope
-                                     "--transport" #$transport
-                                     #$name #$url)))))
+                        ;; http (or other remote) transport: idempotent
+                        ;; registration + optional oauth.scopes patch, see
+                        ;; %home-claude-http-mcp-script.
+                        #~(system* #$bash-bin "-c" #$%home-claude-http-mcp-script
+                                   "home-claude-http-mcp"
+                                   #$name #$url #$scope #$transport
+                                   #$oauth-scopes #$claude-bin #$jq-bin))))
                 servers))))
 
 (define-public home-claude-service-type
