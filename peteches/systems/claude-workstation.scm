@@ -302,10 +302,15 @@ host    all     all     ::1/128                 trust\n"))
       ;; Split-tunnel WireGuard behind a local SOCKS5 proxy (127.0.0.1:1080).
       ;; The system default route is untouched -- only processes that dial
       ;; the SOCKS5 proxy get routed over the tunnel. See
-      ;; (peteches services wireguard-socks5).
+      ;; (peteches services wireguard-socks5). auto-start? #t brings up all
+      ;; three shepherd services (netns, wg0, microsocks) on boot, in the
+      ;; innermost-last order wsc-shepherd-services already lists them in,
+      ;; so proxychains-ng (see (peteches home modules claude-workstation))
+      ;; has a live proxy to dial without a manual `herd start' first.
       (service wireguard-socks5-service-type
                (wireguard-socks5-configuration
-                (config-file "/run/secrets/wg0.conf")))
+                (config-file "/run/secrets/wg0.conf")
+                (auto-start? #t)))
 
       ;; Dev databases for the ygo account: rootful Podman OCI containers
       ;; (same shape as plane.scm / critical-grind-outline.scm), bound to

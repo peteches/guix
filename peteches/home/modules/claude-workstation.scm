@@ -50,6 +50,7 @@
   #:use-module ((gnu packages ssh) #:select (openssh))
   #:use-module ((gnu packages node) #:select (node))
   #:use-module ((gnu packages rust-apps) #:select (ripgrep))
+  #:use-module ((gnu packages networking) #:select (proxychains-ng))
   #:use-module ((gnu packages web) #:select (jq))
   #:use-module ((gnu packages curl) #:select (curl))
   #:use-module ((gnu packages base) #:select (coreutils))
@@ -70,7 +71,7 @@
 (define %claude-workstation-base-packages
   (list claude-code claude-completion git openssh node ripgrep jq curl
         coreutils less graphify herdr python-minimal github-cli
-        onepassword-cli))
+        onepassword-cli proxychains-ng))
 
 ;; --- Anvil headless emacs daemon --------------------------------------
 ;; Bakes emacs-anvil's site-lisp onto the load-path directly so it needs
@@ -383,6 +384,17 @@ empty."
 will retry next reconfigure~%" name))))))
            '#$repos)))))
 
+;; Points proxychains-ng at the loopback SOCKS5 proxy exposed by
+;; wireguard-socks5-service-type (peteches/services/wireguard-socks5.scm,
+;; default port 1080) -- shared by all three accounts on this VM, so
+;; `proxychains4 <cmd>` routes CMD's traffic over the split-tunnel WireGuard
+;; whenever that service's netns/tunnel/proxy trio has been started (see its
+;; module docstring for the `herd start` order; nothing here starts it).
+(define %proxychains-config-file
+  (plain-file
+   "proxychains.conf"
+   "strict_chain\nproxy_dns\ntcp_read_time_out 15000\ntcp_connect_time_out 8000\n\n[ProxyList]\nsocks5 127.0.0.1 1080\n"))
+
 (define (git-config-file git-name git-email)
   (plain-file
    "gitconfig"
@@ -522,6 +534,10 @@ HERDR-SPACES reaches the criticalgrind/ygo accounts' own herdr servers."
                       home-files-service-type
                       (list (list ".config/git/config"
                                   (git-config-file git-name git-email))))
+      (simple-service 'proxychains-config
+                      home-files-service-type
+                      (list (list ".config/proxychains.conf"
+                                  %proxychains-config-file)))
       ;; Pins `guix pull' (no `-C' needed) to this repo's channel set, the
       ;; same way `scripts/deploy.scm' pins the system layer -- except this
       ;; is per-account and only takes effect on the next `guix home
