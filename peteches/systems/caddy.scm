@@ -150,7 +150,9 @@
 		   (upstream "vault.spaniel-cordylus.ts.net:8200"))
 		  (caddy-reverse-proxy
 		   (domain "nas.ts.peteches.co.uk")
-		   (upstream "petechesnas.spaniel-cordylus.ts.net:5001"))
+		   (upstream "petechesnas.spaniel-cordylus.ts.net:5001")
+		   (tls-backend? #t)
+		   (tls-insecure-skip-verify? #t))
 			  (caddy-reverse-proxy
 			   (domain "registry.ts.peteches.co.uk")
 			   (upstream "petechesnas.spaniel-cordylus.ts.net:5050"))
