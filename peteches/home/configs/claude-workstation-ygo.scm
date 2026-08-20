@@ -35,6 +35,9 @@
   #:use-module (peteches packages go-tools)
   #:use-module (peteches packages yarn)
   #:use-module ((peteches packages mcp) #:select (slack-mcp-server))
+  #:use-module ((peteches packages dev-mcp-servers)
+                #:select (node-modelcontextprotocol-server-postgres
+                          node-time-mcp))
   #:use-module (peteches repository)
   #:use-module (peteches home modules claude-workstation)
   #:use-module (peteches home modules claude))
@@ -77,7 +80,30 @@
         ;; where /run/secrets/slack-mcp-xoxp-token comes from.
         (home-claude-mcp-server
          (name "slack")
-         (command (file-append slack-mcp-server "/bin/slack-mcp-server")))))
+         (command (file-append slack-mcp-server "/bin/slack-mcp-server")))
+        ;; @modelcontextprotocol/server-postgres, registered twice -- the
+        ;; database is a positional CLI arg, not something the package
+        ;; itself can multiplex, so each dev database gets its own entry.
+        ;; Both point at claude-workstation.scm's native Postgres 16
+        ;; instance (127.0.0.1:5432, POSTGRES_HOST_AUTH_METHOD=trust for
+        ;; all roles -- see %ygo-dev-pg-hba), connecting as the "postgres"
+        ;; superuser since no app-specific role is provisioned there.
+        (home-claude-mcp-server
+         (name "postgres")
+         (command (file-append node-modelcontextprotocol-server-postgres
+                                "/bin/mcp-server-postgres"))
+         (args (list "postgresql://postgres@127.0.0.1:5432/ygotrips-dev")))
+        (home-claude-mcp-server
+         (name "postgres-content")
+         (command (file-append node-modelcontextprotocol-server-postgres
+                                "/bin/mcp-server-postgres"))
+         (args (list "postgresql://postgres@127.0.0.1:5432/ygo-content-dev")))
+        ;; time-mcp's timezone is a per-tool-call argument, not a CLI flag
+        ;; (1.0.6 has no --local-timezone or TZ handling at all) -- it
+        ;; falls back to the VM's own system timezone when a call omits it.
+        (home-claude-mcp-server
+         (name "time")
+         (command (file-append node-time-mcp "/bin/time-mcp")))))
 
 (define-public claude-workstation-ygo-home
   (make-claude-workstation-home
