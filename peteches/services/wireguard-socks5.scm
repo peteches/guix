@@ -417,26 +417,35 @@
                    ;; exec into a namespace whose resolv.conf is still just
                    ;; that signature line. With proxy_dns on, that makes
                    ;; every proxychains-routed lookup resolve through a
-                   ;; resolver that doesn't exist -- which fails silently
-                   ;; (a ~20s connect timeout per lookup, no log line
-                   ;; anywhere pointing at the cause) rather than refusing
-                   ;; to come up. Refuse to launch instead.
-                   (if (and (file-exists? #$resolv-conf)
-                            (call-with-input-file #$resolv-conf
-                              (lambda (port)
-                                (let loop ()
-                                  (let ((line (read-line port)))
-                                    (cond ((eof-object? line) #f)
-                                          ((string-prefix? "nameserver" line) #t)
-                                          (else (loop))))))))
-                       (apply forkexec args)
-                       (begin
-                         (format (current-error-port)
-                                 "socks5-proxy: refusing to start -- ~a has \
-no nameserver line yet (wireguard-wg0 hasn't finished repopulating DNS); \
-retry once wireguard-wg0's PostUp has actually completed~%"
-                                 #$resolv-conf)
-                         #f)))))))
+                   ;; resolver that doesn't exist -- which used to fail
+                   ;; silently (a ~20s connect timeout per lookup, no log
+                   ;; line anywhere pointing at the cause). Poll for up to
+                   ;; 15s (PostUp normally finishes in well under 1s) and
+                   ;; only refuse to launch, loudly, if it never shows up --
+                   ;; that's a real problem (netns-wg0ns/wireguard-wg0 not
+                   ;; actually up), not just a slow PostUp.
+                   (define (nameserver-ready?)
+                     (and (file-exists? #$resolv-conf)
+                          (call-with-input-file #$resolv-conf
+                            (lambda (port)
+                              (let loop ()
+                                (let ((line (read-line port)))
+                                  (cond ((eof-object? line) #f)
+                                        ((string-prefix? "nameserver" line) #t)
+                                        (else (loop)))))))))
+                   (let retry ((attempts-left 15))
+                     (cond
+                      ((nameserver-ready?) (apply forkexec args))
+                      ((> attempts-left 0)
+                       (sleep 1)
+                       (retry (- attempts-left 1)))
+                      (else
+                       (format (current-error-port)
+                               "socks5-proxy: refusing to start -- ~a still \
+has no nameserver line after 15s (wireguard-wg0's PostUp hasn't finished \
+repopulating DNS); check netns-wg0ns/wireguard-wg0 status~%"
+                               #$resolv-conf)
+                       #f))))))))
      (stop #~(make-kill-destructor))
      (auto-start? (wsc-auto-start? config)))))
 
