@@ -384,16 +384,19 @@ empty."
 will retry next reconfigure~%" name))))))
            '#$repos)))))
 
-;; Points proxychains-ng at the loopback SOCKS5 proxy exposed by
+;; Points proxychains-ng at the SOCKS5 proxy exposed by
 ;; wireguard-socks5-service-type (peteches/services/wireguard-socks5.scm,
 ;; default port 1080) -- shared by all three accounts on this VM, so
 ;; `proxychains4 <cmd>` routes CMD's traffic over the split-tunnel WireGuard
 ;; whenever that service's netns/tunnel/proxy trio has been started (see its
 ;; module docstring for the `herd start` order; nothing here starts it).
+;; microsocks runs inside the wg0ns network namespace, bound to the netns
+;; side of the host<->netns veth pair (10.200.0.2), not to loopback -- see
+;; wsc-veth-netns-address in wireguard-socks5.scm.
 (define %proxychains-config-file
   (plain-file
    "proxychains.conf"
-   "strict_chain\nproxy_dns\ntcp_read_time_out 15000\ntcp_connect_time_out 8000\n\n[ProxyList]\nsocks5 127.0.0.1 1080\n"))
+   "strict_chain\nproxy_dns\ntcp_read_time_out 15000\ntcp_connect_time_out 8000\n\n[ProxyList]\nsocks5 10.200.0.2 1080\n"))
 
 (define (git-config-file git-name git-email)
   (plain-file

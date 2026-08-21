@@ -1,15 +1,20 @@
 ---
 name: wireguard-socks5
-description: "Use when the user on claude-workstation's ygo account wants to reach something over the WireGuard tunnel, mentions the VPN/tunnel/SOCKS5 proxy, or asks to route a specific request/tool through it. This host has a split-tunnel WireGuard interface (wg0) that never becomes the default route -- only traffic explicitly sent through the local SOCKS5 proxy at 127.0.0.1:1080 goes over it."
+description: "Use when the user on claude-workstation's ygo account wants to reach something over the WireGuard tunnel, mentions the VPN/tunnel/SOCKS5 proxy, or asks to route a specific request/tool through it. This host has a split-tunnel WireGuard interface (wg0) that never becomes the default route -- only traffic explicitly sent through the local SOCKS5 proxy at 10.200.0.2:1080 goes over it."
 ---
 
 # WireGuard split-tunnel + SOCKS5 proxy (claude-workstation, ygo only)
 
 This VM (`claude-workstation`) has a WireGuard tunnel (`wg0`) whose only
-purpose is to feed a local SOCKS5 proxy at `127.0.0.1:1080`. It is a
-**split tunnel**: the system's default route is never touched. General
-internet traffic — including your own calls back to Anthropic — is
-completely unaffected whether the tunnel is up or not.
+purpose is to feed a SOCKS5 proxy (microsocks) reachable at
+`10.200.0.2:1080`. It is a **split tunnel**: the system's default route is
+never touched. General internet traffic — including your own calls back to
+Anthropic — is completely unaffected whether the tunnel is up or not.
+
+microsocks runs inside the `wg0ns` network namespace and binds to the
+netns side of the host↔netns veth pair (`veth-wg0h` 10.200.0.1 ↔
+`veth-wg0n` 10.200.0.2), not to loopback — connect to `10.200.0.2:1080`
+from the host, not `127.0.0.1:1080`.
 
 The netns, tunnel and proxy now auto-start on boot (`auto-start? #t` in
 `peteches/systems/claude-workstation.scm`'s `wireguard-socks5-service-type`
@@ -34,14 +39,14 @@ SOCKS5 proxy rather than assuming traffic is routed automatically — nothing
 else on the box goes through `wg0`:
 
 ```bash
-curl --socks5-hostname 127.0.0.1:1080 https://example.com
+curl --socks5-hostname 10.200.0.2:1080 https://example.com
 # or for the whole shell session:
-export ALL_PROXY=socks5h://127.0.0.1:1080
+export ALL_PROXY=socks5h://10.200.0.2:1080
 ```
 
 Git, npm, and most other CLIs accept an equivalent `--proxy` /
 `https-proxy` / `http.proxy` setting pointed at the same
-`socks5h://127.0.0.1:1080` address.
+`socks5h://10.200.0.2:1080` address.
 
 ## Tearing it down
 
