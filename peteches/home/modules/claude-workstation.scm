@@ -396,7 +396,7 @@ will retry next reconfigure~%" name))))))
 (define %proxychains-config-file
   (plain-file
    "proxychains.conf"
-   "strict_chain\nproxy_dns\ntcp_read_time_out 15000\ntcp_connect_time_out 8000\n\n[ProxyList]\nsocks5 10.200.0.2 1080\n"))
+   "strict_chain\ntcp_read_time_out 15000\ntcp_connect_time_out 8000\n\n[ProxyList]\nsocks5 10.200.0.2 1080\n"))
 
 (define (git-config-file git-name git-email)
   (plain-file
