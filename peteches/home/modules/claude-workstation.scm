@@ -509,7 +509,8 @@ HERDR-SPACES reaches the criticalgrind/ygo accounts' own herdr servers."
                (home-bash-configuration
                 (guix-defaults? #t)
                 (environment-variables
-                 '(("PATH" . "$HOME/.local/bin:$PATH")))
+                 '(("PATH" . "$HOME/.local/bin:$PATH")
+                   ("PROXYCHAINS_CONF_FILE" . "$HOME/.config/proxychains.conf")))
                 (bashrc
                  (cons claude-completion-bashrc
                        (if (null? secret-env-vars)
