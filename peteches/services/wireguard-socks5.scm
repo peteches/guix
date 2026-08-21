@@ -375,7 +375,8 @@
          (port (number->string (wsc-socks-port config)))
          (ip (file-append iproute "/sbin/ip"))
          (setuidgid (file-append s6 "/bin/s6-setuidgid"))
-         (user (wsc-socks-user config)))
+         (user (wsc-socks-user config))
+         (resolv-conf (string-append "/etc/netns/" netns "/resolv.conf")))
     (shepherd-service
      (provision '(socks5-proxy))
      (requirement (list 'user-processes (wsc-wireguard-service-name config)))
@@ -392,12 +393,50 @@
      ;; already restricted to whatever can reach BIND over the veth alone,
      ;; and with no -u/-P microsocks runs unauthenticated for anything that
      ;; can, which is exactly what's wanted.
-     (start #~(make-forkexec-constructor
-               (list #$ip "netns" "exec" #$netns
-                     #$setuidgid #$user
-                     #$microsocks "-i" #$bind "-p" #$port)
-               #:log-file #$(wsc-socks-log-file config)
-               #:environment-variables (list #$%path-env)))
+     (start
+      #~(let ((forkexec
+               (make-forkexec-constructor
+                (list #$ip "netns" "exec" #$netns
+                      #$setuidgid #$user
+                      #$microsocks "-i" #$bind "-p" #$port)
+                #:log-file #$(wsc-socks-log-file config)
+                #:environment-variables (list #$%path-env))))
+          (lambda args
+            #$(wsc-logged
+               (wsc-socks-log-file config)
+               #~(lambda ()
+                   ;; wireguard-wg0's PostUp (`resolvconf -a', driven by the
+                   ;; secret's `DNS = ...' line) is what actually populates
+                   ;; this file with a real nameserver; wsc-netns-shepherd-
+                   ;; service's start only ever seeds it with openresolv's
+                   ;; bare signature line (see %openresolv-signature-line).
+                   ;; requirement above only proves wireguard-wg0's shepherd
+                   ;; service reported started, not that its PostUp hook
+                   ;; has finished -- so there's a real window, on a fast
+                   ;; full-stack restart, where microsocks would otherwise
+                   ;; exec into a namespace whose resolv.conf is still just
+                   ;; that signature line. With proxy_dns on, that makes
+                   ;; every proxychains-routed lookup resolve through a
+                   ;; resolver that doesn't exist -- which fails silently
+                   ;; (a ~20s connect timeout per lookup, no log line
+                   ;; anywhere pointing at the cause) rather than refusing
+                   ;; to come up. Refuse to launch instead.
+                   (if (and (file-exists? #$resolv-conf)
+                            (call-with-input-file #$resolv-conf
+                              (lambda (port)
+                                (let loop ()
+                                  (let ((line (read-line port)))
+                                    (cond ((eof-object? line) #f)
+                                          ((string-prefix? "nameserver" line) #t)
+                                          (else (loop))))))))
+                       (apply forkexec args)
+                       (begin
+                         (format (current-error-port)
+                                 "socks5-proxy: refusing to start -- ~a has \
+no nameserver line yet (wireguard-wg0 hasn't finished repopulating DNS); \
+retry once wireguard-wg0's PostUp has actually completed~%"
+                                 #$resolv-conf)
+                         #f)))))))
      (stop #~(make-kill-destructor))
      (auto-start? (wsc-auto-start? config)))))
 
