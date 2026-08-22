@@ -11,7 +11,7 @@
 (define-public beeper-bin
   (package
     (name "beeper-bin")
-    (version "4.2.948")
+    (version "4.3.57")
     (source
      (origin
        (method url-fetch)
@@ -20,7 +20,7 @@
              version "-x86_64.AppImage"))
        (file-name (string-append "beeper-" version "-x86_64.AppImage"))
        (sha256
-        (base32 "11yin409zcv5hjs127i6xj1p7siscms4x9g4g279cvvw4m4d1xrj"))))
+        (base32 "0nwrfyh36d0yd255jg681frs3c8zps1b8vf423f42s8nhnbiqrbb"))))
     (build-system chromium-binary-build-system)
     (native-inputs (list bash-minimal squashfs-tools))
     (arguments

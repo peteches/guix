@@ -19,7 +19,7 @@
 (define-public gurpscharactersheet
   (package
     (name "gurpscharactersheet")
-    (version "5.42.0")
+    (version "5.46.0")
     (source
      (origin
        (method url-fetch)
@@ -27,7 +27,7 @@
              "https://github.com/richardwilkes/gcs/releases/download/v"
              version "/gcs-" version "-linux-amd64.tgz"))
        (sha256
-        (base32 "01zj123w68n4q6zmcvj12jcmzxsdmic3x28yx0ajzbrmmi1rafvp"))))
+        (base32 "1bs6djygp6j3s95hjg1inj7q7nk2iwsxc6yvcdma8ni113n73j8j"))))
     (build-system copy-build-system)
     (inputs (list glibc
                   mesa

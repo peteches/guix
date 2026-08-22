@@ -28,7 +28,7 @@
 (define-public rustdesk-server
   (package
     (name "rustdesk-server")
-    (version "1.1.15")
+    (version "1.1.16")
     (source
      (origin
        (method url-fetch)
@@ -36,7 +36,7 @@
              "https://github.com/rustdesk/rustdesk-server/releases/download/"
              version "/rustdesk-server-linux-amd64.zip"))
        (sha256
-        (base32 "155k8qmd657v3jg74j27dn602ppf91ppgcwfq55j5h24v0prfly5"))))
+        (base32 "1kyvddghv6mna31gxqzqymj3zgyc4idazpxxn04z9hz6zwdc8r85"))))
     (build-system copy-build-system)
     (native-inputs (list unzip))
     (arguments
@@ -96,7 +96,7 @@ Both are statically-linked musl binaries with no runtime dependencies.")
 (define-public rustdesk
   (package
     (name "rustdesk")
-    (version "1.4.6")
+    (version "1.4.9")
     (source
      (origin
        (method url-fetch)
@@ -104,7 +104,7 @@ Both are statically-linked musl binaries with no runtime dependencies.")
              "https://github.com/rustdesk/rustdesk/releases/download/" version
              "/rustdesk-" version "-x86_64.deb"))
        (sha256
-        (base32 "014giif43vrxgclkn780f5rgmh8hk8qp8grjspg848i5gdx6v90d"))))
+        (base32 "18zx2bbg21h4ij6fg62cam3cwm3w8rcydysb0ir4300fqi3vli3j"))))
     (build-system copy-build-system)
     (native-inputs (list binutils patchelf))
     (inputs (list (list "glibc" glibc)

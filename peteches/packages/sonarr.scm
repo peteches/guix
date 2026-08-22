@@ -20,7 +20,7 @@
 (define-public sonarr
   (package
     (name "sonarr")
-    (version "4.0.17.2952")
+    (version "4.0.19.2979")
     (source
      (origin
        (method url-fetch)
@@ -28,7 +28,7 @@
              "https://github.com/Sonarr/Sonarr/releases/download/v" version
              "/Sonarr.main." version ".linux-x64.tar.gz"))
        (sha256
-        (base32 "0ykp66lbnvnczbdagwwafpcyrkh10vbb39qw89wpjwkx0rr2656m"))))
+        (base32 "1nskl7m17ylj5ziijzd3b4yzc8y9f48fipjq818vbh1i9icb74dn"))))
     (build-system copy-build-system)
     (inputs (list (list "glibc" glibc)
                   (list "gcc:lib" gcc "lib")

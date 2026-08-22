@@ -19,7 +19,7 @@
 (define-public radarr
   (package
     (name "radarr")
-    (version "6.1.1.10360")
+    (version "6.3.0.10514")
     (source
      (origin
        (method url-fetch)
@@ -27,7 +27,7 @@
              "https://github.com/Radarr/Radarr/releases/download/v" version
              "/Radarr.master." version ".linux-core-x64.tar.gz"))
        (sha256
-        (base32 "1pbp9lk665rdvv5grnp6inl3cin6111y77wraq46avi0fpwg859r"))))
+        (base32 "0is0iba366c5jzd53l63kvwfisrca3j0s3ssmp2ngwkz0df4bmj1"))))
     (build-system copy-build-system)
     (inputs (list (list "glibc" glibc)
                   (list "gcc:lib" gcc "lib")

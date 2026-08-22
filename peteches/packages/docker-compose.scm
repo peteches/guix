@@ -33,7 +33,7 @@
 (define docker-compose-cli-plugin
   (package
     (name "docker-compose-cli-plugin")
-    (version "5.3.1")
+    (version "5.5.0")
     (source
      (origin
        (method url-fetch)
@@ -42,7 +42,7 @@
              version "/docker-compose-linux-x86_64"))
        (file-name (string-append "docker-compose-" version "-linux-x86_64"))
        (sha256
-        (base32 "0ngrhx4kphb0qqjkpwc74p39icdfr8vafif2jfvnkmqrvgmwdszr"))))
+        (base32 "0jydmzplj6xbkvf0kwvla1lhlcyibn3pbwnhwykmrc6mmccbjyn5"))))
     (build-system trivial-build-system)
     (arguments
      (list

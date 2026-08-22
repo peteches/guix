@@ -9,7 +9,7 @@
 ;unzip
 
 (define %version
-  "2.0.3")
+  "2.0.4")
 
 (define-public vault
   (package
@@ -22,7 +22,7 @@
                            "/vault_" version "_linux_amd64.zip"))
        (sha256
         ;; guix hash -H sha256 --format=nix-base32 vault_2.0.3_linux_amd64.zip
-        (base32 "0amw57r631i28ad7jabw178hasvm5mgf19id4k3ij4j9h9xgn3qy"))))
+        (base32 "11zk5nxzpvbmrhkc04c55jpa113r1x14j73hcgq9vwlfbzcffabl"))))
     (build-system copy-build-system)
     (native-inputs (list unzip))
     (arguments

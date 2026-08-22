@@ -6,7 +6,7 @@
   #:use-module (guix build-system copy))
 
 (define %version
-  "8.2.3")
+  "8.3.0")
 (define %base-url
   (string-append "https://github.com/concourse/concourse/releases/download/v"
                  %version))
@@ -26,7 +26,7 @@
        (method url-fetch)
        (uri %concourse-tarball-url)
        (sha256
-        (base32 "0h7xlnpjcyspp8rywndb1afym09f3nnv30740idmzgdjdhfr27kf"))))
+        (base32 "0b4yy1dmbknpdw3mn618h46mvi8mnn7g7wni2f13g4s847g0q2rj"))))
     (build-system copy-build-system)
     (arguments
      (list
@@ -48,7 +48,7 @@
        (method url-fetch)
        (uri %fly-tarball-url)
        (sha256
-        (base32 "1xp2n6khh267302ac0dw2qnsipa61yfmbm2987hxh5hf74xajbzl"))))
+        (base32 "0hqgh0xfg4b5axvkyfwqcrg0wpw1hcb6wpgjwjymqrg1205ncpqb"))))
     (build-system copy-build-system)
     (arguments
      (list

@@ -19,7 +19,7 @@
 ;; shape). Sidestep the shared `install' procedure entirely by replacing
 ;; the phase with a plain copy, the same way koboldcpp.scm avoids it.
 (define %version
-  "2.97.0")
+  "2.98.0")
 
 (define-public github-cli
   (package
@@ -33,7 +33,8 @@
              "/gh_" version "_linux_amd64.tar.gz"))
        (sha256
         ;; guix hash gh_2.97.0_linux_amd64.tar.gz
-        (base32 "04l104py27lfx1cy8qg4p00qh29fc9d8pdzw1nnv318zgr4vijd2"))))
+        ;; guix hash gh_2.98.0_linux_amd64.tar.gz
+        (base32 "1ph8j9r7sb82d05sj73n3an29pqww62c1msqm30jz01n0frwd2iv"))))
     (build-system copy-build-system)
     (arguments
      (list

@@ -95,7 +95,7 @@
 
 ;; === Pins (use v1.99.4 as requested) ===
 (define koboldcpp-version
-  "1.105.4")
+  "1.118.1")
 
 ;; CUDA-enabled (modern PCs, CUDA12+ AVX2)
 (define-public koboldcpp-bin
@@ -104,7 +104,7 @@
                       (string-append
                        "https://github.com/LostRuins/koboldcpp/releases/download/v"
                        koboldcpp-version "/koboldcpp-linux-x64")
-                      "1d7k939wc8zjzzl5kwxiyr2by54njpkg0cmk8d83pnd6wsjji9xp"
+                      "1gpys5spldgyzwfszh4hbv030hzd1hww104bq188ypcd72lp5gz4"
                       #:cuda? #t))
 
 ;; CPU-only (nocuda)
@@ -114,5 +114,5 @@
                       (string-append
                        "https://github.com/LostRuins/koboldcpp/releases/download/v"
                        koboldcpp-version "/koboldcpp-linux-x64-nocuda")
-                      "0f2ffzjij6bpwbkfvfqnfdffddzsb9nhk2a1nwx149la67lkdm5b"
+                      "1gi6lxw9jdly460lz6jcsxsllwjx0q8nrpnvr9sk62aqn0zxy8k9"
                       #:cuda? #f))

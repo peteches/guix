@@ -21,7 +21,7 @@
 (define-public prowlarr
   (package
     (name "prowlarr")
-    (version "2.3.5.5327")
+    (version "2.5.2.5491")
     (source
      (origin
        (method url-fetch)
@@ -29,7 +29,7 @@
              "https://github.com/Prowlarr/Prowlarr/releases/download/v"
              version "/Prowlarr.master." version ".linux-core-x64.tar.gz"))
        (sha256
-        (base32 "1l59j81b7rknwszz33767cgy7747xnicp80ckcin0phbz40a5hkh"))))
+        (base32 "0yy3yh8x0g2fdrnbw943x9992mw5j64cf86l2rgazmv951s9bzi2"))))
     (build-system copy-build-system)
     (inputs (list (list "glibc" glibc)
                   (list "gcc:lib" gcc "lib")

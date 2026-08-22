@@ -6,7 +6,7 @@
   #:use-module (guix build-system copy))
 
 (define-public prometheus
-  (let* ((version "3.11.3")
+  (let* ((version "3.14.0")
          (tarball (string-append
                    "https://github.com/prometheus/prometheus/releases/download/v"
                    version "/prometheus-" version ".linux-amd64.tar.gz")))
@@ -18,7 +18,7 @@
          (method url-fetch)
          (uri tarball)
          (sha256
-          (base32 "0f5v8w20s1namijrq0sf10hqk7x0i2dz78fdb24jf5ikcxksyycl"))))
+          (base32 "13a76636fw649d89nx4apwbv9jckjxyhrlqmr6cs6yzb37dccrgn"))))
       (build-system copy-build-system)
       (arguments
        (list

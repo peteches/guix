@@ -6,7 +6,7 @@
   #:use-module (guix build-system copy))
 
 (define-public herdr
-  (let ((pkg-version "0.8.0"))
+  (let ((pkg-version "0.8.2"))
     (package
       (name "herdr")
       (version pkg-version)
@@ -17,7 +17,7 @@
                "https://github.com/herdrdev/herdr/releases/download/v"
                pkg-version "/herdr-linux-x86_64"))
          (sha256
-          (base32 "0a6dk9p5zczmyg9ga8n60fsbfvgj3cmvdjbshmzb2b7s81zflwmq"))))
+          (base32 "1x7cda775xin16wjs63bwc97zdnzn9z1lbpa8fr983299nhm0qcp"))))
       (build-system copy-build-system)
       (arguments
        (list

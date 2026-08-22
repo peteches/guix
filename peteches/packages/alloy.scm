@@ -17,7 +17,7 @@
 (define-public alloy
   (package
     (name "alloy")
-    (version "1.8.1")
+    (version "1.18.1")
     (source
      (origin
        (method url-fetch)
@@ -25,7 +25,7 @@
              "https://github.com/grafana/alloy/releases/download/v" version
              "/alloy-linux-amd64.zip"))
        (sha256
-        (base32 "1bfasi56mbmy4vrhf33zm3h90pdm9676v67rrk3qldwvi1fz5wsm"))))
+        (base32 "0g28gg013a8i3d35aqfxhsp94hzp65dni6lg6si50flqqg5m7j7s"))))
     (build-system copy-build-system)
     (native-inputs (list unzip))
     (inputs (list glibc))

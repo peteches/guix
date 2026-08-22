@@ -41,7 +41,7 @@ web server for the admin interface, and a SQLite-based query database.")
 (define-public pihole-scripts
   (package
     (name "pihole-scripts")
-    (version "6.4.2")
+    (version "6.4.3")
     (source
      (origin
        (method url-fetch)
@@ -49,7 +49,7 @@ web server for the admin interface, and a SQLite-based query database.")
              "https://github.com/pi-hole/pi-hole/archive/refs/tags/v" version
              ".tar.gz"))
        (sha256
-        (base32 "0qh67aqzgg1mya4v0a18l6k3h5zlcqk0zlwy9q4rib2rhr06d9s9"))))
+        (base32 "0zp5b4c9f5k25klrfq9x7dddgl81pkx9paimwz1lbbwhgxl75zny"))))
     (build-system copy-build-system)
     (inputs (list ncurses))
     (arguments
@@ -170,7 +170,7 @@ Pi-hole administration tasks.")
 (define-public pihole-web
   (package
     (name "pihole-web")
-    (version "6.5")
+    (version "6.5.1")
     (source
      (origin
        (method url-fetch)
@@ -178,7 +178,7 @@ Pi-hole administration tasks.")
              "https://github.com/pi-hole/web/archive/refs/tags/v" version
              ".tar.gz"))
        (sha256
-        (base32 "07wvcyfpzznwsvndv7yj0dj1aqs1q3gh1r9ammddd8y40djis9p7"))))
+        (base32 "1sd7kbpmdv8pk6sakl8d4g26d1hpiirvnc2vxv19qrx3y78h61nv"))))
     (build-system copy-build-system)
     (arguments
      (list

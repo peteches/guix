@@ -29,7 +29,7 @@
 (define-public jellyfin-ffmpeg
   (package
     (name "jellyfin-ffmpeg")
-    (version "7.1.4-1")
+    (version "7.1.4-3")
     (source
      (origin
        (method url-fetch)
@@ -38,7 +38,7 @@
              version "/jellyfin-ffmpeg_" version
              "_portable_linux64-gpl.tar.xz"))
        (sha256
-        (base32 "1hk4axd23430mmkj0cjbn2xjn2p94q9mcagq82b6wb1c4wldv5g1"))))
+        (base32 "0gzqh44gr4a2r5mjc1b9dk2yxgzshm77xsz467934hkyli0gzffa"))))
     (build-system copy-build-system)
     (inputs (list glibc))
     (native-inputs (list patchelf))
@@ -79,7 +79,7 @@ hardware-accelerated transcoding (VAAPI, NVENC, QuickSync) and tone mapping
 (define-public jellyfin
   (package
     (name "jellyfin")
-    (version "10.11.10")
+    (version "10.11.11")
     (source
      (origin
        (method url-fetch)
@@ -87,7 +87,7 @@ hardware-accelerated transcoding (VAAPI, NVENC, QuickSync) and tone mapping
              "https://repo.jellyfin.org/files/server/linux/stable/v" version
              "/amd64/jellyfin_" version "-amd64.tar.gz"))
        (sha256
-        (base32 "1jhaqm5p0dnr2n051j3pwajgmak9c64mji4yan2222321h40a7zj"))))
+        (base32 "0yfg8sajhypb1jn4c0240iwirs27zj4c01yiw3ypqxrpgr51jzwz"))))
     (build-system copy-build-system)
     (inputs (list (list "glibc" glibc)
                   (list "openssl" openssl)
