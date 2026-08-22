@@ -30,17 +30,17 @@
   #:use-module (peteches packages seerr-deps)
   #:use-module (peteches packages claude-agent-acp))
 
-(define-public node-better-sqlite3-12.11.1
+(define-public node-better-sqlite3-13.0.3
   (package
     (name "node-better-sqlite3")
-    (version "12.11.1")
+    (version "13.0.3")
     (source
      (origin
        (method url-fetch)
        (uri
-        "https://registry.npmjs.org/better-sqlite3/-/better-sqlite3-12.11.1.tgz")
+        "https://registry.npmjs.org/better-sqlite3/-/better-sqlite3-13.0.3.tgz")
        (sha256
-        (base32 "0d98zanqyakga6zxqjlf6ay1b7wxyi703gabnarvr7d5lxsyvw7b"))))
+        (base32 "1jv8d3apzhby0jz0bnkyg04k2h1zmnspyk7crqxznsd4q4ym3q3p"))))
     (build-system node-build-system)
     (arguments
      (list
@@ -154,16 +154,16 @@ environments, covering the RESTful and WebSocket APIs.")
 ;; `utf-8-validate' and `bufferutil' are optional peer dependencies of
 ;; ws — native accelerators that ws falls back away from when absent.
 ;; They are deliberately not packaged.
-(define-public node-ws-8.21.1
+(define-public node-ws-8.21.3
   (package
     (name "node-ws")
-    (version "8.21.1")
+    (version "8.21.3")
     (source
      (origin
        (method url-fetch)
-       (uri "https://registry.npmjs.org/ws/-/ws-8.21.1.tgz")
+       (uri "https://registry.npmjs.org/ws/-/ws-8.21.3.tgz")
        (sha256
-        (base32 "1h9f8zsaiqj30yy6lcqy94kg51g1bwbkckbkf9k78r0zp9c7w3xv"))))
+        (base32 "1hrd1jn7vgi9f82x60bzkymf3gzrvii1f95rnm8cx4ap43pm8d6z"))))
     (build-system node-build-system)
     (arguments
      (list
@@ -193,13 +193,13 @@ and server implementation for Node.js.")
 (define-public node-comfyui-mcp
   (package
     (name "node-comfyui-mcp")
-    (version "0.38.1")
+    (version "0.52.53")
     (source
      (origin
        (method url-fetch)
-       (uri "https://registry.npmjs.org/comfyui-mcp/-/comfyui-mcp-0.38.1.tgz")
+       (uri "https://registry.npmjs.org/comfyui-mcp/-/comfyui-mcp-0.52.53.tgz")
        (sha256
-        (base32 "1ldfsxw8pypz1wxvrx2xsy6m7mdignm2ap50hdlgv3rhqh1xv9sm"))))
+        (base32 "0yv9237q0z0g68k9bl9v7brr7zm069hplqy7h2qc37m24zvhwji1"))))
     (build-system node-build-system)
     (arguments
      (list
@@ -238,10 +238,10 @@ and server implementation for Node.js.")
                                                   "cloudflared"))))))))
     (inputs (list node-zod-4.4.3
                   node-yaml-2.9.0
-                  node-ws-8.21.1
-                  node-sharp-native-0.34.5
+                  node-ws-8.21.3
+                  node-sharp-native-0.35.3
                   node-dotenv-16.6.1
-                  node-better-sqlite3-12.11.1
+                  node-better-sqlite3-13.0.3
                   node-stable-canvas-comfyui-client-1.5.9
                   node-modelcontextprotocol-sdk-1.29.0))
     (home-page "https://comfyui-mcp.artokun.io/docs")
@@ -260,7 +260,7 @@ APIs; set @env{COMFYUI_URL} to point it at the instance.")
   (package
     (inherit vips)
     (name "vips")
-    (version "8.17.3")
+    (version "8.18.5")
     (source
      (origin
        (method git-fetch)
@@ -269,7 +269,7 @@ APIs; set @env{COMFYUI_URL} to point it at the instance.")
              (commit (string-append "v" version))))
        (file-name (git-file-name "vips" version))
        (sha256
-        (base32 "1wwhlvn24b9vfp4mi2ahkwpfgrgrslidk98h9jlwp6r6qmj6ji63"))))))
+        (base32 "07lh6lw6bcakg71zxc1ga868069w3q77z1cf76hrcf3ywmxgij0l"))))))
 
 ;; The channel's other node-sharp (in seerr-deps) deletes its build phase
 ;; and so ships no native binary at all — requiring it throws "Could not
@@ -279,16 +279,16 @@ APIs; set @env{COMFYUI_URL} to point it at the instance.")
 ;; Upstream's default is to download a prebuilt libvips; we instead force
 ;; the "global libvips" path, where binding.gyp discovers vips through
 ;; pkg-config and links against it.
-(define-public node-sharp-native-0.34.5
+(define-public node-sharp-native-0.35.3
   (package
     (name "node-sharp")
-    (version "0.34.5")
+    (version "0.35.3")
     (source
      (origin
        (method url-fetch)
-       (uri "https://registry.npmjs.org/sharp/-/sharp-0.34.5.tgz")
+       (uri "https://registry.npmjs.org/sharp/-/sharp-0.35.3.tgz")
        (sha256
-        (base32 "1hr602c29dlxgaj6q6ykkcbskgr8x1ds2axw4p7hiy4xdx8141s6"))))
+        (base32 "0m5f0qfymi50d3r5kxvypa99vrj49kwsdv4p42q107gq0dapyqsk"))))
     (build-system node-build-system)
     (arguments
      (list
