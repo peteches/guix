@@ -29,6 +29,14 @@ Because `nug.scm` re-exports channels from `base.scm` via `%base-channels`, a gi
 
 ## Step 2 — Fetch the target commit for each channel
 
+Fetch each distinct `(url, branch)` pair **exactly once**, then apply the
+result to every parsed entry that shares that key — regardless of how many
+files or channel names reference it. With the current channel set this is
+up to ~15 file-occurrences (7 channels × up to 3 files each, once `base.scm`,
+`nug.scm`, and `manual.scm` are all counted) collapsed into at most 7
+fetches. Build a cache keyed by `(url, branch)` before starting Case A/B
+below, and consult/populate it instead of fetching per-occurrence.
+
 Parse the numeric argument to get `MIN_AGE_DAYS` (default `0`).
 
 ### Case A — `MIN_AGE_DAYS = 0` (latest commit)

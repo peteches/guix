@@ -1,0 +1,350 @@
+#+TITLE: Dependency review: skills + package/channel restructuring
+#+STARTUP: overview
+
+Plan agreed 2026-08-20. Nothing in this file has been implemented yet —
+this is the task breakdown for building the scheduled package/channel
+review skills discussed with Claude, plus the structural cleanup that
+makes them efficient. See conversation history for full rationale.
+
+* DONE Package module restructuring [3/3]
+
+** DONE Split mermaid.scm into product + deps
+mermaid.scm currently holds 787 =define-public= forms; only the last
+one (=node-mermaid-js-mermaid-cli=) is the actual product, the other
+786 are its node dependency closure. Consumed transitively via
+seerr.scm -> seerr-deps.scm -> mermaid.scm.
+- [X] Move the 786 dependency packages into a new =mermaid-deps.scm=
+- [X] Leave only =node-mermaid-js-mermaid-cli= (and whatever it needs
+  from the same file) in =mermaid.scm=, importing from
+  =mermaid-deps.scm=
+- [X] Check whether =seerr-deps.scm='s two imports of
+  =(peteches packages mermaid)= need updating, or whether they already
+  only touch the culminating binding (likely no change needed there,
+  verify)
+- [X] Validate both new modules per CLAUDE.md's fresh-process-per-module
+  rule (use the =guix-module-validator= agent)
+
+Done 2026-08-21, redone in the dedicated worktree
+(=.claude/worktrees/dependency-review-todo=, branch
+=worktree-dependency-review-todo=) after the first uncommitted
+attempt in the shared main checkout was reverted by another
+concurrent session. =mermaid.scm= dropped the now-unused =(gnu
+packages node-xyz)= and =(guix-science packages rstudio-node)=
+imports (the culminating package never referenced bindings from
+either directly). =seerr-deps.scm='s two duplicate =(peteches
+packages mermaid)= imports were left as-is -- verified via full
+module evaluation that seerr-deps.scm doesn't consume any binding
+that moved to mermaid-deps.scm. All four affected modules (mermaid,
+mermaid-deps, seerr-deps, seerr) independently re-validated via the
+guix-module-validator agent, from inside the worktree: all PASS, no
+new warnings. seerr.scm shows 6 pre-existing ambiguous-import
+warnings between guix-science and seerr-deps, unrelated to this
+change (seerr.scm/seerr-deps.scm were not touched). Not committed --
+sitting uncommitted in the worktree pending explicit instruction to
+commit.
+
+** DONE Split claude-agent-acp.scm into product + deps
+Same pattern: 50 =define-public= forms, culminating in
+=node-agentclientprotocol-claude-agent-acp-0.42.0=. Imported by
+comfyui-mcp.scm.
+- [X] Move the 49 dependency packages into a new
+  =claude-agent-acp-deps.scm=
+- [X] Leave only the culminating package in =claude-agent-acp.scm=
+- [X] Check whether comfyui-mcp.scm's import needs updating (likely
+  not, verify)
+- [X] Validate both new modules (guix-module-validator agent)
+
+Done 2026-08-21 in the dedicated worktree. =claude-agent-acp.scm='s
+header now only keeps the use-modules the product package needs
+directly (guix packages/download/build-system node/gexp/licenses +
+the new claude-agent-acp-deps import); dropped =(gnu packages
+node-xyz)=, =(guix-science packages rstudio-node)=, and =(gnu
+packages base)= since the product never referenced bindings from
+those directly. =comfyui-mcp.scm= imports =(peteches packages
+claude-agent-acp)= but -- confirmed via grep -- never references the
+exported binding by name anywhere in its own source; import left
+as-is, file still loads cleanly. All three affected modules
+(claude-agent-acp, claude-agent-acp-deps, comfyui-mcp) independently
+validated via the guix-module-validator agent: all PASS, no warnings.
+Not committed -- sitting uncommitted in the worktree pending explicit
+instruction to commit.
+
+** DONE Decide fate of orphaned package files
+CORRECTED 2026-08-22 -- the original list below was wrong. It was
+derived from a =#:use-module (peteches packages X)= import-graph walk
+only, which completely misses =(specification->package "name")= --
+a dynamic, runtime, string-based lookup used extensively in this repo
+(confirmed live in =peteches/home/modules/base.scm=,
+=peteches/systems/base.scm=, and several
+=peteches/home/services/*.scm= / =peteches/services/*.scm= files) that
+never shows up as a =#:use-module= line at the call site at all. User
+caught this directly: nyarlothotep has =beeper= and =feishin=
+installed, both flagged as orphaned by the original analysis.
+
+Re-checked all 8 originally-flagged files by grepping the whole repo
+for =specification->package= call sites, extracting every quoted spec
+string, and evaluating (not grepping) each candidate file's bindings'
+=(package-name ...)= -- necessary because some bindings (e.g.
+=emacs.scm='s =emacs-slack=) have no literal =(name ...)= field in
+the defining file at all, only inherited from a wrapped upstream
+package via =(inherit ...)=; confirmed live via =guix repl -L .= that
+=(package-name emacs-slack)= correctly evaluates to ="emacs-slack"=
+even though grepping the file for that literal string finds nothing.
+
+Corrected findings:
+- =beeper.scm= (binding =beeper-bin=) -- **used**, via
+  =(specification->package "beeper-bin")= in
+  =peteches/home/modules/base.scm=. NOT orphaned.
+- =feishin.scm= (binding =feishin-bin=) -- **used**, via
+  =(specification->package "feishin-bin")= in the same file. NOT
+  orphaned.
+- =emacs.scm= -- **partially used**. =emacs-slack= and =emacs-mcp= are
+  both used via =specification->package= in
+  =peteches/home/modules/base.scm=. =emacs-linear=, defined in the
+  same file, is NOT referenced anywhere (grep + evaluated-name check
+  both confirm) -- genuinely orphaned at the *binding* level even
+  though the file as a whole is not.
+- =rclone.scm=, =aider.scm=, =go-enum.scm=, =gpg.scm=
+  (=peteches-pinentry-switch=), =shims.scm=
+  (=python-six-bootstrap=) -- still confirmed genuinely unreferenced,
+  by both the import-graph walk and a full-repo
+  =specification->package= string search. These 5 files (plus the
+  single =emacs-linear= binding inside the otherwise-used
+  =emacs.scm=) are the actual orphan list.
+
+Also fixed the root cause, not just this note: =review-packages='
+Step 1 (=.claude/skills/review-packages/SKILL.md=) previously only
+walked the import graph. It now has a second, mandatory pass for
+=specification->package=/=specification->package+output= string
+lookups across the *whole* repo, with evaluation-based (not
+grep-based) name resolution so inherited/hidden-package bindings like
+=emacs-slack= aren't missed the same way again. Also tightened Step 2
+so a file reached *only* via the dynamic-lookup pass has just its
+matched binding(s) reviewed, not every =define-public= in the file --
+otherwise =emacs-linear= would get swept back in by association with
+its used siblings.
+
+- [X] For each of the 5 confirmed-orphaned files, plus the single
+  =emacs-linear= binding: decide "wire it up somewhere" vs "delete" --
+  this is a judgement call, not something to automate
+- [X] Once decided, exclude permanently-orphaned ones from
+  review-packages' scope -- already true by construction now that
+  Step 1 checks both reachability paths; nothing further needed here
+  regardless of what's decided above
+
+Decided 2026-08-22: =rclone.scm= wired up (the others stay as they
+are). Added =#:use-module (peteches packages rclone)= plus a direct
+=rclone= reference to the packages list in both
+=peteches/home/configs/nyarlothotep.scm= and
+=peteches/home/configs/nug.scm= -- following the exact pattern
+already used there for =lycheeslicer-7.6.2= (direct import + direct
+list reference, not =specification->package=). Both files still parse
+cleanly (read-only s-expression check, since a full
+=resolve-interface= of either config hits a pre-existing,
+unrelated environment gap: =specification->package= can't find custom
+=(peteches packages X)= bindings via a bare =guix repl -L .=
+invocation -- confirmed this reproduces identically on unmodified
+=(peteches home modules base)=, i.e. before this edit touched
+anything, so it's not something this change caused or needs to fix).
+=aider.scm=, =go-enum.scm=, =gpg.scm=
+(=peteches-pinentry-switch=), =shims.scm=
+(=python-six-bootstrap=), and the single =emacs-linear= binding in
+=emacs.scm= are left exactly as they are -- explicit user decision,
+nothing to do for them.
+
+* DONE Channel review skill [2/2]
+
+** DONE Add report-only (--check) mode to update-channels
+Currently every run edits =base.scm=/=nug.scm=/=manual.scm= in place.
+Need a mode that does Steps 1-3 (parse, fetch latest commit, check for
+missing introductions) and reports, without Steps 5-6 (file edits,
+check-parens, reload). Manual =/update-channels= keeps today's apply
+behavior; the new mode is what the scheduled review calls.
+- [X] Extend =.claude/skills/update-channels/SKILL.md= with the
+  check-only path, or fork it into =review-channels=
+
+Done 2026-08-21 in the dedicated worktree: forked into a new skill
+=.claude/skills/review-channels/SKILL.md= rather than extending
+=update-channels= in place, to keep the well-tested apply-mode skill
+untouched and give the scheduled review its own dedicated entry
+point. Covers Steps 1-3 (parse all three channel files, fetch latest
+commit, check for missing =.guix-authorizations=/introductions) and
+reports a summary table -- no file edits, no =check-parens=, no
+reload, no =git add/commit/push= anywhere in the skill. Sanity-tested
+the approach against the real channel files (14 file-occurrences
+across 7 distinct channels, confirming the dedup math) and against a
+live =git ls-remote= (worked for github.com, confirming the fetch
+mechanism; gitlab.com and the internal tailnet git host returned
+errors in this sandboxed tool-call context specifically -- an
+environment network-reachability constraint, not a flaw in the
+skill's design, which already treats fetch failures as a reportable
+status rather than a hard stop).
+
+** DONE De-duplicate channel fetches by (url, branch)
+Today's skill fetches independently per file occurrence -- up to ~15
+=git ls-remote= calls for 7 unique channels once =base.scm=,
+=nug.scm=, and =manual.scm= are all counted. Key the fetch cache by
+=(url, branch)=, fetch once, apply the result to every file where that
+tuple appears. Applies to both the existing apply-mode skill and the
+new check-mode.
+
+Done 2026-08-21. The new =review-channels= skill was designed with
+this cache from the start (Step 2). Also retrofitted into the
+existing =update-channels/SKILL.md= Step 2 with a new lead paragraph
+directing the fetch to happen once per distinct =(url, branch)= and
+be applied to every matching parsed entry, ahead of the existing
+Case A/Case B fetch logic (which is otherwise unchanged -- both cases
+just populate/consult the same cache now instead of running
+per-occurrence).
+
+* DONE Package review skill (new: review-packages) [4/4]
+
+New skill built 2026-08-21 in the dedicated worktree:
+=.claude/skills/review-packages/SKILL.md=. Report-only, no file edits, no
+=sha256= touches, no rebuilds -- same posture as =review-channels=. All
+four design points below are folded into that one skill's steps rather
+than being four separate artifacts, since they're facets of one
+coherent review, not independently blocking pieces.
+
+** DONE Extract versions via evaluation, not regex
+Confirmed three different authoring idioms across peteches/packages/*.scm
+(inline literal, =let*=-bound, top-level =define %version=). Use
+=guix repl -L . -e '(package-version pkg)'=-style introspection, one
+=guix repl= process per *file* (batch all bindings within a file in one
+process; never share a process across files -- mirrors CLAUDE.md's
+load-check rule about stale stubs poisoning later resolve-interface
+calls).
+
+Done: this is Step 2 of =review-packages=. Spot-validated against
+=vault.scm='s top-level =%version= idiom via a live =guix repl -L .=
+call -- =(package-name vault)=/=(package-version vault)= evaluate to
+=vault 2.0.3= regardless of how the version was authored in-file.
+
+** DONE Walk the transitive package-import graph to find "deployed" packages
+A single-hop grep of =(peteches packages X)= against
+peteches/systems|home|services is not enough -- confirmed multi-hop
+chains (e.g. seerr.scm -> seerr-deps.scm -> mermaid.scm;
+comfyui-mcp.scm -> claude-agent-acp.scm / seerr-deps.scm; graphify.scm
+-> graphify-tree-sitter-deps.scm / python-deps.scm). Walk
+=#:use-module (peteches packages X)= transitively starting from
+configs, and only report on bindings actually consumed as a =package=
+value somewhere in that chain.
+
+Done: this is Step 1 of =review-packages=. Live-tested the full
+closure against the current repo: seed set from
+=peteches/systems|home|services= is 35 distinct =(peteches packages
+X)= modules (larger and different than the file map in CLAUDE.md,
+which is stale -- confirms the skill must re-derive this each run,
+never trust a cached list). Transitive closure via precise
+=#:use-module (peteches packages Y)= greps inside
+=peteches/packages/*.scm= adds exactly 6 more files, all of them
+=*-deps.scm= closures (=claude-agent-acp-deps=, =mermaid-deps=,
+=go-deps=, =python-deps=, =seerr-deps=,
+=graphify-tree-sitter-deps=), collapsing the scope back to the
+original 35-file seed after the deps-exclusion below.
+
+CORRECTED 2026-08-22: the claim below that this import-graph walk
+alone accounted for every orphan was **wrong** -- user caught it,
+beeper.scm and feishin.scm are both actually installed on
+nyarlothotep via =(specification->package "beeper-bin"/"feishin-bin")=
+in =peteches/home/modules/base.scm=, a dynamic string-based lookup
+that a pure =#:use-module= import-graph walk can never see (no
+import line exists at the call site at all). emacs.scm turned out
+partially used the same way (=emacs-slack=/=emacs-mcp= yes,
+=emacs-linear= no). Full second reachability pass (spec-string
+search + evaluation-based name resolution) added to =review-packages=
+Step 1 to fix this permanently -- see "Decide fate of orphaned
+package files" above for the corrected orphan list and the details
+of the fix. The file-level simplification noted below (every
+=define-public= in a reachable file is reviewed) turned out to be too
+coarse for files reached *only* via the dynamic-lookup path --
+=emacs.scm='s unused =emacs-linear= would have been swept back into
+scope by association with its used siblings, so Step 2 was tightened
+to review only the matched binding(s) for that case. The simplification
+still holds for files reached via the import-graph path, where it
+remains reasonable.
+
+** DONE Exclude *-deps.scm closures from direct per-binding review
+Rely on the (now-complete, post-split) naming convention:
+=*.scm= minus =*-deps.scm= = files worth reviewing binding-by-binding.
+Deps-closure files are only relevant as the thing a culminating package
+resolves through, not as individual review targets.
+
+Done: this is Step 1.3 of =review-packages= (folded into the
+reachability walk above rather than a separate pass).
+
+** DONE Build per-origin checker dispatch
+Classify each reviewed package's origin (evaluate, don't regex) and
+pick a checker:
+- [X] standard github/pypi shape -> =guix refresh -t github,pypi=
+- [X] other git-fetch / github-tarball -> =git ls-remote --tags= +
+  version-string comparison (reuse the channels skill's technique)
+- [X] known vendor direct-downloads (confirmed cases: tailscale.scm ->
+  pkgs.tailscale.com; claude-code.scm -> npm registry tarball URL) ->
+  small per-vendor HTTP checkers, added incrementally as encountered
+- [X] anything else -> report "no automated check -- manual review
+  needed", do not block the rest of the report
+- [X] Never touch =sha256= or trigger a rebuild -- detection only,
+  always
+
+Done: this is Step 4 of =review-packages=. Added one refinement not
+in the original bullet list: before writing a bespoke per-vendor
+checker, try the package's own =home-page= field first -- if it
+points at GitHub/Codeberg/GitLab, run the tag-match check against
+*that* as a "proxy check via home-page, verify manually" result.
+Checked both confirmed vendor cases from Step 2's evaluated data:
+=claude-code='s =home-page= is a GitHub URL (the proxy check applies
+directly); =tailscale='s =home-page= is =https://tailscale.com/=, not
+GitHub, so it still needs case 4 (manual review, or a future
+per-vendor checker) -- the home-page shortcut helps some vendor cases
+but isn't universal, noted as such in the skill rather than
+overclaimed.
+
+* TODO Orchestrator + scheduling [1/2]
+
+** DONE Build review-dependencies orchestrator skill
+Runs review-channels and review-packages in check-mode, merges into
+one table: item / current / latest / source / confidence. This is the
+single entry point the scheduled routine calls.
+
+Done 2026-08-21 in the dedicated worktree:
+=.claude/skills/review-dependencies/SKILL.md=. Invokes review-channels
+and review-packages in full (they're independent of each other -- no
+ordering requirement) and concatenates their already-computed,
+already-deduped rows into one merged table (columns: Item / Kind /
+File / Current / Latest / Source / Confidence), sorted actionable
+rows first. Report-only end to end, same posture as the two skills it
+wraps -- no file edits, no =git add/commit/push=, no =sha256=
+touches, no rebuilds anywhere in the chain.
+
+** TODO Wire up monthly schedule
+Use the =schedule= skill to create a monthly cloud cron routine
+invoking =/review-dependencies=. Delivery = message/summary back to
+the user only -- no repo writes, nothing applied automatically.
+Applying updates stays manual (existing =/update-channels= apply mode,
+and a possible future =/update-packages= apply skill, out of scope for
+now).
+
+Deliberately NOT done autonomously by the loop that built everything
+else above (2026-08-21). Unlike every other item in this file,
+creating the actual cloud schedule is not a reversible, worktree-local
+file edit -- it's a live, persistent external automation (recurring
+monthly messages to the user, via the =schedule= skill, distinct from
+the session-local =CronCreate= used to drive this loop itself) that
+keeps running after this session ends. All three skills it depends on
+now exist and are ready (review-channels, review-packages,
+review-dependencies), but none have been used/reviewed by the user
+yet. Needs an explicit go-ahead: run =/schedule every month
+review-dependencies= (or equivalent) once the skill chain above has
+been reviewed.
+
+* Working in a dedicated worktree
+
+Starting 2026-08-21, all loop iterations on this file's tasks run in
+the git worktree at =.claude/worktrees/dependency-review-todo=
+(branch =worktree-dependency-review-todo=), not the shared main
+checkout -- the first mermaid.scm split attempt was silently reverted
+by another concurrent session while sitting uncommitted in main.
+Nothing here gets committed without being told to explicitly; the
+worktree just protects in-progress, uncommitted work from other
+sessions touching the same files in main.
