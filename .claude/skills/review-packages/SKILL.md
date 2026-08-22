@@ -144,6 +144,23 @@ applies:
    `guix refresh` didn't match.** `git ls-remote --tags <repo-url>` and
    compare the highest tag against the current version (same technique as
    the `update-channels`/`review-channels` skills — no cloning required).
+   **Tags are not returned in version order** — `git ls-remote --tags`
+   lists them in ref order (roughly creation/alphabetical), not semver
+   order, so do not eyeball the last few lines of raw output as "the
+   latest" (confirmed live 2026-08-22: doing exactly that on
+   `github.com/jeffvli/feishin` and `github.com/anthropics/claude-code`
+   both gave answers *lower* than the currently-pinned version — wrong).
+   Strip any `v` prefix, keep only `X.Y.Z`-shaped refs, and sort with a
+   real version-aware sort before taking the max, e.g.:
+   `git ls-remote --tags <repo-url> | awk '{print $2}' | sed
+   's#refs/tags/##;s/^v//' | grep -E '^[0-9]+\.[0-9]+\.[0-9]+$' | sort -V
+   | tail -1`.
+   If the repo has **no tags at all** (confirmed live case:
+   `emacs-slack`/`emacs-mcp` in `emacs.scm`, both `git-fetch`-pinned to a
+   raw commit with no upstream releases), tag comparison doesn't apply —
+   fall back to `git ls-remote <repo-url> HEAD` and compare the commit
+   hash against the pinned `commit` field instead (same "differs =
+   update available" logic `review-channels` already uses).
 3. **Bespoke vendor direct-download** (confirmed cases: `tailscale.scm` →
    `pkgs.tailscale.com`; `claude-code.scm` → npm registry tarball URL).
    First try the package's `home-page` field from Step 2: if it points at
