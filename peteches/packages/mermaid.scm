@@ -12,14 +12,14 @@
 (define-public node-mermaid-js-mermaid-cli
   (package
     (name "node-mermaid-js-mermaid-cli")
-    (version "11.12.0")
+    (version "11.16.0")
     (source
      (origin
        (method url-fetch)
        (uri
-        "https://registry.npmjs.org/@mermaid-js/mermaid-cli/-/mermaid-cli-11.12.0.tgz")
+        "https://registry.npmjs.org/@mermaid-js/mermaid-cli/-/mermaid-cli-11.16.0.tgz")
        (sha256
-        (base32 "0dv8jbc55shljzihjrlr3r5n934pjzgdrbdl8mxa5mqhq1z2p7n5"))))
+        (base32 "0fal0zljzrlx9pywlx3640g4jsja6lqfm8a01alnrjpr3ccrbmv5"))))
     (build-system node-build-system)
     (arguments
      (list
