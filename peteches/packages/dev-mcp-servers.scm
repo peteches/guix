@@ -16,7 +16,7 @@
 ;; fully self-contained here rather than risking a newer SDK against
 ;; whatever narrow API surface a year-old release actually calls. time-mcp
 ;; pins "^1.25.3", comfortably satisfied by the already-packaged
-;; node-modelcontextprotocol-sdk-1.29.0 (claude-agent-acp.scm) — reusing it
+;; node-modelcontextprotocol-sdk-1.29.0 (claude-agent-acp-deps.scm) — reusing it
 ;; skips ~35 packages that only exist to support that SDK version's
 ;; Express/Hono-based Streamable HTTP transport, which neither server here
 ;; uses (both are stdio).
@@ -45,7 +45,7 @@
                           node-pg-cloudflare-1.4.0
                           node-xtend-4.0.2
                           node-dayjs-1.11.21))
-  #:use-module ((peteches packages claude-agent-acp)
+  #:use-module ((peteches packages claude-agent-acp-deps)
                 #:select (node-modelcontextprotocol-sdk-1.29.0
                           node-zod-4.4.3)))
 
