@@ -38,15 +38,15 @@
 (define-public mcp-outline
   (package
     (name "mcp-outline")
-    (version "1.10.0")
+    (version "1.10.1")
     (source
      (origin
        (method url-fetch)
-       (uri (string-append "https://files.pythonhosted.org/packages/be/44/"
-             "51bba128ee3117f52d182a1c2f9b199c3dc3e29ec788306fb26687710519/"
+       (uri (string-append "https://files.pythonhosted.org/packages/ad/3b/"
+             "0acbc614fec384ded116446af9b235b2414b789d745c516d064beeede2a0/"
              "mcp_outline-" version ".tar.gz"))
        (sha256
-        (base32 "1cff7kxpg7k7wij18gmnxyb5zh9b2mcf0hg834brss875c0g2q7p"))))
+        (base32 "0r72lq71ddhpbrrhlhl6b59bpg9p8ax5wxr4rq0bwp89v7j35rci"))))
     (build-system pyproject-build-system)
     (arguments
      (list
@@ -110,7 +110,7 @@ Outline knowledge bases.")
 (define-public go-github-com-sonirico-mcp-shell
   (package
     (name "go-github-com-sonirico-mcp-shell")
-    (version "0.3.1")
+    (version "0.7.1")
     (source
      (origin
        (method git-fetch)
@@ -119,7 +119,7 @@ Outline knowledge bases.")
              (commit (string-append "v" version))))
        (file-name (git-file-name name version))
        (sha256
-        (base32 "008fc75xljp0lvp09x64nv8ai9a6w3xmh9s207fzisxqmsfch2bn"))))
+        (base32 "1m32wydj6hj4y9b5zjq0rpb80a4g9w0h2sgh1i3aqm2vl9f5wk1d"))))
     (build-system go-build-system)
     (arguments
      (list
@@ -142,13 +142,13 @@ clients.  In other words: the brain thinks, this runs the commands.")
 (define-public plane-mcp-server
   (package
     (name "plane-mcp-server")
-    (version "0.2.10")
+    (version "0.3.1")
     (source
      (origin
        (method url-fetch)
        (uri (pypi-uri "plane_mcp_server" version))
        (sha256
-        (base32 "1dlkvj4215mnz00pdh1zw5w0ndk63jv42k9dwm79w59zy1az4zz4"))))
+        (base32 "12i4miqr97fnq0rzh1p6ar1fmjid13pkyygagfqg44f5kl6ypg7x"))))
     (build-system pyproject-build-system)
     (arguments
      ;; Tests need a live Plane workspace / Redis.
@@ -216,7 +216,7 @@ API.")
 ;; out of the resulting "hash mismatch" build error.
 
 (define mcp-grafana-version
-  "0.17.2")
+  "1.1.0")
 
 (define mcp-grafana-source
   (origin
@@ -225,7 +225,7 @@ API.")
           (url "https://github.com/grafana/mcp-grafana")
           (commit (string-append "v" mcp-grafana-version))))
     (file-name (git-file-name "mcp-grafana" mcp-grafana-version))
-    (sha256 (base32 "1p7f26ry6s4gnj1a6d09w0v2146k9wkh9ka79b42vqa3hcj2dhpi"))))
+    (sha256 (base32 "0ywdgs9y4zwvi7izipkb59k2b6g3cfx0i765qzsxpbc1qamdl7gg"))))
 
 (define mcp-grafana-vendor
   (computed-file (string-append "mcp-grafana-" mcp-grafana-version "-vendor")

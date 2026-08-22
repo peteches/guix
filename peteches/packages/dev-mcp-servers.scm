@@ -234,16 +234,16 @@ time, timezone conversion and relative-time tools to MCP clients.  Set
     (description "Split a text stream into a line stream, using Stream 3")
     (license license:isc)))
 
-(define-public node-pgpass-1.0.5
+(define-public node-pgpass-1.0.6
   (package
     (name "node-pgpass")
-    (version "1.0.5")
+    (version "1.0.6")
     (source
      (origin
        (method url-fetch)
-       (uri "https://registry.npmjs.org/pgpass/-/pgpass-1.0.5.tgz")
+       (uri "https://registry.npmjs.org/pgpass/-/pgpass-1.0.6.tgz")
        (sha256
-        (base32 "15w5dm57yk2g96cgzribnqsay3rz1x8c8nqbc3yhlhw6c6alqygz"))))
+        (base32 "1wlzwsg25qv2f3m8ivqnnr3qz5774vlzj2l766sk418sjfsjs67k"))))
     (build-system node-build-system)
     (arguments
      (list
@@ -293,17 +293,17 @@ time, timezone conversion and relative-time tools to MCP clients.  Set
     (description "64-bit big-endian signed integer-to-string conversion")
     (license license:isc)))
 
-(define-public node-postgres-date-1.0.7
+(define-public node-postgres-date-2.1.0
   (package
     (name "node-postgres-date")
-    (version "1.0.7")
+    (version "2.1.0")
     (source
      (origin
        (method url-fetch)
        (uri
-        "https://registry.npmjs.org/postgres-date/-/postgres-date-1.0.7.tgz")
+        "https://registry.npmjs.org/postgres-date/-/postgres-date-2.1.0.tgz")
        (sha256
-        (base32 "0nfv78pr34582ja7xkjahpaqcgksn81b29gllr0l1xmqwy88sym6"))))
+        (base32 "1816cqmkm3p9s52wgxkxcvjysb1sq981pkiqw96693aqcmkl6j65"))))
     (build-system node-build-system)
     (arguments
      (list
@@ -319,17 +319,17 @@ time, timezone conversion and relative-time tools to MCP clients.  Set
     (description "Postgres date column parser")
     (license license:expat)))
 
-(define-public node-postgres-array-2.0.0
+(define-public node-postgres-array-3.0.4
   (package
     (name "node-postgres-array")
-    (version "2.0.0")
+    (version "3.0.4")
     (source
      (origin
        (method url-fetch)
        (uri
-        "https://registry.npmjs.org/postgres-array/-/postgres-array-2.0.0.tgz")
+        "https://registry.npmjs.org/postgres-array/-/postgres-array-3.0.4.tgz")
        (sha256
-        (base32 "185kfaqsn7ivp4as2bkbvcixjz94ysqkbh5mljqd8cbnfxf07wfv"))))
+        (base32 "1xpp9zfshp624vqr5nsvlfj0xkbnr8l2pvv1y1y4xj68hwsxh3wv"))))
     (build-system node-build-system)
     (arguments
      (list
@@ -345,17 +345,17 @@ time, timezone conversion and relative-time tools to MCP clients.  Set
     (description "Parse postgres array columns")
     (license license:expat)))
 
-(define-public node-postgres-bytea-1.0.1
+(define-public node-postgres-bytea-3.0.0
   (package
     (name "node-postgres-bytea")
-    (version "1.0.1")
+    (version "3.0.0")
     (source
      (origin
        (method url-fetch)
        (uri
-        "https://registry.npmjs.org/postgres-bytea/-/postgres-bytea-1.0.1.tgz")
+        "https://registry.npmjs.org/postgres-bytea/-/postgres-bytea-3.0.0.tgz")
        (sha256
-        (base32 "15kxh3b2p0jsrjybsp7v2y7yriry8q8nxbrj640b0icrrd7f7583"))))
+        (base32 "08m4x2j4azp0l7bxk56plghfdqxzqnc1zkkmvivcfnna3niw4b2d"))))
     (build-system node-build-system)
     (arguments
      (list
@@ -371,17 +371,17 @@ time, timezone conversion and relative-time tools to MCP clients.  Set
     (description "Postgres bytea parser")
     (license license:expat)))
 
-(define-public node-postgres-interval-1.2.0
+(define-public node-postgres-interval-4.1.0
   (package
     (name "node-postgres-interval")
-    (version "1.2.0")
+    (version "4.1.0")
     (source
      (origin
        (method url-fetch)
        (uri
-        "https://registry.npmjs.org/postgres-interval/-/postgres-interval-1.2.0.tgz")
+        "https://registry.npmjs.org/postgres-interval/-/postgres-interval-4.1.0.tgz")
        (sha256
-        (base32 "1c8k4h57rq5i1fmfl4ba2iv784xv562y6c7rr8i7vaihddi66xg6"))))
+        (base32 "1ivzxn9b9idbynqm9h5jgjx090v8n7ps08wvz5v9ggyfgg7qq3a3"))))
     (build-system node-build-system)
     (arguments
      (list
@@ -505,7 +505,7 @@ time, timezone conversion and relative-time tools to MCP clients.  Set
                   node-pg-protocol-1.16.0
                   node-pg-types-2.2.0
                   node-pg-pool-3.14.0
-                  node-pgpass-1.0.5
+                  node-pgpass-1.0.6
                   node-pg-native-3.9.0))
     (home-page "https://github.com/brianc/node-postgres")
     (synopsis "PostgreSQL client - pure JavaScript & libpq with the same API")

@@ -38,13 +38,13 @@
 (define-public graphify
   (package
     (name "graphify")
-    (version "0.9.26")
+    (version "0.9.48")
     (source
      (origin
        (method url-fetch)
        (uri (pypi-uri "graphifyy" version))
        (sha256
-        (base32 "0m7qcwlgy09k53wc038lgv4ncakyyrxd0gdychlq9qgzl8blj3yd"))))
+        (base32 "07p4sn63s6i1qmb87y26wd8jnaxnkak1qj9lrc698rj8h21srshl"))))
     (build-system pyproject-build-system)
     (arguments
      (list
