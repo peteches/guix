@@ -161,27 +161,41 @@ applies:
    fall back to `git ls-remote <repo-url> HEAD` and compare the commit
    hash against the pinned `commit` field instead (same "differs =
    update available" logic `review-channels` already uses).
-3. **Known-source override table.** Some vendor-direct-download packages are
-   *actually* built from a public, tagged source repo that neither the
-   origin URL nor the `home-page` field mentions — `home-page` often points
-   at a marketing site instead. Rather than guessing via `home-page` (case
-   4) or giving up (case 5), check a small hand-verified table of
-   `binding → real source repo` mappings first, and treat a hit here as an
-   **exact match, same confidence as case 2** (not a proxy guess) — every
-   entry was manually confirmed by comparing tag scheme against pinned
-   version before being added:
+3. **Known-source overrides and per-vendor checkers.** Some vendor-direct-
+   download packages are actually built from a public, tagged source repo
+   that neither the origin URL nor the `home-page` field mentions (`home-page`
+   often points at a marketing site instead), and some vendors expose a
+   direct, cheap version-check endpoint of their own even though there's no
+   public source repo at all. Rather than guessing via `home-page` (case 4)
+   or giving up (case 5), check a small hand-verified table of these first,
+   and treat a hit here as an **exact match, same confidence as case 2**
+   (not a proxy guess) — every entry was manually confirmed against the
+   pinned version before being added:
    - `tailscale.scm` (`tailscale`, origin `pkgs.tailscale.com`) →
      `https://github.com/tailscale/tailscale` (confirmed 2026-08-22: tags
      match the pinned version exactly, e.g. pinned `1.102.2`, tag `v1.102.2`
-     exists, latest tag at the time was `v1.102.3`)
+     exists, latest tag at the time was `v1.102.3`). Run the Step 4.2
+     tag-check against this repo.
    - `vault.scm` (`vault`, origin `releases.hashicorp.com`) →
      `https://github.com/hashicorp/vault` (confirmed 2026-08-22: same
-     exact-match pattern, pinned `2.0.3`, latest tag `v2.0.4`)
-   Run the Step 4.2 tag-check (with its version-sort fix) or the no-tags
-   HEAD fallback against the override repo, whichever applies. Add an entry
-   here only after manually confirming the tag/commit scheme actually lines
-   up with this package's version field — an unverified guess belongs in
-   case 4 instead, labeled as a guess, not silently added here.
+     exact-match pattern, pinned `2.0.3`, latest tag `v2.0.4`). Run the
+     Step 4.2 tag-check against this repo.
+   - `beeper.scm` (`beeper-bin`) → no source repo, but Beeper runs a stable
+     "latest build" redirect API: a bare `HEAD` request (no download) to
+     `https://api.beeper.com/desktop/download/linux/x64/stable/com.automattic.beeper.desktop`
+     302s with a `Location` header containing the versioned filename, e.g.
+     `.../builds/Beeper-4.3.57-x86_64.AppImage` — extract the version from
+     that filename directly:
+     `curl -sI 'https://api.beeper.com/desktop/download/linux/x64/stable/com.automattic.beeper.desktop'
+     | grep -i '^location:' | grep -oE '[0-9]+\.[0-9]+\.[0-9]+'`.
+     Confirmed live 2026-08-22 (user found the endpoint): revealed `4.3.57`
+     against a pinned `4.2.948` — a real update. This supersedes the
+     earlier finding that beeper-bin had no automated check at all; keep
+     that history in `docs/dependency-review-todo.org` as a record of what
+     was tried, but this endpoint is now the live checker.
+   Add an entry here only after manually confirming the mechanism actually
+   reflects this package's real upstream version — an unverified guess
+   belongs in case 4 instead, labeled as a guess, not silently added here.
 4. **Home-page proxy** (no override-table entry, but `home-page` points at
    GitHub/Codeberg/GitLab). Run the Step 4.2 tag-check against *that* repo
    as an unverified proxy signal (label it "proxy check via home-page —
@@ -189,16 +203,6 @@ applies:
    necessarily where the download artifact comes from — this is a guess,
    unlike case 3's confirmed mappings).
 5. **Anything else.** Report `no automated check — manual review needed`.
-   Confirmed case: `beeper.scm` (`beeper-bin`) — investigated 2026-08-22
-   and stays here permanently (re-check only if the vendor's distribution
-   changes): no public source repo (`git ls-remote` against plausible
-   `github.com/beeper/*` repo names fails as if the repo doesn't exist),
-   no electron-builder-style update manifest at the download host
-   (`builds/latest.yml`, `builds/latest-linux.yml` both 404), and the
-   `beeper.com/download` page is JS-rendered with no static download URL
-   or version string to scrape from its HTML. Don't re-attempt the same
-   probes on future runs without a reason to think something changed —
-   record the negative result and move on.
    Do not block the rest of the report on this — keep going to the next
    package.
 
@@ -219,7 +223,7 @@ Print one summary table covering every package in the Step 1 scope:
 | vault | vault.scm | `2.0.3` | `2.0.4` | known-source override (github.com/hashicorp/vault) | high |
 | emacs-slack | emacs.scm | `4c34c52` | `22ae94d` | HEAD vs pinned commit (no upstream tags) | high |
 | claude-code | claude-code.scm | `2.1.235` | `2.1.239` | proxy via home-page (github.com/anthropics/claude-code) | verify manually |
-| beeper-bin | beeper.scm | `4.2.948` | — | no automated check | manual review needed |
+| beeper-bin | beeper.scm | `4.2.948` | `4.3.57` | known-source override (api.beeper.com latest-build redirect) | high |
 
 Real data from a live trial run on 2026-08-22 — see the entries this table
 records in `docs/dependency-review-todo.org`'s history for the fuller
