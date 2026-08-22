@@ -161,18 +161,44 @@ applies:
    fall back to `git ls-remote <repo-url> HEAD` and compare the commit
    hash against the pinned `commit` field instead (same "differs =
    update available" logic `review-channels` already uses).
-3. **Bespoke vendor direct-download** (confirmed cases: `tailscale.scm` →
-   `pkgs.tailscale.com`; `claude-code.scm` → npm registry tarball URL).
-   First try the package's `home-page` field from Step 2: if it points at
-   GitHub/Codeberg/GitLab, run the Step 4.2 `git ls-remote --tags` check
-   against *that* as a proxy signal (label it "proxy check via home-page —
+3. **Known-source override table.** Some vendor-direct-download packages are
+   *actually* built from a public, tagged source repo that neither the
+   origin URL nor the `home-page` field mentions — `home-page` often points
+   at a marketing site instead. Rather than guessing via `home-page` (case
+   4) or giving up (case 5), check a small hand-verified table of
+   `binding → real source repo` mappings first, and treat a hit here as an
+   **exact match, same confidence as case 2** (not a proxy guess) — every
+   entry was manually confirmed by comparing tag scheme against pinned
+   version before being added:
+   - `tailscale.scm` (`tailscale`, origin `pkgs.tailscale.com`) →
+     `https://github.com/tailscale/tailscale` (confirmed 2026-08-22: tags
+     match the pinned version exactly, e.g. pinned `1.102.2`, tag `v1.102.2`
+     exists, latest tag at the time was `v1.102.3`)
+   - `vault.scm` (`vault`, origin `releases.hashicorp.com`) →
+     `https://github.com/hashicorp/vault` (confirmed 2026-08-22: same
+     exact-match pattern, pinned `2.0.3`, latest tag `v2.0.4`)
+   Run the Step 4.2 tag-check (with its version-sort fix) or the no-tags
+   HEAD fallback against the override repo, whichever applies. Add an entry
+   here only after manually confirming the tag/commit scheme actually lines
+   up with this package's version field — an unverified guess belongs in
+   case 4 instead, labeled as a guess, not silently added here.
+4. **Home-page proxy** (no override-table entry, but `home-page` points at
+   GitHub/Codeberg/GitLab). Run the Step 4.2 tag-check against *that* repo
+   as an unverified proxy signal (label it "proxy check via home-page —
    verify manually before bumping", since the home-page repo isn't
-   necessarily where the download artifact comes from). If `home-page`
-   isn't a recognized code host either, and no small per-vendor checker has
-   been written yet for this vendor, fall through to case 4. Add a
-   per-vendor checker here incrementally as new vendor patterns are
-   encountered — do not try to build a general vendor-URL scraper up front.
-4. **Anything else.** Report `no automated check — manual review needed`.
+   necessarily where the download artifact comes from — this is a guess,
+   unlike case 3's confirmed mappings).
+5. **Anything else.** Report `no automated check — manual review needed`.
+   Confirmed case: `beeper.scm` (`beeper-bin`) — investigated 2026-08-22
+   and stays here permanently (re-check only if the vendor's distribution
+   changes): no public source repo (`git ls-remote` against plausible
+   `github.com/beeper/*` repo names fails as if the repo doesn't exist),
+   no electron-builder-style update manifest at the download host
+   (`builds/latest.yml`, `builds/latest-linux.yml` both 404), and the
+   `beeper.com/download` page is JS-rendered with no static download URL
+   or version string to scrape from its HTML. Don't re-attempt the same
+   probes on future runs without a reason to think something changed —
+   record the negative result and move on.
    Do not block the rest of the report on this — keep going to the next
    package.
 
@@ -188,15 +214,23 @@ Print one summary table covering every package in the Step 1 scope:
 
 | Package | File | Current version | Latest found | Checker used | Confidence |
 |---------|------|-----------------|--------------|--------------|------------|
-| tailscale | tailscale.scm | `1.102.2` | `1.104.0` | proxy via home-page (github.com/tailscale/tailscale) | verify manually |
-| claude-code | claude-code.scm | `2.1.235` | `2.1.235` | github tag match | high |
-| node-mermaid-js-mermaid-cli | mermaid.scm | `11.12.0` | — | no automated check | manual review needed |
+| rclone | rclone.scm | `1.71.1` | `1.75.0` | guix refresh (github) | high |
+| tailscale | tailscale.scm | `1.102.2` | `1.102.3` | known-source override (github.com/tailscale/tailscale) | high |
+| vault | vault.scm | `2.0.3` | `2.0.4` | known-source override (github.com/hashicorp/vault) | high |
+| emacs-slack | emacs.scm | `4c34c52` | `22ae94d` | HEAD vs pinned commit (no upstream tags) | high |
+| claude-code | claude-code.scm | `2.1.235` | `2.1.239` | proxy via home-page (github.com/anthropics/claude-code) | verify manually |
+| beeper-bin | beeper.scm | `4.2.948` | — | no automated check | manual review needed |
+
+Real data from a live trial run on 2026-08-22 — see the entries this table
+records in `docs/dependency-review-todo.org`'s history for the fuller
+sample and how the tailscale/vault override-table entries and the
+version-sort/no-tags fixes above were discovered.
 
 `Confidence` should reflect how directly the checker's source maps to the
-actual release artifact: `high` for github/pypi updater or a tag match
-against the exact repo the source is fetched from, `verify manually` for a
-home-page-proxy match, and `manual review needed` when nothing automated
-ran.
+actual release artifact: `high` for the github/pypi updater, a tag match
+against the exact repo the source is fetched from, a known-source override
+hit, or a HEAD-vs-commit match; `verify manually` for a home-page-proxy
+match; `manual review needed` when nothing automated ran.
 
 Do **not** run `git add`, `git commit`, `git push`, edit any package file,
 or touch any `sha256`. This skill is read-only end to end. If the report

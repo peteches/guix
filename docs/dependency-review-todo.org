@@ -300,6 +300,60 @@ per-vendor checker) -- the home-page shortcut helps some vendor cases
 but isn't universal, noted as such in the skill rather than
 overclaimed.
 
+UPDATED 2026-08-22, after a live trial run of the full
+=review-dependencies= chain (executed by hand -- the Skill tool
+couldn't see this worktree's newly-created skills, its registry was
+built before they existed) surfaced two real correctness bugs and one
+follow-up investigation:
+
+1. =git ls-remote --tags= lists refs in ref order, not version order.
+   Eyeballing the tail of raw output for "the latest" gave *wrong*
+   (too-low) answers live for =feishin= and =claude-code=. Fixed:
+   Step 4.2 now mandates stripping the =v= prefix and sorting with a
+   real version-aware sort (=sort -V=) before taking the max.
+2. =emacs-slack=/=emacs-mcp= (=git-fetch=, pinned to a raw commit,
+   zero upstream tags) broke tag comparison entirely. Fixed: Step 4.2
+   now falls back to comparing =git ls-remote <repo> HEAD= against the
+   pinned commit when a repo has no tags at all.
+3. User asked for a better answer than "manual review needed" for
+   tailscale, vault, and beeper-bin specifically. Investigated each
+   live:
+   - =tailscale= and =vault= both turned out to have real, public,
+     tagged GitHub source repos (=tailscale/tailscale=,
+     =hashicorp/vault=) that neither the origin URL nor =home-page=
+     mentions -- =home-page= points at each project's marketing site
+     instead. Confirmed both repos' tag schemes match the pinned
+     version fields exactly (e.g. tailscale pinned =1.102.2=, tag
+     =v1.102.2= exists; vault pinned =2.0.3=, tag =v2.0.3= exists).
+     Rather than editing =home-page= (a different field with its own
+     established meaning) or writing bespoke scrapers, added a new
+     Step 4 case ahead of the home-page-proxy fallback: a small
+     hand-verified "known-source override" table
+     (=binding -> real source repo=), treated as **high confidence**
+     (exact match) rather than "verify manually", since each entry is
+     manually confirmed before being added, not guessed.
+   - =beeper-bin= was investigated and confirmed to have **no**
+     discoverable automated check: no public source repo (=git
+     ls-remote= against plausible =github.com/beeper/*= names fails as
+     if they don't exist), no electron-builder-style update manifest
+     at the download host (=builds/latest.yml=,
+     =builds/latest-linux.yml= both 404), and =beeper.com/download= is
+     JS-rendered with no static download URL or version string in its
+     HTML to scrape. This is a genuine dead end, not an oversight --
+     documented in the skill so a future run doesn't re-investigate
+     from scratch, and stays in the "no automated check" bucket
+     permanently unless Beeper's distribution changes.
+
+Live findings from the trial run (real, not illustrative): 3 packages
+had real updates available via the =guix refresh= github/pypi path
+(rclone 1.71.1->1.75.0, prometheus 3.11.3->3.14.0, terragrunt
+0.93.9->1.1.3); tailscale (1.102.2->1.102.3) and vault (2.0.3->2.0.4)
+via the new override table; emacs-slack and emacs-mcp both have newer
+upstream commits via the new no-tags HEAD fallback; feishin-bin turned
+out to already be up to date (misread as outdated before the tag-sort
+fix); claude-code and mermaid-cli both show likely updates via the
+unverified home-page-proxy path (verify manually before bumping).
+
 * TODO Orchestrator + scheduling [1/2]
 
 ** DONE Build review-dependencies orchestrator skill
