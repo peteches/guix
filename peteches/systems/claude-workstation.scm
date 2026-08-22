@@ -56,6 +56,7 @@
   #:use-module (gnu system keyboard)
   #:use-module ((gnu packages databases) #:select (postgresql-17))
   #:use-module (peteches packages postgres-extensions)
+  #:use-module (peteches packages pi-coding-agent)
   #:use-module (peteches systems vm-base)
   #:use-module (peteches services alloy)
   #:use-module (peteches services firewall)
@@ -135,6 +136,7 @@ host    all     all     ::1/128                 trust\n"))
      #:ipv4-address "192.168.51.205/23"
      #:ipv6-address "2a10:d582:ef59::111/64"
      #:with-nug-offload? #t
+     #:extra-packages (list pi-coding-agent)
      #:automation-key-extra-users '("criticalgrind" "ygo")
      #:users-extra (list %criticalgrind-user %ygo-user)
      ;; Tailscale unattended join.  The auth-key is a SHARED sops secret
