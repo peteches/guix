@@ -10,9 +10,9 @@
 
 (define-public emacs-slack
   ;; Update the commit and revision
-  (let ((commit "4c34c526a7f5fa51a78bf21c0d3420f74d79df58")
+  (let ((commit "22ae94de5ddf0c9012afe298b5eb8b2e18d45931")
         ;; ← replace with the new commit
-        (revision "12"))
+        (revision "13"))
     ;; increment the revision
     (package
       (inherit upstream:emacs-slack)
@@ -25,7 +25,7 @@
                (commit commit)))
          (file-name (git-file-name "emacs-slack" commit))
          (sha256
-          (base32 "1l7rkzpjfq4zzl4pwzlmmjmabb1rk04slygrplsis4r8rg9anjh4")))))))
+          (base32 "12gpmlg9k2xfjd57bj4jmyrpks00p92h8ip6lcimjqwkl4vf2dwk")))))))
 
 (define-public emacs-mcp
   (package
@@ -36,10 +36,10 @@
        (method git-fetch)
        (uri (git-reference
              (url "https://github.com/lizqwerscott/mcp.el")
-             (commit "2fcda27b15395fe1ed55d15a88e6187a69af09e9")))
+             (commit "2d172809cbdb2a40d86b28ad73bd65547cefe0e1")))
        (file-name (git-file-name name version))
        (sha256
-        (base32 "0q4ycgb4dx4p0v449vncmb4j0nklpy14wasz4x7pkyq6yhsx8lmz"))))
+        (base32 "03zvdvjh724kpb2p7j208fm0z73g21vij0jms8azdxbazyw6yj77"))))
     (build-system emacs-build-system)
     (home-page "https://github.com/lizqwerscott/mcp.el")
     (synopsis "Prompt manager for interacting with LLMs in Emacs")

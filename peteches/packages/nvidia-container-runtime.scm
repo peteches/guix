@@ -28,7 +28,7 @@
 (define-public nvidia-modprobe
   (package
     (name "nvidia-modprobe")
-    (version "550.54.14")
+    (version "610.57.04")
     (source
      (origin
        (method git-fetch)
@@ -37,7 +37,7 @@
              (commit version)))
        (file-name (git-file-name name version))
        (sha256
-        (base32 "1a7q03pnwk3wa0p57whwv2mvz60bv77vvvaljqzwnscpyf94q548"))))
+        (base32 "0hvb1n5741zhxf4j3yplcna0krpnhmcvwshskp4z37yhb5ba17il"))))
     (build-system gnu-build-system)
     (arguments
      (list
@@ -80,7 +80,7 @@
 (define-public libnvidia-container
   (package
     (name "libnvidia-container")
-    (version "1.18.1")
+    (version "1.20.0")
     (source
      (origin
        (method git-fetch)
@@ -90,7 +90,7 @@
        (file-name (git-file-name name version))
        ;; (patches (list (local-file "libnvidia-container.patch")))
        (sha256
-        (base32 "0rw9iw80n35hlss1ycycd8yzs052mrfc3bg4kwmlcrhbca5k44hc"))))
+        (base32 "1f5b1qi9bxhrqd55p8nwxar4vxliqsclyzq942nsm4larhccql8n"))))
     (build-system gnu-build-system)
     (arguments
      (list
@@ -101,12 +101,12 @@
          "WITH_NVCGO=no"
          "BUILD_DEFS=src/build.h"
 
-         ;; v1.18.x Makefile expects these:
+         ;; v1.20.x Makefile expects these:
          "VERSION_MAJOR=1"
-         "VERSION_MINOR=18"
-         "VERSION_PATCH=1"
-         "VERSION=1.18.1"
-         "VERSION_STRING=1.18.1"
+         "VERSION_MINOR=20"
+         "VERSION_PATCH=0"
+         "VERSION=1.20.0"
+         "VERSION_STRING=1.20.0"
          "TAG=")
 
       #:phases
@@ -297,7 +297,7 @@ int nvidia_cap_get_device_file_attrs(const char *path, unsigned int *major, unsi
 (define-public nvidia-container-toolkit
   (package
     (name "nvidia-container-toolkit")
-    (version "1.18.1")
+    (version "1.20.0")
     (source
      (origin
        (method git-fetch)
@@ -306,7 +306,7 @@ int nvidia_cap_get_device_file_attrs(const char *path, unsigned int *major, unsi
              (commit (string-append "v" version))))
        (file-name (git-file-name name version))
        (sha256
-        (base32 "17z1swyawqmsvin1wmjpvqql0q5vyc5ac5zl3cmjapnd55zhrcda"))))
+        (base32 "1n4l7kh84rq1rvpxnqhrvbwc03ipjcp0qcs17acz1b189f7r7h67"))))
     (build-system go-build-system)
     (arguments
      (list

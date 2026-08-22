@@ -220,16 +220,16 @@
 (define-public node-synchronous-socket
   (package
     (name "node-synchronous-socket")
-    (version "73e1ce83b2")
+    (version "ef75163186")
     (source
      (origin
        (method git-fetch)
        (uri (git-reference
              (url "https://github.com/atlas-engineer/synchronous-socket")
-             (commit "73e1ce83b2dfe48fb37332a6e5534b4ecd70e2da")))
+             (commit "ef75163186cd1fce49ed399ae85661f3f60de038")))
        (file-name (git-file-name name version))
        (sha256
-        (base32 "0ch731q77ks42g5lq8icphmvnqadd5j4yr4gsvzdlh21gyp9ld51"))))
+        (base32 "0k0zrs03pm41fivgf9q8sj2ar84lrp69457ijjn363yzvz7myy0h"))))
     (native-inputs (list python))
     (inputs (list node-nan-without-scriptorigin node-bindings))
     (build-system node-build-system)
@@ -304,8 +304,8 @@ domain sockets for use with cl-electron.")
                           "../package.tgz") #t)))))))))
 
 (define-public sbcl-cl-electron
-  (let ((commit "f8703cb101e88800a86f5a9194d945d9810c1117")
-        (revision "5"))
+  (let ((commit "0a334b580df371f42353ce938d245bc0e505683c")
+        (revision "6"))
     (package
       (name "sbcl-cl-electron")
       (version (git-version "0.0.0" revision commit))
@@ -317,7 +317,7 @@ domain sockets for use with cl-electron.")
                (commit commit)))
          (file-name (git-file-name name version))
          (sha256
-          (base32 "1sapsc660xsgv6sjfrjlqp15a7kni05iil9pf4plc2z5zn7hrj0b"))))
+          (base32 "0vk0q6k3g2gifb6i0rh2fjy033xx5bdgs01diqa0hdvdgnxjzvca"))))
       (build-system asdf-build-system/sbcl)
       (arguments
        (list

@@ -17,8 +17,8 @@
   #:use-module ((guix licenses) #:prefix license:)
   #:export (emacs-anvil))
 
-(define anvil-commit "574568a95a2bd8fceca6c9cd3bec0f94ecf0e6a9")
-(define anvil-revision "1")
+(define anvil-commit "22d8f8a7bf5a2029dee448ba1c411fffeac42a14")
+(define anvil-revision "2")
 
 (define-public emacs-anvil
   (package
@@ -32,7 +32,7 @@
              (commit anvil-commit)))
        (file-name (git-file-name name version))
        (sha256
-        (base32 "0b766fv7fqnpx3qxlcdj272dr59626g4k36yxpzlvj0pm5j1iz6g"))))
+        (base32 "018xmk7d7ibp5l14q01bg0sk58ynvmy351kxcp2jvlkdjzxjgn3v"))))
     (build-system trivial-build-system)
     (arguments
      (list
