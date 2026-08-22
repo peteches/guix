@@ -21,6 +21,7 @@
   #:use-module (gnu home services guix)
   #:use-module (peteches channels base)
   #:use-module (peteches packages lycheeslicer)
+  #:use-module (peteches packages rclone)
   #:use-module (peteches home services hyprland)
   #:use-module (peteches home services mpv)
   #:use-module (peteches home modules mpv)
@@ -28,7 +29,7 @@
   #:use-module (peteches home modules base))
 
 (home-environment
- (packages (append (list lycheeslicer-7.6.2) base-packages))
+ (packages (append (list lycheeslicer-7.6.2 rclone) base-packages))
  (services
   (modify-services
    (append

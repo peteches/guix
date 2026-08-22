@@ -70,6 +70,7 @@
 
   #:use-module (peteches packages lycheeslicer)
   #:use-module (peteches packages docker-compose)
+  #:use-module (peteches packages rclone)
 
   #:use-module (peteches channels nug)
 )
@@ -86,6 +87,7 @@
 ;; Packages unique to nug (examples you had: locales, node, pre-commit, etc.)
 (define nug-extra-packages
   (list lycheeslicer-7.6.2
+	rclone
 	steam-nvidia
 	nvda
 	nvidia-prime
