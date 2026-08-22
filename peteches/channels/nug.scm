@@ -22,6 +22,6 @@
      (name 'guix-hpc-non-free)
      (url "https://gitlab.inria.fr/guix-hpc/guix-hpc.git")
      (branch "master")
-     (commit "e225c0f0ee0203ad8469e964e176fbe0b11462da")
+     (commit "d0e90d7f19cbc913099d0bb21284f0c6dd0f4a0f")
      ))))
 %nug-channels

@@ -75,7 +75,7 @@
      (name 'guix-science)
      (url "https://codeberg.org/guix-science/guix-science.git")
      (branch "master")
-     (commit "4d6fe4eab7cecc4d2d96a9476cd645bbbde727be")
+     (commit "af22cf931f478fe86648a0f66be159855a44afa6")
      (introduction
       (make-channel-introduction
        "b1fe5aaff3ab48e798a4cce02f0212bc91f423dc"
@@ -86,7 +86,7 @@
      (name 'guix-science-nonfree)
      (url "https://codeberg.org/guix-science/guix-science-nonfree.git")
      (branch "master")
-     (commit "f30ef0318dd1c26bcb9d952a50cfa777429ab4e9")
+     (commit "54a483df56f24d8fd1c91ed3de547f5f1cf85964")
      (introduction
       (make-channel-introduction
        "58661b110325fd5d9b40e6f0177cc486a615817e"
@@ -96,7 +96,7 @@
      (name 'nonguix)
      (url "https://gitlab.com/nonguix/nonguix.git")
      (branch "master")
-     (commit "bf39542ca537fde8839b209ac21d6f3254469b15")
+     (commit "caa8c0b4646b993537be13c9bc819b3df68ab9b2")
      (introduction
       (make-channel-introduction
        "897c1a470da759236cc11798f4e0a5f7d4d59fbc"
@@ -106,7 +106,7 @@
     (name 'guix)
     (url "https://codeberg.org/guix/guix.git")
     (branch "master")
-    (commit "dd3e59ad40f480ae330e0814a7ab5bf32fa4ef9e")
+    (commit "b13c7c02b5f6d635e123f863227aa32ac64e3498")
     (introduction
      (make-channel-introduction
       "199fd26ab268d4f26cebcb39e844fe4ff9bea9bc"
@@ -122,5 +122,5 @@
     ;; No introduction: commits are unauthenticated and guix pull will say so.
     (url "https://git.ts.peteches.co.uk/git/critical-grind-campaign.git")
     (branch "main")
-    (commit "632f70d4c792e8fdf273fe10060a1d30a7993639"))))
+    (commit "15e0724edea3ff84eb8b086989a5d9d70f50f517"))))
 %base-channels
