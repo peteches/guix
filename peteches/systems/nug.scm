@@ -295,10 +295,12 @@
 				     #$cuda-13
 				     " -DCMAKE_CUDA_COMPILER="
 				     #$(file-append cuda-13 "/bin/nvcc"))
-		    ;; llama-cpp-python 0.3.35's vendored llama.cpp
-		    ;; (ggml-backend-meta.cpp) calls std::log2, which fails
-		    ;; to compile under this Guix gcc-toolchain (16.2.0) with
-		    ;; "'log2' is not a member of 'std'". This is NOT a
+		    ;; llama-cpp-python 0.3.35's vendored llama.cpp calls
+		    ;; several C99 math functions via std:: (log2 in
+		    ;; ggml-backend-meta.cpp; isfinite and round in
+		    ;; llama-vocab.cpp/llama-quant.cpp), which fail to
+		    ;; compile under this Guix gcc-toolchain (16.2.0) with
+		    ;; e.g. "'log2' is not a member of 'std'". This is NOT a
 		    ;; missing #include: plain `-include cmath` (tried first)
 		    ;; does not fix it, and neither does adding/removing
 		    ;; _XOPEN_SOURCE at any value — confirmed directly with
@@ -306,16 +308,32 @@
 		    ;; on `std::log2(x)` even though bare `log2(x)` (the
 		    ;; global, non-namespaced symbol from <math.h>) compiles
 		    ;; fine. So libstdc++'s own <cmath> in this toolchain
-		    ;; just doesn't pull log2 into namespace std, regardless
+		    ;; just doesn't pull these into namespace std, regardless
 		    ;; of inclusion order or feature-test macros. The fix is
 		    ;; to force-include a tiny shim that manually re-exports
-		    ;; the global symbol into std:: (confirmed this alone
-		    ;; makes `std::log2` compile) — patching the vendored
+		    ;; the global symbols into std:: (confirmed this fixes
+		    ;; std::log2; extended here to the others hit further
+		    ;; into the build) — patching the vendored
 		    ;; (fetched-at-build-time, unpackaged) source directly
-		    ;; isn't an option.
+		    ;; isn't an option. Covers the common C99 math set
+		    ;; (not just the two seen so far) since each round trip
+		    ;; through this from-source build costs several minutes.
 		    #~(string-append "CXXFLAGS=-include "
 				     #$(plain-file "comfyui-log2-shim.h"
-						   "#include <cmath>\n#include <math.h>\nnamespace std { using ::log2; }\n"))))
+						   (string-append
+						    "#include <cmath>\n"
+						    "#include <math.h>\n"
+						    "namespace std {\n"
+						    "using ::log2; using ::log2f;\n"
+						    "using ::exp2; using ::exp2f;\n"
+						    "using ::round; using ::roundf;\n"
+						    "using ::trunc; using ::truncf;\n"
+						    "using ::nearbyint; using ::nearbyintf;\n"
+						    "using ::rint; using ::rintf;\n"
+						    "using ::isfinite; using ::isnan;\n"
+						    "using ::isinf; using ::signbit;\n"
+						    "using ::fpclassify;\n"
+						    "}\n")))))
 	     ;; Package installed but the global --use-sage-attention flag is
 	     ;; deliberately left off (enable-sage-attention? default #f) — a
 	     ;; per-workflow node (e.g. KJNodes' "Patch Sage Attention") gives
