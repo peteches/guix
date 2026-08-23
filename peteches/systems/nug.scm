@@ -318,16 +318,24 @@
 			    ;; For the round/trunc/lround/etc. family, a bare `using ::round;`
 			    ;; only imports ONE overload (the double-taking global `::round`),
 			    ;; not the float/double/long-double *overload set* C++'s <cmath>
-			    ;; is supposed to provide under a single name. Code calling
-			    ;; `std::round(some_float)` then gets the double overload (with an
-			    ;; implicit float->double conversion), and something like
-			    ;; `std::max(std::round(Cc), 0.0f)` (mtmd-image.cpp) fails to
-			    ;; compile with "no matching function for call to max(double,
-			    ;; float)" since std::max needs both arguments to already be the
-			    ;; same type. Real overloaded wrapper functions (one per width,
-			    ;; dispatching to the correspondingly-suffixed C symbol) are
-			    ;; needed, not plain `using` re-exports, to actually reproduce
-			    ;; what <cmath> should have provided.
+			    ;; is supposed to provide under a single name — nor the additional
+			    ;; integral-argument overload (promoting to double) C++11 requires
+			    ;; on top of that. Missing the float/double/long-double set, code
+			    ;; calling `std::round(some_float)` silently gets the double
+			    ;; overload back (implicit float->double conversion), and
+			    ;; `std::max(std::round(Cc), 0.0f)` (mtmd-image.cpp) fails with
+			    ;; "no matching function for call to max(double, float)" since
+			    ;; std::max needs matching argument types. Missing the integral
+			    ;; overload, `std::log2(n_devs)` where n_devs is size_t
+			    ;; (ggml-backend-meta.cpp) fails with "call ... is ambiguous" —
+			    ;; size_t converts equally well to float, double, or long double,
+			    ;; so overload resolution can't pick among the three real ones.
+			    ;; Real overloaded wrapper functions for float/double/long double,
+			    ;; plus a SFINAE-constrained template for any integral argument
+			    ;; (casting to double), are needed — not plain `using` re-exports
+			    ;; — to actually reproduce what <cmath> provides. Confirmed by
+			    ;; compiling the generated header directly against both failure
+			    ;; patterns before rolling out.
 			    ;;
 			    ;; isfinite/isnan/isinf/signbit are a separate case again — NOT
 			    ;; plain functions in glibc at all, but type-generic C99 macros
@@ -348,6 +356,7 @@
 					    "#include <math.h>\n"
 					    "#include <cstdlib>\n"
 					    "#include <stdlib.h>\n"
+					    "#include <type_traits>\n"
 					    "namespace std {\n"
 					    "inline float       log2(float x) { return ::log2f(x); }\n"
 					    "inline double      log2(double x) { return ::log2(x); }\n"
@@ -376,6 +385,15 @@
 					    "inline float       log1p(float x) { return ::log1pf(x); }\n"
 					    "inline double      log1p(double x) { return ::log1p(x); }\n"
 					    "inline long double log1p(long double x) { return ::log1pl(x); }\n"
+					    "template<typename T> inline typename std::enable_if<std::is_integral<T>::value, double>::type log2(T x) { return ::log2((double)x); }\n"
+					    "template<typename T> inline typename std::enable_if<std::is_integral<T>::value, double>::type exp2(T x) { return ::exp2((double)x); }\n"
+					    "template<typename T> inline typename std::enable_if<std::is_integral<T>::value, double>::type round(T x) { return ::round((double)x); }\n"
+					    "template<typename T> inline typename std::enable_if<std::is_integral<T>::value, double>::type trunc(T x) { return ::trunc((double)x); }\n"
+					    "template<typename T> inline typename std::enable_if<std::is_integral<T>::value, double>::type nearbyint(T x) { return ::nearbyint((double)x); }\n"
+					    "template<typename T> inline typename std::enable_if<std::is_integral<T>::value, double>::type rint(T x) { return ::rint((double)x); }\n"
+					    "template<typename T> inline typename std::enable_if<std::is_integral<T>::value, double>::type cbrt(T x) { return ::cbrt((double)x); }\n"
+					    "template<typename T> inline typename std::enable_if<std::is_integral<T>::value, double>::type expm1(T x) { return ::expm1((double)x); }\n"
+					    "template<typename T> inline typename std::enable_if<std::is_integral<T>::value, double>::type log1p(T x) { return ::log1p((double)x); }\n"
 					    "inline long lround(float x) { return ::lroundf(x); }\n"
 					    "inline long lround(double x) { return ::lround(x); }\n"
 					    "inline long lround(long double x) { return ::lroundl(x); }\n"
@@ -388,6 +406,10 @@
 					    "inline long long llrint(float x) { return ::llrintf(x); }\n"
 					    "inline long long llrint(double x) { return ::llrint(x); }\n"
 					    "inline long long llrint(long double x) { return ::llrintl(x); }\n"
+					    "template<typename T> inline typename std::enable_if<std::is_integral<T>::value, long>::type lround(T x) { return ::lround((double)x); }\n"
+					    "template<typename T> inline typename std::enable_if<std::is_integral<T>::value, long long>::type llround(T x) { return ::llround((double)x); }\n"
+					    "template<typename T> inline typename std::enable_if<std::is_integral<T>::value, long>::type lrint(T x) { return ::lrint((double)x); }\n"
+					    "template<typename T> inline typename std::enable_if<std::is_integral<T>::value, long long>::type llrint(T x) { return ::llrint((double)x); }\n"
 					    "inline float       copysign(float x, float y) { return ::copysignf(x, y); }\n"
 					    "inline double      copysign(double x, double y) { return ::copysign(x, y); }\n"
 					    "inline long double copysign(long double x, long double y) { return ::copysignl(x, y); }\n"
