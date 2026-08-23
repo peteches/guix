@@ -316,10 +316,18 @@ int nvidia_cap_get_device_file_attrs(const char *path, unsigned int *major, unsi
       #:install-source? #f
       #:phases
       #~(modify-phases %standard-phases
+          ;; Upstream moved these defaults from internal/config/config.go
+          ;; to api/config/v1/config.go between releases; toml.go carries
+          ;; its own separate "/usr/bin/nvidia-container-cli" default that
+          ;; config.go never covered.
           (add-after 'unpack 'fix-paths
             (lambda* (#:key import-path #:allow-other-keys)
               (substitute* (string-append "src/" import-path
-                                          "/internal/config/config.go")
+                                          "/api/config/v1/config.go")
+                (("/usr/bin")
+                 "/run/current-system/profile/bin"))
+              (substitute* (string-append "src/" import-path
+                                          "/api/config/v1/toml.go")
                 (("/usr/bin")
                  "/run/current-system/profile/bin")) #t))
 
