@@ -330,9 +330,10 @@
 						    "using ::trunc; using ::truncf;\n"
 						    "using ::nearbyint; using ::nearbyintf;\n"
 						    "using ::rint; using ::rintf;\n"
-						    "using ::isfinite; using ::isnan;\n"
-						    "using ::isinf; using ::signbit;\n"
-						    "using ::fpclassify;\n"
+						"template<typename T> inline bool isfinite(T x) { return __builtin_isfinite(x); }\n"
+						"template<typename T> inline bool isnan(T x) { return __builtin_isnan(x); }\n"
+						"template<typename T> inline bool isinf(T x) { return __builtin_isinf(x); }\n"
+						"template<typename T> inline bool signbit(T x) { return __builtin_signbit(x); }\n"
 						    "}\n")))))
 	     ;; Package installed but the global --use-sage-attention flag is
 	     ;; deliberately left off (enable-sage-attention? default #f) — a
