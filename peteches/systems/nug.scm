@@ -294,15 +294,26 @@
 				     " -DCMAKE_CUDA_COMPILER="
 				     #$(file-append cuda-13 "/bin/nvcc"))
 		    ;; llama-cpp-python 0.3.35's vendored llama.cpp
-		    ;; (ggml-backend-meta.cpp) calls std::log2 without
-		    ;; #include <cmath>. GCC 16.1.0's stricter libstdc++
-		    ;; header hygiene no longer pulls it in transitively
-		    ;; (older/looser GCCs masked this), so the build fails
-		    ;; with "'log2' is not a member of 'std'". Force the
-		    ;; header into every translation unit rather than
-		    ;; patching the vendored (fetched-at-build-time,
-		    ;; unpackaged) source.
-		    "CXXFLAGS=-include cmath"))
+		    ;; (ggml-backend-meta.cpp) calls std::log2, which fails
+		    ;; to compile under this Guix gcc-toolchain (16.2.0) with
+		    ;; "'log2' is not a member of 'std'". This is NOT a
+		    ;; missing #include: plain `-include cmath` (tried first)
+		    ;; does not fix it, and neither does adding/removing
+		    ;; _XOPEN_SOURCE at any value — confirmed directly with
+		    ;; `g++ -include cmath -std=gnu++17`, which still fails
+		    ;; on `std::log2(x)` even though bare `log2(x)` (the
+		    ;; global, non-namespaced symbol from <math.h>) compiles
+		    ;; fine. So libstdc++'s own <cmath> in this toolchain
+		    ;; just doesn't pull log2 into namespace std, regardless
+		    ;; of inclusion order or feature-test macros. The fix is
+		    ;; to force-include a tiny shim that manually re-exports
+		    ;; the global symbol into std:: (confirmed this alone
+		    ;; makes `std::log2` compile) — patching the vendored
+		    ;; (fetched-at-build-time, unpackaged) source directly
+		    ;; isn't an option.
+		    #~(string-append "CXXFLAGS=-include "
+				     #$(plain-file "comfyui-log2-shim.h"
+						   "#include <cmath>\n#include <math.h>\nnamespace std { using ::log2; }\n"))))
 	     ;; Package installed but the global --use-sage-attention flag is
 	     ;; deliberately left off (enable-sage-attention? default #f) — a
 	     ;; per-workflow node (e.g. KJNodes' "Patch Sage Attention") gives
