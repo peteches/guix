@@ -351,6 +351,14 @@
 		(name "ComfyUI_VLM_nodes")
 		(git-repo-url "https://github.com/gokayfem/ComfyUI_VLM_nodes")
 		(extra-requirements-files (list "requirements-llama-cpp.txt")))
+	       ;; MiniMax H3 "Plan v2" prompt-building nodes (Project Setup,
+	       ;; Reference/Shot nodes, Prompt Merge, Apply Reference Plan,
+	       ;; Qwen enhancement) used by the H3-enhanced-prompt workflow.
+	       ;; No Python dependencies; requires ComfyUI's native H3 nodes
+	       ;; (Image/Reference to Video, tokenizer), already present.
+	       (comfyui-custom-node
+		(name "ComfyUI-MiniMax-H3-Guide")
+		(git-repo-url "https://github.com/ethanfel/ComfyUI-MiniMax-H3-Guide"))
 	       ;; Voice generation: Qwen3-TTS VoiceDesign (unique voice from a
 	       ;; text description) feeding ChatterBox's zero-shot voice
 	       ;; conversion (clone that sample onto our own performance
