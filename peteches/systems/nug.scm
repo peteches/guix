@@ -295,35 +295,52 @@
 				     #$cuda-13
 				     " -DCMAKE_CUDA_COMPILER="
 				     #$(file-append cuda-13 "/bin/nvcc"))
-			    ;; llama-cpp-python 0.3.35's vendored llama.cpp source calls
-			    ;; quite a few C99 additions via std:: (log2, isfinite/round,
-			    ;; lround, strtof/strtold/strtoll/strtoull, ...) across different
-			    ;; files (ggml-backend-meta.cpp, llama-vocab.cpp, llama-quant.cpp,
-			    ;; imatrix-loader.cpp, the vendored nlohmann/json.hpp, ...), all
-			    ;; of which fail to compile under this Guix gcc-toolchain (16.2.0)
-			    ;; with e.g. "'log2' is not a member of 'std'". This is NOT a
-			    ;; missing #include: plain `-include cmath` (tried first) does
-			    ;; not fix it, and neither does adding/removing _XOPEN_SOURCE at
-			    ;; any value — confirmed directly with `g++ -include cmath
-			    ;; -std=gnu++17`, which still fails on `std::log2(x)` even though
-			    ;; bare `log2(x)` (the global, non-namespaced symbol from
-			    ;; <math.h>) compiles fine. So libstdc++'s own <cmath>/<cstdlib>
-			    ;; in this toolchain just don't pull these into namespace std,
-			    ;; regardless of inclusion order or feature-test macros. The fix
-			    ;; is to force-include a shim that manually re-exports the global
-			    ;; symbols into std:: — patching the vendored (fetched-at-build-
-			    ;; time, unpackaged) source directly isn't an option. Covers the
-			    ;; full C99 math/stdlib set most C++ libraries hit under this
-			    ;; toolchain up front, since each round trip through this
-			    ;; from-source build costs several minutes.
+			    ;; llama-cpp-python 0.3.35's vendored llama.cpp source calls a lot
+			    ;; of C99 additions via std:: (log2, isfinite/round, lround,
+			    ;; strtof/strtold/strtoll/strtoull, ...) across different files
+			    ;; (ggml-backend-meta.cpp, llama-vocab.cpp, llama-quant.cpp,
+			    ;; imatrix-loader.cpp, mtmd-image.cpp, the vendored
+			    ;; nlohmann/json.hpp, ...), all of which fail to compile under
+			    ;; this Guix gcc-toolchain (16.2.0) with e.g. "'log2' is not a
+			    ;; member of 'std'". This is NOT a missing #include: plain
+			    ;; `-include cmath` (tried first) does not fix it, and neither
+			    ;; does adding/removing _XOPEN_SOURCE at any value — confirmed
+			    ;; directly with `g++ -include cmath -std=gnu++17`, which still
+			    ;; fails on `std::log2(x)` even though bare `log2(x)` (the global,
+			    ;; non-namespaced symbol from <math.h>) compiles fine. So
+			    ;; libstdc++'s own <cmath>/<cstdlib> in this toolchain just don't
+			    ;; pull these into namespace std, regardless of inclusion order
+			    ;; or feature-test macros. The fix is to force-include a shim that
+			    ;; manually re-exports them into std:: — patching the vendored
+			    ;; (fetched-at-build-time, unpackaged) source directly isn't an
+			    ;; option.
 			    ;;
-			    ;; isfinite/isnan/isinf/signbit are NOT plain functions in glibc
-			    ;; — they're type-generic C99 macros (dispatch on argument type),
-			    ;; so `using ::isfinite;` is a hard error ("has not been declared
-			    ;; in '::'") rather than silently missing: a macro isn't a
-			    ;; nameable entity a `using'-declaration can refer to. Provide
-			    ;; real std:: function templates backed by the corresponding GCC
-			    ;; builtins instead.
+			    ;; For the round/trunc/lround/etc. family, a bare `using ::round;`
+			    ;; only imports ONE overload (the double-taking global `::round`),
+			    ;; not the float/double/long-double *overload set* C++'s <cmath>
+			    ;; is supposed to provide under a single name. Code calling
+			    ;; `std::round(some_float)` then gets the double overload (with an
+			    ;; implicit float->double conversion), and something like
+			    ;; `std::max(std::round(Cc), 0.0f)` (mtmd-image.cpp) fails to
+			    ;; compile with "no matching function for call to max(double,
+			    ;; float)" since std::max needs both arguments to already be the
+			    ;; same type. Real overloaded wrapper functions (one per width,
+			    ;; dispatching to the correspondingly-suffixed C symbol) are
+			    ;; needed, not plain `using` re-exports, to actually reproduce
+			    ;; what <cmath> should have provided.
+			    ;;
+			    ;; isfinite/isnan/isinf/signbit are a separate case again — NOT
+			    ;; plain functions in glibc at all, but type-generic C99 macros
+			    ;; (dispatch on argument type), so `using ::isfinite;` is a hard
+			    ;; error ("has not been declared in '::'") rather than silently
+			    ;; missing: a macro isn't a nameable entity a `using'-declaration
+			    ;; can refer to. These get real std:: function templates backed
+			    ;; by the corresponding GCC builtins instead.
+			    ;;
+			    ;; strtof/strtold/strtoll/strtoull/atoll are fine as plain `using`
+			    ;; re-exports — those are genuinely single distinct C names (not
+			    ;; an overload family sharing one C++ name), called directly by
+			    ;; callers with the exact matching argument types.
 			    #~(string-append "CXXFLAGS=-include "
 				     #$(plain-file "comfyui-libstdcxx-c99-shim.h"
 					   (string-append
@@ -332,20 +349,48 @@
 					    "#include <cstdlib>\n"
 					    "#include <stdlib.h>\n"
 					    "namespace std {\n"
-					    "using ::log2; using ::log2f; using ::log2l;\n"
-					    "using ::exp2; using ::exp2f; using ::exp2l;\n"
-					    "using ::round; using ::roundf; using ::roundl;\n"
-					    "using ::trunc; using ::truncf; using ::truncl;\n"
-					    "using ::nearbyint; using ::nearbyintf; using ::nearbyintl;\n"
-					    "using ::rint; using ::rintf; using ::rintl;\n"
-					    "using ::lround; using ::lroundf; using ::lroundl;\n"
-					    "using ::llround; using ::llroundf; using ::llroundl;\n"
-					    "using ::lrint; using ::lrintf; using ::lrintl;\n"
-					    "using ::llrint; using ::llrintf; using ::llrintl;\n"
-					    "using ::cbrt; using ::cbrtf; using ::cbrtl;\n"
-					    "using ::expm1; using ::expm1f; using ::expm1l;\n"
-					    "using ::log1p; using ::log1pf; using ::log1pl;\n"
-					    "using ::copysign; using ::copysignf; using ::copysignl;\n"
+					    "inline float       log2(float x) { return ::log2f(x); }\n"
+					    "inline double      log2(double x) { return ::log2(x); }\n"
+					    "inline long double log2(long double x) { return ::log2l(x); }\n"
+					    "inline float       exp2(float x) { return ::exp2f(x); }\n"
+					    "inline double      exp2(double x) { return ::exp2(x); }\n"
+					    "inline long double exp2(long double x) { return ::exp2l(x); }\n"
+					    "inline float       round(float x) { return ::roundf(x); }\n"
+					    "inline double      round(double x) { return ::round(x); }\n"
+					    "inline long double round(long double x) { return ::roundl(x); }\n"
+					    "inline float       trunc(float x) { return ::truncf(x); }\n"
+					    "inline double      trunc(double x) { return ::trunc(x); }\n"
+					    "inline long double trunc(long double x) { return ::truncl(x); }\n"
+					    "inline float       nearbyint(float x) { return ::nearbyintf(x); }\n"
+					    "inline double      nearbyint(double x) { return ::nearbyint(x); }\n"
+					    "inline long double nearbyint(long double x) { return ::nearbyintl(x); }\n"
+					    "inline float       rint(float x) { return ::rintf(x); }\n"
+					    "inline double      rint(double x) { return ::rint(x); }\n"
+					    "inline long double rint(long double x) { return ::rintl(x); }\n"
+					    "inline float       cbrt(float x) { return ::cbrtf(x); }\n"
+					    "inline double      cbrt(double x) { return ::cbrt(x); }\n"
+					    "inline long double cbrt(long double x) { return ::cbrtl(x); }\n"
+					    "inline float       expm1(float x) { return ::expm1f(x); }\n"
+					    "inline double      expm1(double x) { return ::expm1(x); }\n"
+					    "inline long double expm1(long double x) { return ::expm1l(x); }\n"
+					    "inline float       log1p(float x) { return ::log1pf(x); }\n"
+					    "inline double      log1p(double x) { return ::log1p(x); }\n"
+					    "inline long double log1p(long double x) { return ::log1pl(x); }\n"
+					    "inline long lround(float x) { return ::lroundf(x); }\n"
+					    "inline long lround(double x) { return ::lround(x); }\n"
+					    "inline long lround(long double x) { return ::lroundl(x); }\n"
+					    "inline long long llround(float x) { return ::llroundf(x); }\n"
+					    "inline long long llround(double x) { return ::llround(x); }\n"
+					    "inline long long llround(long double x) { return ::llroundl(x); }\n"
+					    "inline long lrint(float x) { return ::lrintf(x); }\n"
+					    "inline long lrint(double x) { return ::lrint(x); }\n"
+					    "inline long lrint(long double x) { return ::lrintl(x); }\n"
+					    "inline long long llrint(float x) { return ::llrintf(x); }\n"
+					    "inline long long llrint(double x) { return ::llrint(x); }\n"
+					    "inline long long llrint(long double x) { return ::llrintl(x); }\n"
+					    "inline float       copysign(float x, float y) { return ::copysignf(x, y); }\n"
+					    "inline double      copysign(double x, double y) { return ::copysign(x, y); }\n"
+					    "inline long double copysign(long double x, long double y) { return ::copysignl(x, y); }\n"
 					    "using ::strtof; using ::strtold;\n"
 					    "using ::strtoll; using ::strtoull;\n"
 					    "using ::atoll;\n"
