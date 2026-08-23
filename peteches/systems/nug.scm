@@ -101,7 +101,9 @@
     TTS: TTS/
 "))
 
-(make-base-os
+(operating-system
+ (inherit
+  (make-base-os
  #:host-name "nug"
  #:kernel linux
  ;; Base will append %base-file-systems — you only give machine-specific mounts here.
@@ -541,4 +543,15 @@
                      ,(plain-file "pihole-offload.pub" "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIMNAir7xhAl7Z50tloQKOfCeVPqTqDgmIuSVxtfFdLES guix-offload@pihole\n")
                      ,(plain-file "prometheus-offload.pub" "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIM+nhIk+ySFYMj7I4SDwA/LKyM8MH3+8NMIabyAIuMSC guix-offload@prometheus\n")
                      ,(plain-file "prowlarr-offload.pub" "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIPxWQLDvXJGgp4HsOpSEMyLTGi0lL2zYcvRvARuVv/nU guix-offload@prowlarr\n")
-                     ,(plain-file "rustdesk-offload.pub" "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAII0DTgAJjaG1+0STwTBDRfUrbP/q0KFVnY5OdjrqKasS guix-offload@rustdesk\n"))))))
+                     ,(plain-file "rustdesk-offload.pub" "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAII0DTgAJjaG1+0STwTBDRfUrbP/q0KFVnY5OdjrqKasS guix-offload@rustdesk\n")))))))
+ ;; peteches gets full passwordless sudo on this desktop, on top of
+ ;; make-base-os's normal (password-required) `%wheel ALL=(ALL) ALL' line
+ ;; -- requested directly, so this is broader than the usual scoped-command
+ ;; pattern; be aware this removes the password prompt as a safety check
+ ;; for every sudo invocation by this user, including accidental ones.
+ (sudoers-file (plain-file "sudoers"
+                           (string-append
+                            "root ALL=(ALL) ALL\n"
+                            "%wheel ALL=(ALL) ALL\n"
+                            "peteches ALL=(ALL) NOPASSWD:ALL\n"
+                            "#includedir /run/sudoers.d\n"))))
