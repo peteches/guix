@@ -295,46 +295,66 @@
 				     #$cuda-13
 				     " -DCMAKE_CUDA_COMPILER="
 				     #$(file-append cuda-13 "/bin/nvcc"))
-		    ;; llama-cpp-python 0.3.35's vendored llama.cpp calls
-		    ;; several C99 math functions via std:: (log2 in
-		    ;; ggml-backend-meta.cpp; isfinite and round in
-		    ;; llama-vocab.cpp/llama-quant.cpp), which fail to
-		    ;; compile under this Guix gcc-toolchain (16.2.0) with
-		    ;; e.g. "'log2' is not a member of 'std'". This is NOT a
-		    ;; missing #include: plain `-include cmath` (tried first)
-		    ;; does not fix it, and neither does adding/removing
-		    ;; _XOPEN_SOURCE at any value — confirmed directly with
-		    ;; `g++ -include cmath -std=gnu++17`, which still fails
-		    ;; on `std::log2(x)` even though bare `log2(x)` (the
-		    ;; global, non-namespaced symbol from <math.h>) compiles
-		    ;; fine. So libstdc++'s own <cmath> in this toolchain
-		    ;; just doesn't pull these into namespace std, regardless
-		    ;; of inclusion order or feature-test macros. The fix is
-		    ;; to force-include a tiny shim that manually re-exports
-		    ;; the global symbols into std:: (confirmed this fixes
-		    ;; std::log2; extended here to the others hit further
-		    ;; into the build) — patching the vendored
-		    ;; (fetched-at-build-time, unpackaged) source directly
-		    ;; isn't an option. Covers the common C99 math set
-		    ;; (not just the two seen so far) since each round trip
-		    ;; through this from-source build costs several minutes.
-		    #~(string-append "CXXFLAGS=-include "
-				     #$(plain-file "comfyui-log2-shim.h"
-						   (string-append
-						    "#include <cmath>\n"
-						    "#include <math.h>\n"
-						    "namespace std {\n"
-						    "using ::log2; using ::log2f;\n"
-						    "using ::exp2; using ::exp2f;\n"
-						    "using ::round; using ::roundf;\n"
-						    "using ::trunc; using ::truncf;\n"
-						    "using ::nearbyint; using ::nearbyintf;\n"
-						    "using ::rint; using ::rintf;\n"
-						"template<typename T> inline bool isfinite(T x) { return __builtin_isfinite(x); }\n"
-						"template<typename T> inline bool isnan(T x) { return __builtin_isnan(x); }\n"
-						"template<typename T> inline bool isinf(T x) { return __builtin_isinf(x); }\n"
-						"template<typename T> inline bool signbit(T x) { return __builtin_signbit(x); }\n"
-						    "}\n")))))
+			    ;; llama-cpp-python 0.3.35's vendored llama.cpp source calls
+			    ;; quite a few C99 additions via std:: (log2, isfinite/round,
+			    ;; lround, strtof/strtold/strtoll/strtoull, ...) across different
+			    ;; files (ggml-backend-meta.cpp, llama-vocab.cpp, llama-quant.cpp,
+			    ;; imatrix-loader.cpp, the vendored nlohmann/json.hpp, ...), all
+			    ;; of which fail to compile under this Guix gcc-toolchain (16.2.0)
+			    ;; with e.g. "'log2' is not a member of 'std'". This is NOT a
+			    ;; missing #include: plain `-include cmath` (tried first) does
+			    ;; not fix it, and neither does adding/removing _XOPEN_SOURCE at
+			    ;; any value — confirmed directly with `g++ -include cmath
+			    ;; -std=gnu++17`, which still fails on `std::log2(x)` even though
+			    ;; bare `log2(x)` (the global, non-namespaced symbol from
+			    ;; <math.h>) compiles fine. So libstdc++'s own <cmath>/<cstdlib>
+			    ;; in this toolchain just don't pull these into namespace std,
+			    ;; regardless of inclusion order or feature-test macros. The fix
+			    ;; is to force-include a shim that manually re-exports the global
+			    ;; symbols into std:: — patching the vendored (fetched-at-build-
+			    ;; time, unpackaged) source directly isn't an option. Covers the
+			    ;; full C99 math/stdlib set most C++ libraries hit under this
+			    ;; toolchain up front, since each round trip through this
+			    ;; from-source build costs several minutes.
+			    ;;
+			    ;; isfinite/isnan/isinf/signbit are NOT plain functions in glibc
+			    ;; — they're type-generic C99 macros (dispatch on argument type),
+			    ;; so `using ::isfinite;` is a hard error ("has not been declared
+			    ;; in '::'") rather than silently missing: a macro isn't a
+			    ;; nameable entity a `using'-declaration can refer to. Provide
+			    ;; real std:: function templates backed by the corresponding GCC
+			    ;; builtins instead.
+			    #~(string-append "CXXFLAGS=-include "
+				     #$(plain-file "comfyui-libstdcxx-c99-shim.h"
+					   (string-append
+					    "#include <cmath>\n"
+					    "#include <math.h>\n"
+					    "#include <cstdlib>\n"
+					    "#include <stdlib.h>\n"
+					    "namespace std {\n"
+					    "using ::log2; using ::log2f; using ::log2l;\n"
+					    "using ::exp2; using ::exp2f; using ::exp2l;\n"
+					    "using ::round; using ::roundf; using ::roundl;\n"
+					    "using ::trunc; using ::truncf; using ::truncl;\n"
+					    "using ::nearbyint; using ::nearbyintf; using ::nearbyintl;\n"
+					    "using ::rint; using ::rintf; using ::rintl;\n"
+					    "using ::lround; using ::lroundf; using ::lroundl;\n"
+					    "using ::llround; using ::llroundf; using ::llroundl;\n"
+					    "using ::lrint; using ::lrintf; using ::lrintl;\n"
+					    "using ::llrint; using ::llrintf; using ::llrintl;\n"
+					    "using ::cbrt; using ::cbrtf; using ::cbrtl;\n"
+					    "using ::expm1; using ::expm1f; using ::expm1l;\n"
+					    "using ::log1p; using ::log1pf; using ::log1pl;\n"
+					    "using ::copysign; using ::copysignf; using ::copysignl;\n"
+					    "using ::strtof; using ::strtold;\n"
+					    "using ::strtoll; using ::strtoull;\n"
+					    "using ::atoll;\n"
+					    "template<typename T> inline bool isfinite(T x) { return __builtin_isfinite(x); }\n"
+					    "template<typename T> inline bool isnan(T x) { return __builtin_isnan(x); }\n"
+					    "template<typename T> inline bool isinf(T x) { return __builtin_isinf(x); }\n"
+					    "template<typename T> inline bool signbit(T x) { return __builtin_signbit(x); }\n"
+					    "}\n"
+					   )))))
 	     ;; Package installed but the global --use-sage-attention flag is
 	     ;; deliberately left off (enable-sage-attention? default #f) — a
 	     ;; per-workflow node (e.g. KJNodes' "Patch Sage Attention") gives
