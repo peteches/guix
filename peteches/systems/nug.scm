@@ -488,6 +488,17 @@
 	       (comfyui-custom-node
 		(name "ComfyUI-MiniMax-H3-Guide")
 		(git-repo-url "https://github.com/ethanfel/ComfyUI-MiniMax-H3-Guide"))
+	       ;; H3QwenVLGenerateText / H3QwenVLGenerationTailLoader — the
+	       ;; other pack the H3-enhanced-prompt workflow actually needed
+	       ;; (confirmed via ComfyUI's own "Missing Node Packs" dialog,
+	       ;; not name-matching). Reconnects MiniMax H3's truncated
+	       ;; Qwen3-VL-32B text encoder with its published generation
+	       ;; tail for standalone local text/VLM generation. No Python
+	       ;; dependencies (pyproject.toml declares none); generation
+	       ;; tail model files go under models/text_encoders separately.
+	       (comfyui-custom-node
+		(name "ComfyUI-H3-Qwen3VL-TextGen")
+		(git-repo-url "https://github.com/ethanfel/ComfyUI-H3-Qwen3VL-TextGen"))
 	       ;; Voice generation: Qwen3-TTS VoiceDesign (unique voice from a
 	       ;; text description) feeding ChatterBox's zero-shot voice
 	       ;; conversion (clone that sample onto our own performance
