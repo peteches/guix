@@ -36,7 +36,7 @@
   (name 'guix-science)
   (url "https://codeberg.org/guix-science/guix-science.git")
   (branch "master")
-  (commit "af22cf931f478fe86648a0f66be159855a44afa6")
+  (commit "52d7ab7851a5ced97c0c8f1a602a103b5ca0b046")
   (introduction
    (make-channel-introduction
     "b1fe5aaff3ab48e798a4cce02f0212bc91f423dc"

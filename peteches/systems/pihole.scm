@@ -111,10 +111,44 @@
                 (with-unbound? #t)
                 (unbound
                  (pihole-unbound-configuration
+                  ;; Default of 1 thread means only one recursive lookup
+                  ;; can be in flight at a time. claude-workstation
+                  ;; (192.168.51.205) bursts up to ~20000 queries/interval
+                  ;; during `guix build'/`guix deploy' (confirmed via the
+                  ;; pihole_dns_queries_today Prometheus counter, spikes
+                  ;; hitting the dns.rateLimit ceiling below on
+                  ;; 2026-08-22), mostly for distinct, uncached domains
+                  ;; across several mirror hosts per package -- a single
+                  ;; Unbound thread can't keep up, so some of those queries
+                  ;; time out / have their connection to Unbound reset,
+                  ;; surfacing on claude-workstation as intermittent
+                  ;; "Temporary failure in name resolution" mid-build even
+                  ;; though nothing is actually down. 4 threads on this
+                  ;; VM's 2 vCPUs is deliberate oversubscription: recursive
+                  ;; resolution is I/O-bound (waiting on root/TLD/
+                  ;; authoritative round-trips), not CPU-bound.
+                  (num-threads 4)
                   (forward-zones
                    '(("spaniel-cordylus.ts.net." . "100.100.100.100")))))
 		(adlists '("https://raw.githubusercontent.com/r0xd4n3t/pihole-adblock-lists/main/pihole_adlists.txt"))
                 (with-exporter? #t)
+                ;; Pi-hole v6 has no per-client rate-limit exemption, only a
+                ;; single global count/interval applied independently per
+                ;; client. claude-workstation (192.168.51.205) legitimately
+                ;; bursts far past the 1000/60s default during `guix
+                ;; build`/`guix deploy' -- every failed substitute download
+                ;; falls through several mirrors (bordeaux.guix.gnu.org,
+                ;; ci.guix.gnu.org, tarballs.nixos.org,
+                ;; archive.softwareheritage.org, web.archive.org,
+                ;; registry.npmjs.org), each needing its own DNS lookup,
+                ;; multiplied across every package in a deploy -- observed
+                ;; peaks of 13000+ queries/minute in /var/log/pihole/FTL.log
+                ;; on 2026-08-22, which pihole correctly rate-limited,
+                ;; manifesting on claude-workstation as builds failing with
+                ;; "Temporary failure in name resolution". Raised well past
+                ;; that observed peak; still bounded (not disabled) so
+                ;; flood protection stays in place for any other client.
+                (extra-toml "[dns.rateLimit]\n  count = 20000\n  interval = 60\n")
                 (custom-hosts
                  (list
 		  (pihole-custom-host (address "192.168.50.244")

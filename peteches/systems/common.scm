@@ -49,8 +49,18 @@
      (host-key "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFV+RLdfvLSuCoedNwepqbEEHnHu363OQj6U0diCX+SR")
      (parallel-builds 20)))
 
-;; Authorize deploy coordinators (nug and nyarlothotep) to push store items to all VMs,
-;; and register nug's guix-publish as a substitute server.
+;; Authorize deploy coordinators (nug, nyarlothotep, and claude-workstation)
+;; to push store items to all VMs, and register nug's guix-publish as a
+;; substitute server.
+;;
+;; claude-workstation added 2026-08-22: deploys run from there (via the
+;; automation SSH key) hit `guix deploy: error: unauthorized public key'
+;; while sending store items to pihole -- claude-workstation's own
+;; /etc/guix/signing-key.pub was never added here, unlike nug/nyarlothotep,
+;; because it's a newer deploy origin than the original two desktop
+;; coordinators. Every VM gets this service via make-vm-os, so fixing it
+;; once here (rather than per-VM) covers the same latent gap fleet-wide,
+;; not just on pihole.
 (define-public %authorize-coordinator-key
   (simple-service 'authorize-coordinator-key
                   guix-service-type
@@ -62,7 +72,9 @@
                     (list (plain-file "nug-coordinator.pub"
                                       "(public-key (ecc (curve Ed25519) (q #89306B461D55FBB9F6A60C75463BA2AEE181FB3E8FA5F46CB2E1C29157ACA88A#)))")
                           (plain-file "nyarlothotep-coordinator.pub"
-                                      "(public-key (ecc (curve Ed25519) (q #C41C4703766F019CF43C8FBA3C7E284610799FBBF9875AB561AD7D8A74075AFE#)))"))))))
+                                      "(public-key (ecc (curve Ed25519) (q #C41C4703766F019CF43C8FBA3C7E284610799FBBF9875AB561AD7D8A74075AFE#)))")
+                          (plain-file "claude-workstation-coordinator.pub"
+                                      "(public-key (ecc (curve Ed25519) (q #EFED7FDADFFF4E2559977AFD10310E21C4EEF7685C6297595D5333CBEF037EDE#)))"))))))
 
 (define-public common-home-services
   (list

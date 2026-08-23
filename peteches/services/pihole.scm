@@ -265,6 +265,16 @@ COMMIT;
                (default 5335))
   (listen-address pihole-unbound-configuration-listen-address
                   (default "127.0.0.1"))
+  ;; Unbound worker threads. Recursive resolution is largely I/O-bound
+  ;; (waiting on root/TLD/authoritative round-trips), so this can
+  ;; reasonably exceed the vCPU count. Left at 1 by default to preserve
+  ;; existing behavior; raise it if a client legitimately bursts many
+  ;; concurrent lookups for distinct (uncached) domains -- a single
+  ;; thread can only have one recursive resolution in flight at a time,
+  ;; so a big enough burst causes some queries to time out / have their
+  ;; connection to Unbound reset even though nothing is actually broken.
+  (num-threads pihole-unbound-configuration-num-threads
+               (default 1))
   ;; Raw text appended to the server: block of unbound.conf.
   (extra-server pihole-unbound-configuration-extra-server
                 (default ""))
@@ -437,7 +447,8 @@ COMMIT;
          (port (pihole-unbound-configuration-listen-port ub))
          (addr (pihole-unbound-configuration-listen-address ub))
          (xtra (pihole-unbound-configuration-extra-server ub))
-         (fwd-zones (pihole-unbound-configuration-forward-zones ub)))
+         (fwd-zones (pihole-unbound-configuration-forward-zones ub))
+         (threads (pihole-unbound-configuration-num-threads ub)))
     (string-append "server:\n"
                    "    verbosity: 0\n"
                    "    username: \"unbound\"\n"
@@ -456,7 +467,9 @@ COMMIT;
                    "    use-caps-for-id: no\n"
                    "    edns-buffer-size: 1232\n"
                    "    prefetch: yes\n"
-                   "    num-threads: 1\n"
+                   "    num-threads: "
+                   (number->string threads)
+                   "\n"
                    "    so-rcvbuf: 1m\n"
                    "    private-address: 192.168.0.0/16\n"
                    "    private-address: 169.254.0.0/16\n"
