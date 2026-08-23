@@ -1876,8 +1876,25 @@
                                                   "eslint-config-prettier"
                                                   "@typescript/native-preview"
                                                   "@types/express-serve-static-core"
-                                                  "@modelcontextprotocol/conformance"
-                                                  "zod"))))))))
+                                                  "@modelcontextprotocol/conformance")
+                                                  ;; NOT "zod": it's a genuine
+                                                  ;; runtime dependency (see
+                                                  ;; the "dependencies" entry
+                                                  ;; below), not just a dev
+                                                  ;; tool. delete-dependencies
+                                                  ;; sweeps "dependencies",
+                                                  ;; "peerDependencies", and
+                                                  ;; "optionalDependencies" as
+                                                  ;; well as "devDependencies"
+                                                  ;; by default, so including
+                                                  ;; it here silently deleted
+                                                  ;; the real dependency entry
+                                                  ;; too, leaving zod
+                                                  ;; unresolved at runtime
+                                                  ;; despite node-zod-4.4.3
+                                                  ;; being provided as an
+                                                  ;; input.
+                                                  )))))))
     (inputs (list node-zod-to-json-schema-3.25.2
                   node-express-rate-limit-8.5.2
                   node-eventsource-parser-3.1.0

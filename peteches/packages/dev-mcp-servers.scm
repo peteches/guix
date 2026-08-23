@@ -79,7 +79,58 @@
                                                   "tsup"
                                                   "tsx"
                                                   "typescript"
-                                                  "typescript-eslint"))))))))
+                                                  "typescript-eslint")))))
+          ;; Skip '--install-links' and bin-links: npm's bundled
+          ;; tar/minizlib crashes with a silently-swallowed "ZlibError:
+          ;; zlib: stream error" while copying inputs via
+          ;; '--install-links' on this node-24.18.0 toolchain.
+          ;; Symlinking instead avoids the crash and is equivalent for
+          ;; a build-time dependency; '--no-bin-links' avoids a related
+          ;; EROFS chmod failure for any input with a "bin" script.
+          (replace 'configure
+            (lambda* (#:key inputs #:allow-other-keys)
+              (invoke (string-append (assoc-ref inputs "node") "/bin/npm")
+                      "--offline" "--ignore-scripts" "--no-bin-links"
+                      "--no-audit" "install")
+              ;; npm's symlinks (created because '--install-links' is
+              ;; skipped above) are relative to wherever the build
+              ;; happens to sit right now.  This package still gets
+              ;; tar'd up and reinstalled at a different depth by the
+              ;; 'repack/'install phases below, which would silently
+              ;; leave the relative text pointing at the wrong place
+              ;; (e.g. into /tmp instead of /gnu/store) once any later
+              ;; consumer copies this tree elsewhere.  Absolutize now,
+              ;; while the relative targets are still resolvable.
+              (for-each (lambda (f)
+                          (unless (string-prefix? "/" (readlink f))
+                            (let ((target (canonicalize-path f)))
+                              (delete-file f)
+                              (symlink target f))))
+                        (find-files "node_modules"
+                                    (lambda (f s)
+                                      (eq? 'symlink (stat:type s)))))))
+          (replace 'install
+            (lambda* (#:key outputs inputs #:allow-other-keys)
+              (invoke (string-append (assoc-ref inputs "node") "/bin/npm")
+                      "--prefix" (assoc-ref outputs "out")
+                      "--global" "--offline" "--loglevel" "info"
+                      "--production" "--no-bin-links"
+                      "install" "../package.tgz")
+              ;; See the matching comment in 'configure above: this
+              ;; second npm invocation (extracting into the final
+              ;; store output) creates its own fresh relative symlinks,
+              ;; independent of whatever 'configure already fixed.
+              ;; Absolutize them too, or any later consumer that copies
+              ;; this output elsewhere inherits broken links.
+              (let ((out (assoc-ref outputs "out")))
+                (for-each (lambda (f)
+                            (unless (string-prefix? "/" (readlink f))
+                              (let ((target (canonicalize-path f)))
+                                (delete-file f)
+                                (symlink target f))))
+                          (find-files out
+                                      (lambda (f s)
+                                        (eq? 'symlink (stat:type s)))))))))))
     (inputs (list node-zod-4.4.3 node-dayjs-1.11.21
                   node-modelcontextprotocol-sdk-1.29.0))
     (home-page "https://github.com/yokingma/time-mcp#readme")

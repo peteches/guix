@@ -19,11 +19,181 @@
   #:use-module (guix git-download)
   #:use-module (guix gexp)
   #:use-module (guix packages)
+  #:use-module (guix utils)
   #:use-module (ice-9 match)
   #:use-module (ice-9 regex)
   #:use-module (peteches packages seerr-deps))
 
-(define-public seerr
+;; node-acorn-8.16.0 (from guix-science) ships dist/acorn.d.mts and
+;; dist/acorn.d.ts as byte-identical files.  guix-daemon's automatic store
+;; deduplication (on by default) hardlinks byte-identical files together
+;; *after* a build finishes and its output is registered -- so within
+;; this package's own build sandbox the two files still look like
+;; ordinary, separate-inode files; the hardlink only appears once this
+;; package is already sitting in the store as a finished, immutable item.
+;; When node-acorn-8.16.0 is later copied in as a file:// dependency of
+;; another node-build-system package -- node-acorn-walk-8.3.5, pulled in
+;; transitively via node-ts-node-10.9.2 -> node-postcss-load-config-4.0.2,
+;; which is how it reaches seerr and broke jellyfin's deploy --
+;; `configure''s `npm --install-links install' packs the source directory
+;; through npm's bundled tar module before unpacking it into
+;; node_modules, and that pack step throws an *uncaught* `ZlibError: zlib:
+;; stream error' whenever a directory being packed contains two files
+;; hardlinked to each other -- confirmed with a minimal two-file
+;; reproduction outside of any of these packages entirely.  npm's own
+;; exit handler swallows the exception, so the build just fails with
+;; `exit 1' and no visible reason (only found by hooking
+;; process.exit/uncaughtException directly; the node-acorn-walk build log
+;; at /var/log/guix/drvs shows nothing past `starting phase 'configure').
+;; acorn-walk only ever uses acorn as a library, never its CLI, so
+;; stripping duplication from our own copy is safe.
+;;
+;; Breaking the hardlink from inside the build (e.g. copying one file over
+;; the other) doesn't help: guix-daemon re-deduplicates by content at
+;; store-registration time regardless of what inode structure the builder
+;; leaves behind.  The only thing that sticks is making the two files
+;; genuinely differ in content, so the daemon's content-based dedup simply
+;; doesn't match them -- done here by appending a trailing newline to the
+;; second of any two files found to be byte-identical.
+;;
+;; NOTE: this same bug (npm's --install-links tar packing choking on
+;; internally-duplicated files -- a common pattern in dual ESM/CJS
+;; packages) was found to affect at least 114 other packages across this
+;; ~1000-package tree during investigation, including every package
+;; behind the separate-looking "npm error Exit handler never called!"
+;; failures (node-dns-caching, node-file-stream-rotator,
+;; node-ladjs-country-language, node-juice, node-xyflow-react) -- so
+;; `seerr' as a whole still does not build cleanly beyond this one fix.
+;; A graph-wide fix (package-mapping over every node-build-system package)
+;; was attempted and abandoned: rebuilding all ~1000 packages at once hits
+;; "Too many open files" from guix-offload's SSH connection handling
+;; regardless of --max-jobs or --no-offload workarounds, AND a --check
+;; rebuild of one already-"fixed" package (node-lru-cache-11.5.1) showed
+;; non-deterministic output, meaning the dedup-fixup phase (or the
+;; underlying npm build itself) doesn't reliably produce the same result
+;; every time -- not yet root-caused.  Fixing this properly is a separate,
+;; larger effort; this fix here is deliberately scoped to just the
+;; package that broke the specific jellyfin deploy failure.
+(define (deduplicate-internal-files pkg)
+  "Return PKG with an added phase that appends a trailing newline to any
+regular file in its output whose content is byte-identical to an
+earlier-seen file, breaking guix-daemon's post-build content-based
+hardlinking between them.  Needed because npm's bundled tar/minizlib
+crashes with an uncaught `ZlibError: zlib: stream error' -- silently, with
+no failing exit code -- when a later consumer's `--install-links npm
+install' packs a directory containing two files hardlinked to each
+other (confirmed with a minimal two-file reproduction outside of any of
+these packages entirely).  Dual ESM/CJS builds routinely ship
+byte-identical files this way (e.g. node-acorn-8.16.0's dist/acorn.d.mts
+and dist/acorn.d.ts, or node-react-aria-utils-3.34.1's
+dist/import.mjs and dist/module.js)."
+  (package/inherit pkg
+    (arguments
+     (let* ((with-phases
+             (substitute-keyword-arguments (package-arguments pkg)
+               ((#:phases phases)
+                #~(modify-phases #$phases
+                    (add-after 'install 'break-duplicate-file-content
+                      (lambda* (#:key outputs #:allow-other-keys)
+                        (let ((out (assoc-ref outputs "out"))
+                              (seen (make-hash-table)))
+                          (ftw out
+                               (lambda (filename statinfo flag)
+                                 (when (eq? flag 'regular)
+                                   (let ((content
+                                          (call-with-input-file filename
+                                            get-bytevector-all)))
+                                     (if (hash-ref seen content)
+                                         (call-with-output-file filename
+                                           (lambda (port)
+                                             (put-bytevector port content)
+                                             (put-u8 port 10)))
+                                         (hash-set! seen content #t))))
+                                 #t))
+                          #t))))))))
+       ;; substitute-keyword-arguments only rewrites #:modules if the
+       ;; package already declares one; most node-build-system packages
+       ;; here don't, so (ice-9 ftw)/(ice-9 binary-ports) must be added
+       ;; unconditionally or `ftw' and `get-bytevector-all' above are
+       ;; unbound at build time.
+       (if (memq #:modules with-phases)
+           (substitute-keyword-arguments with-phases
+             ((#:modules modules)
+              `((ice-9 ftw) (ice-9 binary-ports) ,@modules)))
+           (append with-phases
+                   (list #:modules
+                         '((ice-9 ftw) (ice-9 binary-ports)
+                           (guix build node-build-system)
+                           (guix build utils)))))))))
+
+(define node-acorn-8.16.0-no-duplicate-files
+  (deduplicate-internal-files node-acorn-8.16.0))
+
+;; Applied to `seerr' below: rewrites every package in its dependency graph
+;; that references these inputs (node-acorn-8.16.0 via acorn-walk,
+;; ts-node, postcss-load-config, ...; the react-aria/* family via
+;; react-aria itself, which bundles them all as its own nested
+;; dependencies) to use the deduplication-safe variant instead, without
+;; having to hand-edit their definitions in the 1000+-package
+;; seerr-deps.scm.
+(define %seerr-fix-duplicate-files
+  (package-input-rewriting
+   ;; #:recursive? is needed because package-input-rewriting defaults to
+   ;; #:recursive? #f, under which it stops recursing as soon as it
+   ;; substitutes a package found in REPLACEMENTS -- so without this,
+   ;; e.g. node-react-aria-3.47.0 gets replaced with its deduplicated
+   ;; variant, but that variant's own (inherited, unmodified) `inputs'
+   ;; field still points at the *original* node-react-aria-utils-3.34.1,
+   ;; defeating the whole rewrite for exactly the packages that matter
+   ;; most (a bundling package whose own bundled copy is what crashes).
+   (map (lambda (pkg) (cons pkg (deduplicate-internal-files pkg)))
+        (list node-acorn-8.16.0
+              node-react-aria-visually-hidden-3.9.1
+              node-internationalized-string-3.2.9
+              node-react-aria-interactions-3.28.1
+              node-react-aria-searchfield-3.9.1
+              node-react-aria-numberfield-3.13.1
+              node-react-aria-breadcrumbs-3.6.1
+              node-react-aria-disclosure-3.2.1
+              node-react-aria-datepicker-3.17.1
+              node-react-aria-textfield-3.19.1
+              node-react-aria-separator-3.5.1
+              node-react-aria-selection-3.28.1
+              node-react-aria-progress-3.5.1
+              node-react-aria-overlays-3.32.1
+              node-react-aria-landmark-3.1.1
+              node-react-aria-gridlist-3.15.1
+              node-react-aria-combobox-3.16.1
+              node-react-aria-checkbox-3.17.1
+              node-react-aria-calendar-3.10.1
+              node-react-types-shared-3.35.0
+              node-react-aria-tooltip-3.10.1
+              node-react-aria-listbox-3.16.1
+              node-react-aria-switch-3.8.1
+              node-react-aria-slider-3.9.1
+              node-react-aria-select-3.18.1
+              node-react-aria-dialog-3.6.1
+              node-react-aria-button-3.15.1
+              node-react-aria-utils-3.34.1
+              node-react-aria-toast-3.1.1
+              node-react-aria-table-3.18.1
+              node-react-aria-radio-3.13.1
+              node-react-aria-meter-3.5.1
+              node-react-aria-label-3.8.1
+              node-react-aria-focus-3.22.1
+              node-react-aria-color-3.2.1
+              node-react-aria-tree-3.2.1
+              node-react-aria-tabs-3.12.1
+              node-react-aria-menu-3.22.1
+              node-react-aria-link-3.9.1
+              node-react-aria-i18n-3.13.1
+              node-react-aria-tag-3.9.1
+              node-react-aria-ssr-3.10.1
+              node-react-aria-dnd-3.12.1
+              node-react-aria-3.47.0))
+   #:recursive? #t))
+
+(define %seerr-unrewritten
   (package
     (name "seerr")
     (version "3.11.2")
@@ -106,6 +276,55 @@
                   node-react-ace-14.0.1
                   node-react-animate-height-3.2.3
                   node-react-aria-3.47.0
+                  ;; react-aria's own dist code imports directly from these
+                  ;; @react-aria/* and @internationalized/* scoped packages
+                  ;; (and react-types/shared) at the top level; they must be
+                  ;; direct inputs (like the @react-spring/* siblings above)
+                  ;; so link-node-inputs places them in node_modules/ for
+                  ;; webpack module resolution — react-aria's own store
+                  ;; output only has them nested under its own node_modules/.
+                  node-react-aria-visually-hidden-3.9.1
+                  node-internationalized-string-3.2.9
+                  node-react-aria-interactions-3.28.1
+                  node-react-aria-searchfield-3.9.1
+                  node-react-aria-numberfield-3.13.1
+                  node-react-aria-breadcrumbs-3.6.1
+                  node-react-aria-disclosure-3.2.1
+                  node-react-aria-datepicker-3.17.1
+                  node-react-aria-textfield-3.19.1
+                  node-react-aria-separator-3.5.1
+                  node-react-aria-selection-3.28.1
+                  node-react-aria-progress-3.5.1
+                  node-react-aria-overlays-3.32.1
+                  node-react-aria-landmark-3.1.1
+                  node-react-aria-gridlist-3.15.1
+                  node-react-aria-combobox-3.16.1
+                  node-react-aria-checkbox-3.17.1
+                  node-react-aria-calendar-3.10.1
+                  node-react-types-shared-3.35.0
+                  node-react-aria-tooltip-3.10.1
+                  node-react-aria-listbox-3.16.1
+                  node-react-aria-switch-3.8.1
+                  node-react-aria-slider-3.9.1
+                  node-react-aria-select-3.18.1
+                  node-react-aria-dialog-3.6.1
+                  node-react-aria-button-3.15.1
+                  node-react-aria-utils-3.34.1
+                  node-react-aria-toast-3.1.1
+                  node-react-aria-table-3.18.1
+                  node-react-aria-radio-3.13.1
+                  node-react-aria-meter-3.5.1
+                  node-react-aria-label-3.8.1
+                  node-react-aria-focus-3.22.1
+                  node-react-aria-color-3.2.1
+                  node-react-aria-tree-3.2.1
+                  node-react-aria-tabs-3.12.1
+                  node-react-aria-menu-3.22.1
+                  node-react-aria-link-3.9.1
+                  node-react-aria-i18n-3.13.1
+                  node-react-aria-tag-3.9.1
+                  node-react-aria-ssr-3.10.1
+                  node-react-aria-dnd-3.12.1
                   node-react-dom-19.2.6
                   node-react-hot-toast-2.6.0
                   node-goober-2.1.19
@@ -937,9 +1156,17 @@ export function generateVAPIDKeys(): {
                                             "(p.dependencies||{})"
                                             "['css-tree']||'')"
                                             "}catch(e){process.exit(0)}")))
-                         (ct-path (let ((l (read-line port)))
+                         (ct-path (let* ((l (read-line port))
+                                         (spec (if (eof-object? l) "" l)))
                                     (close-pipe port)
-                                    (if (eof-object? l) "" l))))
+                                    ;; csso's package.json records this as a
+                                    ;; "file://" URI, not a bare filesystem
+                                    ;; path -- file-exists? needs the latter,
+                                    ;; or this check silently always fails.
+                                    (if (string-prefix? "file://" spec)
+                                        (substring spec
+                                                   (string-length "file://"))
+                                        spec))))
                     (when (and (not (string-null? ct-path))
                                (file-exists? ct-path))
                       (format #t "replacing @svgr/webpack bundled css-tree ~
@@ -1112,3 +1339,6 @@ shows from a self-hosted media server.  It is the merged successor to
 Overseerr and Jellyseerr.  This package builds the seerrng fork, which adds
 Music (Lidarr) and Books (Readarr) requests on top of upstream Seerr.")
     (license expat)))
+
+(define-public seerr
+  (%seerr-fix-duplicate-files %seerr-unrewritten))

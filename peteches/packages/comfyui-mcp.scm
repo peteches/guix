@@ -28,7 +28,44 @@
   #:use-module (gnu packages pkg-config)
   #:use-module (gnu packages python)
   #:use-module (peteches packages seerr-deps)
-  #:use-module (peteches packages claude-agent-acp))
+  #:use-module (peteches packages claude-agent-acp)
+  #:use-module (peteches packages claude-agent-acp-deps))
+
+(define-public node-addon-api-8.9.2
+  (package
+    (name "node-addon-api")
+    (version "8.9.2")
+    (source
+     (origin
+       (method url-fetch)
+       (uri
+        "https://registry.npmjs.org/node-addon-api/-/node-addon-api-8.9.2.tgz")
+       (sha256
+        (base32 "1sn8jz8wvkhw395q5f29fyfirvf609fc47cgg4zs668vajc5dmjc"))))
+    (build-system node-build-system)
+    (arguments
+     (list
+      #:tests? #f
+      #:phases
+      #~(modify-phases %standard-phases
+          (delete 'build)
+          (add-after 'patch-dependencies 'delete-dev-dependencies
+            (lambda _
+              (modify-json (delete-dependencies '("eslint" "semver"
+                                                  "bindings"
+                                                  "fs-extra"
+                                                  "node-gyp"
+                                                  "benchmark"
+                                                  "pre-commit"
+                                                  "neostandard"
+                                                  "clang-format"))))))))
+    (home-page "https://github.com/nodejs/node-addon-api#readme")
+    (synopsis "Node.js API (N-API) header-only C++ wrappers")
+    (description
+     "@code{node-addon-api} provides header-only C++ wrapper classes for
+the stable Node.js N-API, used by native addons such as
+@code{better-sqlite3} at build time.")
+    (license license:expat)))
 
 (define-public node-better-sqlite3-13.0.3
   (package
@@ -48,11 +85,22 @@
       #:phases
       #~(modify-phases %standard-phases
           (delete 'build)
+          ;; The npm tarball also bundles prebuilt .node addons for
+          ;; other OS/arch combinations (darwin, win32, musl, arm64).
+          ;; We always build the addon from source (see
+          ;; 'build-from-source below), so these are dead weight, and
+          ;; being foreign binaries not produced by Guix, they fail
+          ;; 'validate-runpath.
+          (add-after 'unpack 'delete-foreign-prebuilds
+            (lambda _
+              (when (file-exists? "prebuilds")
+                (delete-file-recursively "prebuilds"))))
           (add-after 'patch-dependencies 'delete-dev-dependencies
             (lambda _
               (modify-json (delete-dependencies '("chai" "cli-color"
                                                   "fs-extra"
                                                   "mocha"
+                                                  "node-gyp"
                                                   "nodemark"
                                                   "prebuild"
                                                   "sqlite"
@@ -66,7 +114,8 @@
           ;; builds the addon from the vendored amalgamation.
           (add-after 'delete-dev-dependencies 'build-from-source
             (lambda _
-              (modify-json (delete-fields '("scripts.install")))))
+              (modify-json (delete-fields '("scripts.install")
+                                          #:strict? #f))))
           ;; node-gyp's generated makefiles default CC/CXX to `cc'/`c++',
           ;; neither of which exists in a Guix build environment, and it
           ;; looks for Python on PATH rather than in the store.
@@ -101,7 +150,7 @@
                                                          '()) "install"
                                           "echo Guix: addon already built")))))))))
     (native-inputs (list python))
-    (inputs (list node-bindings-1.5.0))
+    (inputs (list node-addon-api-8.9.2 node-bindings-1.5.0))
     (home-page "http://github.com/WiseLibs/better-sqlite3")
     (synopsis "Fast and simple SQLite library for Node.js")
     (description
@@ -190,6 +239,84 @@ environments, covering the RESTful and WebSocket APIs.")
 and server implementation for Node.js.")
     (license license:expat)))
 
+(define-public node-hash-wasm-4.12.0
+  (package
+    (name "node-hash-wasm")
+    (version "4.12.0")
+    (source
+     (origin
+       (method url-fetch)
+       (uri "https://registry.npmjs.org/hash-wasm/-/hash-wasm-4.12.0.tgz")
+       (sha256
+        (base32 "14kgb3mqhzb53dhxddfczaylw8fq7j6l7b685s9pfqdlbw92mcqx"))))
+    (build-system node-build-system)
+    (arguments
+     (list
+      #:tests? #f
+      #:phases
+      #~(modify-phases %standard-phases
+          (delete 'build)
+          (add-after 'patch-dependencies 'delete-dev-dependencies
+            (lambda _
+              (modify-json (delete-dependencies '("jest" "tslib"
+                                                  "rollup"
+                                                  "ts-jest"
+                                                  "ts-node"
+                                                  "binaryen"
+                                                  "ts-loader"
+                                                  "typescript"
+                                                  "@types/jest"
+                                                  "@types/node"
+                                                  "@types/estree"
+                                                  "@biomejs/biome"
+                                                  "rollup-plugin-gzip"
+                                                  "@rollup/plugin-json"
+                                                  "rollup-plugin-terser"
+                                                  "rollup-plugin-license"
+                                                  "@rollup/plugin-typescript"))))))))
+    (home-page "https://github.com/Daninet/hash-wasm#readme")
+    (synopsis "WebAssembly-based hash library")
+    (description
+     "@code{hash-wasm} provides fast, WebAssembly-based implementations
+of common hash functions (SHA, BLAKE, Argon2, bcrypt, scrypt, and
+more), shipped as prebuilt WASM/JS bundles.")
+    (license license:expat)))
+
+(define-public node-comfyorg-sdk-0.1.7
+  (package
+    (name "node-comfyorg-sdk")
+    (version "0.1.7")
+    (source
+     (origin
+       (method url-fetch)
+       (uri "https://registry.npmjs.org/@comfyorg/sdk/-/sdk-0.1.7.tgz")
+       (sha256
+        (base32 "1g4kmq8039bhpn49v6kg40r5kaabcwyzwgmhad0lx9sphbhkpfri"))))
+    (build-system node-build-system)
+    (arguments
+     (list
+      #:tests? #f
+      #:phases
+      #~(modify-phases %standard-phases
+          (delete 'build)
+          (add-after 'patch-dependencies 'delete-dev-dependencies
+            (lambda _
+              (modify-json (delete-dependencies '("yaml" "oxfmt"
+                                                  "oxlint"
+                                                  "vitest"
+                                                  "typescript"
+                                                  "@types/node"
+                                                  "@hey-api/openapi-ts"
+                                                  "@vitest/coverage-v8"))))))))
+    (inputs (list node-zod-4.4.3 node-hash-wasm-4.12.0
+                  node-eventsource-parser-3.1.0))
+    (home-page "https://github.com/Comfy-Org/sdk#readme")
+    (synopsis "Official TypeScript/JavaScript SDK for the ComfyUI API")
+    (description
+     "@code{@@comfyorg/sdk} is the official client SDK for talking to a
+ComfyUI server's HTTP and WebSocket API.")
+    (license license:expat)))
+
 (define-public node-comfyui-mcp
   (package
     (name "node-comfyui-mcp")
@@ -235,12 +362,79 @@ and server implementation for Node.js.")
                                                   "@aws-sdk/client-s3"
                                                   "@azure/storage-blob"
                                                   "ai"
-                                                  "cloudflared"))))))))
+                                                  "cloudflared")))))
+          ;; Skip '--install-links' and bin-links: npm's bundled
+          ;; tar/minizlib crashes with a silently-swallowed "ZlibError:
+          ;; zlib: stream error" while copying inputs via
+          ;; '--install-links' on this node-24.18.0 toolchain.
+          ;; Symlinking instead avoids the crash and is equivalent for
+          ;; a build-time dependency; '--no-bin-links' avoids a related
+          ;; EROFS chmod failure for any input with a "bin" script.
+          (replace 'configure
+            (lambda* (#:key inputs #:allow-other-keys)
+              (invoke (string-append (assoc-ref inputs "node") "/bin/npm")
+                      "--offline" "--ignore-scripts" "--no-bin-links"
+                      "--no-audit" "install")
+              ;; npm's symlinks (created because '--install-links' is
+              ;; skipped above) are relative to wherever the build
+              ;; happens to sit right now.  This package still gets
+              ;; tar'd up and reinstalled at a different depth by the
+              ;; 'repack/'install phases below, which would silently
+              ;; leave the relative text pointing at the wrong place
+              ;; (e.g. into /tmp instead of /gnu/store) once any later
+              ;; consumer copies this tree elsewhere.  Absolutize now,
+              ;; while the relative targets are still resolvable.
+              (for-each (lambda (f)
+                          (unless (string-prefix? "/" (readlink f))
+                            (let ((target (canonicalize-path f)))
+                              (delete-file f)
+                              (symlink target f))))
+                        (find-files "node_modules"
+                                    (lambda (f s)
+                                      (eq? 'symlink (stat:type s)))))))
+          (replace 'install
+            (lambda* (#:key outputs inputs #:allow-other-keys)
+              (invoke (string-append (assoc-ref inputs "node") "/bin/npm")
+                      "--prefix" (assoc-ref outputs "out")
+                      "--global" "--offline" "--loglevel" "info"
+                      "--production" "--no-bin-links"
+                      "install" "../package.tgz")
+              ;; See the matching comment in 'configure above: this
+              ;; second npm invocation (extracting into the final
+              ;; store output) creates its own fresh relative symlinks,
+              ;; independent of whatever 'configure already fixed.
+              ;; Absolutize them too, or any later consumer that copies
+              ;; this output elsewhere inherits broken links.
+              (let ((out (assoc-ref outputs "out")))
+                (for-each (lambda (f)
+                            (unless (string-prefix? "/" (readlink f))
+                              (let ((target (canonicalize-path f)))
+                                (delete-file f)
+                                (symlink target f))))
+                          (find-files out
+                                      (lambda (f s)
+                                        (eq? 'symlink (stat:type s))))))))
+          ;; '--no-bin-links' above (needed to dodge the EROFS crash
+          ;; for *dependency* bin scripts symlinked from the read-only
+          ;; store) also suppresses bin-linking for this package's own
+          ;; "comfyui-mcp" executable -- but dist/index.js here is our
+          ;; own fresh, writable output, not a symlink into another
+          ;; store item, so chmod/symlink are both safe to do by hand.
+          (add-after 'install 'link-own-bin
+            (lambda* (#:key outputs #:allow-other-keys)
+              (let* ((out (assoc-ref outputs "out"))
+                     (cli (string-append
+                           out
+                           "/lib/node_modules/comfyui-mcp/dist/index.js")))
+                (chmod cli #o755)
+                (mkdir-p (string-append out "/bin"))
+                (symlink cli (string-append out "/bin/comfyui-mcp"))))))))
     (inputs (list node-zod-4.4.3
                   node-yaml-2.9.0
                   node-ws-8.21.3
                   node-sharp-native-0.35.3
                   node-dotenv-16.6.1
+                  node-comfyorg-sdk-0.1.7
                   node-better-sqlite3-13.0.3
                   node-stable-canvas-comfyui-client-1.5.9
                   node-modelcontextprotocol-sdk-1.29.0))
@@ -315,6 +509,7 @@ APIs; set @env{COMFYUI_URL} to point it at the instance.")
                                       "node-gyp"
                                       "emnapi"
                                       "tar-fs"
+                                      "publint"
                                       "@types/node"
                                       "exif-reader"
                                       "extract-zip"
@@ -370,6 +565,22 @@ exec ~a/bin/node ~a/node-gyp/bin/node-gyp.js \"$@\"
                         (string-append bin ":"
                                        (getenv "PATH")))
                 (setenv "NODE_PATH" npm-modules))))
+          ;; gyp's own "COPY Release/sharp-linux-x64-0.35.3.node" step
+          ;; (from obj.target/) produces two byte-identical files; only
+          ;; one survives `npm install ../package.tgz' in the default
+          ;; 'install phase (content-addressed dedup, apparently keeps
+          ;; whichever isn't at this top-level path) -- and it's the
+          ;; obj.target one that survives, which sharp's loader
+          ;; (dist/sharp.mjs) never looks at.  Delete the top-level
+          ;; copy and MOVE the obj.target one into its place instead of
+          ;; copying, leaving no duplicate content behind (mirrors the
+          ;; identical fix in seerr.scm's own sharp package).
+          (add-after 'build 'keep-compiled-addon
+            (lambda _
+              (delete-file "src/build/Release/sharp-linux-x64-0.35.3.node")
+              (rename-file
+               "src/build/Release/obj.target/sharp-linux-x64-0.35.3.node"
+               "src/build/Release/sharp-linux-x64-0.35.3.node")))
           ;; As for better-sqlite3: stop npm re-running the install script
           ;; (`node install/check.js || npm run build') in the build
           ;; environment of every dependent package.
