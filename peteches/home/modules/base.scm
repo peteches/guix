@@ -335,8 +335,6 @@
 				    "emacs-marginalia"
 				    "emacs-vertico"
 
-				    "emacs-slack"
-
 				    "emacs-which-key"
 
 				    "emacs-magit"

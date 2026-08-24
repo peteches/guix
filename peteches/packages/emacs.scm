@@ -8,25 +8,6 @@
   #:use-module (guix licenses)
   #:use-module (guix packages))
 
-(define-public emacs-slack
-  ;; Update the commit and revision
-  (let ((commit "22ae94de5ddf0c9012afe298b5eb8b2e18d45931")
-        ;; ← replace with the new commit
-        (revision "13"))
-    ;; increment the revision
-    (package
-      (inherit upstream:emacs-slack)
-      (version (git-version "0.0.2" revision commit))
-      (source
-       (origin
-         (method git-fetch)
-         (uri (git-reference
-               (url "https://github.com/yuya373/emacs-slack")
-               (commit commit)))
-         (file-name (git-file-name "emacs-slack" commit))
-         (sha256
-          (base32 "12gpmlg9k2xfjd57bj4jmyrpks00p92h8ip6lcimjqwkl4vf2dwk")))))))
-
 (define-public emacs-mcp
   (package
     (name "emacs-mcp")
