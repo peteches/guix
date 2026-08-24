@@ -122,11 +122,20 @@ those paths will resolve to immutable store locations."))
           (force-output s)))
 
       ;; Skip silently if no Hyprland instance is running (e.g. reconfiguring
-      ;; from an SSH session or before Hyprland has started).
+      ;; from an SSH session or before Hyprland has started).  A stale
+      ;; instance directory/socket file can also be left behind after a
+      ;; crash with nothing actually listening on it, which surfaces as
+      ;; ECONNREFUSED from `connect' rather than an absent path -- that
+      ;; must be swallowed the same way, or it aborts the whole `guix home
+      ;; reconfigure'.
       (let ((socket-path (hypr-socket-path)))
         (when socket-path
-          (hypr-send socket-path "reload")
-          (hypr-send socket-path "dispatch exec dms restart")))))
+          (catch 'system-error
+            (lambda ()
+              (hypr-send socket-path "reload")
+              (hypr-send socket-path "dispatch exec dms restart"))
+            (lambda (key . args)
+              #t))))))
 
 (define (home-hyprland-environment-variables-service-type config)
   `(("XDG_SESSION_TYPE" . "wayland") ("XDG_CURRENT_DESKTOP" . "Hyprland")
