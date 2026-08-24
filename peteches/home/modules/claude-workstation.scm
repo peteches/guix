@@ -462,7 +462,11 @@ unset _claude_completion
 claude-workstation.  REPOS is a list of (NAME URL) cloned into ~/area_51.
 MCP-SERVERS is a list of <home-claude-mcp-server> (the anvil bridges are added
 automatically when WITH-ANVIL?, and graphify unconditionally).  MCP-ENV is a
-NON-SECRET alist of environment variables the MCP servers inherit.
+NON-SECRET alist baked into each of MCP-SERVERS' own `-e' flags at `claude
+mcp add' time (not left to ambient shell inheritance -- see the ENV field
+of <home-claude-mcp-server> for why).  It is also exported shell-side via
+home-environment-variables-service-type for convenience, but that copy is
+NOT what the MCP servers themselves see.
 WITH-HERDR? (default #t) supervises a per-account `herdr server' under
 home-shepherd, so Claude Code sessions started inside it survive an SSH
 disconnect and can be reattached later -- either locally on the VM or via
@@ -589,7 +593,25 @@ HERDR-SPACES reaches the criticalgrind/ygo accounts' own herdr servers."
                 (config-directory (repo-directory "configs/claude/defaults"))
                 (mcp-servers (append (if with-anvil? (anvil-mcp-servers) '())
                                      (list graphify-mcp-server)
-                                     mcp-servers)))))
+                                     ;; MCP-ENV is baked into each caller-
+                                     ;; supplied stdio server's own `-e'
+                                     ;; flags (see home-claude-mcp-server's
+                                     ;; ENV field) rather than left to
+                                     ;; ambient shell inheritance -- this
+                                     ;; account's Claude Code process can be
+                                     ;; reattached via herdr/shepherd for
+                                     ;; weeks without ever re-sourcing
+                                     ;; ~/.profile, so a value that only
+                                     ;; lived in the shell environment could
+                                     ;; go stale until that whole chain was
+                                     ;; torn down and restarted.
+                                     (map (lambda (server)
+                                            (home-claude-mcp-server
+                                             (inherit server)
+                                             (env (append
+                                                   (home-claude-mcp-server-env server)
+                                                   mcp-env))))
+                                          mcp-servers))))))
      (if (null? extra-claude-files)
          '()
          (list (simple-service 'claude-extra-files

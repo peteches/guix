@@ -44,7 +44,8 @@
   #:use-module (peteches packages claude-code)
   #:export (home-claude-service-type
             home-claude-configuration
-            home-claude-mcp-server))
+            home-claude-mcp-server
+            home-claude-mcp-server-env))
 
 ;; TRANSPORT is "stdio" (default) or "http". stdio servers run a local
 ;; COMMAND/ARGS; http servers are hosted endpoints registered by URL only
@@ -57,6 +58,16 @@
 ;; "offline_access" so the resulting grant carries a refresh token). It is
 ;; a hint for the OAuth flow, not a credential; leave it #f for a provider
 ;; whose default scope is already correct.
+;;
+;; ENV (stdio only) is a NON-SECRET alist of (NAME . VALUE) strings baked
+;; into this server's ~/.claude.json entry via `claude mcp add -e` at
+;; activation time. Deliberately NOT ambient-shell-inherited: this server's
+;; subprocess is spawned by Claude Code itself, which on claude-workstation
+;; may be reattached for weeks via herdr/shepherd without ever re-sourcing
+;; ~/.profile, so a value exported only via
+;; home-environment-variables-service-type can silently go stale until the
+;; whole herdr/shepherd chain is torn down and restarted. Baking it here
+;; instead makes a `guix home reconfigure' + MCP reconnect sufficient.
 (define-record-type* <home-claude-mcp-server>
   home-claude-mcp-server make-home-claude-mcp-server
   home-claude-mcp-server?
@@ -64,6 +75,7 @@
   (command      home-claude-mcp-server-command      (default #f))
   (args         home-claude-mcp-server-args         (default '()))
   (transport    home-claude-mcp-server-transport    (default "stdio"))
+  (env          home-claude-mcp-server-env          (default '()))
   (url          home-claude-mcp-server-url          (default #f))
   (oauth-scopes home-claude-mcp-server-oauth-scopes (default #f))
   (scope        home-claude-mcp-server-scope        (default "user")))
@@ -146,6 +158,12 @@ fi
                          (transport    (home-claude-mcp-server-transport server))
                          (cmd          (home-claude-mcp-server-command server))
                          (args         (home-claude-mcp-server-args server))
+                         (env          (home-claude-mcp-server-env server))
+                         (env-flags    (append-map
+                                        (lambda (pair)
+                                          (list "-e" (string-append (car pair)
+                                                                     "=" (cdr pair))))
+                                        env))
                          (url          (home-claude-mcp-server-url server))
                          (oauth-scopes (or (home-claude-mcp-server-oauth-scopes server)
                                            "")))
@@ -154,14 +172,20 @@ fi
                             ;; Remove existing entry; non-zero exit is harmless.
                             (system* #$claude-bin
                                      "mcp" "remove" "--scope" #$scope #$name)
-                            ;; Re-add with current config.  -- separates claude
-                            ;; flags from the subprocess command and its args.
+                            ;; Re-add with current config. -e KEY=VALUE
+                            ;; flags (from ENV) go AFTER the positional name
+                            ;; -- `-e' is a variadic option that otherwise
+                            ;; swallows the name token too -- and `--'
+                            ;; separates claude's own flags from the
+                            ;; subprocess command and its args.
                             (apply system*
                                    #$claude-bin "mcp" "add"
                                    "--scope" #$scope
                                    "--transport" "stdio"
-                                   #$name "--" #$cmd
-                                   (list #$@args)))
+                                   #$name
+                                   (append (list #$@env-flags)
+                                           (list "--" #$cmd)
+                                           (list #$@args))))
                         ;; http (or other remote) transport: idempotent
                         ;; registration + optional oauth.scopes patch, see
                         ;; %home-claude-http-mcp-script.
