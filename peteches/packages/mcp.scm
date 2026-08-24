@@ -125,9 +125,11 @@ Outline knowledge bases.")
      (list
       #:go go-1.24
       #:import-path "github.com/sonirico/mcp-shell"))
+    (native-inputs (list go-github-com-stretchr-testify))
     (propagated-inputs (list go-gopkg-in-yaml-v3 go-github-com-rs-zerolog
                              go-github-com-mark3labs-mcp-go-source
-                             go-github-com-joho-godotenv))
+                             go-github-com-joho-godotenv
+                             go-mvdan-cc-sh-v3))
     (home-page "https://github.com/sonirico/mcp-shell")
     (synopsis "mcp-shell 🐚")
     (description
