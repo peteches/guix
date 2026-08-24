@@ -61,6 +61,7 @@
   #:use-module (peteches packages claude-code)
   #:use-module (peteches packages claude-completion)
   #:use-module (peteches home modules claude)
+  #:use-module (peteches home modules gpg)
   #:use-module (peteches packages emacs-anvil)
   #:use-module (peteches packages graphify)
   #:use-module (peteches packages herdr)
@@ -496,6 +497,8 @@ HERDR-SPACES reaches the criticalgrind/ygo accounts' own herdr servers."
    (services
     (append
      (list
+      base-log-dir-service
+
       ;; This VM has no elogind/PAM session management, so /run/user/<uid>
       ;; is never created -- yet XDG_RUNTIME_DIR is still exported pointing
       ;; at it (picked up from some ambient default). `emacs --daemon` uses

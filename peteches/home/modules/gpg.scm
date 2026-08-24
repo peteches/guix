@@ -18,11 +18,29 @@
 ;;; ssh-support? #t means gpg-agent also serves as the SSH agent.
 
 (define-module (peteches home modules gpg)
+  #:use-module (gnu home services)
   #:use-module (gnu home services gnupg)
   #:use-module (gnu packages gnupg)
   #:use-module (gnu services)
   #:use-module (guix gexp)
-  #:export (base-gpg-service))
+  #:export (base-gpg-service
+            base-log-dir-service))
+
+;;; gpg-agent's log-file below lands in ~/.local/var/log, which is not
+;;; guaranteed to exist on a fresh home — koboldcpp's shepherd service
+;;; creates the same directory, but only on the hosts that run it.  Create
+;;; it at activation time on every host instead, same pattern as
+;;; base-ssh-control-dir-service in (peteches home modules ssh).
+(define-public base-log-dir-service
+  (simple-service 'log-dir
+                  home-activation-service-type
+                  #~(let ((home (getenv "HOME")))
+                      (for-each (lambda (dir)
+                                  (unless (file-exists? dir)
+                                    (mkdir dir #o700)))
+                                (list (string-append home "/.local")
+                                      (string-append home "/.local/var")
+                                      (string-append home "/.local/var/log"))))))
 
 (define-public base-gpg-service
   (service home-gpg-agent-service-type

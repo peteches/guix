@@ -277,6 +277,7 @@
    base-ssh-control-dir-service
 
    base-gpg-service
+   base-log-dir-service
 
    ;; HyprLand
    (service home-hyprland-service-type
