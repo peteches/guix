@@ -13,9 +13,13 @@
 ;;;     not host local model inference.
 ;;;   - Still carries the docker-compose CLI plugin service (used for
 ;;;     ComfyUI elsewhere) and the wireplumber audio device renaming rules;
-;;;     the latter match nug's specific PCI/USB topology
-;;;     (api.alsa.card.longname) and will silently not apply if dagon's
-;;;     audio hardware differs.
+;;;     both were retargeted to dagon's own USB bus paths after the hub
+;;;     was moved over from nug — the original nug-specific paths
+;;;     (9.1.4.3 / 9.1.4.1) never matched on dagon, so the rules silently
+;;;     did nothing until this fix (see 2026-08-24 audio troubleshooting).
+;;;     Wharfedale MixDesk speakers are usb-0000:00:14.0-10.3; the M-Audio
+;;;     mic is usb-0000:00:14.0-10.1 — both confirmed against dagon's live
+;;;     `pactl`/`wpctl` output.
 ;;;   - %nug-channels (adds guix-hpc-non-free on top of %base-channels),
 ;;;     same as nug.
 ;;;
@@ -115,7 +119,7 @@
 			  "  {"
 			  "    matches = ["
 			  "      {"
-			  "        api.alsa.card.longname = \"~.*usb-0000:00:14.0-9.1.4.3.*\""
+			  "        api.alsa.card.longname = \"~.*usb-0000:00:14.0-10.3.*\""
 			  "      }"
 			  "    ]"
 			  "    actions = {"
@@ -129,7 +133,7 @@
 			  "    matches = ["
 			  "      {"
 			  "        media.class = \"Audio/Sink\""
-			  "        api.alsa.card.longname = \"~.*usb-0000:00:14.0-9.1.4.3.*\""
+			  "        api.alsa.card.longname = \"~.*usb-0000:00:14.0-10.3.*\""
 			  "      }"
 			  "    ]"
 			  "    actions = {"
@@ -145,7 +149,7 @@
 			  "    matches = ["
 			  "      {"
 			  "        media.class = \"Audio/Source\""
-			  "        api.alsa.card.longname = \"~.*usb-0000:00:14.0-9.1.4.3.*\""
+			  "        api.alsa.card.longname = \"~.*usb-0000:00:14.0-10.3.*\""
 			  "      }"
 			  "    ]"
 			  "    actions = {"
@@ -160,7 +164,7 @@
 			  "  {"
 			  "    matches = ["
 			  "      {"
-			  "        api.alsa.card.longname = \"~.*usb-0000:00:14.0-9.1.4.1.*\""
+			  "        api.alsa.card.longname = \"~.*usb-0000:00:14.0-10.1.*\""
 			  "      }"
 			  "    ]"
 			  "    actions = {"
@@ -174,7 +178,7 @@
 			  "    matches = ["
 			  "      {"
 			  "        media.class = \"Audio/Source\""
-			  "        api.alsa.card.longname = \"~.*usb-0000:00:14.0-9.1.4.1.*\""
+			  "        api.alsa.card.longname = \"~.*usb-0000:00:14.0-10.1.*\""
 			  "      }"
 			  "    ]"
 			  "    actions = {"
@@ -189,7 +193,7 @@
 			  "    matches = ["
 			  "      {"
 			  "        media.class = \"Audio/Sink\""
-			  "        api.alsa.card.longname = \"~.*usb-0000:00:14.0-9.1.4.1.*\""
+			  "        api.alsa.card.longname = \"~.*usb-0000:00:14.0-10.1.*\""
 			  "      }"
 			  "    ]"
 			  "    actions = {"
