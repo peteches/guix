@@ -240,7 +240,14 @@
 		     ("XCURSOR_THEME" . "phinger-matugen")
 		     ("XCURSOR_SIZE" . "32")
 		     ("NUG_HOST" . "nug.spaniel-cordylus.ts.net")
-		     ("COMFYUI_URL" . "http://$NUG_HOST:8188")))
+		     ("COMFYUI_URL" . "http://$NUG_HOST:8188")
+		     ;; Reuse the running Emacs daemon and open a new frame
+		     ;; for it; if no daemon is reachable, emacsclient's
+		     ;; empty alternate-editor tells it to start one
+		     ;; (`emacs --daemon') and connect rather than falling
+		     ;; back to a disposable standalone editor.
+		     ("EDITOR" . "emacsclient --alternate-editor='' --create-frame")
+		     ("VISUAL" . "emacsclient --alternate-editor='' --create-frame")))
    (simple-service 'peteches-guile-load-path home-environment-variables-service-type
 		   `(("GUILE_LOAD_PATH" . "$HOME/area_51/guix:${GUILE_LOAD_PATH:+:$GUILE_LOAD_PATH}")))
 

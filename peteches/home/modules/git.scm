@@ -75,7 +75,7 @@ otherwise execute gpg normally.")
 	(git-section
 	 (name "core")
 	 (config '(("compression" . "6")
-		   ("editor" . "emacsclient --create-frame")
+		   ("editor" . "emacsclient --alternate-editor='' --create-frame")
 		   ("hooksPath" . "~/.config/git/hooks"))))
 	(git-section
 	 (name "url \"git@github.com:peteches\"")
