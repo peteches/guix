@@ -35,7 +35,8 @@
   #:use-module (gnu packages security-token)
   #:use-module (gnu packages readline)
   #:use-module (gnu packages sqlite)
-  #:use-module (gnu packages compression))
+  #:use-module (gnu packages compression)
+  #:use-module ((gnu packages emacs-xyz) #:prefix upstream:))
 
 (define-public gnupg
   (package
@@ -103,3 +104,11 @@ servers.  It includes several libraries: libassuan (IPC between GnuPG
 components), libgpg-error (centralized GnuPG error values), and
 libskba (working with X.509 certificates and CMS data).")
     (license license:gpl3+)))
+
+;; emacs-pinentry propagates upstream's `gnupg' (2.5.20), which conflicts
+;; with the 2.4.8 pin above the moment both land in the same profile --
+;; "profile contains conflicting entries for gnupg" (confirmed live via
+;; `guix home reconfigure' on dagon).  Swap just that one propagated input.
+(define-public emacs-pinentry
+  (package/inherit upstream:emacs-pinentry
+    (propagated-inputs (list gnupg))))

@@ -306,7 +306,12 @@
 	    (home-emacs-base-configuration
 	     (emacs-package emacs-pgtk)
 	     (config-directory (repo-directory "configs/emacs"))
-	     (extra-packages (cons guile-lsp-server/3.0.11 (map specification->package
+	     (extra-packages (cons* guile-lsp-server/3.0.11
+				     ;; Local override -- see peteches/packages/gnupg.scm:
+				     ;; upstream's propagates gnupg 2.5.20, conflicting
+				     ;; with the 2.4.8 pin elsewhere in this profile.
+				     emacs-pinentry
+				     (map specification->package
 				  '("emacs-forge"
 				    "emacs-olivetti"
 				    "emacs-string-inflection"
@@ -387,8 +392,6 @@
 
 
 				    "emacs-go-mode"
-
-				    "emacs-pinentry"
 
 				    "emacs-atom-one-dark-theme"
 
