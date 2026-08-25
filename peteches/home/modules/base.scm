@@ -50,7 +50,7 @@
   #:use-module (gnu packages bash)
   #:use-module (gnu packages emacs)
   #:use-module (gnu packages gawk)
-  #:use-module (gnu packages wm)
+  #:use-module ((gnu packages wm) #:hide (dank-material-shell))
   #:use-module (gnu packages linux)
   #:use-module (gnu packages password-utils)
   #:use-module (gnu packages qt)
@@ -96,6 +96,12 @@
   #:use-module (peteches packages concourse)
   #:use-module (peteches packages proxmox-scripts)
   #:use-module (peteches packages desktop-scripts)
+  ;; Guix proper's `dank-material-shell' (gnu packages window-management,
+  ;; via `(gnu packages wm)') is pinned to v0.5.1 and predates DMS's fix for
+  ;; Hyprland's Lua config migration -- see peteches/packages/
+  ;; dank-material-shell.scm for why this local v1.5.0 override exists.
+  #:use-module ((peteches packages dank-material-shell)
+                #:select ((dank-material-shell-1.5.0 . dank-material-shell)))
 
   #:use-module (peteches repository)
   ;; utilities
