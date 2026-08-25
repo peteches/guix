@@ -31,11 +31,10 @@
       #~'(("rclone" "bin/rclone"))
       #:phases
       #~(modify-phases %standard-phases
-          (add-after 'unpack 'strip-version-dir
+          (add-after 'unpack 'make-executable
             (lambda _
-              (rename-file (string-append "rclone-v"
-                                          #$%version "-linux-amd64/rclone")
-                           "rclone")
+              ;; 'unpack' already chdir's into the sole extracted
+              ;; subdirectory, so "rclone" is already at the top level.
               (chmod "rclone" #o755))))))
     (supported-systems '("x86_64-linux"))
     (home-page "https://rclone.org")
