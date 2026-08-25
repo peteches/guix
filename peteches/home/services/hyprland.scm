@@ -128,12 +128,52 @@ those paths will resolve to immutable store locations."))
       ;; ECONNREFUSED from `connect' rather than an absent path -- that
       ;; must be swallowed the same way, or it aborts the whole `guix home
       ;; reconfigure'.
-      (let ((socket-path (hypr-socket-path)))
+      ;;
+      ;; Hyprland's IPC socket wraps whatever text follows "dispatch " into
+      ;; `hl.dispatch(<text>)' verbatim and evaluates it as Lua once a Lua
+      ;; config is active (`j/status' reports `configProvider: "lua"') --
+      ;; the old plain "dispatch exec dms restart" string is not valid Lua
+      ;; and errors out silently from this script's point of view (the
+      ;; error only shows up in the socket reply, which this code never
+      ;; reads).  That meant DMS silently never actually restarted on any
+      ;; reconfigure since the Lua migration.  `hl.dsp.exec_cmd("...")' is
+      ;; the confirmed-working replacement (tested directly against a live
+      ;; socket on dagon).
+      ;;
+      ;; Also: `dms restart' itself was observed to kill the running
+      ;; instance without reliably relaunching it when handing off between
+      ;; mismatched DMS versions (e.g. the v0.5.1 -> v1.5.0 bump) -- do the
+      ;; kill+relaunch explicitly instead of trusting its internal handoff,
+      ;; mirroring exactly what autostart.lua uses at Hyprland startup.
+      ;;
+      ;; Send the kill and the relaunch as two separate dispatches rather
+      ;; than one "pkill ... ; exec ..." shell one-liner: unlike
+      ;; `hl.exec_cmd' (which autostart.lua wraps in `sh -lc "..."'
+      ;; itself), `hl.dsp.exec_cmd' does not appear to run its argument
+      ;; through a shell, so ';'/'exec' inside a single call are not
+      ;; interpreted at all -- confirmed by testing directly against a
+      ;; live socket on dagon, where the chained form silently spawned
+      ;; nothing.  A real `sleep' here (not a shell one) gives Hyprland
+      ;; time to actually terminate the old process before the relaunch
+      ;; dispatch goes out.
+      (let ((socket-path (hypr-socket-path))
+            (dms-bin (string-append (getenv "HOME")
+                                     "/.guix-home/profile/bin/dms"))
+            (quickshell-dir (string-append (getenv "HOME")
+                                            "/.guix-home/profile/share/quickshell")))
         (when socket-path
           (catch 'system-error
             (lambda ()
               (hypr-send socket-path "reload")
-              (hypr-send socket-path "dispatch exec dms restart"))
+              (hypr-send
+               socket-path
+               (string-append "dispatch hl.dsp.exec_cmd(\"pkill -f "
+                               dms-bin "\")"))
+              (sleep 1)
+              (hypr-send
+               socket-path
+               (string-append "dispatch hl.dsp.exec_cmd(\"" dms-bin
+                               " run -c " quickshell-dir "\")")))
             (lambda (key . args)
               #t))))))
 
