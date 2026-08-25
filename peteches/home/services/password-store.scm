@@ -5,9 +5,12 @@
   #:use-module (gnu packages)
   #:use-module (gnu packages guile)
   #:use-module (gnu packages version-control)
-  #:use-module (gnu packages password-utils)
+  #:use-module ((gnu packages password-utils) #:hide (password-store))
   #:use-module (gnu packages browser-extensions)
   #:use-module (guix gexp)
+  ;; Upstream `password-store' bakes in its own gnupg (2.5.20 dev
+  ;; snapshot) via wrap-program -- see peteches/packages/gnupg.scm.
+  #:use-module (peteches packages gnupg)
   #:export (home-password-store-configuration home-password-store-service-type))
 
 (define (serialize-string field val)
@@ -38,13 +41,14 @@
            #$cmd)))
 
 (define (home-password-store-profile-service-type config)
-  (map specification->package
-       '("password-store" "pass-otp"
-         "passff-host"
-         "grimblast"
-         "wl-clipboard"
-         "zbar"
-         "git")))
+  (cons password-store
+        (map specification->package
+             '("pass-otp"
+               "passff-host"
+               "grimblast"
+               "wl-clipboard"
+               "zbar"
+               "git"))))
 
 (define (home-password-store-mcron-service-type config)
   (list (push-pull-password-store-job config)))

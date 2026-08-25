@@ -36,7 +36,8 @@
   #:use-module (gnu packages readline)
   #:use-module (gnu packages sqlite)
   #:use-module (gnu packages compression)
-  #:use-module ((gnu packages emacs-xyz) #:prefix upstream:))
+  #:use-module ((gnu packages emacs-xyz) #:prefix upstream:)
+  #:use-module ((gnu packages password-utils) #:prefix upstream:))
 
 (define-public gnupg
   (package
@@ -112,3 +113,15 @@ libskba (working with X.509 certificates and CMS data).")
 (define-public emacs-pinentry
   (package/inherit upstream:emacs-pinentry
     (propagated-inputs (list gnupg))))
+
+;; password-store's `pass' wrapper runs `wrap-program' at build time,
+;; prefixing PATH with the `gpg' from *its own* gnupg input -- ahead of
+;; whatever gnupg is on the caller's profile PATH.  Left unoverridden,
+;; `pass show ...' always invokes upstream's 2.5.20 dev snapshot
+;; regardless of the 2.4.8 pin above, producing "Wrong secret key used"
+;; against a 2.4.8 gpg-agent (confirmed live on nyarlothotep).  Swap just
+;; the gnupg input so the wrapper bakes in the pinned 2.4.8 gpg instead.
+(define-public password-store
+  (package/inherit upstream:password-store
+    (inputs (modify-inputs (package-inputs upstream:password-store)
+              (replace "gnupg" gnupg)))))
