@@ -18,7 +18,9 @@
 
 (define-module (peteches home modules git)
   #:use-module (gnu packages bash)
-  #:use-module (gnu packages gnupg)
+  ;; Upstream `gnupg' is pinned to an explicit dev/test snapshot (2.5.20) at
+  ;; the current channel commit -- see peteches/packages/gnupg.scm.
+  #:use-module (peteches packages gnupg)
   #:use-module (guix build-system trivial)
   #:use-module (guix gexp)
   #:use-module ((guix licenses) #:prefix license:)

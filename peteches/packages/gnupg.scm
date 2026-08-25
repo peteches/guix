@@ -1,0 +1,105 @@
+;; peteches/packages/gnupg.scm
+;;
+;; At the guix channel commit pinned by peteches/channels/*.scm
+;; (b13c7c02b5f6d635e123f863227aa32ac64e3498), upstream Guix's `gnupg'
+;; package only has two versions: 1.4.23 (the ancient 1.x line) and 2.5.20 --
+;; an explicit development/test snapshot per its own startup banner, with no
+;; stable 2.4.x available at all.
+;;
+;; 2.5.20's `gpg-agent --supervised' socket-activation mode does not
+;; correctly serve connections through the socket Guix Shepherd's
+;; home-gpg-agent-service-type binds for it (confirmed live on dagon: the
+;; listening socket is held by shepherd, but the supervised agent process
+;; never answers on it), so every `gpg'/`pass' call times out against the
+;; real agent and silently falls back to spawning its own disposable
+;; classic-mode agent -- meaning passphrase caching never actually works.
+;;
+;; This pins gnupg back to 2.4.8, the exact version dagon was already
+;; running successfully (with working caching) before a `guix pull' moved
+;; it onto 2.5.20. Definition lifted from upstream Guix commit dd3e59a
+;; (gnu/packages/gnupg.scm), the last commit known to carry 2.4.8, adapted
+;; to build against whatever gnutls/libassuan/etc. the current channel pin
+;; provides.
+
+(define-module (peteches packages gnupg)
+  #:use-module (gnu packages)
+  #:use-module (guix packages)
+  #:use-module (guix download)
+  #:use-module (guix gexp)
+  #:use-module (guix build-system gnu)
+  #:use-module ((guix licenses) #:prefix license:)
+  #:use-module ((gnu packages gnupg) #:hide (gnupg))
+  #:use-module (gnu packages pkg-config)
+  #:use-module (gnu packages tls)
+  #:use-module (gnu packages openldap)
+  #:use-module (gnu packages security-token)
+  #:use-module (gnu packages readline)
+  #:use-module (gnu packages sqlite)
+  #:use-module (gnu packages compression))
+
+(define-public gnupg
+  (package
+    (name "gnupg")
+    (version "2.4.8")
+    (source (origin
+              (method url-fetch)
+              (uri (string-append "mirror://gnupg/gnupg/gnupg-" version
+                                  ".tar.bz2"))
+              (patches (search-patches "gnupg-default-pinentry.patch"))
+              (sha256
+               (base32
+                "05l666aha1nxpiiras446zmkhcgqnp33y74wyhzj9lq4kgbq135m"))))
+    (build-system gnu-build-system)
+    (native-inputs
+     (list pkg-config))
+    (inputs
+     (list gnutls
+           libassuan
+           libgcrypt
+           libgpg-error
+           libksba
+           npth
+           openldap
+           pcsc-lite
+           readline
+           sqlite
+           zlib))
+    (arguments
+     (list
+      #:configure-flags
+      #~(quote ("--enable-gnupg-builddir-envvar"
+                "--enable-all-tests"))
+      #:phases
+      #~(modify-phases %standard-phases
+          (add-before 'configure 'patch-paths
+            (lambda* (#:key inputs #:allow-other-keys)
+              (let ((libpcsclite.so (search-input-file inputs
+                                                       "lib/libpcsclite.so")))
+                (substitute* "scd/scdaemon.c"
+                  (("libpcsclite\\.so")
+                   libpcsclite.so)))))
+          (add-after 'build 'patch-scheme-tests
+            (lambda _
+              (substitute* (find-files "tests" ".\\.scm$")
+                (("/usr/bin/env gpgscm")
+                 (string-append (getcwd) "/tests/gpgscm/gpgscm")))))
+          (add-before 'build 'patch-test-paths
+            (lambda _
+              (substitute* '("tests/pkits/inittests"
+                             "tests/pkits/common.sh"
+                             "tests/pkits/Makefile")
+                (("/bin/pwd") (which "pwd")))
+              (substitute* "common/t-exectool.c"
+                (("/bin/cat") (which "cat"))
+                (("/bin/true") (which "true"))
+                (("/bin/false") (which "false"))))))))
+    (home-page "https://gnupg.org/")
+    (synopsis "GNU Privacy Guard")
+    (description
+     "The GNU Privacy Guard is a complete implementation of the OpenPGP
+standard.  It is used to encrypt and sign data and communication.  It
+features powerful key management and the ability to access public key
+servers.  It includes several libraries: libassuan (IPC between GnuPG
+components), libgpg-error (centralized GnuPG error values), and
+libskba (working with X.509 certificates and CMS data).")
+    (license license:gpl3+)))

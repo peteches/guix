@@ -39,7 +39,7 @@
   #:use-module (gnu packages databases)
   #:use-module (gnu packages image)
   #:use-module (gnu packages compression)
-  #:use-module (gnu packages gnupg)
+  #:use-module ((gnu packages gnupg) #:hide (gnupg))
   #:use-module (gnu packages rust-apps)
   #:use-module (gnu packages ncdu)
   #:use-module (gnu packages terminals)
@@ -102,6 +102,9 @@
   ;; dank-material-shell.scm for why this local v1.5.0 override exists.
   #:use-module ((peteches packages dank-material-shell)
                 #:select ((dank-material-shell-1.5.0 . dank-material-shell)))
+  ;; Upstream `gnupg' is pinned to an explicit dev/test snapshot (2.5.20) at
+  ;; the current channel commit -- see peteches/packages/gnupg.scm.
+  #:use-module (peteches packages gnupg)
 
   #:use-module (peteches repository)
   ;; utilities

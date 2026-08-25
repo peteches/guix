@@ -20,7 +20,14 @@
 (define-module (peteches home modules gpg)
   #:use-module (gnu home services)
   #:use-module (gnu home services gnupg)
-  #:use-module (gnu packages gnupg)
+  #:use-module ((gnu packages gnupg) #:hide (gnupg))
+  ;; Upstream `gnupg' is pinned to an explicit development/test snapshot
+  ;; (2.5.20) at the current channel commit -- its `gpg-agent --supervised'
+  ;; socket-activation mode does not correctly serve connections through
+  ;; the socket Shepherd binds for it, breaking passphrase caching
+  ;; entirely.  See peteches/packages/gnupg.scm for the full story; this
+  ;; pins back to the known-good stable 2.4.8.
+  #:use-module (peteches packages gnupg)
   #:use-module (gnu services)
   #:use-module (guix gexp)
   #:export (base-gpg-service
@@ -45,6 +52,12 @@
 (define-public base-gpg-service
   (service home-gpg-agent-service-type
 	   (home-gpg-agent-configuration
+	    ;; home-gpg-agent-configuration's `gnupg' field defaults to
+	    ;; whatever (gnu packages gnupg) provides in *its own* module
+	    ;; scope (an #:autoload), not whatever this file imports under
+	    ;; that name -- it must be set explicitly here for the pinned
+	    ;; 2.4.8 override above to actually take effect.
+	    (gnupg gnupg)
 	    ;; Pick a pinentry implementation using PINENTRY_USER_DATA.  Local
 	    ;; Emacs sets USE_EMACS=1.  Magit/TRAMP signing uses loopback mode
 	    ;; through git's gpg.program wrapper, so this pinentry wrapper remains
