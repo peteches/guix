@@ -32,7 +32,7 @@
 
 (define (aws-profile config)
   (let ((base (map specification->package
-                   '("awscli@2.28.0" "aws-vault"))))
+                   '("awscli@2.36.20" "aws-vault"))))
     (if (home-aws-configuration-install-session-manager? config)
         (append base
                 (list (home-aws-configuration-session-manager-package config)))
