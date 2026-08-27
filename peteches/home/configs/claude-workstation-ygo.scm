@@ -20,12 +20,12 @@
 ;;; to the peteches/criticalgrind configs, so only ygo's Claude knows it
 ;;; exists.
 ;;;
-;;; Also registers Linear, Notion and Granola as `http'-transport MCP
-;;; servers -- all three are hosted, OAuth-authenticated endpoints (not
-;;; local packages), so there is no package to build and no API key to
-;;; wire through sops-secrets. Registration just points Claude Code at the
-;;; URL; the first `/mcp' run inside a session on this account opens the
-;;; OAuth flow interactively.
+;;; Also registers Linear, Notion, Granola and Better Stack as `http'-
+;;; transport MCP servers -- all four are hosted, OAuth-authenticated
+;;; endpoints (not local packages), so there is no package to build and no
+;;; API key to wire through sops-secrets. Registration just points Claude
+;;; Code at the URL; the first `/mcp' run inside a session on this account
+;;; opens the OAuth flow interactively.
 ;;;
 ;;; Evaluates to a bare `home-environment' as its final expression.
 
@@ -80,6 +80,14 @@
          (transport "http")
          (url "https://mcp.granola.ai/mcp")
          (oauth-scopes "openid profile email offline_access"))
+        ;; Better Stack's hosted MCP server -- HTTP transport, browser OAuth,
+        ;; no documented required scope string (unlike Granola's
+        ;; offline_access gotcha above), so #:oauth-scopes is left at its
+        ;; default. https://betterstack.com/docs/getting-started/integrations/mcp/
+        (home-claude-mcp-server
+         (name "betterstack")
+         (transport "http")
+         (url "https://mcp.betterstack.com"))
         ;; Slack, unlike the three above, has no hosted OAuth MCP endpoint --
         ;; it runs locally (stdio) and reads its auth token from the
         ;; environment. SLACK_MCP_XOXP_TOKEN below (via #:secret-env-vars)
