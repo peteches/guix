@@ -374,22 +374,31 @@ host    all     all     ::1/128                 trust\n"))
                                               "[storage]\ndriver = \"vfs\"\n"))))
 
       ;; Host directories backing each remaining container's data volume,
-      ;; created and owned by the uid/gid each official image runs its
-      ;; daemon as (999:999 for both timescaledb and redis's upstream
-      ;; images). Postgres itself moved to a native postgresql-service-type
-      ;; instance below (needs postgis + pg_cron, neither of which come as
-      ;; a ready-made Docker image combo) -- it manages its own
-      ;; /var/lib/postgresql/data.
+      ;; created and owned by the uid/gid each official image actually runs
+      ;; its daemon as. redis:7 runs as uid/gid 999, but
+      ;; timescale/timescaledb:latest-pg16 is Alpine-based Postgres, which
+      ;; uses the standard Alpine postgres uid/gid of 70 -- NOT 999. Chowning
+      ;; both to 999 (as this used to do) locks the timescaledb top-level
+      ;; directory to uid 999 while every file initdb creates underneath it
+      ;; is owned by uid 70, so postgres (running as uid 70) can't traverse
+      ;; its own data directory and fails to start with "Permission denied"
+      ;; on every file under it. Postgres itself moved to a native
+      ;; postgresql-service-type instance below (needs postgis + pg_cron,
+      ;; neither of which come as a ready-made Docker image combo) -- it
+      ;; manages its own /var/lib/postgresql/data.
       (simple-service 'ygo-dev-db-dirs
                       activation-service-type
                       #~(begin
                           (use-modules (guix build utils))
                           (for-each
-                           (lambda (dir)
-                             (mkdir-p dir)
-                             (chown dir 999 999))
-                           '("/var/lib/ygo-dev-db/timescaledb"
-                             "/var/lib/ygo-dev-db/redis"))))
+                           (lambda (dir+owner)
+                             (let ((dir (car dir+owner))
+                                   (uid (cadr dir+owner))
+                                   (gid (caddr dir+owner)))
+                               (mkdir-p dir)
+                               (chown dir uid gid)))
+                           '(("/var/lib/ygo-dev-db/timescaledb" 70 70)
+                             ("/var/lib/ygo-dev-db/redis" 999 999)))))
 
       ;; Loopback-only DNAT still traverses the FORWARD chain once Podman
       ;; rewrites the destination onto the podman0 bridge, so this is needed
