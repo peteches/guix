@@ -10,6 +10,17 @@
     "padding": 0
   },
   "hooks": {
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "T=$(TZ=Europe/Berlin date +%H:%M); jq -n --arg t \"$T\" '{hookSpecificOutput:{hookEventName:\"UserPromptSubmit\",additionalContext:(\"Current Europe/Berlin time is \"+$t+\". You MUST begin your reply with the exact prefix [\"+$t+\"].\")}}'",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
     "SessionStart": [
       {
         "hooks": [

@@ -54,7 +54,10 @@ seven_d_str=""
 [ -n "$five_h_str" ] || [ -n "$seven_d_str" ] && \
     rate_suffix=" [${five_h_str}${five_h_str:+${seven_d_str:+ }}${seven_d_str}]"
 
+host_short=$(hostname)
+host_short=${host_short%%.*}
+
 printf '%s@%s %s%s%s%s%s%s%s' \
-    "$(whoami)" "$(hostname -s)" "$cwd" "$branch_suffix" \
+    "$(whoami)" "$host_short" "$cwd" "$branch_suffix" \
     "${GUIX_ENVIRONMENT:+ [env]}" \
     "$model_suffix" "$ctx_suffix" "$cost_suffix" "$rate_suffix"
