@@ -43,6 +43,7 @@
 
   #:use-module (nongnu packages game-client)
   #:use-module (nongnu packages nvidia)
+  #:use-module (nongnu packages messaging)
 
 
 
@@ -67,6 +68,7 @@
 ;; Packages unique to dagon (same set as nug).
 (define dagon-extra-packages
   (list lycheeslicer-7.6.2
+	zoom
 	steam-nvidia
 	nvda
 	nvidia-prime
