@@ -13,6 +13,12 @@
 ;;;                             (see (peteches home modules ai)) and
 ;;;                             $COMFYUI_URL/KoboldCpp ports are opened in
 ;;;                             the firewall in (peteches systems base).
+;;;                             Full GPU offload, --quantkv 2 (Q4 KV
+;;;                             cache) and --contextsize 131072 (the
+;;;                             model's native n_ctx_train) -- no draft/
+;;;                             speculative-decode model, since ComfyUI
+;;;                             is no longer run alongside koboldcpp on
+;;;                             this card and the whole 24GB is available.
 ;;;       5002 koboldcpp-rp   — SillyTavern RP backend: dense 24B RP
 ;;;                             finetune (MS3.2-PaintedFantasy-v4.1-24B),
 ;;;                             16K context, TTS/whisper attached (CPU),
@@ -235,16 +241,31 @@
 	     (host "::")
 	     (whisper-model "whisper-small-q5_1.bin")
 	     (tts-model "Kokoro_no_espeak_Q4.gguf")
-	     (draft-model "qwen2.5-coder-1.5b-instruct-q4_k_m.gguf")
 	     (port 5001)
 	     (ssl-cert (home-abs-path ".local/share/certs/nug.peteches.co.uk.pem"))
 	     (ssl-key  (home-abs-path ".local/share/certs/nug.peteches.co.uk.pem"))
+	     ;; Draft/speculative-decode model dropped and --quantkv 2 (Q4 KV
+	     ;; cache) added to push --contextsize to the model's full native
+	     ;; n_ctx_train (131072) -- see the koboldcpp startup log's
+	     ;; per-token KV rates (192 KiB/tok fp16 main, 28 KiB/tok draft):
+	     ;; fp16 KV at 131072 alone would need ~16GiB, before even
+	     ;; counting the ~11GiB of model weights, so this card can't do
+	     ;; full native context without quantizing the KV cache. Q4
+	     ;; brings the KV cache to ~6GiB, leaving comfortable headroom
+	     ;; against the ~11GiB weights + ~2GiB misc CUDA/compute
+	     ;; overhead on this 24GiB card (confirmed: no other process
+	     ;; shares the GPU -- see nug.scm's koboldcpp-rp comment above,
+	     ;; which no longer applies since ComfyUI is not run alongside
+	     ;; this instance). Dropping the draft model also sidesteps its
+	     ;; own 32768 native context ceiling, which would otherwise cap
+	     ;; how far speculative decoding stays effective well below
+	     ;; 131072.
 	     (extra-args (list "--usecuda"
 			       "--websearch"
-			       "--draftamount" "16"
 			       "--gpulayers" "999"
-			       "--contextsize" "16384"
-			       "--flashattention"))))
+			       "--contextsize" "131072"
+			       "--flashattention"
+			       "--quantkv" "2"))))
    ;; Roleplay instance (SillyTavern backend).  Replaces the former
    ;; koboldcpp-dolphin-sd (:5002) / koboldcpp-dolphin (:5003) pair —
    ;; consolidated to a single dense 24B model so the full 24GB card goes
