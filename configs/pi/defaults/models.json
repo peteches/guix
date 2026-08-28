@@ -1,0 +1,24 @@
+{
+  "providers": {
+    "koboldcpp": {
+      "name": "koboldcpp (nug)",
+      "api": "openai-completions",
+      "baseUrl": "https://[fd7a:115c:a1e0::dc36:b619]:5001/v1",
+      "apiKey": "local",
+      "compat": {
+        "maxTokensField": "max_tokens",
+        "supportsUsageInStreaming": true,
+        "supportsStrictMode": false
+      },
+      "models": [
+        {
+          "id": "koboldcpp/qwen2.5-coder-14b-instruct-q6_k",
+          "name": "Qwen2.5 Coder 14B (nug)",
+          "contextWindow": 16384,
+          "maxTokens": 16384,
+          "input": ["text"]
+        }
+      ]
+    }
+  }
+}

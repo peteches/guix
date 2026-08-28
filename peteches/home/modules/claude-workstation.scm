@@ -62,6 +62,7 @@
   #:use-module (peteches packages claude-completion)
   #:use-module (peteches home modules claude)
   #:use-module (peteches home modules gpg)
+  #:use-module (peteches home modules pi)
   #:use-module (peteches packages emacs-anvil)
   #:use-module (peteches packages graphify)
   #:use-module (peteches packages herdr)
@@ -519,10 +520,11 @@ HERDR-SPACES reaches the criticalgrind/ygo accounts' own herdr servers."
                  '(("PATH" . "$HOME/.local/bin:$PATH")
                    ("PROXYCHAINS_CONF_FILE" . "$HOME/.config/proxychains.conf")))
                 (bashrc
-                 (cons claude-completion-bashrc
-                       (if (null? secret-env-vars)
-                           '()
-                           (list (secret-env-bashrc secret-env-vars)))))))
+                 (cons* claude-completion-bashrc
+                        home-pi-koboldcpp-bashrc
+                        (if (null? secret-env-vars)
+                            '()
+                            (list (secret-env-bashrc secret-env-vars)))))))
       ;; XDG_RUNTIME_DIR must go through home-environment-variables-service-type
       ;; (which lands in ~/.guix-home/setup-environment, sourced by ~/.profile),
       ;; NOT home-bash-configuration's own environment-variables field. Guix
@@ -588,6 +590,9 @@ HERDR-SPACES reaches the criticalgrind/ygo accounts' own herdr servers."
       (simple-service 'clone-area51-repos
                       home-activation-service-type
                       (repos-activation repos))
+      (service home-pi-service-type
+               (home-pi-configuration
+                (config-directory (repo-directory "configs/pi/defaults"))))
       (service home-claude-service-type
                (home-claude-configuration
                 (config-directory (repo-directory "configs/claude/defaults"))
