@@ -7,19 +7,22 @@
 -- (HDMI-A-1) is physically mounted above it, so it gets a negative Y offset
 -- equal to its own height to stack directly on top, left edges flush.
 --
--- `position' is in logical (post-scale) pixels, not physical ones -- at
--- scale 1.5 a 2160px-tall physical panel is only 1440px tall logically, so
--- the stacking offset below is 3840x2160 / 1.5, not the raw physical height.
+-- Both run unscaled (scale = 1). A 1.5x scale was tried (86abfcd) but
+-- caused a flood of "rbo: glCheckFramebufferStatus failed" errors and a
+-- full Hyprland deadlock when the config was hot-reloaded live (confirmed
+-- 2026-08-28: compositor wedged mid xdg_output-head update, unresponsive
+-- for 40+ minutes despite the watchdog thread staying up). Back to native
+-- pixel density until that's understood.
 hl.monitor({
   output = "DP-1",
   mode = "3840x2160@60.00Hz",
   position = "0x0",
-  scale = 1.5,
+  scale = 1,
   })
 
 hl.monitor({
   output = "HDMI-A-1",
   mode = "3840x2160@60.00Hz",
-  position = "0x-1440",
-  scale = 1.5,
+  position = "0x-2160",
+  scale = 1,
   })
