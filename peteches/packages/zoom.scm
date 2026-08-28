@@ -20,6 +20,7 @@
 
 (define-module (peteches packages zoom)
   #:use-module (guix packages)
+  #:use-module (guix utils)
   #:use-module (guix gexp)
   #:use-module ((nongnu packages messaging) #:prefix upstream:))
 
