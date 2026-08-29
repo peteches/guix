@@ -696,15 +696,16 @@
              ;; commit history/PR description); raise later if this
              ;; measures out with more margin than expected, same
              ;; empirical approach used for koboldcpp's context sizing.
-             ;; Raised from 8192 now that --kv-cache-dtype fp8 (below)
-             ;; roughly halves KV memory per token and --kv-cache-memory
-             ;; replaces the imprecise percentage-based budget with vLLM's
-             ;; own suggested exact byte value -- see extra-args comment.
-             ;; ComfyUI (ordinarily idle ~386MiB on this card) is also
-             ;; stopped for this measurement; ~24576 is a first estimate,
-             ;; not yet empirically confirmed -- adjust after testing, same
-             ;; iterative approach used throughout this file's history.
-             (max-model-len 24576)
+             ;; Confirmed live: fp8 KV cache dtype + the explicit
+             ;; --kv-cache-memory budget (see extra-args) actually
+             ;; supports 27,927 tokens ("GPU KV cache size: 27,927
+             ;; tokens" in the startup log) -- more than the 24576 first
+             ;; tried. 27000 captures that measured headroom with a small
+             ;; safety margin. Up from 8192 before fp8/explicit budget/
+             ;; stopping ComfyUI (idle ~386MiB) -- a ~3.3x improvement,
+             ;; though still far short of koboldcpp's 131072 given this
+             ;; checkpoint's much larger weight footprint on this card.
+             (max-model-len 27000)
              ;; No explicit quantization: confirmed live that this
              ;; checkpoint's own config.json declares "compressed-tensors"
              ;; (llm-compressor's AWQ-style INT4 format), not classic
