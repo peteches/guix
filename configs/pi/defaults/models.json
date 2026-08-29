@@ -12,10 +12,10 @@
       },
       "models": [
         {
-          "id": "koboldcpp/qwen2.5-coder-14b-instruct-q6_k",
-          "name": "Qwen2.5 Coder 14B (nug)",
-          "contextWindow": 16384,
-          "maxTokens": 16384,
+          "id": "koboldcpp/Qwen_Qwen3.6-35B-A3B-Q4_K_M",
+          "name": "Qwen3.6 35B-A3B (nug)",
+          "contextWindow": 131072,
+          "maxTokens": 131072,
           "input": ["text"]
         }
       ]
