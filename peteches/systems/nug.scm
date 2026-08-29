@@ -664,6 +664,12 @@
              (runtime-packages (list uv python))
              (model "cyankiwi/Qwen3.8-27B-AWQ-INT4")
              (served-model-name "qwen3.8-27b-awq")
+             ;; Default cache-dir (/var/cache/vllm/...) lives on the root
+             ;; filesystem, which has only ~4.6GB free (confirmed live: a
+             ;; ~21GB HF download there failed with "OSError: [Errno 28]
+             ;; No space left on device"). Redirect to HotStorage, which
+             ;; has terabytes free -- same drive colibri's model-dir uses.
+             (cache-dir "/media/HotStorage/models/vllm/vllm-code-agent/cache")
              (host "::")
              (port 8002)
              (max-model-len 131072)
