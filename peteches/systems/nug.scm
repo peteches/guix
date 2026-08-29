@@ -697,7 +697,16 @@
              ;; measures out with more margin than expected, same
              ;; empirical approach used for koboldcpp's context sizing.
              (max-model-len 32768)
-             (gpu-memory-utilization 0.85)
+             ;; Confirmed live: at 0.85 (19.98GiB budget of a 23.51GiB
+             ;; usable card), vLLM reported "Available KV cache memory:
+             ;; -1.32 GiB" -- weights alone (19.24GiB) plus fixed overhead
+             ;; (encoder cache, activation buffers) already exceed that
+             ;; budget before any KV cache is allocated. Raised to claim
+             ;; more of the card; ComfyUI's own idle ~386MiB is the only
+             ;; other consumer right now, so there's little margin beyond
+             ;; this -- revisit if ComfyUI is ever actively rendering
+             ;; alongside this service.
+             (gpu-memory-utilization 0.95)
              ;; No explicit quantization: confirmed live that this
              ;; checkpoint's own config.json declares "compressed-tensors"
              ;; (llm-compressor's AWQ-style INT4 format), not classic
