@@ -32,10 +32,10 @@
       },
       "models": [
         {
-          "id": "qwen3.8-27b-awq",
-          "name": "Qwen3.8 27B AWQ (nug, vLLM)",
-          "contextWindow": 13400,
-          "maxTokens": 13400,
+          "id": "mistral-small-24b-awq",
+          "name": "Mistral-Small-24B AWQ (nug, vLLM)",
+          "contextWindow": 32768,
+          "maxTokens": 32768,
           "input": ["text"]
         }
       ]
