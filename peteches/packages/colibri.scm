@@ -40,17 +40,17 @@
 (define-public colibri-engine
   (package
     (name "colibri-engine")
-    (version "1.5.0")
+    (version "1.9.0")
     (source
      (origin
        (method git-fetch)
        (uri (git-reference
              (url "https://github.com/JustVugg/colibri")
-             (commit "8f512fc8c2f48ffa18cd624cd4a5bcaae4a4abfc"))) ;v1.5.0
+             (commit "184e05221a43b3bbeb3321e3438c067b3a46e202"))) ;v1.9.0
        (file-name (git-file-name name version))
        (sha256
         (base32
-         "1pkwii22cbkq6kflrcii6jnhnx88jn8rsgh2jidkq8az10752vj9"))))
+         "0j4a78blxvxg53fqzclrqr9ifi71cahxxj8i796mwbmrxfaxfsyy"))))
     (build-system gnu-build-system)
     (arguments
      (list
@@ -78,12 +78,13 @@ large Mixture-of-Experts language models.  It treats VRAM, RAM and disk as
 one unified memory hierarchy, streaming routed experts from disk on demand
 instead of requiring the whole model to be resident, which makes 700B+
 parameter models runnable on consumer hardware.  This build provides the
-GLM-5.2, OLMoE, and DeepSeek V4 Flash engines and the `coli' launcher, which
-auto-detects which of the three a given model directory needs — the
-complete set upstream's own `make install' target builds.  Two further
-architectures (Inkling, Kimi K3) exist as engine sources in this release but
-have no `install' rule upstream, so they are not built here.  This build is
-CPU-only: no CUDA, Metal, or Vulkan backend is compiled in.")
+GLM-5.2 (colibri and glm53 binaries), OLMoE, DeepSeek V4 Flash, Inkling,
+Kimi K3, and Qwen3.6-35B-A3B engines and the `coli' launcher, which
+auto-detects which engine a given model directory needs — the complete set
+upstream's own `make install' target builds as of this version (v1.5.0
+excluded Inkling and Kimi K3, which had no `install' rule upstream at the
+time). This build is CPU-only: no CUDA, Metal, or Vulkan backend is
+compiled in.")
     (license license:asl2.0)))
 
 ;; See the module comment for why CUDA_ARCH is pinned rather than left at the
@@ -123,9 +124,10 @@ CPU-only: no CUDA, Metal, or Vulkan backend is compiled in.")
     (description
      (string-append (package-description colibri-engine)
                     "  This variant is built with CUDA=1 (CUDA_ARCH=sm_89,"
-                    " i.e. Ada Lovelace / RTX 4090) so the GLM-5.2 engine can"
-                    " use a GPU expert-cache tier; OLMoE and DeepSeek V4"
-                    " Flash have no CUDA backend upstream and remain"
-                    " CPU-only.  Requires libcuda.so.1 (the NVIDIA driver's"
+                    " i.e. Ada Lovelace / RTX 4090) so the GLM-5.2 and"
+                    " Qwen3.6-35B-A3B engines can use a GPU expert-cache"
+                    " tier; OLMoE and DeepSeek V4 Flash have no CUDA backend"
+                    " upstream and remain CPU-only.  Requires libcuda.so.1"
+                    " (the NVIDIA driver's"
                     " userspace library) reachable at runtime, e.g. via"
                     " LD_LIBRARY_PATH."))))
