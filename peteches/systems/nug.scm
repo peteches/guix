@@ -673,6 +673,15 @@
              (extra-args (list "--reasoning-parser" "qwen3"
                                 "--enable-auto-tool-choice"
                                 "--tool-call-parser" "qwen3_coder"))
+             ;; Confirmed live: without this, Triton's libcuda_dirs()
+             ;; (needed for the flash-linear-attention Gated DeltaNet
+             ;; kernels) hardcodes a call to /sbin/ldconfig to locate
+             ;; libcuda.so.1, which doesn't exist on Guix -- crashes with
+             ;; FileNotFoundError before the model even starts loading.
+             ;; Same fix peteches/services/comfyui.scm already uses for
+             ;; the identical Triton/ldconfig problem.
+             (extra-environment-variables
+              (list "TRITON_LIBCUDA_PATH=/run/current-system/profile/lib"))
              (open-firewall? #t))))
   ;; Verified directly (not just reasoned about): a plain `npm install` on
   ;; this codebase needed no native compilation, and `node server.js`
