@@ -25,7 +25,6 @@
   #:use-module (peteches services sillytavern)
   #:use-module (peteches services vllm)
   #:use-module (peteches systems network-mounts)
-  #:use-module (peteches repository)
   #:use-module (gnu packages admin)
   #:use-module (gnu packages rust-apps)
   #:use-module ((gnu packages linux) #:select (linux-libre-headers))
@@ -676,8 +675,8 @@
              (service-name "vllm-code-agent")
              (auto-start? #f)
              (runtime-packages (list uv python))
-             (model "casperhansen/mistral-small-24b-instruct-2501-awq")
-             (served-model-name "mistral-small-24b-awq")
+             (model "Qwen/Qwen2.5-14B-Instruct-AWQ")
+             (served-model-name "qwen2.5-14b-awq")
              ;; Default cache-dir (/var/cache/vllm/...) lives on the root
              ;; filesystem, which has only ~4.6GB free (confirmed live: a
              ;; ~21GB HF download there failed with "OSError: [Errno 28]
@@ -686,64 +685,57 @@
              (cache-dir "/media/HotStorage/models/vllm/vllm-code-agent/cache")
              (host "::")
              (port 8002)
-             ;; Swapped from Qwen3.8-27B-AWQ-INT4 to this smaller dense
-             ;; 24B checkpoint specifically to reclaim KV-cache headroom:
-             ;; the previous model's ~19.24GiB weights left only ~1.24GiB
-             ;; for KV (13,400-token ceiling); this checkpoint's weights
-             ;; (~14.3GiB) should leave several times that. Confirmed
-             ;; live: an initial probe at 65536 crash-looped every ~6s --
-             ;; "User-specified max_model_len (65536) is greater than the
-             ;; derived max_model_len (max_position_embeddings=32768.0 ...
-             ;; in model's config.json)" -- this checkpoint's native
-             ;; ceiling is 32768, not the 128K some Mistral models offer.
-             ;; Set to the model's real max; the point of this swap was
-             ;; KV *headroom* at that length, not a longer context.
-             (max-model-len 32768)
-             (gpu-memory-utilization 0.95)
-             ;; No explicit quantization: this checkpoint is casperhansen's
-             ;; AWQ conversion; let vLLM auto-detect from config.json as
-             ;; with the previous model, to avoid the same
-             ;; --quantization-vs-checkpoint-format conflict seen before.
-             (trust-remote-code? #t)
-             ;; --enforce-eager: kept from the previous model's config --
-             ;; the CUDA-graph-capture OOM risk is about total scratch
-             ;; memory on this VRAM-constrained card, not specific to the
-             ;; old checkpoint, so keeping it disabled by default here too
-             ;; until proven unnecessary.
-             ;; Dense (non-hybrid) architecture, no reasoning-model
-             ;; behavior -- dropped --reasoning-parser qwen3. Tool calling
-             ;; uses vLLM's "mistral" parser, matching this model family's
-             ;; native tool-call format, not qwen3_coder's.
-             ;; --chat-template: confirmed live, this AWQ repackaging's own
-             ;; tokenizer_config.json chat_template only handles
-             ;; user/system/assistant roles and never renders `tools` into
-             ;; the prompt at all -- pi's read/bash/edit/write tools were
-             ;; silently invisible to the model regardless of
-             ;; --tool-call-parser, so it answered from training data
-             ;; instead of refusing or calling a tool. Uses a local copy of
-             ;; vLLM's own upstream examples/tool_chat_template_mistral.jinja,
-             ;; tracked in this repo (configs/vllm/) rather than hand-placed
-             ;; on nug's disk, so it survives the planned Proxmox/VM rebuild
-             ;; of this host. Confirmed live: vLLM resolves a local-file's
-             ;; /gnu/store path here since --expose=/gnu/store is already
-             ;; part of vllm-container-runner-file's static container args,
-             ;; so no extra --share/--expose is needed for it.
+             ;; Swapped from casperhansen/mistral-small-24b-instruct-2501-awq:
+             ;; confirmed live (both via pi and direct completions) that
+             ;; model was flaky at actually invoking tools -- on some turns
+             ;; it narrated a fake ```bash\nbash read <file>``` block in
+             ;; plain text instead of emitting a real tool_calls response,
+             ;; despite the chat-template fix below working correctly when
+             ;; it did call a tool. That's a model-reliability problem, not
+             ;; fixable by more prompting/config, so moved to a Qwen
+             ;; checkpoint instead -- Qwen3.8-27B's tool-calling (qwen3_coder
+             ;; parser, earlier in this repo's history) was reliable every
+             ;; time it was tested; Qwen ships an official tool-calling-aware
+             ;; chat template baked into the checkpoint, unlike the
+             ;; Mistral-Small AWQ repackaging.
              ;;
-             ;; Also confirmed live: the *upstream* version of this template
-             ;; raises "conversation roles must alternate user/assistant/..."
-             ;; whenever two same-role messages appear back to back -- which
-             ;; pi produces routinely after any failed/retried turn (a 400
-             ;; response contributes no assistant content to resend, so the
-             ;; next user prompt lands right after the previous one). That
-             ;; strict alternation check is a standalone assertion the
-             ;; render logic doesn't depend on, so this repo's copy has it
-             ;; removed.
+             ;; Picked 14B specifically over 32B for the same KV-headroom
+             ;; reason the 27B model was dropped in the first place: 32B's
+             ;; ~19GiB weights would recreate the exact ~13K-token ceiling
+             ;; this repo already left behind once. This checkpoint's ~10GiB
+             ;; footprint leaves substantially more room.
+             ;;
+             ;; max-model-len 131072: Qwen2.5 natively tops out at 32768,
+             ;; but (unlike Mistral-Small) officially supports YaRN rope
+             ;; scaling to 131072 -- see --rope-scaling in extra-args below.
+             ;; This is a real capability of this model family, not a repeat
+             ;; of the earlier "guess past the real ceiling" mistake.
+             (max-model-len 131072)
+             (gpu-memory-utilization 0.95)
+             ;; No explicit --quantization: let vLLM auto-detect the AWQ
+             ;; format from config.json, matching the pattern that avoided a
+             ;; --quantization-vs-checkpoint-format conflict with every
+             ;; other AWQ checkpoint tried in this file.
+             ;;
+             ;; --enforce-eager: kept from every previous model's config on
+             ;; this VM -- the CUDA-graph-capture OOM risk is about total
+             ;; scratch memory on this VRAM-constrained card, not specific
+             ;; to any one checkpoint.
+             ;;
+             ;; --tool-call-parser hermes: vLLM's documented parser for the
+             ;; Qwen2.5 line's native <tool_call>...</tool_call> format (the
+             ;; qwen3_coder parser used for the earlier Qwen3.8 model is
+             ;; specific to the Qwen3.x generation). No --chat-template
+             ;; override needed -- Qwen2.5-Instruct's own tokenizer_config.json
+             ;; already renders `tools` into the prompt correctly.
+             ;;
+             ;; --rope-scaling: enables YaRN extension from this model's
+             ;; native 32768 context to the 131072 set above, per Qwen's own
+             ;; documented long-context recipe (factor 4.0 = 131072/32768).
              (extra-args (list "--enable-auto-tool-choice"
-                                "--tool-call-parser" "mistral"
-                                "--chat-template"
-                                (local-file
-                                 (source-path
-                                  "configs/vllm/tool-chat-template-mistral.jinja"))
+                                "--tool-call-parser" "hermes"
+                                "--rope-scaling"
+                                "{\"rope_type\": \"yarn\", \"factor\": 4.0, \"original_max_position_embeddings\": 32768}"
                                 "--enforce-eager"))
              ;; HF_HUB_DISABLE_XET: confirmed live, reproduced twice in a
              ;; row -- huggingface_hub's Xet fast-transfer path crashes
