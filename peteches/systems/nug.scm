@@ -705,12 +705,17 @@
              ;; this repo already left behind once. This checkpoint's ~10GiB
              ;; footprint leaves substantially more room.
              ;;
-             ;; max-model-len 131072: Qwen2.5 natively tops out at 32768,
-             ;; but (unlike Mistral-Small) officially supports YaRN rope
-             ;; scaling to 131072 -- see --rope-scaling in extra-args below.
-             ;; This is a real capability of this model family, not a repeat
-             ;; of the earlier "guess past the real ceiling" mistake.
-             (max-model-len 131072)
+             ;; max-model-len: Qwen2.5 natively tops out at 32768, but
+             ;; (unlike Mistral-Small) officially supports YaRN rope scaling
+             ;; -- see --hf-overrides in extra-args below. Confirmed live:
+             ;; 131072 (full YaRN factor-4 extension) failed to start --
+             ;; "24.0 GiB KV cache is needed, which is larger than the
+             ;; available KV cache memory (12.41 GiB)... estimated maximum
+             ;; model length is 67776" (this checkpoint's tiny ~9.4GiB
+             ;; weights leave plenty of KV headroom, but not unlimited).
+             ;; Set to 65536 -- a clean value under vLLM's own reported
+             ;; ceiling, still 2x this model's native 32768.
+             (max-model-len 65536)
              (gpu-memory-utilization 0.95)
              ;; No explicit --quantization: let vLLM auto-detect the AWQ
              ;; format from config.json, matching the pattern that avoided a
@@ -730,16 +735,21 @@
              ;; already renders `tools` into the prompt correctly.
              ;;
              ;; --hf-overrides rope_scaling: enables YaRN extension from
-             ;; this model's native 32768 context to the 131072 set above,
-             ;; per Qwen's own documented long-context recipe (factor 4.0 =
-             ;; 131072/32768). Confirmed live: this vLLM version (0.28.0)
-             ;; has no standalone --rope-scaling flag at all ("unrecognized
-             ;; arguments", crash-looped) -- rope scaling is only reachable
-             ;; by forwarding it into the HF config via --hf-overrides.
+             ;; this model's native 32768 context to the 65536 set above.
+             ;; factor 2.0 matches that actual ratio (65536/32768) --
+             ;; YaRN quality depends on the factor matching the real
+             ;; extension used, so this was brought down from an initial
+             ;; 4.0 (originally paired with a 131072 max-model-len that
+             ;; didn't fit in available KV cache memory -- see comment
+             ;; above) rather than left mismatched. Confirmed live: this
+             ;; vLLM version (0.28.0) has no standalone --rope-scaling flag
+             ;; at all ("unrecognized arguments", crash-looped) -- rope
+             ;; scaling is only reachable by forwarding it into the HF
+             ;; config via --hf-overrides.
              (extra-args (list "--enable-auto-tool-choice"
                                 "--tool-call-parser" "hermes"
                                 "--hf-overrides"
-                                "{\"rope_scaling\": {\"rope_type\": \"yarn\", \"factor\": 4.0, \"original_max_position_embeddings\": 32768}}"
+                                "{\"rope_scaling\": {\"rope_type\": \"yarn\", \"factor\": 2.0, \"original_max_position_embeddings\": 32768}}"
                                 "--enforce-eager"))
              ;; HF_HUB_DISABLE_XET: confirmed live, reproduced twice in a
              ;; row -- huggingface_hub's Xet fast-transfer path crashes
