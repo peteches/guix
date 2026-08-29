@@ -685,7 +685,18 @@
              (cache-dir "/media/HotStorage/models/vllm/vllm-code-agent/cache")
              (host "::")
              (port 8002)
-             (max-model-len 131072)
+             ;; Confirmed live: past every environment/packaging issue now
+             ;; (container fixed ldconfig/ptxas/CPATH, FlashInfer sampler
+             ;; disabled), the final crash is a plain CUDA OOM during KV
+             ;; cache/CUDA-graph profiling at 131072 -- "22.97 GiB memory
+             ;; in use" of a 23.51 GiB usable card, with the 21GB
+             ;; checkpoint's weights alone consuming most of that budget.
+             ;; Dropped to 32768, matching the community's own documented
+             ;; safe value for this checkpoint under VRAM constraints (see
+             ;; commit history/PR description); raise later if this
+             ;; measures out with more margin than expected, same
+             ;; empirical approach used for koboldcpp's context sizing.
+             (max-model-len 32768)
              (gpu-memory-utilization 0.85)
              ;; No explicit quantization: confirmed live that this
              ;; checkpoint's own config.json declares "compressed-tensors"
