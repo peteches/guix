@@ -275,11 +275,26 @@
 	     ;; the full native 262144 would add ~1.27GiB, more than what
 	     ;; was free at 32768, so left for a later attempt if this
 	     ;; measures out with more margin than expected.
+	     ;;
+	     ;; --jinja_tools: without it (the default) koboldcpp guesses a
+	     ;; generic/legacy chat template instead of using the actual
+	     ;; template baked into the GGUF, which for a brand-new
+	     ;; architecture like this one doesn't match what the model was
+	     ;; trained on. Confirmed live: pi (an agentic tool-calling
+	     ;; client) kept having its turns end early, and the log showed
+	     ;; "(EOS token triggered! ID:248046)" firing after only 50-70
+	     ;; of a requested 300 tokens, right in the middle of
+	     ;; "[TOOLCALL REASONING]" blocks -- the model emitting an
+	     ;; early stop token because the prompt it received didn't
+	     ;; match its trained tool-call format. Plain --jinja only
+	     ;; templates non-tool-call chat ("tool calls are done without
+	     ;; jinja" per --help); --jinja_tools covers both.
 	     (extra-args (list "--usecuda"
 			       "--websearch"
 			       "--gpulayers" "999"
 			       "--contextsize" "131072"
 			       "--flashattention"
+			       "--jinja_tools"
 			       "--quantkv" "2"))))
    ;; Roleplay instance (SillyTavern backend).  Replaces the former
    ;; koboldcpp-dolphin-sd (:5002) / koboldcpp-dolphin (:5003) pair —
