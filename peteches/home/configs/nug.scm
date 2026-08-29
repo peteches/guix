@@ -264,15 +264,21 @@
 	     ;; didn't cover this model's 256 experts, so it fell back to
 	     ;; RAM/CPU residency and measured ~1 token/sec. At 22.3GiB,
 	     ;; this model's weights alone leave far less headroom than the
-	     ;; 14B did (was ~11GiB weights + ~6GiB Q4 KV cache at 131072
-	     ;; context); --contextsize starts conservative here (32768,
-	     ;; matching what community docs suggest for VRAM-constrained
-	     ;; single-GPU setups) pending an empirical check of how far it
-	     ;; can go on this card once loaded and measured for real.
+	     ;; 14B did. Measured live at --contextsize 32768: 23.3GiB/
+	     ;; 24.5GiB used, only ~774MiB free -- but the hybrid
+	     ;; architecture's real KV cache only covers 10 of 40 layers
+	     ;; (the rest use a fixed ~63MiB recurrent state regardless of
+	     ;; context length: llama_memory_recurrent in the startup log),
+	     ;; measured at ~5.6 KiB/token, vs qwen2.5-coder-14b's 48-192
+	     ;; KiB/token. 131072 (4x) adds only ~543MiB of KV on top of
+	     ;; that measurement, comfortably under the observed headroom;
+	     ;; the full native 262144 would add ~1.27GiB, more than what
+	     ;; was free at 32768, so left for a later attempt if this
+	     ;; measures out with more margin than expected.
 	     (extra-args (list "--usecuda"
 			       "--websearch"
 			       "--gpulayers" "999"
-			       "--contextsize" "32768"
+			       "--contextsize" "131072"
 			       "--flashattention"
 			       "--quantkv" "2"))))
    ;; Roleplay instance (SillyTavern backend).  Replaces the former
