@@ -29,7 +29,6 @@
   #:use-module (gnu packages rust-apps)
   #:use-module ((gnu packages linux) #:select (linux-libre-headers))
   #:use-module ((gnu packages python) #:select (python))
-  #:use-module ((gnu packages commencement) #:select (gcc-toolchain))
   #:use-module (guix-science-nonfree packages cuda))
 
 ;; Bring service types into scope for any host-specific additions.
@@ -657,21 +656,25 @@
   ;; --tool-call-parser qwen3_coder and --reasoning-parser qwen3 straight
   ;; from the ecosystem's documented Qwen3.8 vLLM serving guidance, not
   ;; independently verified against this exact checkpoint yet.
+  ;; Runs inside an FHS-emulating container (peteches/services/vllm.scm),
+  ;; same rationale as ComfyUI below: vLLM's dependency tree (PyTorch,
+  ;; Triton, prebuilt CUDA/PTX binaries bundled in the triton wheel, ...)
+  ;; hardcodes FHS assumptions that plain Guix doesn't provide. Confirmed
+  ;; live, one at a time, running this WITHOUT a container first:
+  ;; "FileNotFoundError: /sbin/ldconfig", "Failed to find C compiler",
+  ;; "fatal error: linux/errno.h: No such file or directory", and finally
+  ;; "RuntimeError: Cannot find ptxas" even though the bundled ptxas
+  ;; binary exists and is executable (running it directly: "No such file
+  ;; or directory" -- the classic foreign-ELF-interpreter symptom). The
+  ;; container's own baseline packages (c-compiler-package,
+  ;; linux-libre-headers, and glibc-for-fhs's real ldconfig/ld-linux) fix
+  ;; that whole class of problem at once.
   (service vllm-service-type
            (list
             (vllm-configuration
              (service-name "vllm-code-agent")
              (auto-start? #f)
-             ;; gcc-toolchain: confirmed live, Triton JIT-compiles its
-             ;; generated kernels (e.g. the vision-tower positional-embed
-             ;; interpolation kernel this model uses) into a shared
-             ;; library at runtime via a real C compiler on PATH -- crashed
-             ;; with "Failed to find C compiler" without it.
-             ;; cuda: confirmed live, Triton also needs `ptxas' (NVIDIA's
-             ;; PTX assembler, part of the CUDA toolkit, not provided by
-             ;; gcc-toolchain or the driver) to finish its JIT pipeline --
-             ;; crashed with "RuntimeError: Cannot find ptxas" without it.
-             (runtime-packages (list uv python gcc-toolchain cuda))
+             (runtime-packages (list uv python))
              (model "cyankiwi/Qwen3.8-27B-AWQ-INT4")
              (served-model-name "qwen3.8-27b-awq")
              ;; Default cache-dir (/var/cache/vllm/...) lives on the root
@@ -693,14 +696,6 @@
              (extra-args (list "--reasoning-parser" "qwen3"
                                 "--enable-auto-tool-choice"
                                 "--tool-call-parser" "qwen3_coder"))
-             ;; TRITON_LIBCUDA_PATH: confirmed live, without this Triton's
-             ;; libcuda_dirs() (needed for the flash-linear-attention
-             ;; Gated DeltaNet kernels) hardcodes a call to /sbin/ldconfig
-             ;; to locate libcuda.so.1, which doesn't exist on Guix --
-             ;; crashes with FileNotFoundError before the model even
-             ;; starts loading. Same fix peteches/services/comfyui.scm
-             ;; already uses for the identical Triton/ldconfig problem.
-             ;;
              ;; HF_HUB_DISABLE_XET: confirmed live, reproduced twice in a
              ;; row -- huggingface_hub's Xet fast-transfer path crashes
              ;; partway through downloading this checkpoint with
@@ -709,20 +704,8 @@
              ;; Falls back to plain HTTP downloads instead (slower, but
              ;; this is a one-time ~21GB download cached under HF_HOME
              ;; afterward, not a per-request cost).
-             ;; CPATH: confirmed live by hand-reproducing Triton's exact
-             ;; gcc invocation -- glibc's <errno.h> transitively needs
-             ;; <linux/errno.h> (kernel UAPI headers, a separate package
-             ;; on Guix, not bundled with gcc-toolchain), so any C source
-             ;; that pulls in Python.h (as Triton's CudaUtils() build
-             ;; does) fails with "fatal error: linux/errno.h: No such
-             ;; file or directory" without this. Same fix nug.scm already
-             ;; uses for ComfyUI's native node builds, just below.
              (extra-environment-variables
-              (list "TRITON_LIBCUDA_PATH=/run/current-system/profile/lib"
-                    "HF_HUB_DISABLE_XET=1"
-                    #~(string-append "CPATH="
-                                     #$(file-append linux-libre-headers
-                                                     "/include"))))
+              (list "HF_HUB_DISABLE_XET=1"))
              (open-firewall? #t))))
   ;; Verified directly (not just reasoned about): a plain `npm install` on
   ;; this codebase needed no native compilation, and `node server.js`

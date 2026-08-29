@@ -3,10 +3,27 @@
 ;; This deliberately does not package vLLM as a Guix package.  Guix owns the
 ;; service boundary, accounts, paths, environment, ports and supervision; uv owns
 ;; the Python/vLLM wheel environment declared by pyproject.toml + uv.lock.
+;;
+;; The daemon (and sync one-shot) runs inside a `guix shell --container
+;; --emulate-fhs' sandbox rather than directly on the host, mirroring
+;; peteches/services/comfyui.scm. vLLM's dependency tree (PyTorch, Triton,
+;; prebuilt CUDA/PTX binaries bundled in the triton wheel, ...) hardcodes FHS
+;; assumptions -- /sbin/ldconfig, /lib64/ld-linux-x86-64.so.2, a `cc' just
+;; sitting on PATH, <linux/errno.h> -- none of which exist on Guix. Confirmed
+;; live, one at a time, without a container: "FileNotFoundError:
+;; /sbin/ldconfig", "Failed to find C compiler", "fatal error:
+;; linux/errno.h: No such file or directory", and finally "RuntimeError:
+;; Cannot find ptxas" even though the bundled ptxas binary exists and is
+;; executable -- running it directly gives "No such file or directory",
+;; the classic symptom of a foreign ELF binary whose hardcoded interpreter
+;; path doesn't exist on Guix. Emulating FHS inside a throwaway container
+;; fixes the whole class of problem at once instead of patching each
+;; symptom as it's discovered. See vllm-container-runner-file.
 
 (define-module (peteches services vllm)
   #:use-module (guix gexp)
   #:use-module (guix records)
+  #:use-module (guix packages)
   #:use-module (gnu services)
   #:use-module (gnu services shepherd)
   #:use-module (gnu services base)
@@ -84,6 +101,44 @@
   ;; When set, uv will use this virtualenv path instead of <project>/.venv.
   (uv-project-environment vllm-configuration-uv-project-environment
                           (default #f))
+  ;; Guix package providing the Python interpreter uv will use, declared as a
+  ;; package in the FHS container so the venv's own bin/python3 symlink --
+  ;; which points straight at this package's store output -- resolves there.
+  (python-package vllm-configuration-python-package
+                  (default (@ (gnu packages python) python)))
+  ;; Guix package providing uv.  Installed into the system profile so the
+  ;; default uv-command path (/run/current-system/profile/bin/uv) resolves,
+  ;; and declared in the container too.
+  (uv-package vllm-configuration-uv-package
+              (default (@ (gnu packages rust-apps) uv)))
+  ;; Guix package providing a standalone C compiler, declared in the FHS
+  ;; container so Triton can find a working `cc' on PATH the same way it
+  ;; would on a normal FHS distro.
+  (c-compiler-package vllm-configuration-c-compiler-package
+                      (default (@ (gnu packages commencement) gcc-toolchain)))
+  ;; Extra Guix packages declared inside the FHS container alongside the
+  ;; baseline (coreutils, bash, c-compiler-package, linux-libre-headers,
+  ;; nss-certs, python-package, uv-package). MUST come from the base Guix
+  ;; distribution ((gnu packages ...)) -- these are resolved by name at
+  ;; container-runtime against whatever plain guix binary this system was
+  ;; built with, which knows nothing about externally-pulled channels
+  ;; (guix-science-nonfree, nonguix, ...); such a package resolves fine at
+  ;; reconfigure time (this module's own #:use-module sees it) but fails at
+  ;; runtime with "unknown package". For an external-channel package only
+  ;; needed via a known absolute path rather than on $PATH, reference it
+  ;; directly in extra-environment-variables instead -- --expose=/gnu/store
+  ;; already makes any store path reachable inside the container without
+  ;; guix shell ever needing to resolve it by name.
+  (container-extra-packages vllm-configuration-container-extra-packages
+                            (default '()))
+  ;; Extra host paths writably bind-mounted into the container, beyond the
+  ;; baseline (uv-project-dir, state-dir, cache-dir, uv-project-environment
+  ;; when set).
+  (container-extra-shares vllm-configuration-container-extra-shares
+                          (default '()))
+  ;; Same as container-extra-shares but read-only.
+  (container-extra-exposes vllm-configuration-container-extra-exposes
+                           (default '()))
   ;; Packages installed into the Guix system profile for this service, e.g.
   ;; `(list uv python)` from the modules your pinned channels provide.
   (runtime-packages vllm-configuration-runtime-packages
@@ -216,6 +271,7 @@
          (ld-paths (vllm-configuration-ld-library-paths config))
          (uv-env (vllm-resolved-uv-project-environment config)))
     (append (list (string-append "HOME=" state-dir)
+                  "SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt"
                   "PATH=/run/current-system/profile/bin:/run/current-system/profile/sbin:/run/setuid-programs"
                   "UV_PYTHON_DOWNLOADS=never"
                   (string-append "HF_HOME=" hf-home)
@@ -224,7 +280,16 @@
                   (string-append "XDG_CACHE_HOME=" xdg-cache-home))
             (if cuda-devices
                 (list (string-append "CUDA_VISIBLE_DEVICES=" cuda-devices)
-                      "CUDA_DEVICE_ORDER=PCI_BUS_ID")
+                      "CUDA_DEVICE_ORDER=PCI_BUS_ID"
+                      ;; Belt-and-suspenders: the FHS container's own
+                      ;; ldconfig genuinely works (glibc-for-fhs ships a
+                      ;; real one), but it only knows about the container's
+                      ;; own lib dirs, not the bind-mounted
+                      ;; /run/current-system/profile/lib holding
+                      ;; libcuda.so.1. This skips Triton's ldconfig call
+                      ;; entirely rather than relying on it finding the
+                      ;; right cache entry -- same fix comfyui.scm uses.
+                      "TRITON_LIBCUDA_PATH=/run/current-system/profile/lib")
                 '())
             (if (null? ld-paths)
                 '()
@@ -234,6 +299,81 @@
                 (list (string-append "UV_PROJECT_ENVIRONMENT=" uv-env))
                 '())
             (vllm-configuration-extra-environment-variables config))))
+
+;;; ── FHS container wrapper ────────────────────────────────────────────────
+
+;; Builds a program-file that, when run, execs into
+;; `guix shell --container --emulate-fhs' with INNER-COMMAND as the
+;; containerized command. Used to launch the daemon and the sync one-shot
+;; alike. See peteches/services/comfyui.scm's comfyui-container-runner-file,
+;; which this mirrors -- same rationale, same constraints (container-extra-
+;; packages must come from the base Guix distribution; an external-channel
+;; package is only reachable via an absolute store path, not by name).
+(define (vllm-container-runner-file config suffix env inner-command)
+  (let* ((service-name (vllm-configuration-service-name config))
+         (uv-project-dir (vllm-configuration-uv-project-dir config))
+         (state-dir (vllm-resolved-state-dir config))
+         (cache-dir (vllm-resolved-cache-dir config))
+         (uv-env (vllm-configuration-uv-project-environment config))
+         (python-pkg (vllm-configuration-python-package config))
+         (uv-pkg (vllm-configuration-uv-package config))
+         (c-compiler-pkg (vllm-configuration-c-compiler-package config))
+         (extra-pkgs (vllm-configuration-container-extra-packages config))
+         (extra-shares (vllm-configuration-container-extra-shares config))
+         (extra-exposes (vllm-configuration-container-extra-exposes config))
+         (package-names (map package-name
+                             (append (list (@ (gnu packages base) coreutils)
+                                           (@ (gnu packages bash) bash)
+                                           c-compiler-pkg
+                                           (@ (gnu packages linux) linux-libre-headers)
+                                           ;; Without this, SSL_CERT_FILE
+                                           ;; (see vllm-environment) points at
+                                           ;; an /etc/ssl/certs/ca-certificates.crt
+                                           ;; that --emulate-fhs never populates,
+                                           ;; and the HF Hub download fails TLS
+                                           ;; verification.
+                                           (@ (gnu packages nss) nss-certs)
+                                           python-pkg
+                                           uv-pkg)
+                                     extra-pkgs)))
+         (static-args (append
+                       (list "--container" "--emulate-fhs" "--network"
+                             "--expose=/gnu/store"
+                             (string-append "--share=" uv-project-dir)
+                             (string-append "--share=" state-dir)
+                             (string-append "--share=" cache-dir)
+                             "--expose=/run/current-system/profile")
+                       (if uv-env
+                           (list (string-append "--share=" uv-env))
+                           '())
+                       (map (lambda (s) (string-append "--share=" s)) extra-shares)
+                       (map (lambda (s) (string-append "--expose=" s)) extra-exposes)
+                       package-names))
+         (guix-pkg (@ (gnu packages package-management) guix)))
+    (program-file
+     (string-append service-name suffix "-container-runner")
+     #~(begin
+         (use-modules (ice-9 ftw) (srfi srfi-1) (srfi srfi-13))
+         ;; `guix shell -E VAR=VALUE' does not reliably inject VALUE when
+         ;; guix's own process environment is sparse -- exactly what
+         ;; shepherd's #:environment-variables produces for this wrapper.
+         ;; Preserve by name only (`-E '^VAR$'`), never "VAR=VALUE" -- see
+         ;; comfyui-container-runner-file's identical comment for the
+         ;; live-verified reasoning.
+         (define (preserve-flag kv)
+           (string-append "--preserve=^" (substring kv 0 (string-index kv #\=)) "$"))
+         (let* ((nvidia-exposes
+                 (filter-map (lambda (name)
+                               (and (string-prefix? "nvidia" name)
+                                    (string-append "--expose=/dev/" name)))
+                             (or (scandir "/dev") '())))
+                (args (append (list "shell")
+                              (list #$@static-args)
+                              nvidia-exposes
+                              (map preserve-flag (list #$@env))
+                              (list "--")
+                              (list #$@inner-command))))
+           (apply execlp #$(file-append guix-pkg "/bin/guix") "guix" args))))))
 
 ;;; ── Service extension helpers ────────────────────────────────────────────
 
@@ -291,7 +431,14 @@
          (user (vllm-configuration-user config))
          (group (vllm-configuration-group config))
          (log-file (vllm-resolved-sync-log-file config))
-         (env (vllm-environment config)))
+         (env (vllm-environment config))
+         (runner (program-file (string-append service-name "-sync-runner")
+                               #~(let ((ret (apply system* #$uv-command "sync"
+                                                   (list #$@uv-sync-args))))
+                                   (unless (zero? ret)
+                                     (error "uv sync failed with exit code" ret)))))
+         (container-runner (vllm-container-runner-file config "-sync" env
+                                                        (list runner))))
     (shepherd-service
      (provision (list sync-name))
      (documentation (string-append "Synchronise the uv environment for "
@@ -299,9 +446,7 @@
      (requirement '(networking file-systems))
      (one-shot? #t)
      (auto-start? #f)
-     (start #~(make-forkexec-constructor (list #$uv-command
-                                               "sync"
-                                               #$@uv-sync-args)
+     (start #~(make-forkexec-constructor (list #$container-runner)
                                          #:directory #$uv-project-dir
                                          #:user #$user
                                          #:group #$group
@@ -320,17 +465,17 @@
          (group (vllm-configuration-group config))
          (log-file (vllm-resolved-log-file config))
          (env (vllm-environment config))
-         (serve-args (vllm-serve-args config)))
+         (serve-args (vllm-serve-args config))
+         (inner-command (append (list uv-command "run") uv-run-args
+                                (list "vllm") serve-args))
+         (container-runner (vllm-container-runner-file config "" env
+                                                        inner-command)))
     (shepherd-service
      (provision (list provision-name))
      (documentation (vllm-configuration-documentation config))
      (requirement '(networking file-systems))
      (auto-start? (vllm-configuration-auto-start? config))
-     (start #~(make-forkexec-constructor (list #$uv-command
-                                               "run"
-                                               #$@uv-run-args
-                                               "vllm"
-                                               #$@serve-args)
+     (start #~(make-forkexec-constructor (list #$container-runner)
                                          #:directory #$uv-project-dir
                                          #:user #$user
                                          #:group #$group
@@ -359,7 +504,12 @@
 
 (define (vllm-profile-entries configs)
   (delete-duplicates
-   (append-map vllm-configuration-runtime-packages configs)))
+   (append-map (lambda (config)
+                 (filter (lambda (x) x)
+                         (append (list (vllm-configuration-python-package config)
+                                       (vllm-configuration-uv-package config))
+                                 (vllm-configuration-runtime-packages config))))
+               configs)))
 
 ;;; ── Service type ─────────────────────────────────────────────────────────
 
