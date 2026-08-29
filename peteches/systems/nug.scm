@@ -23,10 +23,12 @@
   #:use-module (peteches packages colibri)
   #:use-module (peteches services colibri)
   #:use-module (peteches services sillytavern)
+  #:use-module (peteches services vllm)
   #:use-module (peteches systems network-mounts)
   #:use-module (gnu packages admin)
   #:use-module (gnu packages rust-apps)
   #:use-module ((gnu packages linux) #:select (linux-libre-headers))
+  #:use-module ((gnu packages python) #:select (python))
   #:use-module (guix-science-nonfree packages cuda))
 
 ;; Bring service types into scope for any host-specific additions.
@@ -625,6 +627,53 @@
             ;; at boot, not a manually-placed file — see #:sops-secrets.
             (api-key-file "/run/secrets/colibri-api-key")
             (allowed-hosts (list "colibri.ts.peteches.co.uk"))))
+  ;; vLLM trial for the coding-agent role, as an alternative to
+  ;; koboldcpp-qwen (peteches/home/configs/nug.scm): koboldcpp's fork of
+  ;; llama.cpp has a bug in how it handles Qwen3.6-35B-A3B's reasoning +
+  ;; tool-calling combination together (confirmed live: the model's EOS
+  ;; token fires immediately after it closes a `</think>` block, before
+  ;; producing the actual answer that's supposed to follow, breaking pi's
+  ;; agentic tool-calling flow mid-task). vLLM has first-party "Day-0"
+  ;; support for the whole Qwen3.8 family (see vllm.ai/blog/2026-08-12-
+  ;; qwen3.8), including native Triton flash-linear-attention kernels and
+  ;; a hybrid KV cache manager built specifically for this
+  ;; Gated-Attention/Gated-DeltaNet hybrid architecture -- a stronger
+  ;; signal than koboldcpp's community fork.
+  ;;
+  ;; Model swapped to Qwen3.8-27B (dense, not MoE) rather than staying on
+  ;; Qwen3.6-35B-A3B: vLLM's available quantized checkpoints for the 35B-
+  ;; A3B MoE model are sized for multi-GPU setups (the AWQ-4bit checkpoint
+  ;; alone is 24GB -- the whole card, its own model card says a single
+  ;; RTX 4090 needs "severe additional quantization or offloading"). The
+  ;; dense 27B model's AWQ-INT4 checkpoint is only ~21GB, leaving genuine
+  ;; headroom for KV cache + vLLM's own overhead on this card.
+  ;;
+  ;; auto-start? #f deliberately: not yet confirmed stable, and running
+  ;; both this and koboldcpp-qwen simultaneously would exceed the card's
+  ;; VRAM (each wants nearly the whole 24GB) -- start whichever one you
+  ;; want to use for a given session with `herd start`.
+  ;;
+  ;; --tool-call-parser qwen3_coder and --reasoning-parser qwen3 straight
+  ;; from the ecosystem's documented Qwen3.8 vLLM serving guidance, not
+  ;; independently verified against this exact checkpoint yet.
+  (service vllm-service-type
+           (list
+            (vllm-configuration
+             (service-name "vllm-code-agent")
+             (auto-start? #f)
+             (runtime-packages (list uv python))
+             (model "cyankiwi/Qwen3.8-27B-AWQ-INT4")
+             (served-model-name "qwen3.8-27b-awq")
+             (host "::")
+             (port 8002)
+             (max-model-len 131072)
+             (gpu-memory-utilization 0.85)
+             (quantization "awq")
+             (trust-remote-code? #t)
+             (extra-args (list "--reasoning-parser" "qwen3"
+                                "--enable-auto-tool-choice"
+                                "--tool-call-parser" "qwen3_coder"))
+             (open-firewall? #t))))
   ;; Verified directly (not just reasoned about): a plain `npm install` on
   ;; this codebase needed no native compilation, and `node server.js`
   ;; served HTTP cleanly — no FHS-container treatment needed here, unlike
