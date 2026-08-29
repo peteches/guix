@@ -29,6 +29,7 @@
   #:use-module (gnu packages rust-apps)
   #:use-module ((gnu packages linux) #:select (linux-libre-headers))
   #:use-module ((gnu packages python) #:select (python))
+  #:use-module ((gnu packages commencement) #:select (gcc-toolchain))
   #:use-module (guix-science-nonfree packages cuda))
 
 ;; Bring service types into scope for any host-specific additions.
@@ -661,7 +662,12 @@
             (vllm-configuration
              (service-name "vllm-code-agent")
              (auto-start? #f)
-             (runtime-packages (list uv python))
+             ;; gcc-toolchain: confirmed live, Triton JIT-compiles its
+             ;; generated kernels (e.g. the vision-tower positional-embed
+             ;; interpolation kernel this model uses) into a shared
+             ;; library at runtime via a real C compiler on PATH -- crashed
+             ;; with "Failed to find C compiler" without it.
+             (runtime-packages (list uv python gcc-toolchain))
              (model "cyankiwi/Qwen3.8-27B-AWQ-INT4")
              (served-model-name "qwen3.8-27b-awq")
              ;; Default cache-dir (/var/cache/vllm/...) lives on the root
