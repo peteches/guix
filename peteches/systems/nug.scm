@@ -599,7 +599,16 @@
             (open-firewall? #t)
             (auto-start? #t)
             (gpu "auto")
-            (vram-gb 12)
+            ;; Raised from 12 (originally sized to leave ComfyUI ~10GB
+            ;; headroom for concurrent in-roleplay illustrations) to 20:
+            ;; `coli doctor' against the current model (Qwen3.6-35B-A3B,
+            ;; ~23GB, 41 shards) shows 100% projected expert residency at
+            ;; ~18GB, so 20 leaves a few GB of margin on the 24GB card for
+            ;; 100% hit rate rather than partial disk streaming. This
+            ;; assumes colibri and koboldcpp-qwen are not run concurrently
+            ;; (koboldcpp-qwen's auto-start already defaults to #f) --
+            ;; revisit if ComfyUI-alongside-colibri usage returns.
+            (vram-gb 20)
             ;; Required: colibri refuses to bind beyond localhost without an
             ;; API key (COLI_ALLOW_INSECURE_BIND=1 exists to bypass this,
             ;; deliberately not used — this is reachable over Tailscale via
