@@ -729,13 +729,17 @@
              ;; override needed -- Qwen2.5-Instruct's own tokenizer_config.json
              ;; already renders `tools` into the prompt correctly.
              ;;
-             ;; --rope-scaling: enables YaRN extension from this model's
-             ;; native 32768 context to the 131072 set above, per Qwen's own
-             ;; documented long-context recipe (factor 4.0 = 131072/32768).
+             ;; --hf-overrides rope_scaling: enables YaRN extension from
+             ;; this model's native 32768 context to the 131072 set above,
+             ;; per Qwen's own documented long-context recipe (factor 4.0 =
+             ;; 131072/32768). Confirmed live: this vLLM version (0.28.0)
+             ;; has no standalone --rope-scaling flag at all ("unrecognized
+             ;; arguments", crash-looped) -- rope scaling is only reachable
+             ;; by forwarding it into the HF config via --hf-overrides.
              (extra-args (list "--enable-auto-tool-choice"
                                 "--tool-call-parser" "hermes"
-                                "--rope-scaling"
-                                "{\"rope_type\": \"yarn\", \"factor\": 4.0, \"original_max_position_embeddings\": 32768}"
+                                "--hf-overrides"
+                                "{\"rope_scaling\": {\"rope_type\": \"yarn\", \"factor\": 4.0, \"original_max_position_embeddings\": 32768}}"
                                 "--enforce-eager"))
              ;; HF_HUB_DISABLE_XET: confirmed live, reproduced twice in a
              ;; row -- huggingface_hub's Xet fast-transfer path crashes
