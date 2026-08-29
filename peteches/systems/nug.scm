@@ -696,7 +696,11 @@
              ;; commit history/PR description); raise later if this
              ;; measures out with more margin than expected, same
              ;; empirical approach used for koboldcpp's context sizing.
-             (max-model-len 32768)
+             ;; Confirmed live at gpu-memory-utilization 0.95: 1.03GiB
+             ;; available for KV cache, vLLM's own error message estimated
+             ;; a max model length of 11760 at that budget. 8192 leaves
+             ;; clear margin below that estimate.
+             (max-model-len 8192)
              ;; Confirmed live: at 0.85 (19.98GiB budget of a 23.51GiB
              ;; usable card), vLLM reported "Available KV cache memory:
              ;; -1.32 GiB" -- weights alone (19.24GiB) plus fixed overhead
