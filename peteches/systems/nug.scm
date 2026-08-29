@@ -677,15 +677,25 @@
              (extra-args (list "--reasoning-parser" "qwen3"
                                 "--enable-auto-tool-choice"
                                 "--tool-call-parser" "qwen3_coder"))
-             ;; Confirmed live: without this, Triton's libcuda_dirs()
-             ;; (needed for the flash-linear-attention Gated DeltaNet
-             ;; kernels) hardcodes a call to /sbin/ldconfig to locate
-             ;; libcuda.so.1, which doesn't exist on Guix -- crashes with
-             ;; FileNotFoundError before the model even starts loading.
-             ;; Same fix peteches/services/comfyui.scm already uses for
-             ;; the identical Triton/ldconfig problem.
+             ;; TRITON_LIBCUDA_PATH: confirmed live, without this Triton's
+             ;; libcuda_dirs() (needed for the flash-linear-attention
+             ;; Gated DeltaNet kernels) hardcodes a call to /sbin/ldconfig
+             ;; to locate libcuda.so.1, which doesn't exist on Guix --
+             ;; crashes with FileNotFoundError before the model even
+             ;; starts loading. Same fix peteches/services/comfyui.scm
+             ;; already uses for the identical Triton/ldconfig problem.
+             ;;
+             ;; HF_HUB_DISABLE_XET: confirmed live, reproduced twice in a
+             ;; row -- huggingface_hub's Xet fast-transfer path crashes
+             ;; partway through downloading this checkpoint with
+             ;; "RuntimeError: Task error: File reconstruction error:
+             ;; Internal Writer Error: Background writer channel closed".
+             ;; Falls back to plain HTTP downloads instead (slower, but
+             ;; this is a one-time ~21GB download cached under HF_HOME
+             ;; afterward, not a per-request cost).
              (extra-environment-variables
-              (list "TRITON_LIBCUDA_PATH=/run/current-system/profile/lib"))
+              (list "TRITON_LIBCUDA_PATH=/run/current-system/profile/lib"
+                    "HF_HUB_DISABLE_XET=1"))
              (open-firewall? #t))))
   ;; Verified directly (not just reasoned about): a plain `npm install` on
   ;; this codebase needed no native compilation, and `node server.js`
