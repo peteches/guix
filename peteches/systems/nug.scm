@@ -704,8 +704,18 @@
              ;; Falls back to plain HTTP downloads instead (slower, but
              ;; this is a one-time ~21GB download cached under HF_HOME
              ;; afterward, not a per-request cost).
+             ;; VLLM_USE_FLASHINFER_SAMPLER=0: confirmed live, FlashInfer's
+             ;; sampling kernels JIT-compile via nvcc at runtime and this
+             ;; container's gcc-toolchain (16.x) is newer than nvcc 12.8's
+             ;; supported-host-compiler ceiling (gcc<=14) -- plus a missing
+             ;; curand.h, since the full CUDA toolkit headers aren't in
+             ;; this container (guix-science-nonfree packages, can't be
+             ;; named inside guix shell's base-distribution-only package
+             ;; resolution). Falls back to the native PyTorch/Triton
+             ;; sampling path instead, which already works.
              (extra-environment-variables
-              (list "HF_HUB_DISABLE_XET=1"))
+              (list "HF_HUB_DISABLE_XET=1"
+                    "VLLM_USE_FLASHINFER_SAMPLER=0"))
              (open-firewall? #t))))
   ;; Verified directly (not just reasoned about): a plain `npm install` on
   ;; this codebase needed no native compilation, and `node server.js`
