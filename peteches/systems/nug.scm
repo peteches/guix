@@ -696,16 +696,16 @@
              ;; commit history/PR description); raise later if this
              ;; measures out with more margin than expected, same
              ;; empirical approach used for koboldcpp's context sizing.
-             ;; Confirmed live: fp8 KV cache dtype + the explicit
-             ;; --kv-cache-memory budget (see extra-args) actually
-             ;; supports 27,927 tokens ("GPU KV cache size: 27,927
-             ;; tokens" in the startup log) -- more than the 24576 first
-             ;; tried. 27000 captures that measured headroom with a small
-             ;; safety margin. Up from 8192 before fp8/explicit budget/
-             ;; stopping ComfyUI (idle ~386MiB) -- a ~3.3x improvement,
-             ;; though still far short of koboldcpp's 131072 given this
-             ;; checkpoint's much larger weight footprint on this card.
-             (max-model-len 27000)
+             ;; --kv-cache-dtype fp8 (which got this to 27000) was
+             ;; reverted -- see extra-args comment -- so KV cost per
+             ;; token doubles back to the non-fp8 rate. 12000 is a
+             ;; conservative estimate pending a live retest; adjust to
+             ;; match whatever "GPU KV cache size: N tokens" the startup
+             ;; log actually reports, same iterative approach used
+             ;; throughout this file's history. Still up from the
+             ;; original 8192 thanks to the explicit --kv-cache-memory
+             ;; budget and stopping ComfyUI's idle ~386MiB.
+             (max-model-len 12000)
              ;; No explicit quantization: confirmed live that this
              ;; checkpoint's own config.json declares "compressed-tensors"
              ;; (llm-compressor's AWQ-style INT4 format), not classic
@@ -722,10 +722,18 @@
              ;; trades some steady-state speed for a much smaller,
              ;; predictable footprint -- the documented mitigation for
              ;; exactly this VRAM-constrained scenario.
-             ;; --kv-cache-dtype fp8: quantizes the KV cache itself
-             ;; (same trick as koboldcpp's --quantkv), roughly halving
-             ;; memory per token -- not yet empirically confirmed against
-             ;; this specific hybrid Gated-DeltaNet architecture.
+             ;; --kv-cache-dtype fp8 was tried and reverted: confirmed
+             ;; live it changes the auto-selected attention backend from
+             ;; FLASH_ATTN to FLASHINFER, and FlashInfer's own kernels hit
+             ;; the identical nvcc/gcc-version JIT-compile crash already
+             ;; seen with its sampler (this container's gcc-toolchain is
+             ;; newer than nvcc 12.8 supports) -- but lazily, on the FIRST
+             ;; real generation request rather than at startup, so it
+             ;; wasn't caught until testing an actual completion:
+             ;; "EngineDeadError: EngineCore encountered an issue" /
+             ;; "ninja: build stopped: subcommand failed". Would need a
+             ;; compatible (<=14) gcc available in the container to fix
+             ;; properly; not pursued further here.
              ;; --kv-cache-memory: vLLM's own log line at
              ;; gpu-memory-utilization 0.95 read "Replace
              ;; gpu_memory_utilization config with
@@ -737,7 +745,6 @@
                                 "--enable-auto-tool-choice"
                                 "--tool-call-parser" "qwen3_coder"
                                 "--enforce-eager"
-                                "--kv-cache-dtype" "fp8"
                                 "--kv-cache-memory" "1333544448"))
              ;; HF_HUB_DISABLE_XET: confirmed live, reproduced twice in a
              ;; row -- huggingface_hub's Xet fast-transfer path crashes
