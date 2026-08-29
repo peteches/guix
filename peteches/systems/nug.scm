@@ -609,6 +609,14 @@
             ;; (koboldcpp-qwen's auto-start already defaults to #f) --
             ;; revisit if ComfyUI-alongside-colibri usage returns.
             (vram-gb 20)
+            ;; Without --auto-tier the engine falls back to a naive cap
+            ;; guess (observed: cap=8, apparently confusing Qwen3.6's
+            ;; topk=8 for a real budget) that mismatches n_experts=256 and
+            ;; disables the GPU tier entirely, running RAM/CPU-resident
+            ;; instead (confirmed live: nvidia-smi showed ~428MiB VRAM used
+            ;; with this flag missing, vs `coli doctor' projecting 100%
+            ;; expert residency at ~18GB when the plan is actually applied).
+            (extra-args (list "--auto-tier"))
             ;; Required: colibri refuses to bind beyond localhost without an
             ;; API key (COLI_ALLOW_INSECURE_BIND=1 exists to bypass this,
             ;; deliberately not used — this is reachable over Tailscale via
