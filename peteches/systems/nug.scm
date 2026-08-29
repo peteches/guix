@@ -713,8 +713,20 @@
              ;; behavior -- dropped --reasoning-parser qwen3. Tool calling
              ;; uses vLLM's "mistral" parser, matching this model family's
              ;; native tool-call format, not qwen3_coder's.
+             ;; --chat-template: confirmed live, this AWQ repackaging's own
+             ;; tokenizer_config.json chat_template only handles
+             ;; user/system/assistant roles and never renders `tools` into
+             ;; the prompt at all -- pi's read/bash/edit/write tools were
+             ;; silently invisible to the model regardless of
+             ;; --tool-call-parser, so it answered from training data
+             ;; instead of refusing or calling a tool. Point at vLLM's own
+             ;; upstream examples/tool_chat_template_mistral.jinja (copied
+             ;; to /srv/llm/vllm/, already shared into the FHS container
+             ;; since it's under uv-project-dir) instead of relying on the
+             ;; checkpoint's own template.
              (extra-args (list "--enable-auto-tool-choice"
                                 "--tool-call-parser" "mistral"
+                                "--chat-template" "/srv/llm/vllm/tool_chat_template_mistral.jinja"
                                 "--enforce-eager"))
              ;; HF_HUB_DISABLE_XET: confirmed live, reproduced twice in a
              ;; row -- huggingface_hub's Xet fast-transfer path crashes
