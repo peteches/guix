@@ -698,14 +698,14 @@
              ;; empirical approach used for koboldcpp's context sizing.
              ;; --kv-cache-dtype fp8 (which got this to 27000) was
              ;; reverted -- see extra-args comment -- so KV cost per
-             ;; token doubles back to the non-fp8 rate. 12000 is a
-             ;; conservative estimate pending a live retest; adjust to
-             ;; match whatever "GPU KV cache size: N tokens" the startup
-             ;; log actually reports, same iterative approach used
-             ;; throughout this file's history. Still up from the
-             ;; original 8192 thanks to the explicit --kv-cache-memory
-             ;; budget and stopping ComfyUI's idle ~386MiB.
-             (max-model-len 12000)
+             ;; token doubles back to the non-fp8 rate. Confirmed live
+             ;; (with a real completion succeeding, not just startup):
+             ;; "GPU KV cache size: 13,636 tokens" at 12000, so 13400
+             ;; captures that measured headroom with a small margin.
+             ;; Still a real improvement over the original 8192 thanks to
+             ;; the explicit --kv-cache-memory budget and stopping
+             ;; ComfyUI's idle ~386MiB.
+             (max-model-len 13400)
              ;; No explicit quantization: confirmed live that this
              ;; checkpoint's own config.json declares "compressed-tensors"
              ;; (llm-compressor's AWQ-style INT4 format), not classic
