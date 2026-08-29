@@ -108,6 +108,14 @@ compiled in.")
     (arguments
      (list
       #:tests? #f
+      ;; deepseek_v4 (new as a CUDA-linked binary as of v1.9.0 -- it wasn't
+      ;; built this way under v1.5.0) links `-lcuda' directly rather than
+      ;; only `-lcudart', giving it a DT_NEEDED on libcuda.so.1 -- the
+      ;; driver's own userspace library, deliberately not in the store (see
+      ;; this package's description: it's expected to be reachable via
+      ;; LD_LIBRARY_PATH at runtime instead). validate-runpath has no way to
+      ;; know that's intentional and fails the build otherwise.
+      #:validate-runpath? #f
       #:make-flags
       #~(list (string-append "PREFIX=" #$output)
               "CUDA=1"
