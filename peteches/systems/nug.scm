@@ -675,8 +675,8 @@
              (service-name "vllm-code-agent")
              (auto-start? #f)
              (runtime-packages (list uv python))
-             (model "cyankiwi/Qwen3.8-27B-AWQ-INT4")
-             (served-model-name "qwen3.8-27b-awq")
+             (model "casperhansen/mistral-small-24b-instruct-2501-awq")
+             (served-model-name "mistral-small-24b-awq")
              ;; Default cache-dir (/var/cache/vllm/...) lives on the root
              ;; filesystem, which has only ~4.6GB free (confirmed live: a
              ;; ~21GB HF download there failed with "OSError: [Errno 28]
@@ -685,67 +685,35 @@
              (cache-dir "/media/HotStorage/models/vllm/vllm-code-agent/cache")
              (host "::")
              (port 8002)
-             ;; Confirmed live: past every environment/packaging issue now
-             ;; (container fixed ldconfig/ptxas/CPATH, FlashInfer sampler
-             ;; disabled), the final crash is a plain CUDA OOM during KV
-             ;; cache/CUDA-graph profiling at 131072 -- "22.97 GiB memory
-             ;; in use" of a 23.51 GiB usable card, with the 21GB
-             ;; checkpoint's weights alone consuming most of that budget.
-             ;; Dropped to 32768, matching the community's own documented
-             ;; safe value for this checkpoint under VRAM constraints (see
-             ;; commit history/PR description); raise later if this
-             ;; measures out with more margin than expected, same
-             ;; empirical approach used for koboldcpp's context sizing.
-             ;; --kv-cache-dtype fp8 (which got this to 27000) was
-             ;; reverted -- see extra-args comment -- so KV cost per
-             ;; token doubles back to the non-fp8 rate. Confirmed live
-             ;; (with a real completion succeeding, not just startup):
-             ;; "GPU KV cache size: 13,636 tokens" at 12000, so 13400
-             ;; captures that measured headroom with a small margin.
-             ;; Still a real improvement over the original 8192 thanks to
-             ;; the explicit --kv-cache-memory budget and stopping
-             ;; ComfyUI's idle ~386MiB.
-             (max-model-len 13400)
-             ;; No explicit quantization: confirmed live that this
-             ;; checkpoint's own config.json declares "compressed-tensors"
-             ;; (llm-compressor's AWQ-style INT4 format), not classic
-             ;; "awq" -- passing --quantization awq explicitly conflicts
-             ;; with that and vLLM refuses to start. Let it auto-detect.
+             ;; Swapped from Qwen3.8-27B-AWQ-INT4 to this smaller dense
+             ;; 24B checkpoint specifically to reclaim KV-cache headroom:
+             ;; the previous model's ~19.24GiB weights left only ~1.24GiB
+             ;; for KV (13,400-token ceiling); this checkpoint's weights
+             ;; (~14.3GiB) should leave several times that. Probing with a
+             ;; generously high max-model-len + explicit
+             ;; gpu-memory-utilization first, to read vLLM's own reported
+             ;; "GPU KV cache size" / suggested --kv-cache-memory value
+             ;; and dial in the real ceiling empirically, same approach
+             ;; used to arrive at the Qwen numbers above.
+             (max-model-len 65536)
+             (gpu-memory-utilization 0.95)
+             ;; No explicit quantization: this checkpoint is casperhansen's
+             ;; AWQ conversion; let vLLM auto-detect from config.json as
+             ;; with the previous model, to avoid the same
+             ;; --quantization-vs-checkpoint-format conflict seen before.
              (trust-remote-code? #t)
-             ;; --enforce-eager: confirmed live, the crash wasn't actually
-             ;; about max-model-len at all -- OOM was identical (~22.96GiB
-             ;; used) at both 131072 and 32768, always during
-             ;; profile_cudagraph_memory. CUDA graph capture needs
-             ;; significant extra scratch memory to test multiple batch-
-             ;; size variants, on top of the 19.24GiB the checkpoint's
-             ;; weights alone already consume on this card. Disabling it
-             ;; trades some steady-state speed for a much smaller,
-             ;; predictable footprint -- the documented mitigation for
-             ;; exactly this VRAM-constrained scenario.
-             ;; --kv-cache-dtype fp8 was tried and reverted: confirmed
-             ;; live it changes the auto-selected attention backend from
-             ;; FLASH_ATTN to FLASHINFER, and FlashInfer's own kernels hit
-             ;; the identical nvcc/gcc-version JIT-compile crash already
-             ;; seen with its sampler (this container's gcc-toolchain is
-             ;; newer than nvcc 12.8 supports) -- but lazily, on the FIRST
-             ;; real generation request rather than at startup, so it
-             ;; wasn't caught until testing an actual completion:
-             ;; "EngineDeadError: EngineCore encountered an issue" /
-             ;; "ninja: build stopped: subcommand failed". Would need a
-             ;; compatible (<=14) gcc available in the container to fix
-             ;; properly; not pursued further here.
-             ;; --kv-cache-memory: vLLM's own log line at
-             ;; gpu-memory-utilization 0.95 read "Replace
-             ;; gpu_memory_utilization config with
-             ;; --kv-cache-memory=1333544448 (1.24 GiB) to fully utilize
-             ;; gpu memory" -- using that exact suggested value directly
-             ;; instead of the percentage-based calculation, which was
-             ;; leaving some usable memory on the table.
-             (extra-args (list "--reasoning-parser" "qwen3"
-                                "--enable-auto-tool-choice"
-                                "--tool-call-parser" "qwen3_coder"
-                                "--enforce-eager"
-                                "--kv-cache-memory" "1333544448"))
+             ;; --enforce-eager: kept from the previous model's config --
+             ;; the CUDA-graph-capture OOM risk is about total scratch
+             ;; memory on this VRAM-constrained card, not specific to the
+             ;; old checkpoint, so keeping it disabled by default here too
+             ;; until proven unnecessary.
+             ;; Dense (non-hybrid) architecture, no reasoning-model
+             ;; behavior -- dropped --reasoning-parser qwen3. Tool calling
+             ;; uses vLLM's "mistral" parser, matching this model family's
+             ;; native tool-call format, not qwen3_coder's.
+             (extra-args (list "--enable-auto-tool-choice"
+                                "--tool-call-parser" "mistral"
+                                "--enforce-eager"))
              ;; HF_HUB_DISABLE_XET: confirmed live, reproduced twice in a
              ;; row -- huggingface_hub's Xet fast-transfer path crashes
              ;; partway through downloading this checkpoint with
