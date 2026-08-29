@@ -667,7 +667,11 @@
              ;; interpolation kernel this model uses) into a shared
              ;; library at runtime via a real C compiler on PATH -- crashed
              ;; with "Failed to find C compiler" without it.
-             (runtime-packages (list uv python gcc-toolchain))
+             ;; cuda: confirmed live, Triton also needs `ptxas' (NVIDIA's
+             ;; PTX assembler, part of the CUDA toolkit, not provided by
+             ;; gcc-toolchain or the driver) to finish its JIT pipeline --
+             ;; crashed with "RuntimeError: Cannot find ptxas" without it.
+             (runtime-packages (list uv python gcc-toolchain cuda))
              (model "cyankiwi/Qwen3.8-27B-AWQ-INT4")
              (served-model-name "qwen3.8-27b-awq")
              ;; Default cache-dir (/var/cache/vllm/...) lives on the root
