@@ -689,13 +689,15 @@
              ;; 24B checkpoint specifically to reclaim KV-cache headroom:
              ;; the previous model's ~19.24GiB weights left only ~1.24GiB
              ;; for KV (13,400-token ceiling); this checkpoint's weights
-             ;; (~14.3GiB) should leave several times that. Probing with a
-             ;; generously high max-model-len + explicit
-             ;; gpu-memory-utilization first, to read vLLM's own reported
-             ;; "GPU KV cache size" / suggested --kv-cache-memory value
-             ;; and dial in the real ceiling empirically, same approach
-             ;; used to arrive at the Qwen numbers above.
-             (max-model-len 65536)
+             ;; (~14.3GiB) should leave several times that. Confirmed
+             ;; live: an initial probe at 65536 crash-looped every ~6s --
+             ;; "User-specified max_model_len (65536) is greater than the
+             ;; derived max_model_len (max_position_embeddings=32768.0 ...
+             ;; in model's config.json)" -- this checkpoint's native
+             ;; ceiling is 32768, not the 128K some Mistral models offer.
+             ;; Set to the model's real max; the point of this swap was
+             ;; KV *headroom* at that length, not a longer context.
+             (max-model-len 32768)
              (gpu-memory-utilization 0.95)
              ;; No explicit quantization: this checkpoint is casperhansen's
              ;; AWQ conversion; let vLLM auto-detect from config.json as
