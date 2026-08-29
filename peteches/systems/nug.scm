@@ -705,9 +705,20 @@
              ;; Falls back to plain HTTP downloads instead (slower, but
              ;; this is a one-time ~21GB download cached under HF_HOME
              ;; afterward, not a per-request cost).
+             ;; CPATH: confirmed live by hand-reproducing Triton's exact
+             ;; gcc invocation -- glibc's <errno.h> transitively needs
+             ;; <linux/errno.h> (kernel UAPI headers, a separate package
+             ;; on Guix, not bundled with gcc-toolchain), so any C source
+             ;; that pulls in Python.h (as Triton's CudaUtils() build
+             ;; does) fails with "fatal error: linux/errno.h: No such
+             ;; file or directory" without this. Same fix nug.scm already
+             ;; uses for ComfyUI's native node builds, just below.
              (extra-environment-variables
               (list "TRITON_LIBCUDA_PATH=/run/current-system/profile/lib"
-                    "HF_HUB_DISABLE_XET=1"))
+                    "HF_HUB_DISABLE_XET=1"
+                    #~(string-append "CPATH="
+                                     #$(file-append linux-libre-headers
+                                                     "/include"))))
              (open-firewall? #t))))
   ;; Verified directly (not just reasoned about): a plain `npm install` on
   ;; this codebase needed no native compilation, and `node server.js`
