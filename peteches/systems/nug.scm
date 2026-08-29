@@ -668,7 +668,11 @@
              (port 8002)
              (max-model-len 131072)
              (gpu-memory-utilization 0.85)
-             (quantization "awq")
+             ;; No explicit quantization: confirmed live that this
+             ;; checkpoint's own config.json declares "compressed-tensors"
+             ;; (llm-compressor's AWQ-style INT4 format), not classic
+             ;; "awq" -- passing --quantization awq explicitly conflicts
+             ;; with that and vLLM refuses to start. Let it auto-detect.
              (trust-remote-code? #t)
              (extra-args (list "--reasoning-parser" "qwen3"
                                 "--enable-auto-tool-choice"
