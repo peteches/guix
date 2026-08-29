@@ -9,16 +9,22 @@
 ;;; nug-specific:
 ;;;   - NVIDIA/Steam/CUDA userspace, Blender, 3D-printing (lycheeslicer).
 ;;;   - Two koboldcpp instances, one per model/port:
-;;;       5001 qwen2.5-coder  — the coding model; ECA points here
+;;;       5001 qwen3.6-a3b    — the coding model; ECA points here
 ;;;                             (see (peteches home modules ai)) and
 ;;;                             $COMFYUI_URL/KoboldCpp ports are opened in
 ;;;                             the firewall in (peteches systems base).
-;;;                             Full GPU offload, --quantkv 2 (Q4 KV
-;;;                             cache) and --contextsize 131072 (the
-;;;                             model's native n_ctx_train) -- no draft/
-;;;                             speculative-decode model, since ComfyUI
-;;;                             is no longer run alongside koboldcpp on
-;;;                             this card and the whole 24GB is available.
+;;;                             Qwen3.6-35B-A3B (MoE, hybrid Gated
+;;;                             Attention + Gated DeltaNet), Q4_K_M
+;;;                             GGUF, ~22.3GiB weights. Full GPU
+;;;                             offload, --quantkv 2 (Q4 KV cache), no
+;;;                             draft/speculative-decode model, since
+;;;                             ComfyUI is no longer run alongside
+;;;                             koboldcpp on this card and the whole
+;;;                             24GB is available -- but the model
+;;;                             itself is far bigger than the
+;;;                             qwen2.5-coder-14b it replaced, so
+;;;                             --contextsize is conservative (32768)
+;;;                             pending empirical headroom measurement.
 ;;;       5002 koboldcpp-rp   — SillyTavern RP backend: dense 24B RP
 ;;;                             finetune (MS3.2-PaintedFantasy-v4.1-24B),
 ;;;                             16K context, TTS/whisper attached (CPU),
@@ -237,33 +243,36 @@
    (service koboldcpp-service-type
 	    (koboldcpp-configuration
 	     (service-name "koboldcpp-qwen")
-	     (model-name "qwen2.5-coder-14b-instruct-q6_k.gguf")
+	     (model-name "Qwen_Qwen3.6-35B-A3B-Q4_K_M.gguf")
 	     (host "::")
 	     (whisper-model "whisper-small-q5_1.bin")
 	     (tts-model "Kokoro_no_espeak_Q4.gguf")
 	     (port 5001)
 	     (ssl-cert (home-abs-path ".local/share/certs/nug.peteches.co.uk.pem"))
 	     (ssl-key  (home-abs-path ".local/share/certs/nug.peteches.co.uk.pem"))
-	     ;; Draft/speculative-decode model dropped and --quantkv 2 (Q4 KV
-	     ;; cache) added to push --contextsize to the model's full native
-	     ;; n_ctx_train (131072) -- see the koboldcpp startup log's
-	     ;; per-token KV rates (192 KiB/tok fp16 main, 28 KiB/tok draft):
-	     ;; fp16 KV at 131072 alone would need ~16GiB, before even
-	     ;; counting the ~11GiB of model weights, so this card can't do
-	     ;; full native context without quantizing the KV cache. Q4
-	     ;; brings the KV cache to ~6GiB, leaving comfortable headroom
-	     ;; against the ~11GiB weights + ~2GiB misc CUDA/compute
-	     ;; overhead on this 24GiB card (confirmed: no other process
-	     ;; shares the GPU -- see nug.scm's koboldcpp-rp comment above,
-	     ;; which no longer applies since ComfyUI is not run alongside
-	     ;; this instance). Dropping the draft model also sidesteps its
-	     ;; own 32768 native context ceiling, which would otherwise cap
-	     ;; how far speculative decoding stays effective well below
-	     ;; 131072.
+	     ;; Swapped from qwen2.5-coder-14b (Q6_K, ~11GiB weights) to
+	     ;; Qwen3.6-35B-A3B (MoE, hybrid Gated Attention + Gated
+	     ;; DeltaNet, Q4_K_M, ~22.3GiB weights on disk) -- a newer,
+	     ;; better-benchmarked coding model (73.4% SWE-bench Verified)
+	     ;; that also needed a recent-enough koboldcpp build (Gated
+	     ;; DeltaNet support landed in llama.cpp/koboldcpp fairly
+	     ;; recently; confirm on load if this pinned version is new
+	     ;; enough). colibri (see peteches/systems/nug.scm) was tried
+	     ;; first since it can run 700B+ MoE models via disk-streamed
+	     ;; experts, but that's the wrong tool for a model this small:
+	     ;; the pre-converted checkpoint's baked-in expert-cache size
+	     ;; didn't cover this model's 256 experts, so it fell back to
+	     ;; RAM/CPU residency and measured ~1 token/sec. At 22.3GiB,
+	     ;; this model's weights alone leave far less headroom than the
+	     ;; 14B did (was ~11GiB weights + ~6GiB Q4 KV cache at 131072
+	     ;; context); --contextsize starts conservative here (32768,
+	     ;; matching what community docs suggest for VRAM-constrained
+	     ;; single-GPU setups) pending an empirical check of how far it
+	     ;; can go on this card once loaded and measured for real.
 	     (extra-args (list "--usecuda"
 			       "--websearch"
 			       "--gpulayers" "999"
-			       "--contextsize" "131072"
+			       "--contextsize" "32768"
 			       "--flashattention"
 			       "--quantkv" "2"))))
    ;; Roleplay instance (SillyTavern backend).  Replaces the former
