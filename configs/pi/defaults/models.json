@@ -34,8 +34,8 @@
         {
           "id": "qwen3.8-27b-awq",
           "name": "Qwen3.8 27B AWQ (nug, vLLM)",
-          "contextWindow": 8192,
-          "maxTokens": 8192,
+          "contextWindow": 13400,
+          "maxTokens": 13400,
           "input": ["text"]
         }
       ]
