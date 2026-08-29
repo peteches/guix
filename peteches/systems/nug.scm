@@ -696,21 +696,15 @@
              ;; commit history/PR description); raise later if this
              ;; measures out with more margin than expected, same
              ;; empirical approach used for koboldcpp's context sizing.
-             ;; Confirmed live at gpu-memory-utilization 0.95: 1.03GiB
-             ;; available for KV cache, vLLM's own error message estimated
-             ;; a max model length of 11760 at that budget. 8192 leaves
-             ;; clear margin below that estimate.
-             (max-model-len 8192)
-             ;; Confirmed live: at 0.85 (19.98GiB budget of a 23.51GiB
-             ;; usable card), vLLM reported "Available KV cache memory:
-             ;; -1.32 GiB" -- weights alone (19.24GiB) plus fixed overhead
-             ;; (encoder cache, activation buffers) already exceed that
-             ;; budget before any KV cache is allocated. Raised to claim
-             ;; more of the card; ComfyUI's own idle ~386MiB is the only
-             ;; other consumer right now, so there's little margin beyond
-             ;; this -- revisit if ComfyUI is ever actively rendering
-             ;; alongside this service.
-             (gpu-memory-utilization 0.95)
+             ;; Raised from 8192 now that --kv-cache-dtype fp8 (below)
+             ;; roughly halves KV memory per token and --kv-cache-memory
+             ;; replaces the imprecise percentage-based budget with vLLM's
+             ;; own suggested exact byte value -- see extra-args comment.
+             ;; ComfyUI (ordinarily idle ~386MiB on this card) is also
+             ;; stopped for this measurement; ~24576 is a first estimate,
+             ;; not yet empirically confirmed -- adjust after testing, same
+             ;; iterative approach used throughout this file's history.
+             (max-model-len 24576)
              ;; No explicit quantization: confirmed live that this
              ;; checkpoint's own config.json declares "compressed-tensors"
              ;; (llm-compressor's AWQ-style INT4 format), not classic
@@ -727,10 +721,23 @@
              ;; trades some steady-state speed for a much smaller,
              ;; predictable footprint -- the documented mitigation for
              ;; exactly this VRAM-constrained scenario.
+             ;; --kv-cache-dtype fp8: quantizes the KV cache itself
+             ;; (same trick as koboldcpp's --quantkv), roughly halving
+             ;; memory per token -- not yet empirically confirmed against
+             ;; this specific hybrid Gated-DeltaNet architecture.
+             ;; --kv-cache-memory: vLLM's own log line at
+             ;; gpu-memory-utilization 0.95 read "Replace
+             ;; gpu_memory_utilization config with
+             ;; --kv-cache-memory=1333544448 (1.24 GiB) to fully utilize
+             ;; gpu memory" -- using that exact suggested value directly
+             ;; instead of the percentage-based calculation, which was
+             ;; leaving some usable memory on the table.
              (extra-args (list "--reasoning-parser" "qwen3"
                                 "--enable-auto-tool-choice"
                                 "--tool-call-parser" "qwen3_coder"
-                                "--enforce-eager"))
+                                "--enforce-eager"
+                                "--kv-cache-dtype" "fp8"
+                                "--kv-cache-memory" "1333544448"))
              ;; HF_HUB_DISABLE_XET: confirmed live, reproduced twice in a
              ;; row -- huggingface_hub's Xet fast-transfer path crashes
              ;; partway through downloading this checkpoint with
