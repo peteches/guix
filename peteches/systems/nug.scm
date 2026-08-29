@@ -704,9 +704,20 @@
              ;; "awq" -- passing --quantization awq explicitly conflicts
              ;; with that and vLLM refuses to start. Let it auto-detect.
              (trust-remote-code? #t)
+             ;; --enforce-eager: confirmed live, the crash wasn't actually
+             ;; about max-model-len at all -- OOM was identical (~22.96GiB
+             ;; used) at both 131072 and 32768, always during
+             ;; profile_cudagraph_memory. CUDA graph capture needs
+             ;; significant extra scratch memory to test multiple batch-
+             ;; size variants, on top of the 19.24GiB the checkpoint's
+             ;; weights alone already consume on this card. Disabling it
+             ;; trades some steady-state speed for a much smaller,
+             ;; predictable footprint -- the documented mitigation for
+             ;; exactly this VRAM-constrained scenario.
              (extra-args (list "--reasoning-parser" "qwen3"
                                 "--enable-auto-tool-choice"
-                                "--tool-call-parser" "qwen3_coder"))
+                                "--tool-call-parser" "qwen3_coder"
+                                "--enforce-eager"))
              ;; HF_HUB_DISABLE_XET: confirmed live, reproduced twice in a
              ;; row -- huggingface_hub's Xet fast-transfer path crashes
              ;; partway through downloading this checkpoint with
