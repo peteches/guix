@@ -25,6 +25,7 @@
   #:use-module (peteches services sillytavern)
   #:use-module (peteches services vllm)
   #:use-module (peteches systems network-mounts)
+  #:use-module (peteches repository)
   #:use-module (gnu packages admin)
   #:use-module (gnu packages rust-apps)
   #:use-module ((gnu packages linux) #:select (linux-libre-headers))
@@ -719,14 +720,30 @@
              ;; the prompt at all -- pi's read/bash/edit/write tools were
              ;; silently invisible to the model regardless of
              ;; --tool-call-parser, so it answered from training data
-             ;; instead of refusing or calling a tool. Point at vLLM's own
-             ;; upstream examples/tool_chat_template_mistral.jinja (copied
-             ;; to /srv/llm/vllm/, already shared into the FHS container
-             ;; since it's under uv-project-dir) instead of relying on the
-             ;; checkpoint's own template.
+             ;; instead of refusing or calling a tool. Uses a local copy of
+             ;; vLLM's own upstream examples/tool_chat_template_mistral.jinja,
+             ;; tracked in this repo (configs/vllm/) rather than hand-placed
+             ;; on nug's disk, so it survives the planned Proxmox/VM rebuild
+             ;; of this host. Confirmed live: vLLM resolves a local-file's
+             ;; /gnu/store path here since --expose=/gnu/store is already
+             ;; part of vllm-container-runner-file's static container args,
+             ;; so no extra --share/--expose is needed for it.
+             ;;
+             ;; Also confirmed live: the *upstream* version of this template
+             ;; raises "conversation roles must alternate user/assistant/..."
+             ;; whenever two same-role messages appear back to back -- which
+             ;; pi produces routinely after any failed/retried turn (a 400
+             ;; response contributes no assistant content to resend, so the
+             ;; next user prompt lands right after the previous one). That
+             ;; strict alternation check is a standalone assertion the
+             ;; render logic doesn't depend on, so this repo's copy has it
+             ;; removed.
              (extra-args (list "--enable-auto-tool-choice"
                                 "--tool-call-parser" "mistral"
-                                "--chat-template" "/srv/llm/vllm/tool_chat_template_mistral.jinja"
+                                "--chat-template"
+                                (local-file
+                                 (source-path
+                                  "configs/vllm/tool-chat-template-mistral.jinja"))
                                 "--enforce-eager"))
              ;; HF_HUB_DISABLE_XET: confirmed live, reproduced twice in a
              ;; row -- huggingface_hub's Xet fast-transfer path crashes
