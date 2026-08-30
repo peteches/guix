@@ -675,8 +675,18 @@
              (service-name "vllm-code-agent")
              (auto-start? #f)
              (runtime-packages (list uv python))
-             (model "Qwen/Qwen2.5-14B-Instruct-AWQ")
-             (served-model-name "qwen2.5-14b-awq")
+             ;; Shares the HOST's /dev/shm (48GB tmpfs, confirmed live via
+             ;; `df -h`) into the container in place of guix shell's own
+             ;; small private one. Required by --kv-offloading-size below:
+             ;; vLLM's native CPU-offload backend mmaps its buffer as a
+             ;; POSIX shared-memory region under /dev/shm, and confirmed
+             ;; live the container's own default tmpfs there is only 64MB
+             ;; -- far too small for any real offload buffer -- crashing
+             ;; engine-core init with "RuntimeError: Insufficient space in
+             ;; /dev/shm: 16366 MiB required, 64 MiB free."
+             (container-extra-shares (list "/dev/shm"))
+             (model "cyankiwi/Qwen3.8-27B-AWQ-INT4")
+             (served-model-name "qwen3.8-27b-awq")
              ;; Default cache-dir (/var/cache/vllm/...) lives on the root
              ;; filesystem, which has only ~4.6GB free (confirmed live: a
              ;; ~21GB HF download there failed with "OSError: [Errno 28]
@@ -685,72 +695,134 @@
              (cache-dir "/media/HotStorage/models/vllm/vllm-code-agent/cache")
              (host "::")
              (port 8002)
-             ;; Swapped from casperhansen/mistral-small-24b-instruct-2501-awq:
-             ;; confirmed live (both via pi and direct completions) that
-             ;; model was flaky at actually invoking tools -- on some turns
-             ;; it narrated a fake ```bash\nbash read <file>``` block in
-             ;; plain text instead of emitting a real tool_calls response,
-             ;; despite the chat-template fix below working correctly when
-             ;; it did call a tool. That's a model-reliability problem, not
-             ;; fixable by more prompting/config, so moved to a Qwen
-             ;; checkpoint instead -- Qwen3.8-27B's tool-calling (qwen3_coder
-             ;; parser, earlier in this repo's history) was reliable every
-             ;; time it was tested; Qwen ships an official tool-calling-aware
-             ;; chat template baked into the checkpoint, unlike the
-             ;; Mistral-Small AWQ repackaging.
+             ;; Back on Qwen3.8-27B (was swapped to Qwen2.5-14B-Instruct-AWQ
+             ;; for tool reliability, then further explored via GGUF
+             ;; sub-4-bit quants -- neither panned out: no smaller
+             ;; vLLM-native weight quant of this checkpoint exists (no
+             ;; 3-bit AWQ/GPTQ/compressed-tensors build was ever published;
+             ;; the only sub-4-bit options are GGUF, which needs vLLM's new
+             ;; out-of-tree, explicitly "highly experimental" gguf plugin).
+             ;; Reopening the earlier 13,400-token ceiling this checkpoint
+             ;; hit instead by fixing its actual root cause: see
+             ;; --kv-cache-dtype/--attention-backend below.
              ;;
-             ;; Picked 14B specifically over 32B for the same KV-headroom
-             ;; reason the 27B model was dropped in the first place: 32B's
-             ;; ~19GiB weights would recreate the exact ~13K-token ceiling
-             ;; this repo already left behind once. This checkpoint's ~10GiB
-             ;; footprint leaves substantially more room.
+             ;; Confirmed live (see this file's history, commit
+             ;; b732bef/6528a3e): with --kv-cache-dtype fp8 and the
+             ;; explicit --kv-cache-memory budget below, vLLM's own startup
+             ;; log reported "GPU KV cache size: 27,927 tokens" (28,125 on
+             ;; this retest, at "Maximum concurrency for 27,000 tokens per
+             ;; request: 1.04x"). 27000 captures that measured headroom
+             ;; with a small safety margin. Getting that to actually SERVE
+             ;; a completion needed one more fix beyond fp8 itself -- see
+             ;; --attention-backend in extra-args below. With that fix,
+             ;; confirmed live throughput: ~32 tokens/s single-stream
+             ;; (300-token completion), ~123 tokens/s aggregate wall-clock
+             ;; across 4 concurrent 300-token completions (vLLM's own
+             ;; periodic log corroborates, reporting 70-80 tokens/s
+             ;; "Avg generation throughput" at Running: 4 reqs).
+             (max-model-len 27000)
+             ;; No explicit quantization: confirmed live that this
+             ;; checkpoint's own config.json declares "compressed-tensors"
+             ;; (llm-compressor's AWQ-style INT4 format), not classic
+             ;; "awq" -- passing --quantization awq explicitly conflicts
+             ;; with that and vLLM refuses to start. Let it auto-detect.
+             (trust-remote-code? #t)
+             ;; --enforce-eager: confirmed live, this checkpoint's 19.24GiB
+             ;; weights alone leave too little scratch memory for CUDA
+             ;; graph capture (profile_cudagraph_memory) on this
+             ;; VRAM-constrained card regardless of max-model-len --
+             ;; trades some steady-state speed for a much smaller,
+             ;; predictable footprint.
+             ;; --kv-cache-dtype fp8: quantizes the KV cache itself,
+             ;; roughly halving memory per token -- the lever that reaches
+             ;; 27,927 tokens above. --kv-cache-dtype fp8 makes vLLM
+             ;; auto-select the FLASHINFER attention backend over its other
+             ;; candidate, FLASH_ATTN. FLASHINFER's kernels JIT-compile via
+             ;; nvcc at the first real generation request (not at
+             ;; startup), and every completion crashed with
+             ;; "EngineDeadError" / "ninja: build stopped". Confirmed live
+             ;; this wasn't a gcc-version-ceiling problem as first assumed
+             ;; (nvcc 12.8 documents gcc<=14; pinning c-compiler-package to
+             ;; gcc-toolchain-14 got past the "unsupported GNU version"
+             ;; check) -- the *same* crash persisted at both
+             ;; gcc-toolchain-14 and gcc-toolchain-13 with a different
+             ;; error each time ("the global scope has no fpclassify" in
+             ;; flashinfer's bundled libcu++/CCCL headers), pointing at
+             ;; this old, pip-pinned CCCL bundle being incompatible with
+             ;; this channel's glibc (2.41) rather than with any
+             ;; particular gcc version.
+             ;; --attention-backend TRITON_ATTN forces the other candidate
+             ;; instead, sidestepping FlashInfer (and nvcc) entirely --
+             ;; Triton JIT-compiles through ptxas only, which this
+             ;; container already exercises successfully elsewhere (GDN
+             ;; prefill/decode kernels, Qwen Triton warmup) -- while still
+             ;; getting fp8's KV-cache memory savings. Note this is a CLI
+             ;; flag, not the VLLM_ATTENTION_BACKEND env var of older vLLM
+             ;; releases -- confirmed live that env var is gone from this
+             ;; version's vllm/envs.py entirely and silently did nothing
+             ;; (backend selection in vllm/platforms/cuda.py only reads
+             ;; the --attention-backend/attention_backend config field).
+             ;; --kv-cache-memory: vLLM's own log line at
+             ;; gpu-memory-utilization 0.95 read "Replace
+             ;; gpu_memory_utilization config with
+             ;; --kv-cache-memory=1333544448 (1.24 GiB) to fully utilize
+             ;; gpu memory" -- using that exact suggested value directly
+             ;; instead of the percentage-based calculation, which was
+             ;; leaving some usable memory on the table. Assumes ComfyUI is
+             ;; not concurrently rendering (~386MiB idle otherwise).
+             ;; --kv-offloading-size 16 (GiB): CPU-backed overflow/reuse
+             ;; tier for evicted KV blocks, on top of the GPU pool above --
+             ;; not a way to raise a single request's live context past
+             ;; 27000 (attention still has to run against GPU-resident KV;
+             ;; this only lets an evicted block be paged back in from RAM
+             ;; on a matching-prefix cache hit instead of recomputing the
+             ;; whole prefill). Sized ~8-16x the GPU pool's 1.24GiB fp8
+             ;; footprint -- enough to hold several sub-agents' worth of
+             ;; shared system-prompt/tool-schema prefix plus recent
+             ;; conversation history without immediately overwriting it,
+             ;; while leaving most of this host's ~81GB available RAM
+             ;; (confirmed live via `free -h`) free for colibri and
+             ;; anything else running concurrently. --kv-offloading-backend
+             ;; defaults to "native" (vLLM's own CPU offload, no extra
+             ;; dependency) rather than "lmcache", which isn't in this
+             ;; project's uv.lock.
              ;;
-             ;; max-model-len: Qwen2.5 natively tops out at 32768, but
-             ;; (unlike Mistral-Small) officially supports YaRN rope scaling
-             ;; -- see --hf-overrides in extra-args below. Confirmed live:
-             ;; 131072 (full YaRN factor-4 extension) failed to start --
-             ;; "24.0 GiB KV cache is needed, which is larger than the
-             ;; available KV cache memory (12.41 GiB)... estimated maximum
-             ;; model length is 67776" (this checkpoint's tiny ~9.4GiB
-             ;; weights leave plenty of KV headroom, but not unlimited).
-             ;; Set to 65536 -- a clean value under vLLM's own reported
-             ;; ceiling, still 2x this model's native 32768.
-             (max-model-len 65536)
-             (gpu-memory-utilization 0.95)
-             ;; No explicit --quantization: let vLLM auto-detect the AWQ
-             ;; format from config.json, matching the pattern that avoided a
-             ;; --quantization-vs-checkpoint-format conflict with every
-             ;; other AWQ checkpoint tried in this file.
+             ;; Requires container-extra-shares below -- confirmed live,
+             ;; vLLM's native offload backend mmaps its buffer under
+             ;; /dev/shm, and the container's own private tmpfs there
+             ;; defaults to 64MB, crashing engine-core init with
+             ;; "Insufficient space in /dev/shm: 16366 MiB required, 64 MiB
+             ;; free" every time until the host's real /dev/shm (48GB
+             ;; tmpfs) is shared in instead. Confirmed live once shared:
+             ;; "Created mmap file /dev/shm/vllm_offload_<id>.mmap (17.16
+             ;; GB)" and the engine starts and serves normally (one
+             ;; transient failure was observed on the very first restart
+             ;; after this fix landed, with the identical /dev/shm error;
+             ;; shepherd's respawn retried and succeeded immediately after
+             ;; -- looked like a leftover mmap file from the prior crashed
+             ;; attempt racing the new one, not a recurring problem).
              ;;
-             ;; --enforce-eager: kept from every previous model's config on
-             ;; this VM -- the CUDA-graph-capture OOM risk is about total
-             ;; scratch memory on this VRAM-constrained card, not specific
-             ;; to any one checkpoint.
-             ;;
-             ;; --tool-call-parser hermes: vLLM's documented parser for the
-             ;; Qwen2.5 line's native <tool_call>...</tool_call> format (the
-             ;; qwen3_coder parser used for the earlier Qwen3.8 model is
-             ;; specific to the Qwen3.x generation). No --chat-template
-             ;; override needed -- Qwen2.5-Instruct's own tokenizer_config.json
-             ;; already renders `tools` into the prompt correctly.
-             ;;
-             ;; --hf-overrides rope_scaling: enables YaRN extension from
-             ;; this model's native 32768 context to the 65536 set above.
-             ;; factor 2.0 matches that actual ratio (65536/32768) --
-             ;; YaRN quality depends on the factor matching the real
-             ;; extension used, so this was brought down from an initial
-             ;; 4.0 (originally paired with a 131072 max-model-len that
-             ;; didn't fit in available KV cache memory -- see comment
-             ;; above) rather than left mismatched. Confirmed live: this
-             ;; vLLM version (0.28.0) has no standalone --rope-scaling flag
-             ;; at all ("unrecognized arguments", crash-looped) -- rope
-             ;; scaling is only reachable by forwarding it into the HF
-             ;; config via --hf-overrides.
-             (extra-args (list "--enable-auto-tool-choice"
-                                "--tool-call-parser" "hermes"
-                                "--hf-overrides"
-                                "{\"rope_scaling\": {\"rope_type\": \"yarn\", \"factor\": 2.0, \"original_max_position_embeddings\": 32768}}"
-                                "--enforce-eager"))
+             ;; Confirmed live this doesn't help as directly as hoped for
+             ;; short shared prefixes: this hybrid Gated-DeltaNet/Mamba
+             ;; architecture aligns its prefix-cache block size to the
+             ;; Mamba state page (see gpu_model_runner's "Setting attention
+             ;; block size to 1568 tokens" above), so a shared prefix
+             ;; shorter than ~1568 tokens can never hit the cache at all --
+             ;; tested two back-to-back requests sharing a ~250-token
+             ;; prefix and both "Prefix cache hit rate" and "External
+             ;; prefix cache hit rate" (the offload-tier metric) stayed at
+             ;; 0.0%. A pi-code-harness system-prompt/tool-schema shared
+             ;; across sub-agents needs to clear that ~1568-token floor
+             ;; before this offload tier (or even plain GPU-resident prefix
+             ;; caching) does anything for it.
+             (extra-args (list "--reasoning-parser" "qwen3"
+                                "--enable-auto-tool-choice"
+                                "--tool-call-parser" "qwen3_coder"
+                                "--enforce-eager"
+                                "--kv-cache-dtype" "fp8"
+                                "--attention-backend" "TRITON_ATTN"
+                                "--kv-cache-memory" "1333544448"
+                                "--kv-offloading-size" "16"))
              ;; HF_HUB_DISABLE_XET: confirmed live, reproduced twice in a
              ;; row -- huggingface_hub's Xet fast-transfer path crashes
              ;; partway through downloading this checkpoint with
@@ -760,11 +832,9 @@
              ;; this is a one-time ~21GB download cached under HF_HOME
              ;; afterward, not a per-request cost).
              ;; VLLM_USE_FLASHINFER_SAMPLER=0: confirmed live, FlashInfer's
-             ;; sampling kernels JIT-compile via nvcc at runtime and this
-             ;; container's gcc-toolchain (16.x) is newer than nvcc 12.8's
-             ;; supported-host-compiler ceiling (gcc<=14) -- plus a missing
-             ;; curand.h, since the full CUDA toolkit headers aren't in
-             ;; this container (guix-science-nonfree packages, can't be
+             ;; sampling kernels JIT-compile via nvcc at runtime and hit a
+             ;; missing curand.h since the full CUDA toolkit headers aren't
+             ;; in this container (guix-science-nonfree packages, can't be
              ;; named inside guix shell's base-distribution-only package
              ;; resolution). Falls back to the native PyTorch/Triton
              ;; sampling path instead, which already works.

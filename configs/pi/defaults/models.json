@@ -32,10 +32,10 @@
       },
       "models": [
         {
-          "id": "qwen2.5-14b-awq",
-          "name": "Qwen2.5 14B AWQ (nug, vLLM)",
-          "contextWindow": 65536,
-          "maxTokens": 65536,
+          "id": "qwen3.8-27b-awq",
+          "name": "Qwen3.8 27B AWQ (nug, vLLM)",
+          "contextWindow": 27000,
+          "maxTokens": 27000,
           "input": ["text"]
         }
       ]
