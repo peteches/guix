@@ -45,6 +45,9 @@
   #:export (home-claude-service-type
             home-claude-configuration
             home-claude-mcp-server
+            home-claude-mcp-server-name
+            home-claude-mcp-server-command
+            home-claude-mcp-server-args
             home-claude-mcp-server-env))
 
 ;; TRANSPORT is "stdio" (default) or "http". stdio servers run a local

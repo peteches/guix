@@ -63,6 +63,7 @@
   #:use-module (peteches home modules claude)
   #:use-module (peteches home modules gpg)
   #:use-module (peteches home modules pi)
+  #:use-module ((peteches packages pi-coding-agent) #:select (pi-mcp-adapter))
   #:use-module (peteches packages emacs-anvil)
   #:use-module (peteches packages graphify)
   #:use-module (peteches packages herdr)
@@ -495,7 +496,24 @@ path) to the private half of the peteches automation SSH keypair -- see
 %automation-authorized-key-secret in (peteches systems vm-base). When set,
 it becomes the IdentityFile for any `ssh <user>@localhost', which is how
 HERDR-SPACES reaches the criticalgrind/ygo accounts' own herdr servers."
-  (home-environment
+  (let* ((%all-mcp-servers
+          (append (if with-anvil? (anvil-mcp-servers) '())
+                  (list graphify-mcp-server)
+                  ;; MCP-ENV is baked into each caller-supplied stdio
+                  ;; server's own `-e' flags (see home-claude-mcp-server's
+                  ;; ENV field) rather than left to ambient shell
+                  ;; inheritance -- this account's Claude Code process can
+                  ;; be reattached via herdr/shepherd for weeks without
+                  ;; ever re-sourcing ~/.profile, so a value that only
+                  ;; lived in the shell environment could go stale until
+                  ;; that whole chain was torn down and restarted.
+                  (map (lambda (server)
+                         (home-claude-mcp-server
+                          (inherit server)
+                          (env (append (home-claude-mcp-server-env server)
+                                       mcp-env))))
+                       mcp-servers))))
+    (home-environment
    (packages (append %claude-workstation-base-packages
                      (if with-anvil? (list emacs-no-x emacs-anvil) '())
                      extra-packages))
@@ -590,33 +608,20 @@ HERDR-SPACES reaches the criticalgrind/ygo accounts' own herdr servers."
       (simple-service 'clone-area51-repos
                       home-activation-service-type
                       (repos-activation repos))
-      (service home-pi-service-type
-               (home-pi-configuration
-                (config-directory (repo-directory "configs/pi/defaults"))))
+      ;; Built once and reused for both home-claude-service-type and
+      ;; home-pi-service-type below -- pi-mcp-adapter's mcp.json wants the
+      ;; exact same set of servers this account's Claude Code gets (see
+      ;; MCP-SERVERS' docstring in (peteches home modules pi)), so there is
+      ;; no separate "pi servers" list to keep in sync by hand.
       (service home-claude-service-type
                (home-claude-configuration
                 (config-directory (repo-directory "configs/claude/defaults"))
-                (mcp-servers (append (if with-anvil? (anvil-mcp-servers) '())
-                                     (list graphify-mcp-server)
-                                     ;; MCP-ENV is baked into each caller-
-                                     ;; supplied stdio server's own `-e'
-                                     ;; flags (see home-claude-mcp-server's
-                                     ;; ENV field) rather than left to
-                                     ;; ambient shell inheritance -- this
-                                     ;; account's Claude Code process can be
-                                     ;; reattached via herdr/shepherd for
-                                     ;; weeks without ever re-sourcing
-                                     ;; ~/.profile, so a value that only
-                                     ;; lived in the shell environment could
-                                     ;; go stale until that whole chain was
-                                     ;; torn down and restarted.
-                                     (map (lambda (server)
-                                            (home-claude-mcp-server
-                                             (inherit server)
-                                             (env (append
-                                                   (home-claude-mcp-server-env server)
-                                                   mcp-env))))
-                                          mcp-servers))))))
+                (mcp-servers %all-mcp-servers)))
+      (service home-pi-service-type
+               (home-pi-configuration
+                (config-directory (repo-directory "configs/pi/defaults"))
+                (extensions (list pi-mcp-adapter))
+                (mcp-servers %all-mcp-servers))))
      (if (null? extra-claude-files)
          '()
          (list (simple-service 'claude-extra-files
@@ -629,4 +634,4 @@ HERDR-SPACES reaches the criticalgrind/ygo accounts' own herdr servers."
      (if with-herdr? (herdr-services) '())
      (if (and with-herdr? (not (null? herdr-spaces)))
          (herdr-spaces-services herdr-spaces)
-         '())))))
+         '()))))))

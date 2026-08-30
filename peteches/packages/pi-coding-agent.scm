@@ -1681,3 +1681,828 @@ read/bash/edit/write tools, session management, and pluggable model
 providers (OpenAI, Anthropic, and any OpenAI-compatible endpoint).  It
 runs as an interactive terminal UI or non-interactively for scripting.")
     (license license:expat)))
+
+;; ------------------------------------------------------------------
+;; pi-mcp-adapter (https://github.com/nicobailon/pi-mcp-adapter) -- the
+;; de facto standard MCP client extension for pi (732K npm downloads/mo
+;; vs. the next-closest alternative's 11K, and itself a dependency of
+;; pi-mcp-router).  Exposes MCP servers to pi through one proxy tool
+;; instead of dumping every server's full tool schema into context.
+;;
+;; Its own package.json ships no compiled dist/ for the extension entry
+;; point ("exports"."." -> "./index.ts") -- pi's own extension loader
+;; (dist/core/extensions/loader.js) transpiles extensions with a bundled
+;; jiti at load time, which is why pi-coding-agent already carries
+;; node-jiti-2.7.0 as one of its own inputs above.  Discovery walks
+;; <agent-dir>/extensions/<name>/ for a package.json with a "pi.extensions"
+;; field (dist/core/extensions/loader.js:resolveExtensionEntries) -- see
+;; (peteches home modules pi)'s EXTENSIONS field, which symlinks this
+;; package's node_modules/pi-mcp-adapter output there.
+;;
+;; Two of its declared `dependencies' are dropped from the closure below,
+;; matching the @mariozechner/clipboard precedent in pi-coding-agent
+;; itself: both are `require()'d lazily inside a function body (not a
+;; static top-level import, which ESM would need resolvable at load time
+;; regardless of whether the code path ever runs), and both already carry
+;; their own try/catch fallback-error message for exactly this "package
+;; missing" case in the adapter's own source (mcp-auth.ts, mcp-bearer-
+;; store.ts):
+;;   - @napi-rs/keyring: Rust NAPI native addon (prebuilt per-OS/arch
+;;     binaries) for OS-keyring-backed OAuth token storage. Dropped: MCP
+;;     connections work fine without it; only OAuth bearer tokens fail to
+;;     persist in the OS keyring (no OAuth-requiring server is configured
+;;     for any account here -- see EXTENSIONS/MCP-SERVERS below).
+;;   - recheck: a ReDoS regex-safety checker shipping prebuilt per-
+;;     platform native binaries (or a JAR) as optional deps. Dropped:
+;;     used only for validating regex patterns in one advisory code path
+;;     (proxy-modes.ts), not for MCP connectivity itself.
+(define-public node-jose-6.2.10
+  (package
+    (name "node-jose")
+    (version "6.2.10")
+    (source
+     (origin
+       (method url-fetch)
+       (uri "https://registry.npmjs.org/jose/-/jose-6.2.10.tgz")
+       (sha256
+        (base32 "0dm12anhs1vw4h4k5crgirb0l72409nrbv6p9qcff8hias0il23a"))))
+    (build-system node-build-system)
+    (arguments (list #:tests? #f
+                      #:phases #~(modify-phases %standard-phases
+                                   (delete 'build))))
+    (home-page "https://github.com/panva/jose#readme")
+    (synopsis "JWA, JWS, JWE, JWT, JWK for Node.js and other runtimes")
+    (description "JWA, JWS, JWE, JWT, JWK for Node.js and other runtimes")
+    (license license:expat)))
+
+(define-public node-eventsource-parser-4.1.0
+  (package
+    (name "node-eventsource-parser")
+    (version "4.1.0")
+    (source
+     (origin
+       (method url-fetch)
+       (uri
+        "https://registry.npmjs.org/eventsource-parser/-/eventsource-parser-4.1.0.tgz")
+       (sha256
+        (base32 "07r4nz15lsxs2g5vfmsb0m7spssl1fpcdavwvb1mffq6bj635klm"))))
+    (build-system node-build-system)
+    (arguments
+     (list
+      #:tests? #f
+      #:phases
+      #~(modify-phases %standard-phases
+          (delete 'build)
+          (add-after 'patch-dependencies 'delete-dev-dependencies
+            (lambda _
+              (modify-json (delete-dependencies '("knip" "oxfmt"
+                                                  "mitata"
+                                                  "oxlint"
+                                                  "terser"
+                                                  "vitest"
+                                                  "esbuild"
+                                                  "typescript"
+                                                  "@types/node"
+                                                  "@changesets/cli"
+                                                  "eventsource-encoder"
+                                                  "@changesets/changelog-github"))))))))
+    (home-page "https://github.com/rexxars/eventsource-parser#readme")
+    (synopsis "Streaming, source-agnostic EventSource/eventsource parser")
+    (description "Streaming, source-agnostic EventSource/eventsource parser")
+    (license license:expat)))
+
+(define-public node-eventsource-5.1.1
+  (package
+    (name "node-eventsource")
+    (version "5.1.1")
+    (source
+     (origin
+       (method url-fetch)
+       (uri "https://registry.npmjs.org/eventsource/-/eventsource-5.1.1.tgz")
+       (sha256
+        (base32 "1a1dcm56aran5s95f01fbhlaxqwhj7zr1z66qhwyx32kmpy28k5l"))))
+    (build-system node-build-system)
+    (arguments
+     (list
+      #:tests? #f
+      #:phases
+      #~(modify-phases %standard-phases
+          (delete 'build)
+          ;; Upstream's `prepare' script runs `npm run build', whose
+          ;; `prebuild' step shells out to `scripts/clean.ts' -- a dev-only
+          ;; file the published tarball doesn't ship (only dist/ does).
+          ;; Harmless when this package builds standalone (npm skips
+          ;; `prepare' for a registry-resolved dependency reference), but a
+          ;; consumer using node-build-system's default 'install phase
+          ;; (which passes `--install-links') re-triggers it here and
+          ;; fails on the missing file. Same fix as node-minimatch-10.2.6
+          ;; and friends above.
+          (add-before 'repack 'disable-lifecycle-scripts
+            (lambda _
+              (modify-json (delete-fields '("scripts.prepare"
+                                            "scripts.postinstall")
+                                          #:strict? #f))))
+          (add-after 'patch-dependencies 'delete-dev-dependencies
+            (lambda _
+              (modify-json (delete-dependencies '("oxfmt" "oxlint"
+                                                  "vitest"
+                                                  "happy-dom"
+                                                  "playwright"
+                                                  "typescript"
+                                                  "@types/node"
+                                                  "@changesets/cli"
+                                                  "@vitest/browser"
+                                                  "@tsconfig/strictest"
+                                                  "eventsource-encoder"
+                                                  "@vitest/browser-playwright"
+                                                  "@changesets/changelog-github"
+                                                  "@cloudflare/vitest-pool-workers"))))))))
+    (inputs (list node-eventsource-parser-4.1.0))
+    (home-page "https://github.com/EventSource/eventsource#readme")
+    (synopsis "W3C-compliant EventSource client for Node.js")
+    (description "W3C-compliant EventSource client for Node.js")
+    (license license:expat)))
+
+(define-public node-pkce-challenge-5.0.1
+  (package
+    (name "node-pkce-challenge")
+    (version "5.0.1")
+    (source
+     (origin
+       (method url-fetch)
+       (uri
+        "https://registry.npmjs.org/pkce-challenge/-/pkce-challenge-5.0.1.tgz")
+       (sha256
+        (base32 "0w7a7gzxrn5widngl5w358kfi68njp121ig77p8n4mf0bfpbpz6i"))))
+    (build-system node-build-system)
+    (arguments
+     (list
+      #:tests? #f
+      #:phases
+      #~(modify-phases %standard-phases
+          (delete 'build)
+          (add-after 'patch-dependencies 'delete-dev-dependencies
+            (lambda _
+              (modify-json (delete-dependencies '("jest" "diverge"
+                                                  "esbuild"
+                                                  "typescript"
+                                                  "@types/jest"
+                                                  "@types/node"))))))))
+    (home-page "https://github.com/crouchcd/pkce-challenge#readme")
+    (synopsis "RFC 7636 PKCE code verifier and challenge pair generator")
+    (description "RFC 7636 PKCE code verifier and challenge pair generator")
+    (license license:expat)))
+
+(define-public node-standard-schema-spec-1.1.0
+  (package
+    (name "node-standard-schema-spec")
+    (version "1.1.0")
+    (source
+     (origin
+       (method url-fetch)
+       (uri
+        "https://registry.npmjs.org/@standard-schema/spec/-/spec-1.1.0.tgz")
+       (sha256
+        (base32 "1byfgh3b6ngdj4vba2jw48bk9wl6gjqc7y2hshcba2i8prl75jx7"))))
+    (build-system node-build-system)
+    (arguments
+     (list
+      #:tests? #f
+      #:phases
+      #~(modify-phases %standard-phases
+          (delete 'build)
+          (add-after 'patch-dependencies 'delete-dev-dependencies
+            (lambda _
+              (modify-json (delete-dependencies '("tsup" "typescript"))))))))
+    (home-page "https://github.com/standard-schema/standard-schema#readme")
+    (synopsis "Standard interface for TypeScript validation libraries")
+    (description "Standard interface for TypeScript validation libraries")
+    (license license:expat)))
+
+(define-public node-modelcontextprotocol-core-2.0.0
+  (package
+    (name "node-modelcontextprotocol-core")
+    (version "2.0.0")
+    (source
+     (origin
+       (method url-fetch)
+       (uri
+        "https://registry.npmjs.org/@modelcontextprotocol/core/-/core-2.0.0.tgz")
+       (sha256
+        (base32 "1rh5mk4var6mvwsnmqifxzyysr7ld3x51fxyh51x7jhs4y6knhz9"))))
+    (build-system node-build-system)
+    (arguments
+     (list
+      #:tests? #f
+      #:phases
+      #~(modify-phases %standard-phases
+          (delete 'build)
+          (add-after 'patch-dependencies 'delete-dev-dependencies
+            (lambda _
+              (modify-json (delete-dependencies '("eslint" "tsdown"
+                                                  "vitest"
+                                                  "prettier"
+                                                  "@eslint/js"
+                                                  "typescript"
+                                                  "eslint-plugin-n"
+                                                  "typescript-eslint"
+                                                  "eslint-config-prettier"
+                                                  "@typescript/native-preview"
+                                                  "@modelcontextprotocol/tsconfig"
+                                                  "@modelcontextprotocol/eslint-config"
+                                                  "@modelcontextprotocol/vitest-config"))))))))
+    (inputs (list node-zod-4.4.3))
+    (home-page "https://github.com/modelcontextprotocol/typescript-sdk#readme")
+    (synopsis "Core primitives shared by the MCP TypeScript SDK packages")
+    (description "Core primitives shared by the MCP TypeScript SDK packages")
+    (license license:expat)))
+
+(define-public node-modelcontextprotocol-client-2.0.0
+  (package
+    (name "node-modelcontextprotocol-client")
+    (version "2.0.0")
+    (source
+     (origin
+       (method url-fetch)
+       (uri
+        "https://registry.npmjs.org/@modelcontextprotocol/client/-/client-2.0.0.tgz")
+       (sha256
+        (base32 "0cm7pwkcqkdba9d2lccgc1vlwd15xa0j5as544k6x85l9410niyb"))))
+    (build-system node-build-system)
+    (arguments
+     (list
+      #:tests? #f
+      #:phases
+      #~(modify-phases %standard-phases
+          (delete 'build)
+          (add-after 'patch-dependencies 'delete-dev-dependencies
+            (lambda _
+              (modify-json (delete-dependencies '("ajv" "eslint"
+                                                  "tsdown"
+                                                  "vitest"
+                                                  "prettier"
+                                                  "@eslint/js"
+                                                  "typescript"
+                                                  "ajv-formats"
+                                                  "eslint-plugin-n"
+                                                  "typescript-eslint"
+                                                  "@types/cross-spawn"
+                                                  "@types/eventsource"
+                                                  "@types/content-type"
+                                                  "@cfworker/json-schema"
+                                                  "eslint-config-prettier"
+                                                  "@typescript/native-preview"
+                                                  "@modelcontextprotocol/tsconfig"
+                                                  "@modelcontextprotocol/test-helpers"
+                                                  "@modelcontextprotocol/core-internal"
+                                                  "@modelcontextprotocol/eslint-config"
+                                                  "@modelcontextprotocol/vitest-config"))))))))
+    (inputs (list node-modelcontextprotocol-core-2.0.0
+                  node-zod-4.4.3
+                  node-jose-6.2.10
+                  node-cross-spawn-7.0.6
+                  node-eventsource-5.1.1
+                  node-pkce-challenge-5.0.1
+                  node-eventsource-parser-4.1.0))
+    (home-page "https://github.com/modelcontextprotocol/typescript-sdk#readme")
+    (synopsis "MCP client transports (stdio, SSE, streamable HTTP)")
+    (description "MCP client transports (stdio, SSE, streamable HTTP)")
+    (license license:expat)))
+
+(define-public node-modelcontextprotocol-ext-apps-1.7.5
+  (package
+    (name "node-modelcontextprotocol-ext-apps")
+    (version "1.7.5")
+    (source
+     (origin
+       (method url-fetch)
+       (uri
+        "https://registry.npmjs.org/@modelcontextprotocol/ext-apps/-/ext-apps-1.7.5.tgz")
+       (sha256
+        (base32 "1dhkd3mmvjxkg75j8gq8s55hn2f91w4iw92x43s520pb6rfibi0w"))))
+    (build-system node-build-system)
+    (arguments
+     (list
+      #:tests? #f
+      #:phases
+      #~(modify-phases %standard-phases
+          (delete 'build)
+          ;; Upstream's `prepare' script runs `npm run build && husky' --
+          ;; a full schema-generation/bundling pipeline (tsx, bun, husky)
+          ;; that isn't available in this offline sandbox and isn't
+          ;; needed anyway: the published tarball already ships built
+          ;; dist/. Harmless standalone; a consumer's own top-level
+          ;; install (e.g. pi-mcp-adapter's) re-triggers it as a nested
+          ;; dependency and fails on the missing `tsx' binary. Same fix
+          ;; as node-eventsource-5.1.1 above.
+          (add-before 'repack 'disable-lifecycle-scripts
+            (lambda _
+              (modify-json (delete-fields '("scripts.prepare"
+                                            "scripts.postinstall")
+                                          #:strict? #f))))
+          (add-after 'patch-dependencies 'delete-dev-dependencies
+            (lambda _
+              (modify-json (delete-dependencies '("bun" "tsx"
+                                                  "zod"
+                                                  "cors"
+                                                  "husky"
+                                                  "react"
+                                                  "sharp"
+                                                  "cheerio"
+                                                  "esbuild"
+                                                  "express"
+                                                  "nodemon"
+                                                  "typedoc"
+                                                  "prettier"
+                                                  "cross-env"
+                                                  "react-dom"
+                                                  "ts-to-zod"
+                                                  "@types/bun"
+                                                  "playwright"
+                                                  "typescript"
+                                                  "@types/node"
+                                                  "@types/react"
+                                                  "caniuse-lite"
+                                                  "concurrently"
+                                                  "playwright-core"
+                                                  "@playwright/test"
+                                                  "@types/react-dom"
+                                                  "electron-to-chromium"
+                                                  "typedoc-github-theme"
+                                                  "@modelcontextprotocol/sdk"
+                                                  "@boneskull/typedoc-plugin-mermaid"))))))))
+    (inputs (list node-standard-schema-spec-1.1.0))
+    (home-page "https://github.com/modelcontextprotocol/ext-apps#readme")
+    (synopsis "MCP UI/App extension types and browser app-bridge runtime")
+    (description "MCP UI/App extension types and browser app-bridge runtime")
+    (license license:expat)))
+
+(define-public node-ajv-formats-3.0.1
+  (package
+    (name "node-ajv-formats")
+    (version "3.0.1")
+    (source
+     (origin
+       (method url-fetch)
+       (uri "https://registry.npmjs.org/ajv-formats/-/ajv-formats-3.0.1.tgz")
+       (sha256
+        (base32 "1idca2hn65drqp1bc4v696bqvnv3x08nj1lrj791yf37sc7rimpl"))))
+    (build-system node-build-system)
+    (arguments
+     (list
+      #:tests? #f
+      #:phases
+      #~(modify-phases %standard-phases
+          (delete 'build)
+          (add-after 'patch-dependencies 'delete-dev-dependencies
+            (lambda _
+              ;; NOTE: "ajv" is deliberately NOT in this list. It appears
+              ;; under devDependencies (for ajv-formats' own test suite)
+              ;; but is ALSO a real `dependencies' entry -- deleting it
+              ;; here would strip that too (delete-dependencies matches by
+              ;; name across every dependency object, not just dev), which
+              ;; then means the final `npm install --global' step never
+              ;; even tries to resolve `ajv' from NODE_PATH's
+              ;; node-ajv-8.18.0, leaving a broken `require("ajv")' at
+              ;; runtime for anything importing ajv-formats.
+              (modify-json (delete-dependencies '("jest"
+                                                  "husky"
+                                                  "eslint"
+                                                  "ts-jest"
+                                                  "prettier"
+                                                  "typescript"
+                                                  "@types/jest"
+                                                  "@types/node"
+                                                  "lint-staged"
+                                                  "json-schema-test"
+                                                  "@ajv-validator/config"
+                                                  "eslint-config-prettier"
+                                                  "@typescript-eslint/parser"
+                                                  "@typescript-eslint/eslint-plugin"))))))))
+    (inputs (list node-ajv-8.18.0))
+    (home-page "https://github.com/ajv-validator/ajv-formats#readme")
+    (synopsis "Format validators for Ajv JSON Schema Validator")
+    (description "Format validators for Ajv JSON Schema Validator")
+    (license license:expat)))
+
+(define-public node-define-lazy-prop-3.0.0
+  (package
+    (name "node-define-lazy-prop")
+    (version "3.0.0")
+    (source
+     (origin
+       (method url-fetch)
+       (uri
+        "https://registry.npmjs.org/define-lazy-prop/-/define-lazy-prop-3.0.0.tgz")
+       (sha256
+        (base32 "1da99k4vnnn9bxpgjniai8248bcf4w9cwyn7p3wlzii9l9kzxsdv"))))
+    (build-system node-build-system)
+    (arguments
+     (list
+      #:tests? #f
+      #:phases
+      #~(modify-phases %standard-phases
+          (delete 'build)
+          (add-after 'patch-dependencies 'delete-dev-dependencies
+            (lambda _
+              (modify-json (delete-dependencies '("xo" "ava" "tsd"))))))))
+    (home-page "https://github.com/sindresorhus/define-lazy-prop#readme")
+    (synopsis "Define a lazily evaluated property on an object")
+    (description "Define a lazily evaluated property on an object")
+    (license license:expat)))
+
+(define-public node-is-docker-3.0.0
+  (package
+    (name "node-is-docker")
+    (version "3.0.0")
+    (source
+     (origin
+       (method url-fetch)
+       (uri "https://registry.npmjs.org/is-docker/-/is-docker-3.0.0.tgz")
+       (sha256
+        (base32 "1vnxw8y4p31nx66rbgxhd40jc5zx8akmcf7fpl3gy7n84l5hn8qs"))))
+    (build-system node-build-system)
+    (arguments
+     (list
+      #:tests? #f
+      #:phases
+      #~(modify-phases %standard-phases
+          (delete 'build)
+          (add-after 'patch-dependencies 'delete-dev-dependencies
+            (lambda _
+              (modify-json (delete-dependencies '("xo" "ava" "tsd" "sinon"))))))))
+    (home-page "https://github.com/sindresorhus/is-docker#readme")
+    (synopsis "Check if the process is running inside a Docker container")
+    (description "Check if the process is running inside a Docker container")
+    (license license:expat)))
+
+(define-public node-is-inside-container-1.0.0
+  (package
+    (name "node-is-inside-container")
+    (version "1.0.0")
+    (source
+     (origin
+       (method url-fetch)
+       (uri
+        "https://registry.npmjs.org/is-inside-container/-/is-inside-container-1.0.0.tgz")
+       (sha256
+        (base32 "0yz0fbbkypqsx5d5cls1ik8928zkqhwl2kcp4iv7bi2g8fw9bpnv"))))
+    (build-system node-build-system)
+    (arguments
+     (list
+      #:tests? #f
+      #:phases
+      #~(modify-phases %standard-phases
+          (delete 'build)
+          (add-after 'patch-dependencies 'delete-dev-dependencies
+            (lambda _
+              (modify-json (delete-dependencies '("xo" "ava" "tsd" "esmock"))))))))
+    (inputs (list node-is-docker-3.0.0))
+    (home-page "https://github.com/sindresorhus/is-inside-container#readme")
+    (synopsis "Check if the process is running inside a container")
+    (description "Check if the process is running inside a container")
+    (license license:expat)))
+
+(define-public node-is-wsl-3.1.0
+  (package
+    (name "node-is-wsl")
+    (version "3.1.0")
+    (source
+     (origin
+       (method url-fetch)
+       (uri "https://registry.npmjs.org/is-wsl/-/is-wsl-3.1.0.tgz")
+       (sha256
+        (base32 "1ch2zg7f3dqv2c142lkbygj85j9xiq336kcm509l26k4pikswg6w"))))
+    (build-system node-build-system)
+    (arguments
+     (list
+      #:tests? #f
+      #:phases
+      #~(modify-phases %standard-phases
+          (delete 'build)
+          (add-after 'patch-dependencies 'delete-dev-dependencies
+            (lambda _
+              (modify-json (delete-dependencies '("xo" "ava" "tsd" "esmock"))))))))
+    (inputs (list node-is-inside-container-1.0.0))
+    (home-page "https://github.com/sindresorhus/is-wsl#readme")
+    (synopsis "Check if the process is running inside Windows Subsystem for Linux")
+    (description "Check if the process is running inside Windows Subsystem for Linux")
+    (license license:expat)))
+
+(define-public node-wsl-utils-0.1.0
+  (package
+    (name "node-wsl-utils")
+    (version "0.1.0")
+    (source
+     (origin
+       (method url-fetch)
+       (uri "https://registry.npmjs.org/wsl-utils/-/wsl-utils-0.1.0.tgz")
+       (sha256
+        (base32 "1m4dv580c981pkwlb01vsg4j7gzwswc2n8vriljaa0nmp6gbdjyj"))))
+    (build-system node-build-system)
+    (arguments
+     (list
+      #:tests? #f
+      #:phases
+      #~(modify-phases %standard-phases
+          (delete 'build)
+          (add-after 'patch-dependencies 'delete-dev-dependencies
+            (lambda _
+              (modify-json (delete-dependencies '("xo" "ava" "typescript"))))))))
+    (inputs (list node-is-wsl-3.1.0))
+    (home-page "https://github.com/sindresorhus/wsl-utils#readme")
+    (synopsis "Useful utilities for WSL (Windows Subsystem for Linux)")
+    (description "Useful utilities for WSL (Windows Subsystem for Linux)")
+    (license license:expat)))
+
+(define-public node-run-applescript-7.0.0
+  (package
+    (name "node-run-applescript")
+    (version "7.0.0")
+    (source
+     (origin
+       (method url-fetch)
+       (uri
+        "https://registry.npmjs.org/run-applescript/-/run-applescript-7.0.0.tgz")
+       (sha256
+        (base32 "1sbmpymakf3npd0psjg382m3l30g184p2jqx14lkad7ciypbs5k7"))))
+    (build-system node-build-system)
+    (arguments
+     (list
+      #:tests? #f
+      #:phases
+      #~(modify-phases %standard-phases
+          (delete 'build)
+          (add-after 'patch-dependencies 'delete-dev-dependencies
+            (lambda _
+              (modify-json (delete-dependencies '("xo" "ava" "tsd"))))))))
+    (home-page "https://github.com/sindresorhus/run-applescript#readme")
+    (synopsis "Run AppleScript (macOS only; unused on Linux)")
+    (description
+     "Run AppleScript.  Only ever reached on macOS by @code{bundle-name}'s
+platform branch; installed here purely because it is a static
+`dependencies' entry, not because anything on Linux calls it.")
+    (license license:expat)))
+
+(define-public node-bundle-name-4.1.0
+  (package
+    (name "node-bundle-name")
+    (version "4.1.0")
+    (source
+     (origin
+       (method url-fetch)
+       (uri "https://registry.npmjs.org/bundle-name/-/bundle-name-4.1.0.tgz")
+       (sha256
+        (base32 "0489x4n9f6z8v4qpycgakqp30j58xsgi69lrl96bw7698119vr1m"))))
+    (build-system node-build-system)
+    (arguments
+     (list
+      #:tests? #f
+      #:phases
+      #~(modify-phases %standard-phases
+          (delete 'build)
+          (add-after 'patch-dependencies 'delete-dev-dependencies
+            (lambda _
+              (modify-json (delete-dependencies '("xo" "ava"))))))))
+    (inputs (list node-run-applescript-7.0.0))
+    (home-page "https://github.com/sindresorhus/bundle-name#readme")
+    (synopsis "Get the bundle name of an application")
+    (description "Get the bundle name of an application")
+    (license license:expat)))
+
+(define-public node-default-browser-id-5.0.0
+  (package
+    (name "node-default-browser-id")
+    (version "5.0.0")
+    (source
+     (origin
+       (method url-fetch)
+       (uri
+        "https://registry.npmjs.org/default-browser-id/-/default-browser-id-5.0.0.tgz")
+       (sha256
+        (base32 "0kpdxc9s6z6bsda3j77njysr6iq8aamml4hm80gngl7gx6d55i2z"))))
+    (build-system node-build-system)
+    (arguments
+     (list
+      #:tests? #f
+      #:phases
+      #~(modify-phases %standard-phases
+          (delete 'build)
+          (add-after 'patch-dependencies 'delete-dev-dependencies
+            (lambda _
+              (modify-json (delete-dependencies '("xo" "ava"))))))))
+    (home-page "https://github.com/sindresorhus/default-browser-id#readme")
+    (synopsis "Get the bundle identifier of the default browser (macOS only)")
+    (description "Get the bundle identifier of the default browser (macOS only)")
+    (license license:expat)))
+
+(define-public node-default-browser-5.5.1
+  (package
+    (name "node-default-browser")
+    (version "5.5.1")
+    (source
+     (origin
+       (method url-fetch)
+       (uri
+        "https://registry.npmjs.org/default-browser/-/default-browser-5.5.1.tgz")
+       (sha256
+        (base32 "09myy4lzx9mr19yr5vl3c5kazvmahpnz3mnxf2l4ddv5a0c9f692"))))
+    (build-system node-build-system)
+    (arguments
+     (list
+      #:tests? #f
+      #:phases
+      #~(modify-phases %standard-phases
+          (delete 'build)
+          (add-after 'patch-dependencies 'delete-dev-dependencies
+            (lambda _
+              (modify-json (delete-dependencies '("xo" "ava" "tsd"))))))))
+    (inputs (list node-bundle-name-4.1.0 node-default-browser-id-5.0.0))
+    (home-page "https://github.com/sindresorhus/default-browser#readme")
+    (synopsis "Get the default browser")
+    (description "Get the default browser")
+    (license license:expat)))
+
+(define-public node-open-10.2.0
+  (package
+    (name "node-open")
+    (version "10.2.0")
+    (source
+     (origin
+       (method url-fetch)
+       (uri "https://registry.npmjs.org/open/-/open-10.2.0.tgz")
+       (sha256
+        (base32 "1savhag7kknqskrsmbqhsrzvxlr5x341rvg0r2jq49l0f490vdmm"))))
+    (build-system node-build-system)
+    (arguments
+     (list
+      #:tests? #f
+      #:phases
+      #~(modify-phases %standard-phases
+          (delete 'build)
+          (add-after 'patch-dependencies 'delete-dev-dependencies
+            (lambda _
+              (modify-json (delete-dependencies '("xo" "ava" "tsd" "@types/node"))))))))
+    (inputs (list node-wsl-utils-0.1.0
+                  node-default-browser-5.5.1
+                  node-define-lazy-prop-3.0.0
+                  node-is-inside-container-1.0.0))
+    (home-page "https://github.com/sindresorhus/open#readme")
+    (synopsis "Open a file, URL, or executable with the user's preferred app")
+    (description "Open a file, URL, or executable with the user's preferred app")
+    (license license:expat)))
+
+(define-public node-smol-toml-1.8.0
+  (package
+    (name "node-smol-toml")
+    (version "1.8.0")
+    (source
+     (origin
+       (method url-fetch)
+       (uri "https://registry.npmjs.org/smol-toml/-/smol-toml-1.8.0.tgz")
+       (sha256
+        (base32 "14kqsc27p0zjmqf37mfjwks0xxmaxggjw3722gy7gdydj6z9bj8z"))))
+    (build-system node-build-system)
+    (arguments
+     (list
+      #:tests? #f
+      #:phases
+      #~(modify-phases %standard-phases
+          (delete 'build)
+          ;; Upstream's package.json declares a hard `devEngines.
+          ;; packageManager' requirement (pnpm >=11.21.0, onFail: "error")
+          ;; that makes npm itself refuse to run *any* command against
+          ;; this package -- unrelated to scripts/deps, so
+          ;; --ignore-scripts doesn't help. Strip the whole field; it's a
+          ;; contributor-workflow guard, not something this package needs
+          ;; at runtime.
+          (add-after 'patch-dependencies 'disable-dev-engines-check
+            (lambda _
+              (modify-json (delete-fields '("devEngines") #:strict? #f))))
+          (add-after 'patch-dependencies 'delete-dev-dependencies
+            (lambda _
+              (modify-json (delete-dependencies '("vite" "mitata"
+                                                  "vitest"
+                                                  "rolldown"
+                                                  "typescript"
+                                                  "@types/node"
+                                                  "@mitata/counters"
+                                                  "@tsconfig/node-ts"
+                                                  "pin-github-action"
+                                                  "@tsconfig/node-lts"
+                                                  "@tsconfig/strictest"))))))))
+    (home-page "https://github.com/squirrelchat/smol-toml#readme")
+    (synopsis "Fast, small, and spec-compliant TOML parser/serializer")
+    (description "Fast, small, and spec-compliant TOML parser/serializer")
+    (license license:bsd-3)))
+
+(define-public node-strip-json-comments-5.0.3
+  (package
+    (name "node-strip-json-comments")
+    (version "5.0.3")
+    (source
+     (origin
+       (method url-fetch)
+       (uri
+        "https://registry.npmjs.org/strip-json-comments/-/strip-json-comments-5.0.3.tgz")
+       (sha256
+        (base32 "0fnfk264qwb1wxhjmxxq59kz811lplz8bj74y8k60nqa0spbhhjr"))))
+    (build-system node-build-system)
+    (arguments
+     (list
+      #:tests? #f
+      #:phases
+      #~(modify-phases %standard-phases
+          (delete 'build)
+          (add-after 'patch-dependencies 'delete-dev-dependencies
+            (lambda _
+              (modify-json (delete-dependencies '("xo" "ava" "tsd" "matcha"))))))))
+    (home-page "https://github.com/sindresorhus/strip-json-comments#readme")
+    (synopsis "Strip comments from JSON (ESM)")
+    (description "Strip comments from JSON (ESM)")
+    (license license:expat)))
+
+(define-public pi-mcp-adapter
+  (package
+    (name "pi-mcp-adapter")
+    (version "2.31.0")
+    (source
+     (origin
+       (method url-fetch)
+       (uri
+        "https://registry.npmjs.org/pi-mcp-adapter/-/pi-mcp-adapter-2.31.0.tgz")
+       (sha256
+        (base32 "0vcg5lh2fgpwbrc1qaij2sv7n0r1zg83i86lbp6irczv3gzp80sd"))))
+    (build-system node-build-system)
+    (arguments
+     (list
+      #:tests? #f
+      #:phases
+      #~(modify-phases %standard-phases
+          (delete 'build)
+          (add-after 'patch-dependencies 'delete-dev-dependencies
+            (lambda _
+              (modify-json (delete-dependencies
+                            '("tsx" "vitest" "typebox"
+                              "@types/bun" "typescript" "@types/node"
+                              "@types/open" "@types/cross-spawn"
+                              "@earendil-works/pi-ai"
+                              "@earendil-works/pi-tui"
+                              "@earendil-works/pi-coding-agent"
+                              "@modelcontextprotocol/conformance"
+                              ;; See the module comment above this
+                              ;; package for why these two (regular
+                              ;; `dependencies', not dev) are dropped.
+                              "@napi-rs/keyring" "recheck")))))
+          ;; Same npm/store-symlink dance as pi-coding-agent above --
+          ;; see its 'configure/'install phases for the full rationale.
+          (replace 'configure
+            (lambda* (#:key inputs #:allow-other-keys)
+              (invoke (string-append (assoc-ref inputs "node") "/bin/npm")
+                      "--offline" "--ignore-scripts" "--no-bin-links"
+                      "--no-audit" "install")
+              (for-each (lambda (f)
+                          (unless (string-prefix? "/" (readlink f))
+                            (let ((target (canonicalize-path f)))
+                              (delete-file f)
+                              (symlink target f))))
+                        (find-files "node_modules"
+                                    (lambda (f s)
+                                      (eq? 'symlink (stat:type s)))))))
+          (replace 'install
+            (lambda* (#:key outputs inputs #:allow-other-keys)
+              (invoke (string-append (assoc-ref inputs "node") "/bin/npm")
+                      "--prefix" (assoc-ref outputs "out")
+                      "--global" "--offline" "--loglevel" "info"
+                      "--production" "--no-bin-links"
+                      "install" "../package.tgz")
+              (let ((out (assoc-ref outputs "out")))
+                (for-each (lambda (f)
+                            (unless (string-prefix? "/" (readlink f))
+                              (let ((target (canonicalize-path f)))
+                                (delete-file f)
+                                (symlink target f))))
+                          (find-files out
+                                      (lambda (f s)
+                                        (eq? 'symlink (stat:type s)))))))))))
+    (inputs (list node-ajv-8.18.0
+                  node-ajv-formats-3.0.1
+                  node-cross-spawn-7.0.6
+                  node-modelcontextprotocol-client-2.0.0
+                  node-modelcontextprotocol-core-2.0.0
+                  node-modelcontextprotocol-ext-apps-1.7.5
+                  node-open-10.2.0
+                  node-smol-toml-1.8.0
+                  node-strip-json-comments-5.0.3
+                  node-zod-4.4.3))
+    (home-page "https://github.com/nicobailon/pi-mcp-adapter#readme")
+    (synopsis "MCP client extension for the pi coding-agent CLI")
+    (description
+     "Adds Model Context Protocol client support to @code{pi} as a single
+low-token proxy tool (@code{mcp({search, tool, args})}) instead of
+dumping every connected MCP server's full tool schema into context.
+Servers are lazy by default: they only connect once a tool from that
+server is actually called.  Reads the same @file{.mcp.json}/
+@file{~/.config/mcp/mcp.json} files most other MCP-capable hosts use,
+plus @file{<pi agent dir>/mcp.json} for pi-specific overrides.")
+    (license license:expat)))
