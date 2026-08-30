@@ -119,16 +119,17 @@
   ;; Extra Guix packages declared inside the FHS container alongside the
   ;; baseline (coreutils, bash, c-compiler-package, linux-libre-headers,
   ;; nss-certs, python-package, uv-package). MUST come from the base Guix
-  ;; distribution ((gnu packages ...)) -- these are resolved by name at
-  ;; container-runtime against whatever plain guix binary this system was
-  ;; built with, which knows nothing about externally-pulled channels
-  ;; (guix-science-nonfree, nonguix, ...); such a package resolves fine at
-  ;; reconfigure time (this module's own #:use-module sees it) but fails at
-  ;; runtime with "unknown package". For an external-channel package only
-  ;; needed via a known absolute path rather than on $PATH, reference it
-  ;; directly in extra-environment-variables instead -- --expose=/gnu/store
-  ;; already makes any store path reachable inside the container without
-  ;; guix shell ever needing to resolve it by name.
+  ;; distribution ((gnu packages ...)) -- these are resolved by name@version
+  ;; at container-runtime (see vllm-container-runner-file's package-spec)
+  ;; against whatever plain guix binary this system was built with, which
+  ;; knows nothing about externally-pulled channels (guix-science-nonfree,
+  ;; nonguix, ...); such a package resolves fine at reconfigure time (this
+  ;; module's own #:use-module sees it) but fails at runtime with "unknown
+  ;; package". For an external-channel package only needed via a known
+  ;; absolute path rather than on $PATH, reference it directly in
+  ;; extra-environment-variables instead -- --expose=/gnu/store already
+  ;; makes any store path reachable inside the container without guix
+  ;; shell ever needing to resolve it by name.
   (container-extra-packages vllm-configuration-container-extra-packages
                             (default '()))
   ;; Extra host paths writably bind-mounted into the container, beyond the
@@ -321,7 +322,20 @@
          (extra-pkgs (vllm-configuration-container-extra-packages config))
          (extra-shares (vllm-configuration-container-extra-shares config))
          (extra-exposes (vllm-configuration-container-extra-exposes config))
-         (package-names (map package-name
+         ;; Encode name@version, not just the bare name: `guix shell' below
+         ;; resolves each of these against whatever plain guix binary this
+         ;; system was built with (see module comment on
+         ;; container-extra-packages), and a bare name resolves to that
+         ;; channel's *default* version of it regardless of which specific
+         ;; package variable was actually bound to this field -- confirmed
+         ;; live, c-compiler-package set to gcc-toolchain-14 still hit
+         ;; nvcc's "gcc versions later than 14 are not supported" because
+         ;; package-name returns "gcc-toolchain" for every gcc-toolchain-N
+         ;; variable alike, silently discarding the version distinction.
+         (package-spec (lambda (p)
+                         (string-append (package-name p) "@"
+                                        (package-version p))))
+         (package-names (map package-spec
                              (append (list (@ (gnu packages base) coreutils)
                                            (@ (gnu packages bash) bash)
                                            c-compiler-pkg
