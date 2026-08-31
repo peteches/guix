@@ -413,7 +413,7 @@
                   (if intel-cpu? (list intel-microcode) '())))
          (packages*
           (append extra-packages %common-packages
-                  (if with-nvidia? (list nvidia-firmware nvidia-driver-595 cuda-nvcc) '())
+                  (if with-nvidia? (list nvidia-firmware-595 nvidia-driver-595 cuda-nvcc) '())
 		  (if (and with-nvidia? with-docker?) (list runc nvidia-container-toolkit) '())))
          (laptop-services
           (append (if laptop? (list (service tlp-service-type)) '())
@@ -435,7 +435,12 @@
 						      #$(file-append nvidia-driver-595 "/lib") ":"
 						      #$(file-append nvidia-driver-595 "/lib64")
 						      ":${LD_LIBRARY_PATH}"))))
-			       (service nvidia-service-type)
+			       (service nvidia-service-type
+					(nvidia-configuration
+					 (driver nvda-595)
+					 (firmware nvidia-firmware-595)
+					 (module nvidia-module-595)
+					 (modprobe nvidia-modprobe-595)))
 			       (simple-service 'nvidia-runtime-state
 					       activation-service-type
 					       #~(begin
