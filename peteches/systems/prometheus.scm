@@ -200,7 +200,9 @@
                    (params '(("module" . ("default"))))
                    (static-configs
                     (list (prometheus-static-config
-                           (targets '("192.168.51.1")))))
+                           (targets '("192.168.51.1")))
+                          (prometheus-static-config
+                           (targets '("192.168.51.3")))))
                    (relabel-configs
                     (list
                      (prometheus-relabel-config
