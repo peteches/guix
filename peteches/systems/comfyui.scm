@@ -40,6 +40,7 @@
   #:use-module (gnu system file-systems)
   #:use-module (gnu system keyboard)
   #:use-module ((gnu packages build-tools) #:select (uv))
+  #:use-module ((gnu packages commencement) #:select (gcc-toolchain-14))
   #:use-module ((gnu packages linux) #:select (linux-libre-headers))
   #:use-module (peteches systems vm-base)
   #:use-module (peteches services alloy)
@@ -145,6 +146,18 @@
 	     (runtime-packages (list uv))
 	     (open-firewall? #t)
 	     (container-extra-shares (list "/media/models"))
+	     ;; Pinned below the plain gcc-toolchain default (16.1.0 as of this
+	     ;; VM's channel pin): torch's cpp_extension build refuses to
+	     ;; compile against CUDA 13.0 with a g++ >=16.0 ("The current
+	     ;; installed version of g++ (16.1.0) is greater than the maximum
+	     ;; required version by CUDA 13.0"), confirmed live -- SageAttention
+	     ;; failed this VM's first-boot sync with exactly that error. This
+	     ;; must have drifted since nug's original working config (this
+	     ;; whole file's comments still say "gcc-toolchain (16.2.0)" was
+	     ;; fine there); rather than assume why, pin explicitly the same
+	     ;; way the vllm config elsewhere in nug.scm already did for an
+	     ;; identical CUDA-compiler-cap problem.
+	     (c-compiler-package gcc-toolchain-14)
 	     ;; nvcc for SageAttention's build-from-source install, via
 	     ;; CUDA_HOME only — NOT container-extra-packages, since guix shell
 	     ;; can't resolve a guix-science-nonfree package by name inside the
@@ -179,6 +192,38 @@
 	     ;; not just SageAttention's.
 	     (extra-environment-variables
 	      (list #~(string-append "CUDA_HOME=" #$cuda-13)
+		    ;; c-compiler-package above (gcc-toolchain-14) has NO effect
+		    ;; on which g++ actually runs: the container resolves it via
+		    ;; `guix shell gcc-toolchain' (a bare name -- see
+		    ;; comfyui-container-runner-file's package-names, built from
+		    ;; package-name, which strips the version), and `guix shell'
+		    ;; then picks the highest-versioned "gcc-toolchain" in the
+		    ;; distro (16.1.0) regardless of which package object this
+		    ;; config referenced. Confirmed live: SageAttention's build
+		    ;; still failed against g++ 16.1.0 with c-compiler-package
+		    ;; set, identical error to before. CC/CXX pointed at direct
+		    ;; store paths sidesteps that resolution entirely, same
+		    ;; workaround as CUDA_HOME above and for the same reason
+		    ;; (--expose=/gnu/store makes any store path reachable
+		    ;; whether or not `guix shell' installed it by name).
+		    ;; setuptools/distutils' build_ext honors CC/CXX directly.
+		    #~(string-append "CC=" #$(file-append gcc-toolchain-14 "/bin/gcc"))
+		    #~(string-append "CXX=" #$(file-append gcc-toolchain-14 "/bin/g++"))
+		    ;; CC/CXX alone still isn't enough: cc1plus then searches the
+		    ;; container's general include path, which (thanks to the
+		    ;; SAME package-names/bare-name issue as c-compiler-package
+		    ;; above) contains headers from the plain gcc-toolchain the
+		    ;; container installed by name (16.x), not gcc-toolchain-14's
+		    ;; own. Confirmed live: "'_GLIBCXX26_CONSTEXPR' does not name
+		    ;; a type" in .../profile/include/c++/bits/exception.h --
+		    ;; that macro is gated on a libstdc++ release gcc-14 doesn't
+		    ;; provide, i.e. gcc-14's binary was compiling gcc-16's
+		    ;; headers. CPLUS_INCLUDE_PATH forces its own matching
+		    ;; headers ahead of that mismatched set.
+		    #~(string-append "CPLUS_INCLUDE_PATH="
+				     #$(file-append gcc-toolchain-14 "/include/c++"))
+		    #~(string-append "C_INCLUDE_PATH="
+				     #$(file-append gcc-toolchain-14 "/include"))
 		    #~(string-append "CPATH="
 				     #$(file-append linux-libre-headers
 						    "/include"))
@@ -253,7 +298,20 @@
 			    ;; re-exports — those are genuinely single distinct C names (not
 			    ;; an overload family sharing one C++ name), called directly by
 			    ;; callers with the exact matching argument types.
-			    #~(string-append "CXXFLAGS=-include "
+			    ;; CPLUS_INCLUDE_PATH/C_INCLUDE_PATH (set above) did NOT
+			    ;; fix the gcc-14-vs-gcc-16-headers mismatch -- confirmed
+			    ;; live, identical "_GLIBCXX26_CONSTEXPR" error, same
+			    ;; .../profile/include/c++/bits/exception.h path, even
+			    ;; with both set. --emulate-fhs must inject its own
+			    ;; -isystem/-I for the container's merged profile ahead
+			    ;; of env-var-added paths. CXXFLAGS's existing -include
+			    ;; below is proven to actually reach cc1plus's real
+			    ;; command line (the shim itself gets force-included
+			    ;; successfully), so add -isystem here too rather than
+			    ;; trust another environment variable.
+			    #~(string-append "CXXFLAGS=-isystem "
+					     #$(file-append gcc-toolchain-14 "/include/c++")
+					     " -include "
 				     #$(plain-file "comfyui-libstdcxx-c99-shim.h"
 					   (string-append
 					    "#include <cmath>\n"
@@ -261,6 +319,19 @@
 					    "#include <cstdlib>\n"
 					    "#include <stdlib.h>\n"
 					    "#include <type_traits>\n"
+					    ;; Guarded: this shim exists because gcc-toolchain's
+					    ;; default (16.x as of this comment) doesn't pull
+					    ;; these C99 names into std:: -- see the comment
+					    ;; above extra-environment-variables. gcc-toolchain-14
+					    ;; (pinned via CC/CXX above, for the separate g++
+					    ;; version-cap problem) already provides all of these
+					    ;; natively, so force-including this unconditionally
+					    ;; collides with real definitions ("redefinition of
+					    ;; 'float std::log2(float)'" etc, confirmed live)
+					    ;; instead of filling a gap. __GNUC__ >= 15 keeps the
+					    ;; shim working if this file's CXX is ever pointed
+					    ;; back at a newer default gcc-toolchain.
+					    "#if __GNUC__ >= 15\n"
 					    "namespace std {\n"
 					    "inline float       log2(float x) { return ::log2f(x); }\n"
 					    "inline double      log2(double x) { return ::log2(x); }\n"
@@ -325,6 +396,7 @@
 					    "template<typename T> inline bool isinf(T x) { return __builtin_isinf(x); }\n"
 					    "template<typename T> inline bool signbit(T x) { return __builtin_signbit(x); }\n"
 					    "}\n"
+					    "#endif\n"
 					   )))))
 	     ;; Package installed but the global --use-sage-attention flag is
 	     ;; deliberately left off (enable-sage-attention? default #f) — a
@@ -431,7 +503,14 @@
 	       ;; pure-CPU phase vocoder — no torchaudio/ML dependency.
 	       (comfyui-custom-node
 		(name "comfyui-audio-pitch")
-		(git-repo-url "https://github.com/Takenoko3333/comfyui-audio-pitch")))))))
+		(git-repo-url "https://github.com/Takenoko3333/comfyui-audio-pitch"))
+	       ;; Krea2EditGroundedEncode / Krea2EditModelPatch — two-reference
+	       ;; grounded image editing (subject + outfit/element references,
+	       ;; plain-English instruction) for the KREA 2 Identity Edit
+	       ;; workflow/LoRA. No pip dependencies (manifest.yaml: pip: []).
+	       (comfyui-custom-node
+		(name "comfyui-krea2edit")
+		(git-repo-url "https://github.com/lbouaraba/comfyui-krea2edit")))))))
       (service alloy-service-type
                (alloy-configuration
                 (hostname "comfyui.peteches.co.uk")
