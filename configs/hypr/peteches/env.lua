@@ -9,6 +9,11 @@ do
     if line and line ~= "" then cursor_theme = line end
   end
 end
+local nvidia_hosts = { dagon = true, nug = true }
+local hp = io.popen("hostname")
+local hostname = hp:read("*l")
+hp:close()
+
 local guix_home_profile = home .. "/.guix-home/profile"
 local guix_current_profile = home .. "/.config/guix/current"
 local current_path = os.getenv("PATH") or ""
@@ -35,6 +40,13 @@ hl.env("NVD_BACKEND", "direct")
 -- fails silently in the sandboxed process and Firefox falls back to
 -- software video decode. Vendor-agnostic, safe on non-nvidia hosts too.
 hl.env("MOZ_DISABLE_RDD_SANDBOX", "1")
+if nvidia_hosts[hostname] then
+  -- Required by nvidia-vaapi-driver for libva 2.20+ (dagon/nug are on
+  -- 2.22.0); without it libva's driver autodetection can pick a
+  -- different backend (e.g. nouveau_drv_video.so, also present in the
+  -- same DRI search path) instead of the nvidia one.
+  hl.env("LIBVA_DRIVER_NAME", "nvidia")
+end
 hl.env("XDG_CURRENT_DESKTOP", "Hyprland")
 hl.env("XDG_SESSION_TYPE", "wayland")
 hl.env("XDG_SESSION_DESKTOP", "Hyprland")
