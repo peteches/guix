@@ -98,6 +98,7 @@
 ;; terraform, age-keys).
 
 (define-module (peteches systems vm-base)
+  #:use-module (srfi srfi-1)
   #:use-module (srfi srfi-13)
   #:use-module (guix gexp)
   #:use-module (gnu system)
@@ -266,6 +267,17 @@ time.  A no-op on subsequent boots."
    (path %automation-authorized-key-path)
    (permissions #o444)))
 
+;; NVIDIA driver branch selection, per make-vm-os's #:nvidia-driver-version.
+;; Mirrors (peteches systems base)'s nvidia-packages-for-version — see that
+;; module for why this needs to be a per-host choice at all (driver 590+
+;; drops pre-Turing GPUs entirely; jellyfin's RTX 2060 and comfyui's RTX
+;; 4090 are both well clear of that cutoff, so both can take '595).
+(define (nvidia-packages-for-version version)
+  (case version
+    ((580) (list nvda nvidia-driver nvidia-firmware nvidia-module nvidia-modprobe))
+    ((595) (list nvda-595 nvidia-driver-595 nvidia-firmware-595 nvidia-module-595 nvidia-modprobe-595))
+    (else (error "make-vm-os: unsupported #:nvidia-driver-version" version))))
+
 (define* (make-vm-os
           #:key host-name bootloader file-systems
           (mapped-devices '())
@@ -282,6 +294,8 @@ time.  A no-op on subsequent boots."
           (sops-secrets '())
           (with-nug-offload? #t)
           (with-nvidia? #f)
+          ;; '580 or '595 — see nvidia-packages-for-version above.
+          (nvidia-driver-version '580)
           (with-automation-key? #t)
           (automation-key-extra-users '())
           (with-swap? #t)
@@ -322,21 +336,34 @@ time.  A no-op on subsequent boots."
                               (age-key-file "/etc/age/keys.txt")
                               (secrets all-sops-secrets))))
               '()))
+         (nvidia-pkgs (if with-nvidia?
+                          (nvidia-packages-for-version nvidia-driver-version)
+                          (list #f #f #f #f #f)))
+         (nvda*            (first  nvidia-pkgs))
+         (nvidia-driver*   (second nvidia-pkgs))
+         (nvidia-firmware* (third  nvidia-pkgs))
+         (nvidia-module*   (fourth nvidia-pkgs))
+         (nvidia-modprobe* (fifth  nvidia-pkgs))
          (nvidia-packages
           (if with-nvidia?
-              (list nvidia-firmware nvidia-driver cuda-nvcc)
+              (list nvidia-firmware* nvidia-driver* cuda-nvcc)
               '()))
          (nvidia-services
           (if with-nvidia?
               (list
-               (service nvidia-service-type)
+               (service nvidia-service-type
+                        (nvidia-configuration
+                         (driver nvda*)
+                         (firmware nvidia-firmware*)
+                         (module nvidia-module*)
+                         (modprobe nvidia-modprobe*)))
                (simple-service 'nvidia-runtime-state
                                activation-service-type
                                #~(begin
                                    (use-modules (guix build utils))
                                    (mkdir-p "/run/nvidia")))
                (simple-service 'custom-udev-rules udev-service-type
-                               (list nvidia-driver))
+                               (list nvidia-driver*))
                (service kernel-module-loader-service-type
                         '("nvidia" "nvidia_uvm")))
               '()))
@@ -409,7 +436,7 @@ time.  A no-op on subsequent boots."
                                     '())
                                 %default-kernel-arguments))
       (kernel-loadable-modules (if with-nvidia?
-                                   (list nvidia-module)
+                                   (list nvidia-module*)
                                    '()))
       (firmware firmware)
       (locale "en_GB.utf8")

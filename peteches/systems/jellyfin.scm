@@ -80,6 +80,10 @@
        (path "/run/secrets/guix-offload-key")
        (permissions #o400)))
      #:with-nvidia? #t
+     ;; RTX 2060 (Turing) is well clear of the 590+ pre-Turing GPU cutoff
+     ;; that bit dagon's Pascal-based GTX 1060 — see (peteches systems
+     ;; vm-base)'s nvidia-packages-for-version.
+     #:nvidia-driver-version '595
      #:extra-services
      (list
       (service tailscale-service-type
