@@ -25,6 +25,18 @@
   #:use-module (guix gexp)
   #:use-module (peteches home services firefox))
 
+;; Firefox's built-in driver blocklist unconditionally blocks hardware video
+;; decoding for nvidia on Linux; nvidia-vaapi-driver needs these three prefs
+;; force-enabled to be given a chance at all. Scoped to dagon/nug (nvidia
+;; hosts) — forcing gfx.x11-egl.force-enabled on nyarlothotep's AMD/Mesa
+;; Wayland session is untested and not needed there.
+(define %nvidia-vaapi-prefs
+  (if (member (gethostname) '("dagon" "nug"))
+      '(("media.hardware-video-decoding.force-enabled" . #t)
+	("media.rdd-ffmpeg.enabled"                     . #t)
+	("gfx.x11-egl.force-enabled"                    . #t))
+      '()))
+
 (define-public base-firefox-profiles
   (list
    (firefox-profile "Default" "default"
@@ -39,7 +51,7 @@
 			      ("browser.startup.homepage"                             . "https://mail.google.com/|https://calendar.google.com/|https://notion.com|https://app.slack.com/client/T036KF3KZHA")))
 
    (firefox-profile "Other"   "other"
-		    #:prefs '(
+		    #:prefs `(
 			      ("browser.startup.homepage" . "about:blank")
 			      ;; Tor SOCKS proxy settings
 			      ("network.proxy.type"                                   . 1) ; manual proxy
@@ -54,7 +66,8 @@
 
 			      ;; WebRTC handling (disable or restrict to proxy only)
 			      ("media.peerconnection.enabled"                         . #f)
-			      ("media.peerconnection.ice.proxy_only"                  . #t)))))
+			      ("media.peerconnection.ice.proxy_only"                  . #t)
+			      ,@%nvidia-vaapi-prefs))))
 
 (define-public base-firefox-global-prefs
   '(
