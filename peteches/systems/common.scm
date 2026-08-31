@@ -45,10 +45,17 @@
 ;; minimal diff churn -- nug itself was reinstalled as the Proxmox host
 ;; (proxmox3) this offload/publish role used to run on directly; the role
 ;; moved to the guix-build VM (peteches/systems/guix-build.scm), the name
-;; didn't follow. TODO: host-key is a placeholder until guix-build's first
-;; boot -- `ssh-keyscan 192.168.51.207` and replace it; guix deploy refuses
-;; to connect on a mismatch, so offload silently falls back to local builds
-;; until this is filled in.
+;; didn't follow. host-key was filled in via ssh-keyscan after guix-build's
+;; first boot.
+;;
+;; parallel-builds was copied verbatim from nug's original build-machine
+;; record (32 cores/94GB) and never adjusted for guix-build's actual specs
+;; (8 cores/12GB) -- 20 parallel slots on this box appears to OOM-kill
+;; individual offloaded builds silently (confirmed live: several small,
+;; unrelated derivations -- an NVIDIA .run download, nvda-595.91, then
+;; nvidia-firmware-595.91.07 -- each failed only when offloaded here, then
+;; built successfully seconds later with --no-offload on the same inputs).
+;; 6 leaves the daemon's own overhead some headroom against 8 real cores.
 (define-public %nug-build-machine
   #~(build-machine
      (name "guix-build.spaniel-cordylus.ts.net")
@@ -56,7 +63,7 @@
      (user "guix-offload")
      (private-key "/run/secrets/guix-offload-key")
      (host-key "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIKSOGKH6AeVlj1WQhSuzT6ni0cpzqcdPjUaFVufYOCqt")
-     (parallel-builds 20)))
+     (parallel-builds 6)))
 
 ;; Authorize deploy coordinators (nug, nyarlothotep, and claude-workstation)
 ;; to push store items to all VMs, and register nug's guix-publish as a

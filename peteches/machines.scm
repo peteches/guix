@@ -313,7 +313,7 @@
    (configuration
     (machine-ssh-configuration
      (host-name "comfyui.spaniel-cordylus.ts.net")
-     (host-key "ssh-ed25519 TODO-ssh-keyscan-192.168.51.206-after-first-boot")
+     (host-key "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIDBHNiC2tYA/0tDZxVmDLUrYJcQNqDOv84wNexSRI7zP")
      (system "x86_64-linux")
      (user "peteches")
      (identity %deploy-identity)))))
