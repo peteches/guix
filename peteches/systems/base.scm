@@ -288,8 +288,8 @@
               (let* ((old (or (getenv "LD_LIBRARY_PATH") ""))
                      (prefix (string-append
                               #$(file-append libglvnd "/lib") ":"
-                              #$(file-append nvidia-driver-595 "/lib") ":"
-                              #$(file-append nvidia-driver-595 "/lib64")))
+                              #$(file-append nvidia-driver "/lib") ":"
+                              #$(file-append nvidia-driver "/lib64")))
                      (new (if (string-null? old)
                               prefix
                               (string-append prefix ":" old))))
@@ -413,7 +413,7 @@
                   (if intel-cpu? (list intel-microcode) '())))
          (packages*
           (append extra-packages %common-packages
-                  (if with-nvidia? (list nvidia-firmware nvidia-driver-595 cuda-nvcc) '())
+                  (if with-nvidia? (list nvidia-firmware nvidia-driver cuda-nvcc) '())
 		  (if (and with-nvidia? with-docker?) (list runc nvidia-container-toolkit) '())))
          (laptop-services
           (append (if laptop? (list (service tlp-service-type)) '())
@@ -432,8 +432,8 @@
 						 ("LD_LIBRARY_PATH" .
 						  ,#~(string-append
 						      #$(file-append libglvnd "/lib") ":"
-						      #$(file-append nvidia-driver-595 "/lib") ":"
-						      #$(file-append nvidia-driver-595 "/lib64")
+						      #$(file-append nvidia-driver "/lib") ":"
+						      #$(file-append nvidia-driver "/lib64")
 						      ":${LD_LIBRARY_PATH}"))))
 			       (service nvidia-service-type)
 			       (simple-service 'nvidia-runtime-state
@@ -443,7 +443,7 @@
 						   (mkdir-p "/run/nvidia")))
 
 			       (simple-service 'custom-udev-rules udev-service-type
-					       (list nvidia-driver-595))
+					       (list nvidia-driver))
 			       (service kernel-module-loader-service-type
 					'("ipmi_devintf"
 					  "nvidia"
@@ -499,7 +499,7 @@
 				   '())
 			       %default-kernel-arguments))
      (kernel-loadable-modules (if with-nvidia?
-				  (list nvidia-module-595)
+				  (list nvidia-module)
 				  '()))
      (firmware firmware*)
      (locale "en_GB.utf8")
