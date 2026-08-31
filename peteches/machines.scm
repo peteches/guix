@@ -325,7 +325,7 @@
    (configuration
     (machine-ssh-configuration
      (host-name "guix-build.spaniel-cordylus.ts.net")
-     (host-key "ssh-ed25519 TODO-ssh-keyscan-192.168.51.207-after-first-boot")
+     (host-key "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIKSOGKH6AeVlj1WQhSuzT6ni0cpzqcdPjUaFVufYOCqt")
      (system "x86_64-linux")
      (user "peteches")
      (identity %deploy-identity)))))
