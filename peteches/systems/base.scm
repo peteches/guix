@@ -124,6 +124,22 @@
   (options->transformation
    '((with-graft . "mesa=nvda"))))
 
+;; NVIDIA driver branch selection, per make-base-os's #:nvidia-driver-version.
+;; GPUs older than Turing (e.g. dagon's Pascal-based GTX 1060) are dropped
+;; from the 590+ branch entirely — nvidia.ko loads but refuses to bind
+;; ("NVRM: ... will ignore this GPU", confirmed via dmesg on dagon after a
+;; 595 upgrade attempt broke its boot) — such hosts must stay on '580.
+;; Newer/unconstrained hardware (jellyfin, comfyui) can take '595.
+(define (nvidia-packages-for-version version)
+  (case version
+    ;; nvidia-modprobe is ambiguous with (peteches packages
+    ;; nvidia-container-runtime)'s own package of the same name — qualify
+    ;; explicitly to make sure this is nonguix's driver-branch one.
+    ((580) (list nvda nvidia-driver nvidia-firmware nvidia-module
+		 (@ (nongnu packages nvidia) nvidia-modprobe)))
+    ((595) (list nvda-595 nvidia-driver-595 nvidia-firmware-595 nvidia-module-595 nvidia-modprobe-595))
+    (else (error "make-base-os: unsupported #:nvidia-driver-version" version))))
+
 ;; NOTE: Do NOT add elogind here; it already comes with %desktop-services.
 (define %common-services
   (list (service openssh-service-type)
@@ -268,8 +284,10 @@
 			%default-authorized-guix-keys))
 	       (build-machines (if offload-builds? (list %nug-build-machine) '()))))))
 
-(define (hyprland-launcher with-nvidia?)
-  (if with-nvidia?
+(define (hyprland-launcher nvidia-driver-pkg)
+  "NVIDIA-DRIVER-PKG is the versioned nvidia-driver package to use, or #f
+for a non-NVIDIA host."
+  (if nvidia-driver-pkg
       (program-file "hyprland-session"
         #~(begin
             (use-modules (srfi srfi-13))
@@ -288,8 +306,8 @@
               (let* ((old (or (getenv "LD_LIBRARY_PATH") ""))
                      (prefix (string-append
                               #$(file-append libglvnd "/lib") ":"
-                              #$(file-append nvidia-driver "/lib") ":"
-                              #$(file-append nvidia-driver "/lib64")))
+                              #$(file-append nvidia-driver-pkg "/lib") ":"
+                              #$(file-append nvidia-driver-pkg "/lib64")))
                      (new (if (string-null? old)
                               prefix
                               (string-append prefix ":" old))))
@@ -407,13 +425,26 @@
           (with-bluetooth? #f)
           (with-nonguix? #f)
           (with-nvidia? #f)
+          ;; '580 or '595 — see nvidia-packages-for-version above. Defaults
+          ;; to '580 since that's the branch every existing with-nvidia? #t
+          ;; GPU in the fleet is guaranteed to support; hosts with newer,
+          ;; unconstrained hardware can opt into '595 explicitly.
+          (nvidia-driver-version '580)
           (offload-builds? #t))
-  (let* ((firmware*
+  (let* ((nvidia-pkgs (if with-nvidia?
+			  (nvidia-packages-for-version nvidia-driver-version)
+			  (list #f #f #f #f #f)))
+	 (nvda*             (first  nvidia-pkgs))
+	 (nvidia-driver*    (second nvidia-pkgs))
+	 (nvidia-firmware*  (third  nvidia-pkgs))
+	 (nvidia-module*    (fourth nvidia-pkgs))
+	 (nvidia-modprobe*  (fifth  nvidia-pkgs))
+	 (firmware*
           (append firmware
                   (if intel-cpu? (list intel-microcode) '())))
          (packages*
           (append extra-packages %common-packages
-                  (if with-nvidia? (list nvidia-firmware nvidia-driver cuda-nvcc) '())
+                  (if with-nvidia? (list nvidia-firmware* nvidia-driver* cuda-nvcc) '())
 		  (if (and with-nvidia? with-docker?) (list runc nvidia-container-toolkit) '())))
          (laptop-services
           (append (if laptop? (list (service tlp-service-type)) '())
@@ -432,10 +463,15 @@
 						 ("LD_LIBRARY_PATH" .
 						  ,#~(string-append
 						      #$(file-append libglvnd "/lib") ":"
-						      #$(file-append nvidia-driver "/lib") ":"
-						      #$(file-append nvidia-driver "/lib64")
+						      #$(file-append nvidia-driver* "/lib") ":"
+						      #$(file-append nvidia-driver* "/lib64")
 						      ":${LD_LIBRARY_PATH}"))))
-			       (service nvidia-service-type)
+			       (service nvidia-service-type
+					(nvidia-configuration
+					 (driver nvda*)
+					 (firmware nvidia-firmware*)
+					 (module nvidia-module*)
+					 (modprobe nvidia-modprobe*)))
 			       (simple-service 'nvidia-runtime-state
 					       activation-service-type
 					       #~(begin
@@ -443,7 +479,7 @@
 						   (mkdir-p "/run/nvidia")))
 
 			       (simple-service 'custom-udev-rules udev-service-type
-					       (list nvidia-driver))
+					       (list nvidia-driver*))
 			       (service kernel-module-loader-service-type
 					'("ipmi_devintf"
 					  "nvidia"
@@ -468,7 +504,7 @@
               '()))
          (desktop* (without-gdm #:offload-builds? offload-builds?))
 	 (hyprland-session-command
-          #~#$(hyprland-launcher with-nvidia?))
+          #~#$(hyprland-launcher (and with-nvidia? nvidia-driver*)))
 	(hosts-entries
 	 (list (host "::1"
 		     host-name
@@ -499,7 +535,7 @@
 				   '())
 			       %default-kernel-arguments))
      (kernel-loadable-modules (if with-nvidia?
-				  (list nvidia-module)
+				  (list nvidia-module*)
 				  '()))
      (firmware firmware*)
      (locale "en_GB.utf8")
