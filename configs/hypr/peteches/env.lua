@@ -29,7 +29,12 @@ hl.env("XDG_DATA_DIRS", path_prepend(guix_home_profile .. "/share", path_prepend
 
 hl.env("QT_QPA_PLATFORMTHEME", "qt6ct")
 hl.env("QT_QPA_PLATFORMTHEME_QT6", "qt6ct")
-hl.env("NVD_BACKEND", "direct+")
+hl.env("NVD_BACKEND", "direct")
+-- Firefox's RDD (decoder) process sandbox blocks the /dev/nvidia* device
+-- access nvidia-vaapi-driver needs for NVDEC; without this, VAAPI init
+-- fails silently in the sandboxed process and Firefox falls back to
+-- software video decode. Vendor-agnostic, safe on non-nvidia hosts too.
+hl.env("MOZ_DISABLE_RDD_SANDBOX", "1")
 hl.env("XDG_CURRENT_DESKTOP", "Hyprland")
 hl.env("XDG_SESSION_TYPE", "wayland")
 hl.env("XDG_SESSION_DESKTOP", "Hyprland")
