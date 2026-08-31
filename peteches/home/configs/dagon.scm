@@ -69,8 +69,8 @@
 (define dagon-extra-packages
   (list lycheeslicer-7.6.2
 	zoom
-	steam-nvidia
-	nvda
+	steam-nvidia-595
+	nvda-595
 	nvidia-prime
 	protonup
 	vulkan-tools
