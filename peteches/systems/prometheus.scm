@@ -187,7 +187,13 @@
                       (labels '(("instance" . "critical-grind-campaign"))))
                      (prometheus-static-config
                       (targets '("192.168.51.205:12345"))
-                      (labels '(("instance" . "claude-workstation")))))))
+                      (labels '(("instance" . "claude-workstation"))))
+                     (prometheus-static-config
+                      (targets '("192.168.51.206:12345"))
+                      (labels '(("instance" . "comfyui"))))
+                     (prometheus-static-config
+                      (targets '("192.168.51.207:12345"))
+                      (labels '(("instance" . "guix-build")))))))
                   (prometheus-scrape-config
                    (job-name "proxmox")
                    (metrics-path "/pve")

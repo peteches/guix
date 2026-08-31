@@ -52,6 +52,8 @@
   #:use-module (peteches systems plane)
   #:use-module (peteches systems critical-grind-campaign)
   #:use-module (peteches systems claude-workstation)
+  #:use-module (peteches systems comfyui)
+  #:use-module (peteches systems guix-build)
   )
 
 ;; SSH private key used to connect out to every machine below. Nug and
@@ -300,6 +302,34 @@
      (user "peteches")
      (identity %deploy-identity)))))
 
+;; TODO: host-key is a placeholder until each VM's first boot -- ssh-keyscan
+;; the IP and replace it; guix deploy refuses to connect on a mismatch. Both
+;; live on proxmox3 (the reinstalled nug) so they can't boot, and these
+;; placeholders can't be filled in, until that reinstall happens.
+(define-public comfyui-machine
+  (machine
+   (operating-system comfyui-os)
+   (environment managed-host-environment-type)
+   (configuration
+    (machine-ssh-configuration
+     (host-name "comfyui.spaniel-cordylus.ts.net")
+     (host-key "ssh-ed25519 TODO-ssh-keyscan-192.168.51.206-after-first-boot")
+     (system "x86_64-linux")
+     (user "peteches")
+     (identity %deploy-identity)))))
+
+(define-public guix-build-machine
+  (machine
+   (operating-system guix-build-os)
+   (environment managed-host-environment-type)
+   (configuration
+    (machine-ssh-configuration
+     (host-name "guix-build.spaniel-cordylus.ts.net")
+     (host-key "ssh-ed25519 TODO-ssh-keyscan-192.168.51.207-after-first-boot")
+     (system "x86_64-linux")
+     (user "peteches")
+     (identity %deploy-identity)))))
+
 (define-public %all-machines
   (list prometheus-machine
         grafana-machine
@@ -320,4 +350,6 @@
         plane-machine
         critical-grind-campaign-machine
         claude-workstation-machine
+        comfyui-machine
+        guix-build-machine
         ))

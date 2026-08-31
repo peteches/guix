@@ -192,6 +192,10 @@
 		  (pihole-custom-host (address "192.168.51.204")
 				      (hostname "plane.peteches.co.uk"))
 		  (pihole-custom-host (address "192.168.51.205")
-				      (hostname "claude-workstation.peteches.co.uk")))))))))))
+				      (hostname "claude-workstation.peteches.co.uk"))
+		  (pihole-custom-host (address "192.168.51.206")
+				      (hostname "comfyui.peteches.co.uk"))
+		  (pihole-custom-host (address "192.168.51.207")
+				      (hostname "guix-build.peteches.co.uk")))))))))))
 
 pihole-os

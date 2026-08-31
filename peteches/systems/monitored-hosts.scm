@@ -29,4 +29,6 @@
     ("critical-grind-campaign" . "192.168.51.202:9100")
     ("critical-grind-outline" . "192.168.51.203:9100")
     ("plane"                   . "192.168.51.204:9100")
-    ("claude-workstation"      . "192.168.51.205:9100")))
+    ("claude-workstation"      . "192.168.51.205:9100")
+    ("comfyui"                 . "192.168.51.206:9100")
+    ("guix-build"              . "192.168.51.207:9100")))

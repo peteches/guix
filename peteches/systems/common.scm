@@ -38,15 +38,24 @@
    #:use-module (gnu home services syncthing)
    #:use-module (guix gexp))
 
-;; Build machine record for offloading to nug.
+;; Build machine record for offloading to the guix-build VM.
 ;; Used by vm-base.scm and base.scm via (guix-configuration (build-machines ...)).
+;;
+;; Still named %nug-build-machine (and with-nug-offload? in vm-base.scm) for
+;; minimal diff churn -- nug itself was reinstalled as the Proxmox host
+;; (proxmox3) this offload/publish role used to run on directly; the role
+;; moved to the guix-build VM (peteches/systems/guix-build.scm), the name
+;; didn't follow. TODO: host-key is a placeholder until guix-build's first
+;; boot -- `ssh-keyscan 192.168.51.207` and replace it; guix deploy refuses
+;; to connect on a mismatch, so offload silently falls back to local builds
+;; until this is filled in.
 (define-public %nug-build-machine
   #~(build-machine
-     (name "nug.spaniel-cordylus.ts.net")
+     (name "guix-build.spaniel-cordylus.ts.net")
      (systems '("x86_64-linux"))
      (user "guix-offload")
      (private-key "/run/secrets/guix-offload-key")
-     (host-key "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFV+RLdfvLSuCoedNwepqbEEHnHu363OQj6U0diCX+SR")
+     (host-key "ssh-ed25519 TODO-ssh-keyscan-192.168.51.207-after-first-boot")
      (parallel-builds 20)))
 
 ;; Authorize deploy coordinators (nug, nyarlothotep, and claude-workstation)

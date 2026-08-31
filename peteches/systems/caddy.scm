@@ -100,15 +100,12 @@
                   (caddy-reverse-proxy
                    (domain "jellyfin.ts.peteches.co.uk")
                    (upstream "jellyfin.spaniel-cordylus.ts.net:8096"))
-                  (caddy-reverse-proxy
-                   (domain "colibri.ts.peteches.co.uk")
-                   (upstream "nug.spaniel-cordylus.ts.net:8000"))
-                  (caddy-reverse-proxy
-                   (domain "sillytavern.ts.peteches.co.uk")
-                   (upstream "nug.spaniel-cordylus.ts.net:8001"))
+                  ;; colibri and sillytavern retired along with the rest of
+                  ;; nug's local-LLM experiments -- see comfyui.scm's module
+                  ;; comment.
                   (caddy-reverse-proxy
                    (domain "comfyui.ts.peteches.co.uk")
-                   (upstream "nug.spaniel-cordylus.ts.net:8188"))
+                   (upstream "comfyui.spaniel-cordylus.ts.net:8188"))
                   (caddy-reverse-proxy
                    (domain "pihole.ts.peteches.co.uk")
                    (upstream "pihole.spaniel-cordylus.ts.net:80/admin"))

@@ -124,6 +124,22 @@
 		     (user "peteches")
 		     (identity-file "~/.ssh/id_ed25519"))
 		    (openssh-host
+		     (name "comfyui.ts")
+		     (host-name "comfyui.spaniel-cordylus.ts.net"))
+		    (openssh-host
+		     (name "comfyui")
+		     (host-name "192.168.51.206")
+		     (user "peteches")
+		     (identity-file "~/.ssh/id_ed25519"))
+		    (openssh-host
+		     (name "guix-build.ts")
+		     (host-name "guix-build.spaniel-cordylus.ts.net"))
+		    (openssh-host
+		     (name "guix-build")
+		     (host-name "192.168.51.207")
+		     (user "peteches")
+		     (identity-file "~/.ssh/id_ed25519"))
+		    (openssh-host
 		     (name "prowlarr.ts")
 		     (host-name "prowlarr.spaniel-cordylus.ts.net"))
 		    (openssh-host

@@ -32,6 +32,8 @@ Current VMs (all use OVMF/EFI and =qcow2-gpt= images):
 | peteches/systems/critical-grind-outline.scm | critical-grind-outline.peteches.co.uk | Outline wiki on :3000 (192.168.51.203, VMID 116, 2 vCPU, 2048 MB) |
 | peteches/systems/plane.scm              | plane.peteches.co.uk      | Plane PM on :80 (192.168.51.204, VMID 117, 4 vCPU, 8192 MB) |
 | peteches/systems/claude-workstation.scm | claude-workstation.peteches.co.uk | Claude Code for 2 accounts (peteches + criticalgrind users) (192.168.51.205, VMID 118, 4 vCPU, 8192 MB) |
+| peteches/systems/comfyui.scm            | comfyui.peteches.co.uk    | ComfyUI, RTX 4090 GPU passthrough, model store on hot-storage (192.168.51.206, proxmox3) |
+| peteches/systems/guix-build.scm         | guix-build.peteches.co.uk | Guix substitute server (:3000) + fleet build-offload target (192.168.51.207, proxmox3) |
 
 * Adding a New VM Config
 

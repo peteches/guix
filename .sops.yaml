@@ -44,6 +44,14 @@ creation_rules:
     pgp: "5FFB7006A36B0AEDE8D08E3753B1E002546A642A"
     age: "age1ssely7qxd0yjrdukl6xjns2gal43nm3n3zulpxzgdsuzd8z85u5qguvlna"
 
+  - path_regex: secrets/hosts/guix-build/.*\.yaml$
+    pgp: "5FFB7006A36B0AEDE8D08E3753B1E002546A642A"
+    age: "age1d77k2we2wz8ha37wzh3j4gf9esuzejt0uqdp7tcynv4rk6ae35jsahwcxv"
+
+  - path_regex: secrets/hosts/comfyui/.*\.yaml$
+    pgp: "5FFB7006A36B0AEDE8D08E3753B1E002546A642A"
+    age: "age1mvtdypejfepz4xqpfxx3hxuelm522rgfh8a9k376mfawlm567e9qh5nxa4"
+
   - path_regex: secrets/hosts/nyarlothotep/.*\.yaml
     pgp: "5FFB7006A36B0AEDE8D08E3753B1E002546A642A"
     age: "age1e5298p2egdrwj7wjh5n4pkpu60f92pkqajnt7lv20tcrynurt4aq7v2v5r"
@@ -132,6 +140,8 @@ creation_rules:
       - age1ar8xxu5scxwta7qzqc6e6unnl7uqn6e0wkjsgduw72lwgrvg8ezqayl4xn  # concourse-db
       - age127sr66dp0za797zes24lxlsj4pvc5nn0097mpcdmrckf468ycfdsjrhe6g  # concourse-web01
       - age10kxy6jf4agmzn8sg9v0mje859exfxhr7p0tpfznuvg52tgak4p2qkzadm5  # concourse-worker01
+      - age1d77k2we2wz8ha37wzh3j4gf9esuzejt0uqdp7tcynv4rk6ae35jsahwcxv  # guix-build
+      - age1mvtdypejfepz4xqpfxx3hxuelm522rgfh8a9k376mfawlm567e9qh5nxa4  # comfyui
 
   # criticalgrind's Plane/Outline MCP keys: decrypted directly on
   # claude-workstation at system boot (its own age key, see
