@@ -459,7 +459,11 @@ module "plane" {
 
   cpu = {
     cores = 4
-    type  = "qemu64"
+    # plane-live's sharp/libvips prebuilt binary requires x86-64-v2
+    # (SSE4.2, POPCNT); qemu64 doesn't offer it and the container
+    # crash-loops with "Unsupported CPU: Prebuilt binaries for Linux x64
+    # require v2 microarchitecture".
+    type = "x86-64-v2-AES"
   }
 
   efi_disk = {
