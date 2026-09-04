@@ -42,6 +42,7 @@
   #:use-module ((gnu packages build-tools) #:select (uv))
   #:use-module ((gnu packages commencement) #:select (gcc-toolchain-14))
   #:use-module ((gnu packages linux) #:select (linux-libre-headers))
+  #:use-module ((gnu packages glib) #:select (glib))
   #:use-module (peteches systems vm-base)
   #:use-module (peteches services alloy)
   #:use-module (peteches services comfyui)
@@ -144,6 +145,33 @@
 	     (listen "0.0.0.0,::")
 	     (extra-model-paths-config %comfyui-model-paths)
 	     (runtime-packages (list uv))
+	     ;; VideoHelperSuite's (and comfyui-art-venture's) requirements.txt
+	     ;; pulls in opencv-python (non-headless), whose highgui module is
+	     ;; linked against GTK/glib even though nothing here ever opens a
+	     ;; GUI window — without glib reachable, loading either node pack
+	     ;; fails at import with "ImportError: libgthread-2.0.so.0: cannot
+	     ;; open shared object file". Confirmed live that adding glib to
+	     ;; container-extra-packages does NOT fix this, despite making
+	     ;; /lib/libgthread-2.0.so.0 genuinely resolvable via the
+	     ;; container's own ldconfig cache (verified with `ldconfig -p`
+	     ;; inside the running container's mount namespace) — because the
+	     ;; venv's python is a Guix-packaged binary, cv2's dlopen() of its
+	     ;; own dependencies resolves through Guix's own glibc loader
+	     ;; (whatever loaded the python process itself), which never
+	     ;; consults /etc/ld.so.cache or the FHS container's /lib the way
+	     ;; a binary with glibc-for-fhs as its ELF interpreter would.
+	     ;; LD_LIBRARY_PATH is the only mechanism that actually reaches
+	     ;; that loader — same reason CUDA's libraries need it below via
+	     ;; the default ld-library-paths value. Overriding the whole field
+	     ;; here (rather than extra-environment-variables) avoids emitting
+	     ;; two separate "LD_LIBRARY_PATH=" env entries, which is
+	     ;; ambiguous — repeats ld-library-paths' own default profile
+	     ;; paths since setting this field replaces rather than extends
+	     ;; them.
+	     (ld-library-paths
+	      (list "/run/current-system/profile/lib"
+		    "/run/current-system/profile/lib64"
+		    #~(string-append #$glib "/lib")))
 	     (open-firewall? #t)
 	     (container-extra-shares (list "/media/models"))
 	     ;; Pinned below the plain gcc-toolchain default (16.1.0 as of this

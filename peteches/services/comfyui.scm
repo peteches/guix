@@ -47,15 +47,23 @@
       (list flag)
       '()))
 
-(define (join-paths paths)
-  (if (null? paths) ""
-      (let loop
-        ((rest (cdr paths))
-         (acc (car paths)))
-        (if (null? rest) acc
-            (loop (cdr rest)
-                  (string-append acc ":"
-                                 (car rest)))))))
+;; Join PATHS (plain strings and/or gexps, e.g. #~(file-append glib "/lib"))
+;; with ":" into a single gexp string. Elements may be gexps — not just
+;; plain strings — because a caller may need to reference a package's own
+;; store output directly: a shared library a pip-installed wheel dlopen()s
+;; at runtime (e.g. libgthread-2.0.so from glib, needed by opencv-python's
+;; highgui module) is otherwise invisible to a Guix-packaged Python's own
+;; glibc loader, which — unlike a foreign-ELF-interpreter binary — doesn't
+;; consult /etc/ld.so.cache or the FHS container's /lib, so such a
+;; library's directory must be added to LD_LIBRARY_PATH explicitly.
+(define (join-paths-gexp paths)
+  (if (null? paths)
+      #~""
+      #~(string-append
+         #$@(let loop ((rest (cdr paths)) (acc (list (car paths))))
+              (if (null? rest)
+                  (reverse acc)
+                  (loop (cdr rest) (cons (car rest) (cons ":" acc))))))))
 
 (define (unique-configs-by proc configs)
   (fold-right (lambda (cfg acc)
@@ -479,8 +487,8 @@
                 '())
             (if (null? ld-paths)
                 '()
-                (list (string-append "LD_LIBRARY_PATH="
-                                     (join-paths ld-paths))))
+                (list #~(string-append "LD_LIBRARY_PATH="
+                                       #$(join-paths-gexp ld-paths))))
             (if uv-env
                 (list (string-append "UV_PROJECT_ENVIRONMENT=" uv-env))
                 '())
