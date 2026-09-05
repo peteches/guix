@@ -451,6 +451,12 @@
 	       (comfyui-custom-node
 		(name "ComfyUI-VideoHelperSuite")
 		(git-repo-url "https://github.com/Kosinkadink/ComfyUI-VideoHelperSuite"))
+	       ;; Frame-Interpolation — RIFE/FILM/etc. interpolation nodes for
+	       ;; upsampling VideoHelperSuite's frame sequences to a higher
+	       ;; output frame rate.
+	       (comfyui-custom-node
+		(name "ComfyUI-Frame-Interpolation")
+		(git-repo-url "https://github.com/Fannovel16/ComfyUI-Frame-Interpolation"))
 	       ;; Spectrum: training-free diffusion acceleration via cached/
 	       ;; forecasted denoiser features, one repo per model backend.
 	       (comfyui-custom-node
