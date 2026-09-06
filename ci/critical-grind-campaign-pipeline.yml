@@ -50,5 +50,6 @@ jobs:
       repository: guix-repo
   - task: deploy
     file: guix-repo/ci/tasks/critical-grind-deploy.yml
+    privileged: true
     params:
       DRY_RUN: "true"

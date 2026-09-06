@@ -37,6 +37,9 @@ run:
     export SSL_CERT_FILE=$GUIX_SYSTEM/profile/etc/ssl/certs/ca-certificates.crt
     export SSL_CERT_DIR=$GUIX_SYSTEM/profile/etc/ssl/certs
 
+    mkdir -p /root
+    export HOME=/root
+
     # ── Fix DNS, nsswitch, and services (see build-vm-image.yml) ──────────
     rm -f /etc/nsswitch.conf
     printf 'passwd: files\ngroup: files\nhosts: files dns\nservices: files\nnetworks: files\nprotocols: files\n' \
@@ -68,63 +71,48 @@ run:
     WORKER_GUIX=/run/current-system/profile/bin/guix
     [ -x "$WORKER_GUIX" ] || WORKER_GUIX=$GUIX_SYSTEM/profile/bin/guix
     echo "=== WORKER_GUIX=$WORKER_GUIX ==="
-    # scripts/deploy.scm (below) execs the bare `guix' on PATH -- put the
-    # same binary just resolved there first, ahead of $GUIX_SYSTEM's copy.
-    export PATH="$(dirname "$WORKER_GUIX"):$PATH"
 
     mkdir -p /etc/guix
-    echo '(public-key (ecc (curve Ed25519) (q #89306B461D55FBB9F6A60C75463BA2AEE181FB3E8FA5F46CB2E1C29157ACA88#)))' \
+    echo '(public-key (ecc (curve Ed25519) (q #89306B461D55FBB9F6A60C75463BA2AEE181FB3E8FA5F46CB2E1C29157ACA88A#)))' \
       | $WORKER_GUIX archive --authorize
 
-    GIT=$(find /gnu/store -maxdepth 3 -name git -type f -executable 2>/dev/null \
-            | grep '/bin/git$' | head -1)
-    [ -z "$GIT" ] && GIT=$($WORKER_GUIX build git --substitute-urls="https://bordeaux.guix.gnu.org http://nug.spaniel-cordylus.ts.net:3000")/bin/git
-    export GIT_SSL_CAINFO=$SSL_CERT_FILE
-
-    # ── ssh-agent: credential #1 (read-only app repo) for the critical-grind
-    #    channel fetch below; credential #2 is written straight to
-    #    %deploy-identity's fallback path, not the agent (guix deploy uses it
-    #    as a plain identity file, not via ssh-agent).
+    # ── ssh-agent: credential #1 (read-only app repo), needed for the
+    #    critical-grind channel fetch that `guix pull' does below.
     eval "$(ssh-agent -s)"
     printf '%s' "$APP_REPO_DEPLOY_KEY" > /dev/shm/app-repo-deploy-key
     chmod 600 /dev/shm/app-repo-deploy-key
     ssh-add /dev/shm/app-repo-deploy-key
     shred -u /dev/shm/app-repo-deploy-key
-    mkdir -p /root/.ssh
+    mkdir -p "$HOME/.ssh"
     # GitHub's published ed25519 host key (docs.github.com/en/authentication/
     # keeping-your-account-and-data-secure/githubs-ssh-key-fingerprints) --
     # hardcoded rather than ssh-keyscan'd at runtime, which would trust
-    # whatever key answers on the day, MITM or not.
+    # whatever key answers on the day, MITM or not. $HOME (not a hardcoded
+    # /root) since guix's git fetch resolves known_hosts via whatever $HOME
+    # actually is for this process.
     echo 'github.com ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl' \
-      > /root/.ssh/known_hosts
+      > "$HOME/.ssh/known_hosts"
 
-    # ── Non-worker channels needed to load critical-grind-campaign-os ─────
-    # vm-base.scm imports (nongnu services nvidia)/(nongnu packages nvidia)/
-    # (guix-science-nonfree packages cuda-modules) at the top level (see
-    # build-vm-image.yml's own comment on this) and critical-grind-
-    # campaign.scm imports (sops secrets) -- both need to be on -L.
-    # guix-repo itself supplies (peteches ...); no separate clone needed for
-    # that (unlike build-vm-image.yml's now-superseded peteches-channel
-    # clone -- those modules live directly in this repo, see base.scm).
-    $GIT clone https://github.com/fishinthecalculator/sops-guix.git /dev/shm/sops-guix
-    $GIT -C /dev/shm/sops-guix checkout a1e3e55175f6fffe8c3237aac5d0872d016be194
-    SOPS_GUIX_L=$(find /dev/shm/sops-guix -name "secrets.scm" -path "*/sops/*" 2>/dev/null \
-                   | head -1 | xargs -I{} dirname {} | xargs -I{} dirname {})
-    [ -z "$SOPS_GUIX_L" ] && SOPS_GUIX_L=/dev/shm/sops-guix
+    # ── guix pull, not manual channel clones ───────────────────────────────
+    # An earlier version of this task cloned sops-guix/nonguix/guix-science-
+    # nonfree by hand and added them via -L/GUILE_LOAD_PATH to avoid a real
+    # `guix pull' in CI. That turned out worse: `guix deploy -e' does a
+    # full-tree module discovery pass across every directory on the load
+    # path, and each of those channels has unrelated broken files elsewhere
+    # in its tree (nonguix's nongnu/packages/game-client.scm, an unrelated
+    # guix-science package, etc.) that crashed evaluation despite having
+    # nothing to do with critical-grind-campaign-os. A real `guix pull'
+    # against deploy-critical-grind.scm builds one consistent generation
+    # instead, and PATH is updated to use it -- exactly what a human
+    # operator does by hand (see guix/README.org's manual release steps).
+    export PATH="$(dirname "$WORKER_GUIX"):$PATH"
+    guix pull -C guix-repo/peteches/channels/deploy-critical-grind.scm
+    hash guix
+    export PATH="$HOME/.config/guix/current/bin:$PATH"
+    hash guix
 
-    $GIT clone https://gitlab.com/nonguix/nonguix.git /dev/shm/nonguix
-    $GIT -C /dev/shm/nonguix checkout bf39542ca537fde8839b209ac21d6f3254469b15
-
-    $GIT clone https://codeberg.org/guix-science/guix-science-nonfree.git /dev/shm/guix-science-nonfree
-    $GIT -C /dev/shm/guix-science-nonfree checkout f30ef0318dd1c26bcb9d952a50cfa777429ab4e9
-
-    # The critical-grind channel itself, at the commit critical-grind-bump-
-    # channel.yml just wrote into guix-repo -- fetched over SSH with
-    # credential #1, since it's a private repo.
     APP_COMMIT=$(grep -oP '\(commit "\K[0-9a-f]{40}' guix-repo/peteches/channels/critical-grind.scm)
     echo "=== deploying critical-grind at $APP_COMMIT ==="
-    $GIT clone git@github.com:peteches/critical-grind-battlefronts.git /dev/shm/critical-grind
-    $GIT -C /dev/shm/critical-grind checkout "$APP_COMMIT"
 
     # ── credential #2: write to %deploy-identity's fallback path ──────────
     # (peteches/machines.scm: tries /run/secrets/peteches-automation-ssh-key
@@ -139,15 +127,9 @@ run:
 
     # ── guix deploy, via the fleet's own scripts/deploy.scm wrapper ────────
     # Reuses the proven --hosts filtering + -e construction rather than
-    # hand-rolling a second one; deploy.scm's own -L repo-root covers
-    # guix-repo's (peteches ...) modules, so only the channels it doesn't
-    # know about are added here, plus --dry-run/--substitute-urls forwarded
-    # straight through as passthrough args.
+    # hand-rolling a second one. No extra -L/GUILE_LOAD_PATH needed now --
+    # the pulled generation above already has every channel this needs.
     DEPLOY_EXTRA_ARGS=(
-      -L /dev/shm/critical-grind
-      -L "$SOPS_GUIX_L"
-      -L /dev/shm/nonguix
-      -L /dev/shm/guix-science-nonfree
       --substitute-urls="https://bordeaux.guix.gnu.org https://ci.guix.gnu.org http://nug.spaniel-cordylus.ts.net:3000"
     )
     if [ "$DRY_RUN" = "true" ]; then
