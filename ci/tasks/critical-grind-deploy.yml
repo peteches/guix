@@ -1,0 +1,170 @@
+platform: linux
+
+image_resource:
+  type: registry-image
+  source:
+    repository: registry.ts.peteches.co.uk/guix-builder
+    tag: latest
+
+inputs:
+- name: guix-repo # already bumped by critical-grind-bump-channel.yml and pushed
+
+params:
+  # Plain job values -- see build-vm-image.yml's own params block for why
+  # these must not use ((var)) syntax (Concourse's credential-manager
+  # interpolation only applies to file: tasks and errors on anything that
+  # isn't a secret in the `concourse' KV engine).
+  DRY_RUN: "true"
+  SMOKE_TEST_URL: https://battlefronts.ts.peteches.co.uk/
+  # Genuine credentials, resolved from the `concourse' Vault engine.
+  TAILSCALE_AUTHKEY:   ((tailscale_authkey))
+  APP_REPO_DEPLOY_KEY: ((critical-grind-battlefronts.deploy_ssh_key))
+  VM_DEPLOY_KEY:       ((critical-grind-battlefronts.deploy_vm_ssh_key))
+
+run:
+  # See build-vm-image.yml for why this hardcoded store path is needed
+  # (Concourse bypasses the Docker entrypoint, so OS activation never runs
+  # otherwise) and how to find the current one after the image is rebuilt.
+  path: /gnu/store/xrn61xr82qjnd2m1zwvzmpcnvms9jnbc-bash-static-5.2.37/bin/bash
+  args:
+  - -ce
+  - |
+    # ── OS activation ────────────────────────────────────────────────────
+    /gnu/store/dd9k76cxfa946g60y826zjx4ah5ar50c-system/activate
+
+    GUIX_SYSTEM=/gnu/store/dd9k76cxfa946g60y826zjx4ah5ar50c-system
+    export PATH=$GUIX_SYSTEM/profile/bin:$GUIX_SYSTEM/profile/sbin:$PATH
+    export SSL_CERT_FILE=$GUIX_SYSTEM/profile/etc/ssl/certs/ca-certificates.crt
+    export SSL_CERT_DIR=$GUIX_SYSTEM/profile/etc/ssl/certs
+
+    # ── Fix DNS, nsswitch, and services (see build-vm-image.yml) ──────────
+    rm -f /etc/nsswitch.conf
+    printf 'passwd: files\ngroup: files\nhosts: files dns\nservices: files\nnetworks: files\nprotocols: files\n' \
+      > /etc/nsswitch.conf
+    if [ ! -f /etc/services ]; then
+      _svc=$(find /gnu/store -maxdepth 4 -name services -path '*/iana-etc*' 2>/dev/null | head -1)
+      if [ -n "$_svc" ]; then
+        cp "$_svc" /etc/services
+      else
+        printf 'ftp\t21/tcp\nssh\t22/tcp\nhttp\t80/tcp\nhttps\t443/tcp\n' > /etc/services
+      fi
+    fi
+
+    # ── Tailscale ────────────────────────────────────────────────────────
+    tailscaled --state=/dev/shm/tailscale-state --tun=userspace-networking &
+    TAILSCALED_PID=$!
+    tailscale up --authkey="$TAILSCALE_AUTHKEY" --hostname="concourse-deploy-critical-grind"
+
+    # ── Start local guix daemon (see build-vm-image.yml) ───────────────────
+    mkdir -p /var/guix/daemon-socket
+    guix-daemon --build-users-group=guixbuild --disable-chroot \
+      --substitute-urls="https://bordeaux.guix.gnu.org https://ci.guix.gnu.org http://nug.spaniel-cordylus.ts.net:3000" &
+    GUIX_DAEMON_PID=$!
+    for i in $(seq 1 15); do
+      [ -S /var/guix/daemon-socket/socket ] && break
+      sleep 1
+    done
+
+    WORKER_GUIX=/run/current-system/profile/bin/guix
+    [ -x "$WORKER_GUIX" ] || WORKER_GUIX=$GUIX_SYSTEM/profile/bin/guix
+    echo "=== WORKER_GUIX=$WORKER_GUIX ==="
+    # scripts/deploy.scm (below) execs the bare `guix' on PATH -- put the
+    # same binary just resolved there first, ahead of $GUIX_SYSTEM's copy.
+    export PATH="$(dirname "$WORKER_GUIX"):$PATH"
+
+    mkdir -p /etc/guix
+    echo '(public-key (ecc (curve Ed25519) (q #89306B461D55FBB9F6A60C75463BA2AEE181FB3E8FA5F46CB2E1C29157ACA88#)))' \
+      | $WORKER_GUIX archive --authorize
+
+    GIT=$(find /gnu/store -maxdepth 3 -name git -type f -executable 2>/dev/null \
+            | grep '/bin/git$' | head -1)
+    [ -z "$GIT" ] && GIT=$($WORKER_GUIX build git --substitute-urls="https://bordeaux.guix.gnu.org http://nug.spaniel-cordylus.ts.net:3000")/bin/git
+    export GIT_SSL_CAINFO=$SSL_CERT_FILE
+
+    # ── ssh-agent: credential #1 (read-only app repo) for the critical-grind
+    #    channel fetch below; credential #2 is written straight to
+    #    %deploy-identity's fallback path, not the agent (guix deploy uses it
+    #    as a plain identity file, not via ssh-agent).
+    eval "$(ssh-agent -s)"
+    printf '%s' "$APP_REPO_DEPLOY_KEY" > /dev/shm/app-repo-deploy-key
+    chmod 600 /dev/shm/app-repo-deploy-key
+    ssh-add /dev/shm/app-repo-deploy-key
+    shred -u /dev/shm/app-repo-deploy-key
+    mkdir -p /root/.ssh
+    # GitHub's published ed25519 host key (docs.github.com/en/authentication/
+    # keeping-your-account-and-data-secure/githubs-ssh-key-fingerprints) --
+    # hardcoded rather than ssh-keyscan'd at runtime, which would trust
+    # whatever key answers on the day, MITM or not.
+    echo 'github.com ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl' \
+      > /root/.ssh/known_hosts
+
+    # ── Non-worker channels needed to load critical-grind-campaign-os ─────
+    # vm-base.scm imports (nongnu services nvidia)/(nongnu packages nvidia)/
+    # (guix-science-nonfree packages cuda-modules) at the top level (see
+    # build-vm-image.yml's own comment on this) and critical-grind-
+    # campaign.scm imports (sops secrets) -- both need to be on -L.
+    # guix-repo itself supplies (peteches ...); no separate clone needed for
+    # that (unlike build-vm-image.yml's now-superseded peteches-channel
+    # clone -- those modules live directly in this repo, see base.scm).
+    $GIT clone https://github.com/fishinthecalculator/sops-guix.git /dev/shm/sops-guix
+    $GIT -C /dev/shm/sops-guix checkout a1e3e55175f6fffe8c3237aac5d0872d016be194
+    SOPS_GUIX_L=$(find /dev/shm/sops-guix -name "secrets.scm" -path "*/sops/*" 2>/dev/null \
+                   | head -1 | xargs -I{} dirname {} | xargs -I{} dirname {})
+    [ -z "$SOPS_GUIX_L" ] && SOPS_GUIX_L=/dev/shm/sops-guix
+
+    $GIT clone https://gitlab.com/nonguix/nonguix.git /dev/shm/nonguix
+    $GIT -C /dev/shm/nonguix checkout bf39542ca537fde8839b209ac21d6f3254469b15
+
+    $GIT clone https://codeberg.org/guix-science/guix-science-nonfree.git /dev/shm/guix-science-nonfree
+    $GIT -C /dev/shm/guix-science-nonfree checkout f30ef0318dd1c26bcb9d952a50cfa777429ab4e9
+
+    # The critical-grind channel itself, at the commit critical-grind-bump-
+    # channel.yml just wrote into guix-repo -- fetched over SSH with
+    # credential #1, since it's a private repo.
+    APP_COMMIT=$(grep -oP '\(commit "\K[0-9a-f]{40}' guix-repo/peteches/channels/critical-grind.scm)
+    echo "=== deploying critical-grind at $APP_COMMIT ==="
+    $GIT clone git@github.com:peteches/critical-grind-battlefronts.git /dev/shm/critical-grind
+    $GIT -C /dev/shm/critical-grind checkout "$APP_COMMIT"
+
+    # ── credential #2: write to %deploy-identity's fallback path ──────────
+    # (peteches/machines.scm: tries /run/secrets/peteches-automation-ssh-key
+    # first, falls back to /home/peteches/.ssh/id_ed25519 -- the first path
+    # never exists in this ephemeral container, so the fallback is used.)
+    # No known_hosts entry needed for the VM itself: gnu/machine/ssh verifies
+    # against machines.scm's own pinned (host-key ...) field via guile-ssh,
+    # not OpenSSH's known_hosts.
+    mkdir -p /home/peteches/.ssh
+    printf '%s' "$VM_DEPLOY_KEY" > /home/peteches/.ssh/id_ed25519
+    chmod 600 /home/peteches/.ssh/id_ed25519
+
+    # ── guix deploy, via the fleet's own scripts/deploy.scm wrapper ────────
+    # Reuses the proven --hosts filtering + -e construction rather than
+    # hand-rolling a second one; deploy.scm's own -L repo-root covers
+    # guix-repo's (peteches ...) modules, so only the channels it doesn't
+    # know about are added here, plus --dry-run/--substitute-urls forwarded
+    # straight through as passthrough args.
+    DEPLOY_EXTRA_ARGS=(
+      -L /dev/shm/critical-grind
+      -L "$SOPS_GUIX_L"
+      -L /dev/shm/nonguix
+      -L /dev/shm/guix-science-nonfree
+      --substitute-urls="https://bordeaux.guix.gnu.org https://ci.guix.gnu.org http://nug.spaniel-cordylus.ts.net:3000"
+    )
+    if [ "$DRY_RUN" = "true" ]; then
+      DEPLOY_EXTRA_ARGS+=(--dry-run)
+    fi
+
+    guix-repo/scripts/deploy.scm --hosts critical-grind-campaign "${DEPLOY_EXTRA_ARGS[@]}"
+
+    shred -u /home/peteches/.ssh/id_ed25519
+
+    if [ "$DRY_RUN" = "true" ]; then
+      echo "=== DRY_RUN=true: skipping smoke test ==="
+    else
+      echo "=== smoke test: $SMOKE_TEST_URL ==="
+      curl -fsS "$SMOKE_TEST_URL" >/dev/null
+    fi
+
+    tailscale down
+    kill "$TAILSCALED_PID"
+    kill "$GUIX_DAEMON_PID" 2>/dev/null || true

@@ -1,0 +1,30 @@
+platform: linux
+
+image_resource:
+  type: registry-image
+  source:
+    repository: registry.ts.peteches.co.uk/critical-grind-ci
+    tag: latest
+
+inputs:
+- name: app-repo
+- name: guix-repo
+
+outputs:
+- name: guix-repo
+
+run:
+  path: bash
+  args:
+  - -ce
+  - |
+    APP_SHA="$(cat app-repo/.git/ref)"
+    echo "=== bumping critical-grind channel to $APP_SHA ==="
+
+    guix-repo/scripts/bump-channel.sh "$APP_SHA"
+
+    cd guix-repo
+    git config user.name "concourse-ci"
+    git config user.email "concourse-ci@critical-grind-campaign"
+    git add peteches/channels/critical-grind.scm
+    git commit -m "critical-grind: bump channel to ${APP_SHA} (automated, gate pipeline)"

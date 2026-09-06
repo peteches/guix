@@ -1,0 +1,29 @@
+platform: linux
+
+image_resource:
+  type: registry-image
+  source:
+    repository: registry.ts.peteches.co.uk/critical-grind-ci
+    tag: latest
+
+inputs:
+- name: app-repo
+
+run:
+  path: bash
+  args:
+  - -ce
+  - |
+    # Background PostgreSQL, matching docker-compose.yml's local-dev role/db
+    # naming so DATABASE_URL/TEST_DATABASE_URL need no override from their
+    # Makefile defaults.
+    export PGDATA=/tmp/pgdata
+    mkdir -p "$PGDATA"
+    chown postgres:postgres "$PGDATA"
+    su postgres -c "initdb -D $PGDATA --auth=trust --no-sync"
+    su postgres -c "pg_ctl -D $PGDATA -l /tmp/postgres.log -o '-c listen_addresses=localhost' start -w"
+    su postgres -c "psql -c \"CREATE ROLE criticalgrind WITH LOGIN SUPERUSER PASSWORD 'criticalgrind'\""
+    su postgres -c "createdb -O criticalgrind critical_grind"
+
+    cd app-repo
+    make test-go

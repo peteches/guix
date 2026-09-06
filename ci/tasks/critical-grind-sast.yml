@@ -1,0 +1,24 @@
+platform: linux
+
+image_resource:
+  type: registry-image
+  source:
+    repository: registry.ts.peteches.co.uk/critical-grind-ci
+    tag: latest
+
+inputs:
+- name: app-repo
+
+run:
+  path: bash
+  args:
+  - -ce
+  - |
+    cd app-repo
+    export PATH="$PATH:$(go env GOPATH)/bin"
+
+    echo "=== gosec ==="
+    gosec ./...
+
+    echo "=== govulncheck ==="
+    govulncheck ./...

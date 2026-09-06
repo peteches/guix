@@ -1,0 +1,55 @@
+platform: linux
+
+image_resource:
+  type: registry-image
+  source:
+    repository: registry.ts.peteches.co.uk/critical-grind-ci
+    tag: latest
+
+inputs:
+- name: app-repo
+
+run:
+  path: bash
+  args:
+  - -ce
+  - |
+    # ── Background PostgreSQL ────────────────────────────────────────────
+    export PGDATA=/tmp/pgdata
+    mkdir -p "$PGDATA"
+    chown postgres:postgres "$PGDATA"
+    su postgres -c "initdb -D $PGDATA --auth=trust --no-sync"
+    su postgres -c "pg_ctl -D $PGDATA -l /tmp/postgres.log -o '-c listen_addresses=localhost' start -w"
+    su postgres -c "psql -c \"CREATE ROLE criticalgrind WITH LOGIN SUPERUSER PASSWORD 'criticalgrind'\""
+    su postgres -c "createdb -O criticalgrind critical_grind"
+
+    # ── Build and run the app under test ─────────────────────────────────
+    cd app-repo
+    make build
+    export SESSION_SECRET="dast-only-secret-do-not-use-in-production-padding"
+    export GIN_MODE=release
+    ./bin/critical-grind-campaign-system &
+    APP_PID=$!
+
+    for i in $(seq 1 30); do
+      curl -fsS http://localhost:8080/ >/dev/null 2>&1 && break
+      sleep 1
+    done
+    curl -fsS http://localhost:8080/ >/dev/null || {
+      echo "app did not become ready on :8080" >&2
+      exit 1
+    }
+
+    # ── OWASP ZAP baseline scan ───────────────────────────────────────────
+    # IS_CONTAINERIZED forces zap_common.py's "am I in docker" check so it
+    # execs the local /zap/zap-x.sh wrapper directly rather than trying to
+    # `docker pull`/`docker run` a second container (see ci/Dockerfile for
+    # why that wrapper exists).
+    export IS_CONTAINERIZED=true
+    RULES_FILE="$PWD/ci/zap-baseline-rules.tsv"
+    python3 /opt/zap/zap-baseline.py \
+      -t http://localhost:8080/ \
+      -c "$RULES_FILE" \
+      -I
+
+    kill "$APP_PID" 2>/dev/null || true

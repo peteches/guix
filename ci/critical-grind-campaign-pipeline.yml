@@ -1,0 +1,54 @@
+resources:
+- name: app-repo
+  type: git
+  source:
+    uri: git@github.com:peteches/critical-grind-battlefronts.git
+    branch: main
+    private_key: ((critical-grind-battlefronts.deploy_ssh_key))
+
+# Write-scoped (credential #3): both `get` (fetching ci/tasks/*.yml and
+# scripts/bump-channel.sh) and `put` (pushing the channel-bump commit) use
+# this one resource/credential -- a GitHub deploy key with write access
+# implies read access, so one key covers both directions.
+- name: guix-repo
+  type: git
+  source:
+    uri: git@github.com:peteches/guix.git
+    branch: main
+    private_key: ((critical-grind-battlefronts.guix_repo_push_key))
+
+jobs:
+- name: gate
+  plan:
+  - get: app-repo
+    trigger: true
+  - get: guix-repo
+    trigger: false
+  - task: lint
+    file: guix-repo/ci/tasks/critical-grind-lint.yml
+  - task: test
+    file: guix-repo/ci/tasks/critical-grind-test.yml
+  - task: sast
+    file: guix-repo/ci/tasks/critical-grind-sast.yml
+  - task: dast
+    file: guix-repo/ci/tasks/critical-grind-dast.yml
+
+# Phase 8's graduated rollout: this job starts with `get: app-repo`
+# trigger: false and DRY_RUN: "true" below, both flipped by hand (each a
+# reviewable git diff to this file) as confidence builds -- manual+dry-run,
+# then manual+real, then full auto. See guix/README.org.
+- name: deploy
+  plan:
+  - get: app-repo
+    passed: [gate]
+    trigger: false
+  - get: guix-repo
+  - task: bump-channel
+    file: guix-repo/ci/tasks/critical-grind-bump-channel.yml
+  - put: guix-repo
+    params:
+      repository: guix-repo
+  - task: deploy
+    file: guix-repo/ci/tasks/critical-grind-deploy.yml
+    params:
+      DRY_RUN: "true"
