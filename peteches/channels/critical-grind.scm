@@ -12,18 +12,17 @@
 ;;;
 ;;; No channel introduction: commits are unauthenticated and guix pull will
 ;;; say so on every pull. Shipping a new version of the app is a commit
-;;; bump here, nothing more -- see scripts/bump-channel.sh in the app repo.
+;;; bump here, nothing more -- see scripts/bump-channel.sh in this repo.
+;;;
+;;; A bare `(list ...)', not a `define-module' -- `guix pull -C' on this
+;;; fleet's guix version cannot load a define-module'd file at all (confirmed
+;;; by testing; base.scm's own header comment claiming otherwise is stale).
+;;; deploy-critical-grind.scm duplicates this channel's entry rather than
+;;; importing it as a module, for the same reason.
 
-(define-module (peteches channels critical-grind)
-  #:use-module (guix channels)
-  #:export (%critical-grind-channel))
-
-(define %critical-grind-channel
-  (list
-   (channel
-    (name 'critical-grind)
-    (url "git@github.com:peteches/critical-grind-battlefronts.git")
-    (branch "main")
-    (commit "15e0724edea3ff84eb8b086989a5d9d70f50f517"))))
-
-%critical-grind-channel
+(list
+ (channel
+  (name 'critical-grind)
+  (url "git@github.com:peteches/critical-grind-battlefronts.git")
+  (branch "main")
+  (commit "15e0724edea3ff84eb8b086989a5d9d70f50f517")))
