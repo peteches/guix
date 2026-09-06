@@ -38,17 +38,15 @@
 ;;; loaded via `-L .' like everything else. No channel pin, no re-pinning
 ;;; step: editing a service type is just editing the file.
 ;;;
-;;; The `critical-grind' channel is the Critical Grind application repository
-;;; itself, providing (critical-grind packages campaign) and
-;;; (critical-grind services campaign) for
-;;; peteches/systems/critical-grind-campaign.scm.  It is fetched over smart
-;;; HTTP (git-http-backend on the git VM, via Caddy on the tailnet) rather
-;;; than over gitolite's SSH: guix authenticates git fetches with
-;;; (%make-auth-ssh-agent) alone, so an ssh:// channel would need the key
-;;; loaded in an agent everywhere it is pulled, CI included.  It has no
-;;; channel introduction, so its commits are NOT signature-verified and guix
-;;; warns on every pull.  Shipping a new version of the app is a commit
-;;; bump here, nothing more.
+;;; The `critical-grind' channel (the Critical Grind application repo) is
+;;; deliberately NOT here.  It lives in its own dedicated file,
+;;; peteches/channels/critical-grind.scm, because the repo is private on
+;;; GitHub and fetched over SSH -- guix authenticates git fetches with
+;;; (%make-auth-ssh-agent) alone, so only machines that load that deploy
+;;; key into an agent (the CI deploy task; optionally claude-workstation)
+;;; should pull it, rather than exposing every machine's routine `guix
+;;; pull' to a channel it can't authenticate.  See deploy-critical-grind.scm
+;;; for the combined channel set that includes it.
 ;;;
 ;;; The trailing bare `%base-channels' lets the file double as a plain
 ;;; channels list for `guix pull -C peteches/channels/base.scm'.
@@ -111,16 +109,5 @@
      (make-channel-introduction
       "199fd26ab268d4f26cebcb39e844fe4ff9bea9bc"
       (openpgp-fingerprint
-       "BBB0 2DDF 2CEA F6A8 0D1D  E643 A2A0 6DF2 A33A 54FA"))))
-   (channel
-    (name 'critical-grind)
-    ;; Smart HTTP via git-http-backend on the git VM, fronted by Caddy over the
-    ;; tailnet.  Deliberately NOT the ssh:// gitolite URL: guix authenticates
-    ;; git fetches with (%make-auth-ssh-agent) and nothing else, so an ssh://
-    ;; channel needs the key in an agent on every machine that pulls -- and it
-    ;; fails as "remote rejected authentication", naming neither.
-    ;; No introduction: commits are unauthenticated and guix pull will say so.
-    (url "https://git.ts.peteches.co.uk/git/critical-grind-campaign.git")
-    (branch "main")
-    (commit "15e0724edea3ff84eb8b086989a5d9d70f50f517"))))
+       "BBB0 2DDF 2CEA F6A8 0D1D  E643 A2A0 6DF2 A33A 54FA"))))))
 %base-channels

@@ -77,14 +77,6 @@
      "BBB0 2DDF 2CEA F6A8 0D1D  E643 A2A0 6DF2 A33A 54FA"))))
 
  (channel
-  (name 'critical-grind)
-  ;; Smart HTTP, not gitolite's ssh:// URL -- guix fetches git over
-  ;; ssh-agent only, so ssh:// would need an agent on every pulling machine.
-  ;; No introduction: commits are unauthenticated and guix pull will say so.
-  (url "https://git.ts.peteches.co.uk/git/critical-grind-campaign.git")
-  (branch "main"))
-
- (channel
   (name 'guix-hpc-non-free)
   (url "https://gitlab.inria.fr/guix-hpc/guix-hpc.git")
   (branch "master")
