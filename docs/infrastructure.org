@@ -89,6 +89,68 @@ fly -t <target> set-pipeline -p terraform -c ci/terraform-pipeline.yml
 fly -t <target> unpause-pipeline -p terraform
 #+end_src
 
+** critical-grind-campaign pipeline
+
+Tests, lints, security-scans and deploys the =critical-grind-campaign=
+application (a separate GitHub repo, private, packaged as its own Guix
+channel — see that repo's =guix/README.org=) to
+=battlefronts.ts.peteches.co.uk=, currently the only environment for it.
+
+#+begin_example
+ci/
+  critical-grind-campaign-pipeline.yml   ← pipeline definition
+  tasks/
+    critical-grind-lint.yml          ← gofmt, go vet, golangci-lint, vendor-check
+    critical-grind-test.yml          ← make test-go against a background Postgres
+    critical-grind-sast.yml          ← gosec, govulncheck
+    critical-grind-dast.yml          ← OWASP ZAP baseline scan against a local build
+    critical-grind-bump-channel.yml  ← edits peteches/channels/critical-grind.scm
+    critical-grind-deploy.yml        ← guix deploy against critical-grind-campaign-machine
+scripts/bump-channel.sh              ← the one file critical-grind-bump-channel.yml edits
+#+end_example
+
+*** Pipeline jobs
+
+| Job      | Trigger                          | Action                                                          |
+|----------+-----------------------------------+------------------------------------------------------------------|
+| =gate=   | Push to =main= (app repo)        | lint → test → sast → dast, in sequence, all on one build image  |
+| =deploy= | =gate= passes                    | bump channel commit, push, =guix deploy= (graduated gate, below) |
+
+=deploy='s own trigger is gated in stages while confidence builds, each a
+plain edit to =critical-grind-campaign-pipeline.yml= (reviewable as a git
+diff, no separate approval mechanism):
+
+1. Manual trigger, =DRY_RUN=true= — human reviews the =guix deploy --dry-run=
+   output each run.
+2. Manual trigger, =DRY_RUN=false= — real applies, still on demand.
+3. =trigger: true= on =deploy='s =get: app-repo= — every commit that passes
+   =gate= auto-deploys.
+
+*** Credentials
+
+Three, each scoped to exactly one operation, none of them the fleet-wide
+=peteches= automation key — stored under =concourse/main/critical-grind-
+battlefronts= in Vault:
+
+| Field                   | Purpose                                              | Scope                                    |
+|-------------------------+-------------------------------------------------------+---------------------------------------------|
+| =deploy_ssh_key=        | Clone the private app repo (git resource; guix's channel fetch during deploy) | Read-only GitHub deploy key |
+| =deploy_vm_ssh_key=     | SSH to =critical-grind-campaign= for =guix deploy=   | Dedicated keypair, authorized on that VM only (=critical-grind-campaign.scm='s own =simple-service=, not =%vm-peteches-authorized-keys=) |
+| =guix_repo_push_key=    | Push the channel-bump commit to this repo            | Write-scoped GitHub deploy key on =peteches/guix= only |
+
+The =critical-grind= channel is deliberately not in the fleet-wide
+=peteches/channels/base.scm=/=manual.scm= — see
+=peteches/channels/critical-grind.scm='s own header, and the app repo's
+=guix/README.org=, for why.
+
+*** Deploying the pipeline
+
+#+begin_src bash
+fly -t <target> set-pipeline -p critical-grind-campaign \
+  -c ci/critical-grind-campaign-pipeline.yml
+fly -t <target> unpause-pipeline -p critical-grind-campaign
+#+end_src
+
 * Typical new VM workflow
 
 1. Add Terraform module block in =main.tf=, push branch → Concourse plans it.
