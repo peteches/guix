@@ -23,11 +23,13 @@ run:
     su postgres -c "psql -c \"CREATE ROLE criticalgrind WITH LOGIN SUPERUSER PASSWORD 'criticalgrind'\""
     su postgres -c "createdb -O criticalgrind critical_grind"
 
-    # ── Build and run the app under test ─────────────────────────────────
+    # ── Build, migrate, and run the app under test ─────────────────────────
     cd app-repo
-    make build
+    export DATABASE_URL="postgres://criticalgrind:criticalgrind@localhost:5432/critical_grind?sslmode=disable"
     export SESSION_SECRET="dast-only-secret-do-not-use-in-production-padding"
     export GIN_MODE=release
+    make build
+    go run ./cmd/migrate up
     ./bin/critical-grind-campaign-system &
     APP_PID=$!
 

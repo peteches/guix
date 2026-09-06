@@ -18,7 +18,11 @@ run:
     export PATH="$PATH:$(go env GOPATH)/bin"
 
     echo "=== gofmt ==="
-    UNFORMATTED=$(gofmt -l .)
+    # This repo builds in vendor-consistency mode, so `go list ./...` walks
+    # vendor/ too -- explicit path exclusion, matching .golangci.yml's own
+    # exclusions, is the only way to skip third-party files this repo
+    # doesn't own.
+    UNFORMATTED=$(gofmt -l $(find . -name '*.go' -not -path './vendor/*' -not -path './web/static/vendor/*'))
     if [ -n "$UNFORMATTED" ]; then
       echo "the following files are not gofmt'd:"
       echo "$UNFORMATTED"
