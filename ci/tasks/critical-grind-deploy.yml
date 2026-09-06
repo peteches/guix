@@ -17,9 +17,11 @@ params:
   DRY_RUN: "true"
   SMOKE_TEST_URL: https://battlefronts.ts.peteches.co.uk/
   # Genuine credentials, resolved from the `concourse' Vault engine.
-  TAILSCALE_AUTHKEY:   ((tailscale_authkey))
-  APP_REPO_DEPLOY_KEY: ((critical-grind-battlefronts.deploy_ssh_key))
-  VM_DEPLOY_KEY:       ((critical-grind-battlefronts.deploy_vm_ssh_key))
+  TAILSCALE_AUTHKEY:    ((tailscale_authkey))
+  APP_REPO_DEPLOY_KEY:  ((critical-grind-battlefronts.deploy_ssh_key))
+  VM_DEPLOY_KEY:        ((critical-grind-battlefronts.deploy_vm_ssh_key))
+  GUIX_SIGNING_KEY_PUB: ((critical-grind-battlefronts.guix_signing_key_pub))
+  GUIX_SIGNING_KEY_SEC: ((critical-grind-battlefronts.guix_signing_key_sec))
 
 run:
   # See build-vm-image.yml for why this hardcoded store path is needed
@@ -58,6 +60,21 @@ run:
     TAILSCALED_PID=$!
     tailscale up --authkey="$TAILSCALE_AUTHKEY" --hostname="concourse-deploy-critical-grind"
 
+    # ── Persistent guix-daemon signing key ──────────────────────────────────
+    # `guix deploy' sends signed store items to the target machine, and the
+    # target's ACL must trust the sender's signing key. An ephemeral
+    # container with no /etc/guix/signing-key.* gets a fresh, unique
+    # keypair generated on first use -- which the VM could never be
+    # configured to trust in advance, since it's different every run. This
+    # writes the SAME persistent keypair every time instead (public half
+    # trusted declaratively on critical-grind-campaign-os, see that file's
+    # own comment), so the VM only ever needs to trust one fixed key.
+    mkdir -p /etc/guix
+    printf '%s' "$GUIX_SIGNING_KEY_PUB" > /etc/guix/signing-key.pub
+    printf '%s' "$GUIX_SIGNING_KEY_SEC" > /etc/guix/signing-key.sec
+    chmod 444 /etc/guix/signing-key.pub
+    chmod 400 /etc/guix/signing-key.sec
+
     # ── Start local guix daemon (see build-vm-image.yml) ───────────────────
     mkdir -p /var/guix/daemon-socket
     guix-daemon --build-users-group=guixbuild --disable-chroot \
@@ -72,7 +89,6 @@ run:
     [ -x "$WORKER_GUIX" ] || WORKER_GUIX=$GUIX_SYSTEM/profile/bin/guix
     echo "=== WORKER_GUIX=$WORKER_GUIX ==="
 
-    mkdir -p /etc/guix
     echo '(public-key (ecc (curve Ed25519) (q #89306B461D55FBB9F6A60C75463BA2AEE181FB3E8FA5F46CB2E1C29157ACA88A#)))' \
       | $WORKER_GUIX archive --authorize
 

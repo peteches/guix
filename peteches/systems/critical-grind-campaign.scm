@@ -51,6 +51,7 @@
   #:use-module (gnu packages databases)
   #:use-module (gnu services)
   #:use-module (gnu services databases)
+  #:use-module (gnu services guix)
   #:use-module (gnu services ssh)
   #:use-module (gnu system)
   #:use-module (gnu system file-systems)
@@ -182,6 +183,27 @@
                       openssh-service-type
                       `(("peteches" ,(plain-file "critical-grind-ci-deploy.pub"
                                                   "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIAR48DoX0xy7VEu+r5gI86Lz35RVVIjrDSrncO2HaZGb concourse-ci@critical-grind-campaign\n"))))
+
+      ;; Trusts the CI deploy task's own guix-daemon signing key, so
+      ;; `guix deploy' can send store items to this VM from an ephemeral
+      ;; Concourse container. That container generates no throwaway key of
+      ;; its own -- it writes this SAME persistent keypair to
+      ;; /etc/guix/signing-key.{pub,sec} every run (see
+      ;; ci/tasks/critical-grind-deploy.yml), so the VM's ACL only ever
+      ;; needs to trust one fixed key, not a new one per run. Private half
+      ;; lives in Vault at
+      ;; concourse/main/critical-grind-battlefronts#guix_signing_key_sec.
+      (simple-service 'critical-grind-ci-guix-signing-key
+                      guix-service-type
+                      (guix-extension
+                       (authorized-keys
+                        (list (plain-file "critical-grind-ci-guix-signing-key.pub"
+                                           "(public-key 
+ (ecc 
+  (curve Ed25519)
+  (q #E3E3DD4CFB177BE8771A3B0633ACEC665DB051DE5FBA453FF3459A614B9B9F29#)
+  )
+ )")))))
 
       ;; The Go process runs unprivileged and serves plain HTTP directly on
       ;; :8080 — no reverse proxy, so nothing needs CAP_NET_BIND_SERVICE and
