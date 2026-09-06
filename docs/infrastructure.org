@@ -114,17 +114,11 @@ scripts/bump-channel.sh              ← the one file critical-grind-bump-channe
 | Job      | Trigger                          | Action                                                          |
 |----------+-----------------------------------+------------------------------------------------------------------|
 | =gate=   | Push to =main= (app repo)        | lint → test → sast → dast, in sequence, all on one build image  |
-| =deploy= | =gate= passes                    | bump channel commit, push, =guix deploy= (graduated gate, below) |
+| =deploy= | =gate= passes                    | bump channel commit, push, real =guix deploy= (auto)            |
 
-=deploy='s own trigger is gated in stages while confidence builds, each a
-plain edit to =critical-grind-campaign-pipeline.yml= (reviewable as a git
-diff, no separate approval mechanism):
-
-1. Manual trigger, =DRY_RUN=true= — human reviews the =guix deploy --dry-run=
-   output each run.
-2. Manual trigger, =DRY_RUN=false= — real applies, still on demand.
-3. =trigger: true= on =deploy='s =get: app-repo= — every commit that passes
-   =gate= auto-deploys.
+=battlefronts.ts.peteches.co.uk= is a dev environment (no prod infra yet),
+so =deploy= auto-triggers on every commit that passes =gate= — no manual
+promotion gate, =DRY_RUN=false=.
 
 *** Credentials
 

@@ -33,15 +33,14 @@ jobs:
   - task: dast
     file: guix-repo/ci/tasks/critical-grind-dast.yml
 
-# Phase 8's graduated rollout: this job starts with `get: app-repo`
-# trigger: false and DRY_RUN: "true" below, both flipped by hand (each a
-# reviewable git diff to this file) as confidence builds -- manual+dry-run,
-# then manual+real, then full auto. See guix/README.org.
+# battlefronts.ts.peteches.co.uk is a dev environment (no prod infra yet),
+# so every commit that passes gate deploys automatically -- no manual
+# promotion gate. See guix/README.org.
 - name: deploy
   plan:
   - get: app-repo
     passed: [gate]
-    trigger: false
+    trigger: true
   - get: guix-repo
   - task: bump-channel
     file: guix-repo/ci/tasks/critical-grind-bump-channel.yml
@@ -52,4 +51,4 @@ jobs:
     file: guix-repo/ci/tasks/critical-grind-deploy.yml
     privileged: true
     params:
-      DRY_RUN: "true"
+      DRY_RUN: "false"
