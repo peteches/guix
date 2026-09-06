@@ -51,6 +51,7 @@
   #:use-module (gnu packages databases)
   #:use-module (gnu services)
   #:use-module (gnu services databases)
+  #:use-module (gnu services ssh)
   #:use-module (gnu system)
   #:use-module (gnu system file-systems)
   #:use-module (gnu system keyboard)
@@ -171,6 +172,16 @@
                  (list (postgresql-role
                         (name "criticalgrind")
                         (create-database? #t))))))
+
+      ;; CI-only SSH access for `guix deploy', scoped to this VM alone --
+      ;; not the fleet-wide %vm-peteches-authorized-keys set. Coalesces with
+      ;; the base peteches entry vm-base.scm already sets (see
+      ;; claude-workstation.scm for the same pattern). Private half lives in
+      ;; Vault at concourse/main/critical-grind-battlefronts#deploy_vm_ssh_key.
+      (simple-service 'critical-grind-ci-authorized-keys
+                      openssh-service-type
+                      `(("peteches" ,(plain-file "critical-grind-ci-deploy.pub"
+                                                  "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIAR48DoX0xy7VEu+r5gI86Lz35RVVIjrDSrncO2HaZGb concourse-ci@critical-grind-campaign\n"))))
 
       ;; The Go process runs unprivileged and serves plain HTTP directly on
       ;; :8080 — no reverse proxy, so nothing needs CAP_NET_BIND_SERVICE and
