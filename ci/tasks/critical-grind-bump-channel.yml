@@ -27,4 +27,13 @@ run:
     git config user.name "concourse-ci"
     git config user.email "concourse-ci@critical-grind-campaign"
     git add peteches/channels/critical-grind.scm
-    git commit -m "critical-grind: bump channel to ${APP_SHA} (automated, gate pipeline)"
+    # A prior run of this same job may have already pushed this exact bump
+    # (push happens before the deploy step, by design, so a downstream
+    # deploy failure doesn't lose the record of intent) -- retrying then
+    # finds nothing to commit. That's success, not a failure: the channel
+    # is already at the right commit either way.
+    if git diff --cached --quiet; then
+      echo "=== channel already at $APP_SHA, nothing to commit ==="
+    else
+      git commit -m "critical-grind: bump channel to ${APP_SHA} (automated, gate pipeline)"
+    fi
