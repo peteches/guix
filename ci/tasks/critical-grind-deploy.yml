@@ -160,15 +160,12 @@ run:
       echo "=== DRY_RUN=true: skipping smoke test ==="
     else
       echo "=== smoke test: $SMOKE_TEST_URL ==="
-      # guix-builder has no curl/wget; Guile's own (web client) needs nothing
-      # extra, since Guile ships with guix itself.
-      guile -c "
-        (use-modules (web client) (web response))
-        (call-with-values
-          (lambda () (http-get \"$SMOKE_TEST_URL\"))
-          (lambda (response body)
-            (unless (= 200 (response-code response))
-              (error \"smoke test failed with status\" (response-code response)))))"
+      # guix-builder has no curl/wget, and Guile's own (web client) needs
+      # guile-gnutls for https:// which isn't in the image either -- but
+      # guix-daemon is already up with substitute access in this same task,
+      # so pulling curl transiently costs nothing (cached, no compiling)
+      # and needs no image rebuild.
+      guix shell curl -- curl -fsS "$SMOKE_TEST_URL" >/dev/null
     fi
 
     tailscale down
