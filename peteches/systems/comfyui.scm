@@ -544,7 +544,19 @@
 	       ;; workflow/LoRA. No pip dependencies (manifest.yaml: pip: []).
 	       (comfyui-custom-node
 		(name "comfyui-krea2edit")
-		(git-repo-url "https://github.com/lbouaraba/comfyui-krea2edit")))))))
+		(git-repo-url "https://github.com/lbouaraba/comfyui-krea2edit"))
+	       ;; Impact Pack — SAMLoader/SAMDetector, BboxDetectorSEGS/
+	       ;; SegmDetectorSEGS, SegsToCombinedMask: the box/segm→mask
+	       ;; detection-to-mask plumbing used by detailer/inpaint workflows.
+	       (comfyui-custom-node
+		(name "ComfyUI-Impact-Pack")
+		(git-repo-url "https://github.com/ltdrdata/ComfyUI-Impact-Pack"))
+	       ;; Impact Subpack — UltralyticsDetectorProvider (and
+	       ;; ONNXDetectorProvider): loads the actual YOLO/ONNX detector
+	       ;; weight file Impact Pack's detector nodes need.
+	       (comfyui-custom-node
+		(name "ComfyUI-Impact-Subpack")
+		(git-repo-url "https://github.com/ltdrdata/ComfyUI-Impact-Subpack")))))))
       (service alloy-service-type
                (alloy-configuration
                 (hostname "comfyui.peteches.co.uk")
