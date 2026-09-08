@@ -46,6 +46,7 @@
   #:use-module (peteches systems vm-base)
   #:use-module (peteches services alloy)
   #:use-module (peteches services comfyui)
+  #:use-module (peteches services koboldcpp)
   #:use-module (peteches services restic)
   #:use-module (peteches services tailscale)
   #:use-module (sops secrets)
@@ -557,6 +558,38 @@
 	       (comfyui-custom-node
 		(name "ComfyUI-Impact-Subpack")
 		(git-repo-url "https://github.com/ltdrdata/ComfyUI-Impact-Subpack")))))))
+      ;; Off by default (auto-start? #f) -- ad-hoc GPU-context experiments,
+      ;; not a standing service. Shares this VM's single RTX 4090 with
+      ;; ComfyUI, so `herd stop comfyui` first, `herd start koboldcpp` to
+      ;; use it, then `herd stop koboldcpp; herd start comfyui` when done --
+      ;; the two were never run concurrently in testing and the card
+      ;; doesn't have room for both at once at this model's size.
+      ;;
+      ;; model-path/model-name/context-size/gpu-layers/cuda-device below
+      ;; are exactly the configuration confirmed live: Qwen3.8-27B-Q4_K_M
+      ;; (17.77GB GGUF) loads with --gpulayers 999 (full GPU offload) up to
+      ;; --contextsize 98304 on this card (~518MB VRAM headroom left at
+      ;; that point -- the practical ceiling for this checkpoint here),
+      ;; sustaining ~43 tokens/s single-stream -- both a larger context
+      ;; (98,304 vs. 27,000) and faster (~43 vs. ~32 tokens/s) than the
+      ;; vLLM deployment of the AWQ-INT4 quant of the same model previously
+      ;; tried on nug (see that host's git history before its retirement),
+      ;; thanks to this GGUF quant's smaller footprint (17.77GB vs.
+      ;; 19.24GB) and llama.cpp only maintaining real per-token KV cache
+      ;; for 16 of this hybrid Gated-DeltaNet architecture's 64 layers (the
+      ;; other 48 use the much cheaper fixed-size recurrent state instead
+      ;; -- confirmed live in koboldcpp's own load log).
+      (service koboldcpp-service-type
+               (koboldcpp-configuration
+                (service-name "koboldcpp")
+                (auto-start? #f)
+                (model-path "/media/models/koboldcpp-test")
+                (model-name "Qwen3.8-27B-Q4_K_M.gguf")
+                (host "0.0.0.0")
+                (port 5001)
+                (context-size 98304)
+                (gpu-layers 999)
+                (cuda-device "0")))
       (service alloy-service-type
                (alloy-configuration
                 (hostname "comfyui.peteches.co.uk")
