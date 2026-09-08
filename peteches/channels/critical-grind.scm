@@ -25,4 +25,4 @@
   (name 'critical-grind)
   (url "git@github.com:peteches/critical-grind-battlefronts.git")
   (branch "main")
-  (commit "50ef4730edca1f3dd67847dbf7f2c25e5ded9242")))
+  (commit "0d62fc05d2534f5d253e27929bb8ce960c63f024")))
