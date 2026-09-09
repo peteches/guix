@@ -21895,7 +21895,44 @@
                                                   "eslint-config-prettier"
                                                   "@typescript-eslint/parser"
                                                   "eslint-plugin-expect-type"
-                                                  "@typescript-eslint/eslint-plugin"))))))))
+                                                  "@typescript-eslint/eslint-plugin")))))
+          (add-after 'install 'patch-nested-entities-exports
+            (lambda* (#:key inputs outputs #:allow-other-keys)
+              (define node-bin
+                (search-input-file inputs "/bin/node"))
+              ;; This package's own `npm --install-links' install hoists a
+              ;; single "entities" copy for every dependant, even though
+              ;; htmlparser2/dom-serializer need entities<=4.x (exporting
+              ;; only "./lib/decode.js") while nested parse5 needs
+              ;; entities>=6's "./decode" subpath alias -- whichever
+              ;; version wins the hoist, parse5 resolves to it anyway.
+              ;; Alias the short subpath names onto whatever landed here.
+              (for-each (lambda (pkg-json)
+                          (when (file-exists? pkg-json)
+                            (chmod pkg-json #o644)
+                            (invoke node-bin "-e"
+                                    (string-append "const fs=require('fs');"
+                                     "const f="
+                                     (format #f "~s" pkg-json)
+                                     ";"
+                                     "const p=JSON.parse(fs.readFileSync(f,'utf8'));"
+                                     "let changed=false;"
+                                     "if(p.exports&&!p.exports['./decode']&&p.exports['./lib/decode.js']){"
+                                     "  p.exports['./decode']=p.exports['./lib/decode.js'];"
+                                     "  changed=true;"
+                                     "}"
+                                     "if(p.exports&&!p.exports['./escape']&&p.exports['./lib/escape.js']){"
+                                     "  p.exports['./escape']=p.exports['./lib/escape.js'];"
+                                     "  changed=true;"
+                                     "}"
+                                     "if(changed){fs.writeFileSync(f,JSON.stringify(p));}"))))
+                        (find-files (assoc-ref outputs "out")
+                                    (lambda (path stat)
+                                      (and (string-suffix?
+                                            "/entities/package.json" path)
+                                           (eq? 'regular
+                                                (stat:type stat))))))
+              #t)))))
     (inputs (list node-parse5-htmlparser2-tree-adapter-7.1.0
                   node-parse5-parser-stream-7.1.2
                   node-encoding-sniffer-0.2.1
