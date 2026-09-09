@@ -106,6 +106,13 @@
                   (caddy-reverse-proxy
                    (domain "comfyui.ts.peteches.co.uk")
                    (upstream "comfyui.spaniel-cordylus.ts.net:8188"))
+                  ;; koboldcpp-service-type on comfyui.scm -- off by default
+                  ;; (auto-start? #f), shares the VM's one RTX 4090 with
+                  ;; ComfyUI, so this proxies to nothing whenever the model
+                  ;; server itself isn't running (`herd start koboldcpp`).
+                  (caddy-reverse-proxy
+                   (domain "koboldcpp.ts.peteches.co.uk")
+                   (upstream "comfyui.spaniel-cordylus.ts.net:5001"))
                   (caddy-reverse-proxy
                    (domain "pihole.ts.peteches.co.uk")
                    (upstream "pihole.spaniel-cordylus.ts.net:80/admin"))

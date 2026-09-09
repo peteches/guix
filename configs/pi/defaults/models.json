@@ -1,9 +1,9 @@
 {
   "providers": {
     "koboldcpp": {
-      "name": "koboldcpp (nug)",
+      "name": "koboldcpp (comfyui)",
       "api": "openai-completions",
-      "baseUrl": "https://[fd7a:115c:a1e0::dc36:b619]:5001/v1",
+      "baseUrl": "https://koboldcpp.ts.peteches.co.uk/v1",
       "apiKey": "local",
       "compat": {
         "maxTokensField": "max_tokens",
@@ -12,30 +12,10 @@
       },
       "models": [
         {
-          "id": "koboldcpp/Qwen_Qwen3.6-35B-A3B-Q4_K_M",
-          "name": "Qwen3.6 35B-A3B (nug)",
-          "contextWindow": 131072,
-          "maxTokens": 131072,
-          "input": ["text"]
-        }
-      ]
-    },
-    "vllm": {
-      "name": "vllm (nug)",
-      "api": "openai-completions",
-      "baseUrl": "http://[fd7a:115c:a1e0::dc36:b619]:8002/v1",
-      "apiKey": "local",
-      "compat": {
-        "maxTokensField": "max_tokens",
-        "supportsUsageInStreaming": true,
-        "supportsStrictMode": false
-      },
-      "models": [
-        {
-          "id": "qwen3.8-27b-awq",
-          "name": "Qwen3.8 27B AWQ (nug, vLLM)",
-          "contextWindow": 27000,
-          "maxTokens": 27000,
+          "id": "koboldcpp/Qwen3.8-27B-Q4_K_M",
+          "name": "Qwen3.8 27B Q4_K_M (comfyui, koboldcpp)",
+          "contextWindow": 98304,
+          "maxTokens": 98304,
           "input": ["text"]
         }
       ]
