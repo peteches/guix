@@ -471,13 +471,17 @@ authentication, and OpenAPI integration.")
 (define-public python-plane-sdk
   (package
     (name "python-plane-sdk")
-    (version "0.2.19")
+    ;; plane-mcp-server 0.3.1 pins plane-sdk==0.2.23 exactly (requires
+    ;; plane.models.collections, added after 0.2.19) -- bumping this out of
+    ;; step with peteches/packages/mcp.scm's plane-mcp-server version breaks
+    ;; the plane MCP server at startup with a ModuleNotFoundError.
+    (version "0.2.23")
     (source
      (origin
        (method url-fetch)
        (uri (pypi-uri "plane_sdk" version))
        (sha256
-        (base32 "09a2ziiq1sdjgh4kmqiinxqlx6bzprn4hsd8w6ngvxx0q5bvg2vk"))))
+        (base32 "1msvadvjd1vnvpvdczf2cpm446dc7xq0y87r2fjvcn9lb3dg7qmf"))))
     (build-system pyproject-build-system)
     (arguments (list #:tests? #f))
     (native-inputs (list python-setuptools python-wheel))
