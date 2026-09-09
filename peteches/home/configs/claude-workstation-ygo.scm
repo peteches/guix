@@ -36,7 +36,7 @@
   ;; which `guix deploy'/`guix system' populate with the repo (`-L .'); the scan
   ;; then re-enters this half-loaded module tree and every module fails to bind.
   ;; See the note in (peteches home modules claude-workstation).
-  #:use-module ((gnu packages golang) #:select (go))
+  #:use-module ((gnu packages golang) #:select (go-1.26))
   #:use-module ((gnu packages containers) #:select (podman))
   #:use-module ((gnu packages databases) #:select (postgresql-17 redis))
   #:use-module (peteches packages go-tools)
@@ -136,7 +136,7 @@
    ;; criticalgrind's config already makes for psql). Pinned to postgresql-17
    ;; specifically (not the bare `postgresql' = postgresql-14 default) so
    ;; `psql --version' matches the native server it actually talks to.
-   #:extra-packages (list go go-golangci-lint yarn podman postgresql-17 redis)
+   #:extra-packages (list go-1.26 go-golangci-lint yarn podman postgresql-17 redis)
    #:mcp-servers %ygo-mcp-servers
    ;; Non-secret feature flag: the slack-mcp-server binary registers
    ;; conversations_add_message (message posting) only when this is set --
