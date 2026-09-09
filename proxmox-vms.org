@@ -207,10 +207,13 @@ already full and packages can't be installed, rebuild the image with a larger
 
 *** Step 3: Authorize the deploy key (automatic)
 
-The coordinator's signing key (from =/etc/guix/signing-key.pub= on nug)
-is baked into =vm-base.scm= via =guix-service-type='s =authorized-keys=
-field. Any VM built with =make-vm-os= already trusts nug to push store
-items. No manual =guix archive --authorize= step is needed.
+The coordinators' signing keys (each host's own =/etc/guix/signing-key.pub=,
+currently nyarlothotep and claude-workstation — nug's entry was dropped
+following its decommission; dagon isn't registered yet) are baked into
+=common.scm='s =%authorize-coordinator-key= via =guix-service-type='s
+=authorized-keys= field. Any VM built with =make-vm-os= already trusts
+those hosts to push store items. No manual =guix archive --authorize= step
+is needed.
 
 If you ever rotate the coordinator key or add a second deploy machine,
 update the =plain-file= content in =%authorize-coordinator-key= in

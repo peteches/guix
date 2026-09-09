@@ -240,10 +240,10 @@ host    all     all     ::1/128                 trust\n"))
        (path "/run/secrets/peteches-automation-ssh-key"))
       ;; Private half of the guix-offload keypair, encrypted for this VM's
       ;; own age key -- see the matching public half added to
-      ;; guix-offload-authorized-keys in peteches/systems/nug.scm. Same
+      ;; guix-offload-authorized-keys in peteches/systems/guix-build.scm. Same
       ;; shape as every other VM's guix-build.yaml (see arr.scm, caddy.scm,
-      ;; etc.); nug is reachable over Tailscale now, so this VM can offload
-      ;; too.
+      ;; etc.); guix-build is reachable over Tailscale now, so this VM can
+      ;; offload too.
       (sops-secret
        (key '("ssh-private-key"))
        (file (local-file "../../secrets/hosts/claude-workstation/guix-build.yaml"))
@@ -283,7 +283,7 @@ host    all     all     ::1/128                 trust\n"))
        `(("peteches" ,claude-workstation-peteches-home)
          ("criticalgrind" ,claude-workstation-criticalgrind-home)
          ("ygo" ,claude-workstation-ygo-home)))
-      ;; Authorize the same admin keys (nug + nyarlothotep) for the
+      ;; Authorize the same admin keys (dagon + nyarlothotep) for the
       ;; criticalgrind and ygo users, so `ssh criticalgrind@…' / `ssh ygo@…'
       ;; work key-only just like the peteches account.  openssh-service-type
       ;; coalesces this with the peteches entry vm-base already sets.

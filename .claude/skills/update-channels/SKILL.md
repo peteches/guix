@@ -23,7 +23,7 @@ Read every `peteches/channels/*.scm` file and extract channel definitions. For e
 | `introduction` | present or absent                                             |
 | `file`         | absolute path to the `.scm` file containing this entry       |
 
-Because `nug.scm` re-exports channels from `base.scm` via `%base-channels`, a given (name, url) pair may appear in multiple files. Track the file path per entry so each occurrence is updated independently.
+Because `dagon.scm` re-exports channels from `base.scm` via `%base-channels`, a given (name, url) pair may appear in multiple files. Track the file path per entry so each occurrence is updated independently.
 
 ---
 
@@ -33,7 +33,7 @@ Fetch each distinct `(url, branch)` pair **exactly once**, then apply the
 result to every parsed entry that shares that key — regardless of how many
 files or channel names reference it. With the current channel set this is
 up to ~15 file-occurrences (7 channels × up to 3 files each, once `base.scm`,
-`nug.scm`, and `manual.scm` are all counted) collapsed into at most 7
+`dagon.scm`, and `manual.scm` are all counted) collapsed into at most 7
 fetches. Build a cache keyed by `(url, branch)` before starting Case A/B
 below, and consult/populate it instead of fetching per-occurrence.
 
@@ -160,10 +160,10 @@ Treat any `check-parens` error as a blocker — do not save until resolved.
 
 For each modified file, confirm Guile can still load it.
 
-**Module files** (`base.scm`, `nug.scm`):
+**Module files** (`base.scm`, `dagon.scm`):
 ```bash
 guile -L /home/peteches/area_51/guix -c '(use-modules (peteches channels base))'
-guile -L /home/peteches/area_51/guix -c '(use-modules (peteches channels nug))'
+guile -L /home/peteches/area_51/guix -c '(use-modules (peteches channels dagon))'
 ```
 
 **Plain-list file** (`manual.scm`):

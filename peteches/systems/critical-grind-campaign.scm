@@ -40,7 +40,7 @@
 ;;   * SESSION_SECRET as a sops-secret rather than the hand-provisioned
 ;;     /etc/critical-grind/env described below.
 ;;   * #:with-nug-offload? can go back to its #t default once guix-build.yaml
-;;     exists AND the VM's guix-offload public key is in nug.scm's
+;;     exists AND the VM's guix-offload public key is in guix-build.scm's
 ;;     authorized-keys.  Enabling it with only one half fails silently, so it
 ;;     is off for now.
 

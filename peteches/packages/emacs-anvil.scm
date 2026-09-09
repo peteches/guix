@@ -6,7 +6,7 @@
 ;;; on optional-integration modules. Consumed by (peteches home modules
 ;;; claude-workstation) and (peteches home modules base) to run the Anvil
 ;;; MCP bridge -- headless via emacs-no-x on claude-workstation, GUI via the
-;;; desktop's own Emacs on nug/nyarlothotep.
+;;; desktop's own Emacs on dagon/nyarlothotep.
 
 (define-module (peteches packages emacs-anvil)
   #:use-module (guix packages)

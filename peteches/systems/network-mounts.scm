@@ -1,7 +1,7 @@
 ;;; peteches/systems/network-mounts.scm — shared network filesystem mounts.
 ;;;
 ;;; `scoreplay-cifs-mount' is included in the #:file-systems list of both
-;;; desktops (nug.scm, nyarlothotep.scm).  It is NOT auto-mounted:
+;;; desktops (dagon.scm, nyarlothotep.scm).  It is NOT auto-mounted:
 ;;; (mount? #f) means the entry is declared in /etc/fstab but left for
 ;;; `mount /media/ScorePlay' on demand.  mount-may-fail? and (check? #f)
 ;;; keep a missing NAS or absent credentials from blocking boot.

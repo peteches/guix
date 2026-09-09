@@ -9,12 +9,15 @@
 ;;;                             /etc/guix/machines.scm on the target host —
 ;;;                             (guix scripts offload) is not available at
 ;;;                             config-evaluation time.
-;;;   %authorize-coordinator-key  trusts nug + nyarlothotep to push signed
-;;;                             store items to a host, and registers nug's
-;;;                             guix-publish (port 3000) as a substitute
-;;;                             server.  Every VM gets this via make-vm-os;
-;;;                             without it `guix deploy' has to rebuild
-;;;                             everything on the target.
+;;;   %authorize-coordinator-key  trusts nyarlothotep + claude-workstation to
+;;;                             push signed store items to a host, and
+;;;                             registers guix-build's guix-publish (port
+;;;                             3000) as a substitute server.  Every VM gets
+;;;                             this via make-vm-os; without it `guix deploy'
+;;;                             has to rebuild everything on the target.
+;;;                             dagon (nug's successor desktop) isn't listed
+;;;                             yet -- add it once dagon's own
+;;;                             /etc/guix/signing-key.pub is known.
 ;;;
 ;;; `common-home-services' is a leftover: nothing imports it.  The live home
 ;;; configuration is assembled in (peteches home modules base) instead, and
@@ -65,9 +68,17 @@
      (host-key "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIKSOGKH6AeVlj1WQhSuzT6ni0cpzqcdPjUaFVufYOCqt")
      (parallel-builds 6)))
 
-;; Authorize deploy coordinators (nug, nyarlothotep, and claude-workstation)
-;; to push store items to all VMs, and register nug's guix-publish as a
-;; substitute server.
+;; Authorize deploy coordinators (nyarlothotep and claude-workstation) to
+;; push store items to all VMs, and register guix-build's guix-publish
+;; (nug's build-offload/publish successor) as a substitute server.
+;;
+;; nug-coordinator.pub was dropped following nug's decommission (reinstalled
+;; as the bare proxmox3 host -- no coordinator key survives it). dagon is
+;; nug's successor desktop but isn't a coordinator here yet: only its SSH
+;; login key is known so far (see %vm-peteches-authorized-keys in
+;; vm-base.scm); add dagon-coordinator.pub here once dagon's own
+;; /etc/guix/signing-key.pub is fetched, following the same pattern as the
+;; claude-workstation entry below.
 ;;
 ;; claude-workstation added 2026-08-22: deploys run from there (via the
 ;; automation SSH key) hit `guix deploy: error: unauthorized public key'
@@ -82,11 +93,10 @@
                   guix-service-type
                   (guix-extension
                    (substitute-urls
-                    (append (list "http://nug.spaniel-cordylus.ts.net:3000")
+                    (append (list "http://guix-build.spaniel-cordylus.ts.net:3000")
                             %default-substitute-urls))
                    (authorized-keys
-                    (list (plain-file "nug-coordinator.pub"
-                                      "(public-key (ecc (curve Ed25519) (q #89306B461D55FBB9F6A60C75463BA2AEE181FB3E8FA5F46CB2E1C29157ACA88A#)))")
+                    (list (local-file "./guix-build-substitute-key.pub")
                           (plain-file "nyarlothotep-coordinator.pub"
                                       "(public-key (ecc (curve Ed25519) (q #C41C4703766F019CF43C8FBA3C7E284610799FBBF9875AB561AD7D8A74075AFE#)))")
                           (plain-file "claude-workstation-coordinator.pub"

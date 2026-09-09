@@ -24,7 +24,7 @@ For a **new** VM, all 10 must be present. For a **modified** VM, only check the 
 7. **`proxmox-vms.org`** — a row in the VM table.
 8. **`infra/terraform/main.tf`** — a `module "<name>"` block using the `proxmox-vm` module.
 9. **`age-keys/<name>.pub`** — only expected post-first-boot; if the VM hasn't booted yet, note this as "pending, not missing" rather than a failure. Check `.sops.yaml` has the corresponding entry once the key exists.
-10. **Build offload** — either a `guix-offload-key` sops-secret plus the VM's `guix-offload` public key registered in `nug.scm`'s authorized-keys, or `#:with-nug-offload? #f` passed explicitly. Flag half-wiring (one side present, not the other) as a bug — it fails silently rather than erroring.
+10. **Build offload** — either a `guix-offload-key` sops-secret plus the VM's `guix-offload` public key registered in `guix-build.scm`'s authorized-keys, or `#:with-nug-offload? #f` passed explicitly. Flag half-wiring (one side present, not the other) as a bug — it fails silently rather than erroring.
 
 Also check the IPv6 allocation, if any, doesn't collide with existing `#:ipv6-address` lines elsewhere in `peteches/systems/*.scm` — nothing else checks for this.
 

@@ -1,7 +1,7 @@
 ;;; peteches/home/modules/mpv.scm — mpv profiles shared by both desktops.
 ;;;
 ;;; Only the *profiles* are shared.  The base mpv config is per-host,
-;;; because the hardware differs sharply: nug uses NVIDIA nvdec with multi-GiB
+;;; because the hardware differs sharply: dagon uses NVIDIA nvdec with multi-GiB
 ;;; demuxer caches, nyarlothotep uses AMD VAAPI/Vulkan with modest ones.
 ;;; See the home-mpv-service-type entries in peteches/home/configs/.
 ;;;

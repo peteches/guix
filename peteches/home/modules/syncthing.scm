@@ -1,10 +1,15 @@
 ;;; peteches/home/modules/syncthing.scm — syncs ~/area_51/org between machines.
 ;;;
-;;; One folder ("org") shared sendreceive between nug and nyarlothotep.
-;;; The GUI binds to 127.0.0.1:8384 only — reach it over an SSH tunnel, not
-;;; the LAN.
+;;; One folder ("org") shared sendreceive, originally between nug and
+;;; nyarlothotep. The GUI binds to 127.0.0.1:8384 only — reach it over an
+;;; SSH tunnel, not the LAN.
 ;;;
 ;;; The device IDs are Syncthing public identities, not secrets.
+;;;
+;;; TODO: nug's device entry was dropped following its decommission (its
+;;; Syncthing identity no longer exists). dagon is the successor desktop but
+;;; needs its own device ID added here once dagon's Syncthing is installed
+;;; and paired — see nyarlothotep's entry below for the shape.
 ;;;
 ;;; CAVEAT: `path' is computed with (getenv "HOME") at *module-load* time,
 ;;; i.e. in whatever environment runs `guix home reconfigure'.  That is fine
@@ -34,10 +39,6 @@
 		       (paused? #f)
 		       (devices
 			(list
-			 (syncthing-device
-			  (name "nug")
-			  (id "END7B5S-OJ73D3S-CCPWFE3-Q45OGLZ-BAGJ63I-CF4YBQ6-6QE2U36-YFLGZA2")
-			  (auto-accept-folders? #t))
 			 (syncthing-device
 			  (name "nyarlothotep")
 			  (id "NONO6A6-UEOXJWK-JI5TWRF-5NDMD6H-N3BDTWI-JKRNQ5D-PHO4SSW-UDTHFAL")

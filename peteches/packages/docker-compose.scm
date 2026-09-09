@@ -20,7 +20,7 @@
 ;;; looks for subcommand plugins only in $DOCKER_CONFIG/cli-plugins and
 ;;; four hard-coded FHS directories, never on PATH.  Consumers must put
 ;;; it somewhere `docker' looks -- see the home-files symlink in
-;;; (peteches home configs nug).
+;;; (peteches home configs dagon).
 
 (define-module (peteches packages docker-compose)
   #:use-module (guix packages)

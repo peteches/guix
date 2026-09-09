@@ -2,7 +2,7 @@
 ;; greeter, libvirt, Tor, Tailscale.  The counterpart to make-vm-os in
 ;; (peteches systems vm-base), which serves the headless Proxmox VMs.
 ;;
-;; Used by exactly two hosts: nug.scm (desktop, NVIDIA, build server) and
+;; Used by exactly two hosts: dagon.scm (desktop, NVIDIA, build server) and
 ;; nyarlothotep.scm (laptop, AMD).  Unlike the VMs these are reconfigured
 ;; locally (`guix system reconfigure'), not deployed — they are not in
 ;; (peteches machines).
@@ -25,11 +25,12 @@
 ;;                      the nvidia container toolkit.
 ;;   #:with-printing? #:with-bluetooth?   optional services.
 ;;   #:with-nonguix?    register the nonguix substitute server.
-;;   #:offload-builds?  DEFAULT #t — offload to nug.  nug itself passes #f
-;;                      (it would otherwise offload to itself).
+;;   #:offload-builds?  DEFAULT #t — offload to guix-build.  dagon currently
+;;                      passes #f (no offload keypair delivered yet; see
+;;                      dagon.scm's header for what's pending).
 ;;
 ;; Display stack: `without-gdm' strips GDM out of %desktop-services and
-;; points guix at nug's local substitute server.  greetd runs gtkgreet inside
+;; points guix at guix-build's substitute server.  greetd runs gtkgreet inside
 ;; cage on VT7, launching a Hyprland session.  There is deliberately no
 ;; dbus-run-session wrapper — user sessions get DBus from dbus-service-type.
 
@@ -277,10 +278,10 @@
 	       (build-accounts 20)
 	       (extra-options '("--max-jobs=20"))
 	       (substitute-urls
-		(append (list "http://nug.spaniel-cordylus.ts.net:3000")
+		(append (list "http://guix-build.spaniel-cordylus.ts.net:3000")
 			%default-substitute-urls))
 	       (authorized-keys
-		(append (list (local-file "./nug-substitute-key.pub"))
+		(append (list (local-file "./guix-build-substitute-key.pub"))
 			%default-authorized-guix-keys))
 	       (build-machines (if offload-builds? (list %nug-build-machine) '()))))))
 

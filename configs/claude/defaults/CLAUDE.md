@@ -47,7 +47,7 @@ the same entry for every account, no runtime rewriting of
 
 How the Emacs daemon itself comes up depends on the machine:
 
-- **Desktop accounts** (nug, nyarlothotep): a GUI Emacs is already
+- **Desktop accounts** (dagon, nyarlothotep): a GUI Emacs is already
   part of the Hyprland session, calling `(server-start)` and
   `(anvil-server-start)` from `configs/emacs/init.el` — anvil is live
   before Claude Code even starts.

@@ -4,9 +4,11 @@
 ;;; `home-claude-service-type' in (peteches home modules claude); the two
 ;;; are independent and both must be updated when an MCP server changes.
 ;;;
-;;; Points ECA's code and chat agents at the local KoboldCpp instance on
-;;; nug (see the koboldcpp services in peteches/home/configs/nug.scm; port
-;;; 5001 is the qwen coder model).
+;;; Points ECA's code and chat agents at the koboldcpp instance on the
+;;; comfyui VM, reverse-proxied by Caddy at koboldcpp.ts.peteches.co.uk
+;;; (see peteches/systems/comfyui.scm's koboldcpp-service-type and
+;;; peteches/systems/caddy.scm's reverse-proxy entry). Formerly nug's own
+;;; koboldcpp instance before nug's decommission.
 ;;;
 ;;; KNOWN STALE: `script-path' below points at
 ;;; ~/.config/emacs/straight/repos/anvil.el/anvil-stdio.sh, a straight.el
@@ -68,7 +70,7 @@
 			      "\"providers\":{"
 			      "\"koboldcpp\":{"
 			      "\"api\":\"openai-chat\","
-			      "\"url\":\"https://nug.peteches.co.uk:5001\","
+			      "\"url\":\"https://koboldcpp.ts.peteches.co.uk\","
 			      "\"key\":\"local\","
 			      "\"completionUrlRelativePath\":\"/v1/chat/completions\","
 			      "\"models\":{\"default\":{}}"

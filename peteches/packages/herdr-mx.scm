@@ -10,7 +10,7 @@
 ;; servers from one sidebar -- ahead of upstream shipping it natively (see
 ;; https://github.com/herdrdev/herdr/discussions/515). Installed as
 ;; `bin/herdr' so it is a drop-in replacement for the upstream package;
-;; only wired into the desktop configs (nug/nyarlothotep) that act as
+;; only wired into the desktop configs (dagon/nyarlothotep) that act as
 ;; multi-remote clients. The claude-workstation VM accounts keep the
 ;; standard `herdr' package from (peteches packages herdr) as their
 ;; server, since they are attached *to*, not multi-remote clients.

@@ -218,7 +218,7 @@ application repo, not a modularisation of this one).
 | Constructor | Module | Used by |
 |---|---|---|
 | `make-vm-os` | `peteches/systems/vm-base.scm` | every headless Proxmox VM |
-| `make-base-os` | `peteches/systems/base.scm` | the two desktops (nug, nyarlothotep) |
+| `make-base-os` | `peteches/systems/base.scm` | the two desktops (dagon, nyarlothotep) |
 
 Each system file ends with a **bare expression** naming its OS record
 (e.g. `loki-os`). `guix system build FILE` uses that last value; `guix deploy`
@@ -234,7 +234,7 @@ Each module's header comment documents its keyword arguments — read
 | Path | Purpose |
 |---|---|
 | `peteches/systems/` | OS configurations per host |
-| `peteches/home/configs/` | Host-specific home-environment files (`nug.scm`, `nyarlothotep.scm`) |
+| `peteches/home/configs/` | Host-specific home-environment files (`dagon.scm`, `nyarlothotep.scm`) |
 | `peteches/home/modules/` | Shared home config fragments — `base.scm` plus focused modules (ssh, gpg, theming, ai, etc.) — configuration *values* |
 | `peteches/home/services/` | Reusable home service *types* (aws, git, hyprland, firefox, nyxt, wofi, mako, mpv, …) — folded in from the retired `peteches` channel |
 | `peteches/services/` | Reusable system service *types* (alloy, restic, firewall, tailscale, grafana, pihole, …) — folded in from the retired `peteches` channel |
@@ -269,7 +269,7 @@ Each module's header comment documents its keyword arguments — read
 | `network-mounts.scm` | Network filesystem mount definitions |
 | `monitored-hosts.scm` | Registry of Prometheus node-exporter scrape targets |
 | `bootstrap.scm` | Minimal bootstrap OS for initial VM provisioning |
-| `nug.scm` | nug desktop system |
+| `dagon.scm` | dagon desktop system (nug's successor; nug was decommissioned) |
 | `nyarlothotep.scm` | nyarlothotep desktop system |
 | `pihole.scm` | Pi-hole DNS/ad-blocking VM (192.168.51.189) |
 | `prometheus.scm` | Prometheus monitoring VM (192.168.51.187, port 9090) |
@@ -289,7 +289,7 @@ Each module's header comment documents its keyword arguments — read
 | `critical-grind-campaign.scm` | Critical Grind campaign system VM — Go/Gin app on :8080 + local PostgreSQL (192.168.51.202). Package and service come from the `critical-grind` channel |
 | `critical-grind-outline.scm` | Outline wiki VM — Podman container + local PostgreSQL/Redis (192.168.51.203, :3000) |
 | `plane.scm` | Plane project management VM — Podman containers + PostgreSQL/Redis/RabbitMQ (192.168.51.204, :80) |
-| `nug-substitute-key.pub` | SSH public key for nug's local Guix substitute server |
+| `guix-build-substitute-key.pub` | Guix-publish signing public key for guix-build's substitute server (nug's substitute-server successor) |
 
 #### `peteches/home/configs/`
 
@@ -297,7 +297,7 @@ Host-specific files only — each exports a complete `home-environment` record.
 
 | File | Purpose |
 |---|---|
-| `nug.scm` | nug home environment — `(peteches home configs nug)` |
+| `dagon.scm` | dagon home environment — `(peteches home configs dagon)` |
 | `nyarlothotep.scm` | nyarlothotep home environment — `(peteches home configs nyarlothotep)` |
 
 #### `peteches/home/modules/`
@@ -337,7 +337,7 @@ Prefer the `/update-channels` skill over editing pins directly.
 | File | Purpose |
 |---|---|
 | `base.scm` | `%base-channels` — the reference. Module. Pinned: sops-guix, guix-science, guix-science-nonfree, nonguix, guix, critical-grind |
-| `nug.scm` | Module exporting `%nug-channels` = `%base-channels` + guix-hpc-non-free |
+| `dagon.scm` | Module exporting `%dagon-channels` = `%base-channels` + guix-hpc-non-free |
 | `manual.scm` | **Full** plain channels list (all 6) for `guix pull -C` / symlinking to `~/.config/guix/channels.scm` |
 
 #### `peteches/packages/`
@@ -481,7 +481,7 @@ Home service *types*, folded in from the retired `peteches` channel.
 
 Two base constructors exist for different machine classes:
 
-**`base.scm`** exports `make-base-os` — desktop/laptop systems with Hyprland, greetd, libvirt, virbr0, Tor, fingerprint, etc. Used by `nug.scm`, `nyarlothotep.scm`.
+**`base.scm`** exports `make-base-os` — desktop/laptop systems with Hyprland, greetd, libvirt, virbr0, Tor, fingerprint, etc. Used by `dagon.scm`, `nyarlothotep.scm`.
 
 Key `make-base-os` flags:
 - `laptop?` — enables TLP and thermald
@@ -491,7 +491,7 @@ Key `make-base-os` flags:
 - `with-bluetooth?`, `with-printing?` — optional services
 - `with-nonguix?` — registers nonguix substitute server
 
-`without-gdm` strips GDM from `%desktop-services` and configures the local Guix substitute server (`nug.peteches.co.uk:3000`). All systems use gtkgreet inside cage as the greeter, launching a Hyprland session.
+`without-gdm` strips GDM from `%desktop-services` and configures guix-build's substitute server (`guix-build.spaniel-cordylus.ts.net:3000`). All systems use gtkgreet inside cage as the greeter, launching a Hyprland session.
 
 **`vm-base.scm`** exports `make-vm-os` — headless Proxmox QEMU/KVM VMs. No desktop services. Starts from `%base-services`, adds SSH, networking, NTP, nftables firewall, QEMU guest agent, and Prometheus node-exporter.
 
@@ -506,7 +506,7 @@ Key `make-vm-os` parameters:
 - `sops-secrets` — list of SOPS secret files to decrypt at boot
 - `with-nonguix?` — registers nonguix substitute server
 - `with-nvidia?` — nonguix NVIDIA driver + CUDA (used by `jellyfin.scm` for NVENC)
-- `with-nug-offload?` (default `#t`) — enable build offload to nug. **Requires both** a `guix-offload-key` sops-secret on the VM *and* its `guix-offload` public key in `nug.scm`'s authorized-keys. Several VMs have only one half; offload then fails and falls back to local builds
+- `with-nug-offload?` (default `#t`) — enable build offload to guix-build (nug's build-offload successor; kept this name for minimal diff churn, see `peteches/systems/common.scm`). **Requires both** a `guix-offload-key` sops-secret on the VM *and* its `guix-offload` public key in `guix-build.scm`'s authorized-keys. Several VMs have only one half; offload then fails and falls back to local builds
 
 VM system files should `(define-public <name>-os ...)` and end with `<name>-os` as the final expression so both `guix system build FILE` and `guix deploy` (via module import) work.
 
@@ -523,7 +523,7 @@ hyprland, aws, nyxt, wofi, and more. The focused modules alongside it
 (`ssh.scm`, `gpg.scm`, `theming.scm`, `mako.scm`, `ai.scm`, `claude.scm`, …)
 supply configuration values.
 
-`peteches/home/configs/nug.scm` and `nyarlothotep.scm` append host-specific
+`peteches/home/configs/dagon.scm` and `nyarlothotep.scm` append host-specific
 extras and each evaluate to a bare `home-environment` record.
 
 Non-Scheme assets under `configs/` are located via `repo-directory` /
@@ -534,7 +534,7 @@ never by relative path, which would break under `-L .` and in worktrees.
 
 `base.scm` exports `%base-channels` — pinned: `sops-guix`, `guix-science`,
 `guix-science-nonfree`, `nonguix`, `guix` itself, and `critical-grind`.
-`nug.scm` adds `guix-hpc-non-free` on top.
+`dagon.scm` adds `guix-hpc-non-free` on top.
 
 There used to be a `peteches` channel here too (codeberg.org/peteches/guix-
 channel), providing the custom packages, home services and system services
@@ -563,7 +563,7 @@ key file — so an `ssh://` channel URL requires the key loaded in an agent on
 key. Repositories must carry `git-daemon-export-ok` to be fetchable this way;
 see `peteches/systems/git.scm`.
 
-**Pins are duplicated across three files** (`base.scm`, `nug.scm`,
+**Pins are duplicated across three files** (`base.scm`, `dagon.scm`,
 `manual.scm`) with nothing enforcing agreement. Update them together — use
 the `/update-channels` skill.
 
@@ -607,7 +607,7 @@ When creating a new VM system config (`peteches/systems/<name>.scm`), always upd
 
 9. **`age-keys/<name>.pub`** — after first boot, retrieve the VM's age public key and commit it. Add the corresponding entry to `.sops.yaml`. See `docs/secrets-management.org`.
 
-10. **Build offload** — `make-vm-os` enables it by default. Either add a `guix-offload-key` sops-secret (from `secrets/hosts/<name>/guix-build.yaml`) **and** the VM's `guix-offload` public key to `nug.scm`'s authorized-keys, or pass `#:with-nug-offload? #f`. Half-wiring it fails silently.
+10. **Build offload** — `make-vm-os` enables it by default. Either add a `guix-offload-key` sops-secret (from `secrets/hosts/<name>/guix-build.yaml`) **and** the VM's `guix-offload` public key to `guix-build.scm`'s authorized-keys, or pass `#:with-nug-offload? #f`. Half-wiring it fails silently.
 
 Pick a free IPv6 suffix too, if the VM needs one. The `2a10:d582:ef59::`
 addresses are assigned by hand and tracked **only** in the `#:ipv6-address`

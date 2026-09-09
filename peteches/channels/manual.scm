@@ -1,6 +1,6 @@
 ;;; peteches/channels/manual.scm — plain channel list for `guix pull -C'.
 ;;;
-;;; Mirrors %nug-channels from (peteches channels nug) — i.e. %base-channels
+;;; Mirrors %dagon-channels from (peteches channels dagon) — i.e. %base-channels
 ;;; plus guix-hpc-non-free.  It has a `define-module' header but ends in a
 ;;; bare `(list ...)', so it still doubles as a plain channels list:
 ;;;
@@ -8,7 +8,7 @@
 ;;;
 ;;; or symlinked to ~/.config/guix/channels.scm.  This is the full list.
 ;;;
-;;; Kept in sync BY HAND with base.scm / nug.scm — see the header in
+;;; Kept in sync BY HAND with base.scm / dagon.scm — see the header in
 ;;; base.scm for the full picture, and prefer the `/update-channels' skill
 ;;; over editing pins here directly.
 

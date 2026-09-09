@@ -20,11 +20,11 @@
 ;;;     Wharfedale MixDesk speakers are usb-0000:00:14.0-10.3; the M-Audio
 ;;;     mic is usb-0000:00:14.0-10.1 — both confirmed against dagon's live
 ;;;     `pactl`/`wpctl` output.
-;;;   - %nug-channels (adds guix-hpc-non-free on top of %base-channels),
-;;;     same as nug.
+;;;   - %dagon-channels (adds guix-hpc-non-free on top of %base-channels),
+;;;     inherited from nug.
 ;;;
-;;; nug is the sibling this was copied from; nyarlothotep is the lean laptop
-;;; config.
+;;; nug.scm (now removed, following nug's decommission) was the original
+;;; sibling this was copied from; nyarlothotep is the lean laptop config.
 
 (define-module (peteches home configs dagon)
   #:use-module (guix gexp)
@@ -62,7 +62,7 @@
   #:use-module (peteches packages docker-compose)
   #:use-module (peteches packages zoom)
 
-  #:use-module (peteches channels nug)
+  #:use-module (peteches channels dagon)
 )
 
 ;; Packages unique to dagon (same set as nug).
@@ -211,7 +211,7 @@
 			 "\n")))))
 
    (service home-channels-service-type
-	    %nug-channels)))
+	    %dagon-channels)))
 
 (home-environment
   (packages

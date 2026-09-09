@@ -22,7 +22,7 @@
 ;;;     Use a TODO placeholder until then; `guix deploy' verifies it and
 ;;;     refuses to connect on a mismatch.
 ;;;
-;;; Desktops (nug, nyarlothotep) are deliberately absent — they are
+;;; Desktops (dagon, nyarlothotep) are deliberately absent — they are
 ;;; reconfigured locally with `guix system reconfigure', not deployed.
 ;;;
 ;;; scripts/deploy.scm keeps its own %machine-names alist mapping these
@@ -56,7 +56,7 @@
   #:use-module (peteches systems guix-build)
   )
 
-;; SSH private key used to connect out to every machine below. Nug and
+;; SSH private key used to connect out to every machine below. Dagon and
 ;; nyarlothotep (the desktop deploy coordinators) each have their own
 ;; personal keypair at the conventional path, already enrolled in every
 ;; VM's %vm-peteches-authorized-keys (vm-base.scm). claude-workstation has
@@ -302,10 +302,8 @@
      (user "peteches")
      (identity %deploy-identity)))))
 
-;; TODO: host-key is a placeholder until each VM's first boot -- ssh-keyscan
-;; the IP and replace it; guix deploy refuses to connect on a mismatch. Both
-;; live on proxmox3 (the reinstalled nug) so they can't boot, and these
-;; placeholders can't be filled in, until that reinstall happens.
+;; Both booted post proxmox3 reinstall (the reinstalled nug); host-keys below
+;; are real (ssh-keyscan'd), not placeholders.
 (define-public comfyui-machine
   (machine
    (operating-system comfyui-os)

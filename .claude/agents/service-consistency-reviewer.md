@@ -17,7 +17,7 @@ Any change adding or modifying a system service (`peteches/services/*.scm`, `pet
 - `%vm-base-firewall` has a **drop** input policy and opens only ssh (22), node-exporter (9100), and ICMP by default. Any new service listening on another port needs an explicit `simple-service … firewall-service-type` extension somewhere in the VM's system file. Grep for the port number in the service definition, then grep for the same port (or a matching rule) in the firewall extension. If the port isn't there, this is a real bug, not a nitpick — say so plainly. See `git.scm` or `rustdesk.scm` for the expected pattern if you need a reference.
 
 **Channel pin agreement**
-- If the change touches `peteches/channels/base.scm`, `nug.scm`, or `manual.scm`, all three must agree — they're duplicated by hand with nothing enforcing consistency. Diff the pinned commits/URLs across all three files for the channel(s) touched; flag any mismatch. (If the change went through the `/update-channels` skill, this should already be consistent — verify it actually is rather than assuming.)
+- If the change touches `peteches/channels/base.scm`, `dagon.scm`, or `manual.scm`, all three must agree — they're duplicated by hand with nothing enforcing consistency. Diff the pinned commits/URLs across all three files for the channel(s) touched; flag any mismatch. (If the change went through the `/update-channels` skill, this should already be consistent — verify it actually is rather than assuming.)
 
 **Monitoring coverage**
 - If the service exposes metrics beyond node-exporter's :9100, check for a corresponding `prometheus-scrape-config` in `peteches/systems/prometheus.scm` (see Loki's :3100 or Grafana's :3000 as examples of the pattern).

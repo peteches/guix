@@ -3,7 +3,7 @@ Local = require("peteches.locals")
 -- -----------------------------------------------------------------------------
 -- AI Mode, all my ai related stuff
 --
--- s - switch ai model on nug
+-- s - switch ai model on the model server
 -- -----------------------------------------------------------------------------
 
 hl.define_submap("leader_ai", function()

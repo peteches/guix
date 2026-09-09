@@ -59,8 +59,9 @@
  #:git-name "Pete 'Peteches' McCabe"
  #:git-email "claude@peteches.co.uk"
  #:repos %peteches-repos
- ;; nug's always-on ComfyUI instance, reached via the Caddy reverse proxy
- ;; (peteches/systems/caddy.scm) rather than nug's Tailscale host directly.
+ ;; The comfyui VM's always-on ComfyUI instance (nug's successor, following
+ ;; nug's decommission), reached via the Caddy reverse proxy
+ ;; (peteches/systems/caddy.scm) rather than its Tailscale host directly.
  #:mcp-env '(("COMFYUI_URL" . "https://comfyui.ts.peteches.co.uk"))
  #:mcp-servers
  (list (home-claude-mcp-server

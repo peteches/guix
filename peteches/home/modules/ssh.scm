@@ -68,8 +68,8 @@
 		     (name "nyarlothotep.ts")
 		     (host-name "nyarlothotep.spaniel-cordylus.ts.net"))
 		    (openssh-host
-		     (name "nug.ts")
-		     (host-name "nug.spaniel-cordylus.ts.net"))
+		     (name "dagon.ts")
+		     (host-name "dagon.spaniel-cordylus.ts.net"))
 		    (openssh-host
 		     (name "prometheus.ts")
 		     (host-name "prometheus.spaniel-cordylus.ts.net"))

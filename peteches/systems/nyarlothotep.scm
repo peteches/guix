@@ -8,13 +8,14 @@
 ;;
 ;; Host specifics:
 ;;   - AMD, so #:intel-cpu? #f — this drops intel-microcode and the
-;;     intel_iommu kernel args, which nug takes by default.
+;;     intel_iommu kernel args, which dagon takes by default.
 ;;   - #:laptop? #t enables TLP (thermald is Intel-only and stays off).
 ;;   - LUKS container → LVM (guix-root + guix-swap).  `mapped-devices' is
 ;;     bound once and reused: the file-systems and swap-space records both
 ;;     need it in their `dependencies' so Shepherd unlocks before mounting.
-;;   - Unlike nug it runs the sops key generator + sops-secrets, giving it a
-;;     guix-offload key so it can act as a deploy coordinator alongside nug
+;;   - Unlike dagon (which has no offload keypair yet, see dagon.scm's header)
+;;     it runs the sops key generator + sops-secrets, giving it a
+;;     guix-offload key so it can act as a deploy coordinator
 ;;     (both are trusted by %authorize-coordinator-key).
 ;;
 ;; The file evaluates to a bare `operating-system' record as its last

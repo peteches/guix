@@ -15,12 +15,13 @@
 ;;     cryptodisk support is enabled automatically because
 ;;     `mapped-devices' includes a luks-device-mapping.
 ;;   - #:offload-builds? is #f for this initial install.  Wiring up
-;;     offload to nug needs a guix-offload SSH keypair delivered via
-;;     SOPS (secrets/hosts/dagon/guix-build.yaml), which in turn needs
-;;     dagon's age public key — only available after first boot.  Once
-;;     that exists, follow nyarlothotep.scm's pattern
+;;     offload to guix-build (nug's build-offload/publish successor,
+;;     peteches/systems/guix-build.scm) needs a guix-offload SSH keypair
+;;     delivered via SOPS (secrets/hosts/dagon/guix-build.yaml), which in
+;;     turn needs dagon's age public key — only available after first
+;;     boot.  Once that exists, follow nyarlothotep.scm's pattern
 ;;     (sops-key-generator-service-type + sops-secrets-service-type),
-;;     flip this to #t, and add dagon's offload pubkey to nug.scm's
+;;     flip this to #t, and add dagon's offload pubkey to guix-build.scm's
 ;;     guix-offload-authorized-keys.
 ;;
 ;; The file evaluates to a bare `operating-system' record as its last

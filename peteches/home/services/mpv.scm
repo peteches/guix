@@ -522,7 +522,7 @@ Impact:
 
 Suggested for your machines:
 
-  nug / azathoth:
+  dagon / azathoth:
     nvdec
 
   bhiyaki / nyarlothotep:
@@ -750,7 +750,7 @@ Examples:
     Large buffer.
 
   \"4096MiB\"
-    Very large buffer, suitable for high-RAM machines such as nug.
+    Very large buffer, suitable for high-RAM machines such as dagon.
 
 Impact:
 

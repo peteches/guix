@@ -6,11 +6,11 @@
 ;;; (.claude/skills/) exists to do exactly this, and is the preferred route.
 ;;;
 ;;;   base.scm         (this file)  %base-channels.  Module; used by
-;;;                    nyarlothotep's home config and by nug.scm below.
+;;;                    nyarlothotep's home config and by dagon.scm below.
 ;;;                    THE REFERENCE — update here first.
-;;;   nug.scm          %nug-channels = %base-channels + guix-hpc-non-free.
-;;;                    Module; used by nug's home config.
-;;;   manual.scm       Mirrors %nug-channels (all 7 channels).  Module with a
+;;;   dagon.scm        %dagon-channels = %base-channels + guix-hpc-non-free.
+;;;                    Module; used by dagon's home config.
+;;;   manual.scm       Mirrors %dagon-channels (all 7 channels).  Module with a
 ;;;                    define-module header but ending in a bare `(list ...)',
 ;;;                    so it still works with `guix pull -C'.
 ;;;

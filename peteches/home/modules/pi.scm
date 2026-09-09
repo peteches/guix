@@ -12,13 +12,14 @@
 ;;; unlike Claude Code's ~/.claude.json there is no runtime-mutated state
 ;;; here to protect and no activation script is needed.
 ;;;
-;;; The default models.json wires up nug's koboldcpp server as a custom
-;;; provider. Its cert (Let's Encrypt, CN nug.peteches.co.uk) doesn't cover
-;;; the Tailscale IPv6 literal the baseUrl connects through, so pi's own
-;;; HTTPS calls need certificate verification disabled — see the
-;;; `pi-koboldcpp' shell function this module installs, which sets
-;;; NODE_TLS_REJECT_UNAUTHORIZED=0 only for that wrapped invocation rather
-;;; than exporting it into the whole shell environment.
+;;; The default models.json wires up koboldcpp.ts.peteches.co.uk (Caddy's
+;;; reverse proxy onto the comfyui VM's koboldcpp instance) as a custom
+;;; provider. This replaced nug's own koboldcpp instance and its Tailscale
+;;; IPv6-literal baseUrl following nug's decommission; the `pi-koboldcpp'
+;;; shell function below (NODE_TLS_REJECT_UNAUTHORIZED=0 wrapper) predates
+;;; that move and may no longer be necessary now that the baseUrl is a
+;;; plain domain behind Caddy's own cert — left in place, unverified,
+;;; since it's harmless if unneeded.
 ;;;
 ;;; EXTENSIONS (a list of packages, e.g. pi-mcp-adapter from peteches
 ;;; packages pi-coding-agent) symlinks each package's own
@@ -159,9 +160,10 @@
          (list (list ".pi/agent/mcp.json" (home-pi-mcp-json servers)))))))
 
 (define %pi-koboldcpp-bashrc "\
-# koboldcpp's cert (CN nug.peteches.co.uk) doesn't cover the Tailscale
-# IPv6 literal models.json points pi at, so wrap invocations that need it
-# rather than disabling TLS verification for the whole shell.
+# Predates the move to koboldcpp.ts.peteches.co.uk (Caddy proxy, own cert) --
+# originally worked around nug's cert not covering the Tailscale IPv6
+# literal models.json pointed pi at. Wraps invocations rather than
+# disabling TLS verification for the whole shell.
 pi-koboldcpp() {
   NODE_TLS_REJECT_UNAUTHORIZED=0 command pi --provider koboldcpp \"$@\"
 }

@@ -9,7 +9,7 @@
   ;; alist of (instance-label . "address:9100")
   ;; Replace TODO entries with actual IPs or resolvable hostnames once known.
   '(
-    ("nug"          . "nug.peteches.co.uk:9100")
+    ;; ("dagon"        . "TODO:9100")
     ;; ("nyarlothotep" . "TODO:9100")
     ("pihole"       . "192.168.51.189:9100")
     ("prometheus"   . "192.168.51.187:9100")

@@ -6,13 +6,13 @@
 ;;; with laptop-only extras, and evaluates to a bare `home-environment'
 ;;; record as its last expression — that is what `guix home' consumes.
 ;;;
-;;; Deliberately minimal next to nug.scm: the only real host-specific
+;;; Deliberately minimal next to dagon.scm: the only real host-specific
 ;;; content is the mpv config, tuned for the AMD iGPU (VAAPI + Vulkan via
-;;; gpu-next) and a 16 GiB RAM budget rather than nug's NVIDIA/nvdec setup
+;;; gpu-next) and a 16 GiB RAM budget rather than dagon's NVIDIA/nvdec setup
 ;;; and multi-GiB caches.  Shared mpv profiles come from
 ;;; (peteches home modules mpv).
 ;;;
-;;; Channels: %base-channels, i.e. without nug's guix-hpc-non-free.
+;;; Channels: %base-channels, i.e. without dagon's guix-hpc-non-free.
 
 (define-module (peteches home configs nyarlothotep)
   #:use-module (gnu services)
@@ -44,7 +44,7 @@
 	       (gpu-api "vulkan")
 	       (gpu-context "waylandvk")
 
-	       ;; Good quality without treating a 16 GiB laptop like nug.
+	       ;; Good quality without treating a 16 GiB laptop like dagon.
 	       (profile "gpu-hq")
 
 	       ;; Large enough to smooth network/local hiccups, not so large that

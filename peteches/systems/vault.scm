@@ -14,16 +14,16 @@
 ;;
 ;; NOTE: this VM does not declare a `guix-offload-key' sops-secret, but
 ;; make-vm-os's #:with-nug-offload? defaults to #t and no VM overrides it —
-;; so it is configured to offload builds to nug using a private key at
-;; /run/secrets/guix-offload-key that is never created.  Offload then fails
-;; and builds fall back to local, which is why it has gone unnoticed.
-;; Either add the secret (as loki.scm does, from
-;; secrets/hosts/<name>/guix-build.yaml, plus the matching public key in
-;; nug.scm's authorized-keys) or pass #:with-nug-offload? #f.
+;; so it is configured to offload builds to guix-build (nug's build-offload
+;; successor) using a private key at /run/secrets/guix-offload-key that is
+;; never created.  Offload then fails and builds fall back to local, which
+;; is why it has gone unnoticed.  Either add the secret (as loki.scm does,
+;; from secrets/hosts/<name>/guix-build.yaml, plus the matching public key
+;; in guix-build.scm's authorized-keys) or pass #:with-nug-offload? #f.
 ;;
 ;; Build offload is half-wired fleet-wide; both halves are needed:
 ;;   no guix-offload-key secret:  vault, critical-grind-outline, plane
-;;   secret present, but no matching public key in nug.scm's
+;;   secret present, but no matching public key in guix-build.scm's
 ;;   authorized-keys:            concourse-db, concourse-web01,
 ;;                               concourse-worker01
 

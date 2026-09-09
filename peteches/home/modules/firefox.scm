@@ -27,11 +27,11 @@
 
 ;; Firefox's built-in driver blocklist unconditionally blocks hardware video
 ;; decoding for nvidia on Linux; nvidia-vaapi-driver needs these three prefs
-;; force-enabled to be given a chance at all. Scoped to dagon/nug (nvidia
-;; hosts) — forcing gfx.x11-egl.force-enabled on nyarlothotep's AMD/Mesa
-;; Wayland session is untested and not needed there.
+;; force-enabled to be given a chance at all. Scoped to dagon (nvidia
+;; host, nug's successor) — forcing gfx.x11-egl.force-enabled on
+;; nyarlothotep's AMD/Mesa Wayland session is untested and not needed there.
 (define %nvidia-vaapi-prefs
-  (if (member (gethostname) '("dagon" "nug"))
+  (if (member (gethostname) '("dagon"))
       '(("media.hardware-video-decoding.force-enabled" . #t)
 	("media.rdd-ffmpeg.enabled"                     . #t)
 	("gfx.x11-egl.force-enabled"                    . #t))

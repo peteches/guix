@@ -9,7 +9,7 @@ do
     if line and line ~= "" then cursor_theme = line end
   end
 end
-local nvidia_hosts = { dagon = true, nug = true }
+local nvidia_hosts = { dagon = true }
 local hp = io.popen("hostname")
 local hostname = hp:read("*l")
 hp:close()
@@ -41,7 +41,7 @@ hl.env("NVD_BACKEND", "direct")
 -- software video decode. Vendor-agnostic, safe on non-nvidia hosts too.
 hl.env("MOZ_DISABLE_RDD_SANDBOX", "1")
 if nvidia_hosts[hostname] then
-  -- Required by nvidia-vaapi-driver for libva 2.20+ (dagon/nug are on
+  -- Required by nvidia-vaapi-driver for libva 2.20+ (dagon is on
   -- 2.22.0); without it libva's driver autodetection can pick a
   -- different backend (e.g. nouveau_drv_video.so, also present in the
   -- same DRI search path) instead of the nvidia one.

@@ -2,7 +2,7 @@
 ;;;
 ;;; Exports `base-packages' and `base-services', which the two host configs
 ;;; in peteches/home/configs/ append their own extras onto.  Everything
-;;; shared between nug and nyarlothotep belongs here or in one of the
+;;; shared between dagon and nyarlothotep belongs here or in one of the
 ;;; focused sibling modules (ssh, gpg, theming, ai, claude, mako, …), which
 ;;; this module composes.
 ;;;
@@ -239,8 +239,7 @@
 		     ("HYPRCURSOR_SIZE" . "32")
 		     ("XCURSOR_THEME" . "phinger-matugen")
 		     ("XCURSOR_SIZE" . "32")
-		     ("NUG_HOST" . "nug.spaniel-cordylus.ts.net")
-		     ("COMFYUI_URL" . "http://$NUG_HOST:8188")
+		     ("COMFYUI_URL" . "https://comfyui.ts.peteches.co.uk")
 		     ;; Reuse the running Emacs daemon and open a new frame
 		     ;; for it; if no daemon is reachable, emacsclient's
 		     ;; empty alternate-editor tells it to start one

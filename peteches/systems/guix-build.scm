@@ -1,14 +1,16 @@
 ;; guix-build.scm — Guix substitute server + build-offload target, on a
 ;; Proxmox QEMU/KVM VM.
 ;;
-;; Successor to nug's guix-publish/offload role — nug itself is being
-;; reinstalled as the Proxmox host (proxmox3), so this can no longer live
-;; there. Every VM's `with-nug-offload?` (default #t in vm-base.scm) needs
-;; %nug-build-machine in (peteches systems common) repointed at this VM's
-;; hostname/host-key, and the desktops' `without-gdm` substitute-server URL
-;; (currently hardcoded nug.peteches.co.uk:3000) needs the same treatment —
-;; see CLAUDE.md's "Channels"/"Adding a New VM" notes for where else that
-;; ripples.
+;; Successor to nug's guix-publish/offload role — nug itself was reinstalled
+;; as the Proxmox host (proxmox3), so this can no longer live there.
+;; %nug-build-machine in (peteches systems common) is repointed at this VM's
+;; hostname/host-key (kept that name for minimal diff churn -- see that
+;; module's comment), and the desktops' `without-gdm` substitute-server URL
+;; and authorized-keys (base.scm) point here too, using
+;; guix-build-substitute-key.pub (this VM's /etc/guix/signing-key.pub,
+;; fetched post-boot). Still outstanding: dagon (nug's successor desktop)
+;; has no offload keypair yet, so it isn't in this VM's
+;; guix-offload-authorized-keys below.
 ;;
 ;; The guix-publish config, the coordinator-signing-key trust, and the
 ;; per-VM guix-offload authorized-keys list below are copied verbatim from

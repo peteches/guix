@@ -13,13 +13,15 @@
 ;; (Ada Lovelace) rather than the Makefile's default CUDA_ARCH=native, which
 ;; probes the actual device via nvcc and would fail (no GPU inside the build
 ;; sandbox) or silently target the wrong card if this package is ever built
-;; elsewhere. nug.scm's colibri-service-type instance is responsible for
-;; capping VRAM use (vram-gb) so it can coexist with ComfyUI — see the
-;; module comment in peteches/services/colibri.scm.
+;; elsewhere. The colibri-service-type instance that used it (formerly on
+;; nug, retired along with nug's other local-LLM experiments -- see
+;; peteches/systems/comfyui.scm's module comment) capped VRAM use (vram-gb)
+;; so it could coexist with ComfyUI — see the module comment in
+;; peteches/services/colibri.scm. No current host instantiates this service.
 ;;
 ;; ARCH=x86-64-v3 (portable AVX2 baseline) rather than the Makefile's default
-;; ARCH=native: nug builds locally (#:offload-builds? #f) so `native` would
-;; happen to be correct today, but a `native` build is tied to whatever
+;; ARCH=native: nug built locally (#:offload-builds? #f) so `native` would
+;; have happened to be correct there, but a `native` build is tied to whatever
 ;; machine happens to run the build and silently wrong if that ever changes
 ;; (offload re-enabled, substitutes served to another host, etc.) — see the
 ;; Makefile's own comment on x86-64-v3 being "the portable binary to

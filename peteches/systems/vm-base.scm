@@ -38,13 +38,15 @@
 ;;                        /run/secrets/ using the VM's own age key (baked into
 ;;                        the image at /etc/age/keys.txt by CI; see note below).
 ;;   #:with-nonguix?      register the nonguix substitute server.
-;;   #:with-nug-offload?  DEFAULT #t — adds nug as a build machine.  This
+;;   #:with-nug-offload?  DEFAULT #t — adds guix-build (nug's build-offload
+;;                        successor) as a build machine.  This
 ;;                        requires a private key at /run/secrets/guix-offload-key,
 ;;                        so a VM enabling it must also declare a sops-secret
 ;;                        writing that path (conventionally from
 ;;                        secrets/hosts/<name>/guix-build.yaml), AND its
 ;;                        guix-offload public key must be listed in
-;;                        peteches/systems/nug.scm's authorized_keys service.
+;;                        peteches/systems/guix-build.scm's authorized_keys
+;;                        service.
 ;;   #:with-nvidia?       nonguix NVIDIA driver + CUDA (jellyfin, for NVENC).
 ;;   #:with-swap?         DEFAULT #t — a /swapfile on the root filesystem,
 ;;                        created (fallocate + mkswap) by a one-shot
@@ -76,11 +78,12 @@
 ;;                        deliberately off :00/:30) — vixie-cron string
 ;;                        passed straight to mcron's `job`.
 ;;
-;; Baseline every VM gets: openssh (key-only, nug + nyarlothotep enrolled),
+;; Baseline every VM gets: openssh (key-only, dagon + nyarlothotep enrolled),
 ;; ntpd, qemu-guest-agent, nftables firewall (%vm-base-firewall: ssh + 9100
 ;; + icmp only), cifs-client, prometheus-node-exporter, and
-;; %authorize-coordinator-key (trusts nug/nyarlothotep to push store items,
-;; and registers nug's guix-publish as a substitute server).
+;; %authorize-coordinator-key (trusts nyarlothotep/claude-workstation to push
+;; store items, and registers guix-build's guix-publish as a substitute
+;; server).
 ;;
 ;; The age key sops uses to decrypt #:sops-secrets is baked into each VM's
 ;; image by the CI build-vm-image pipeline (debugfs-written to
@@ -147,13 +150,13 @@
    (supplementary-groups '("wheel" "netdev"))
    (password "$6$yk5pnJr/ECPPOvGv$/HoWZNE7fWDslHHIVHAcaxk0AyhnthoHGhs3RrXaXqvVL8W5UI9OUVHndx4RfSqnWnnPw/.q2KhkfrPRKkw.11")))
 
-;; The admin SSH keys enrolled on every VM: nug + nyarlothotep.  Kept as a
+;; The admin SSH keys enrolled on every VM: dagon + nyarlothotep.  Kept as a
 ;; named, exported list so other system configs can grant the same access to
 ;; an additional login user (see peteches/systems/claude-workstation.scm,
 ;; which authorizes these for the criticalgrind account too).
 (define %vm-peteches-authorized-keys
-  (list (plain-file "peteches-nug.pub"
-                    "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIMddPKUs7sbjMj8GtmzytHhGx7JOoCikqPEBuwE50qa7 peteches@nug\n")
+  (list (plain-file "peteches-dagon.pub"
+                    "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIA7QX7Gu1WDytg5nrrtlutXMJ+f3hh9+UtXx+nzEtGbw peteches@dagon\n")
         (plain-file "peteches-nyarlothotep.pub"
                     "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIM28x2V8tgwfzjyhapMayamDFwviOTHfU4W9BMnmc70w peteches@nyarlothotep.peteches.co.uk\n")))
 

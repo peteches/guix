@@ -26,11 +26,11 @@ you happened to be editing when you made it.
 | Change touches                                                             | Who must be deployed                                  |
 |------------------------------------------------------------------------------+--------------------------------------------------------|
 | A single =peteches/systems/<name>.scm=                                     | Just =<name>=                                          |
-| A shared module: =peteches/systems/vm-base.scm=, =common.scm=, =base.scm=  | Every VM built from that constructor (all VMs for =vm-base.scm=; nug/nyarlothotep for =base.scm=) |
+| A shared module: =peteches/systems/vm-base.scm=, =common.scm=, =base.scm=  | Every VM built from that constructor (all VMs for =vm-base.scm=; dagon/nyarlothotep for =base.scm=) |
 | A service *type* in =peteches/services/= or =peteches/home/services/=      | Every host whose system/home config extends that service |
 | A package in =peteches/packages/=                                          | Every host whose config installs that package          |
 | A channel pin bump (=peteches/channels/*.scm=)                              | The *entire fleet* — a channel bump changes what every subsequent build resolves to, even for hosts whose own =.scm= file didn't change |
-| =peteches/home/modules/= (home-environment fragments)                      | The desktops (nug, nyarlothotep) reconfigured locally, plus any headless account with a home-environment (claude-workstation, criticalgrind) |
+| =peteches/home/modules/= (home-environment fragments)                      | The desktops (dagon, nyarlothotep) reconfigured locally, plus any headless account with a home-environment (claude-workstation, criticalgrind) |
 
 Rules:
 

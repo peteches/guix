@@ -14,7 +14,7 @@
 ;;;
 ;;; The trivial-build-system builder writes the script with `display' calls
 ;;; rather than using (guix build utils), deliberately: it must also work in
-;;; the minimal build environments used when offloading to nug.
+;;; the minimal build environments used when offloading to guix-build.
 
 (define-module (peteches home modules git)
   #:use-module (gnu packages bash)

@@ -26,7 +26,7 @@ each file, collect every `(channel ...)` form that has a `url` field. Record:
 | `introduction` | present or absent                                             |
 | `file`         | absolute path to the `.scm` file containing this entry        |
 
-Because `nug.scm` re-exports channels from `base.scm` via `%base-channels`,
+Because `dagon.scm` re-exports channels from `base.scm` via `%base-channels`,
 and `manual.scm` duplicates the same set again, a given `(url, branch)` pair
 typically appears in **all three** files. Record every occurrence — the
 report should show each file — but do not fetch per-occurrence (see Step 2).
@@ -53,7 +53,7 @@ Store the result in the cache under that `(url, branch)` key, then apply it
 to **every** parsed entry (across all three channel files) that shares the
 same key. With the current channel set this turns what would be up to ~15
 `git ls-remote` calls (7 channels × up to 3 files each once `base.scm`,
-`nug.scm`, and `manual.scm` are all counted) into at most 7 — one per
+`dagon.scm`, and `manual.scm` are all counted) into at most 7 — one per
 distinct channel. No cloning is needed for this step.
 
 If a fetch fails (network error, unreachable remote), record the entry's
@@ -92,7 +92,7 @@ entry (all files, all channels):
 | Channel | File | Current commit | Latest commit | Status |
 |---------|------|----------------|----------------|--------|
 | nonguix | base.scm | `bf39542c` | `bf39542c` | up to date |
-| nonguix | nug.scm | `bf39542c` | `bf39542c` | up to date |
+| nonguix | dagon.scm | `bf39542c` | `bf39542c` | up to date |
 | nonguix | manual.scm | `bf39542c` | `bf39542c` | up to date |
 | guix    | base.scm | `dd3e59ad` | `a1b2c3d4` | **update available** |
 
