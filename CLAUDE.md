@@ -77,6 +77,30 @@ scripts/deploy.scm -h "prometheus,loki" --dry-run  # multiple patterns
 guix describe
 ```
 
+## Fleet Deployment
+
+**Whenever asked for a fleet update, a fleet deploy, or "deploy the
+changes" across more than one VM, follow `docs/fleet-deployment.org` — do
+not improvise.** It is the single source of truth for:
+
+- which hosts a given change's blast radius requires deploying to (a
+  shared-module or channel-pin change means the *whole* fleet, not just the
+  host you were editing — this is how the fleet previously drifted, with
+  some VMs weeks stale relative to others)
+- always using the `deploy-vms` skill rather than raw `scripts/deploy.scm`
+  or `guix deploy` invocations
+- how to verify success per host (generation bump + service health check,
+  including the known shepherd-reload ACL-gap failure mode)
+- how to roll back a single host or a fleet-wide change
+- the fleet consistency audit recipe (per-host `guix system describe` over
+  SSH) to run after a fleet deploy, or whenever asked to check when VMs
+  were last deployed/reconfigured
+
+Raw `scripts/deploy.scm` invocations (as in "Common Commands" above) remain
+fine for a quick single-host deploy during iterative development; the
+`docs/fleet-deployment.org` rules apply once more than one host, or a
+shared-module/channel-wide change, is involved.
+
 ## Validating changes
 
 Read this before trusting a "it loads fine" claim — several of the obvious
@@ -450,6 +474,7 @@ Home service *types*, folded in from the retired `peteches` channel.
 | `docs/backups.org` | Backup strategy documentation |
 | `docs/secrets-management.org` | SOPS + age keys workflow |
 | `docs/infrastructure.org` | Terraform + Concourse CI overview |
+| `docs/fleet-deployment.org` | Fleet deploy rules: when to deploy, `deploy-vms` skill usage, per-host success verification, rollback, consistency audit |
 | `.claude/skills/update-channels/` | Claude Code skill for updating pinned channel commits across all three channel files |
 
 ### System Configurations (`peteches/systems/`)

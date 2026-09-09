@@ -1,0 +1,288 @@
+#+title: Fleet Deployment
+#+author: Pete 'Peteches' McCabe
+
+* Overview
+
+"Fleet deployment" means pushing a Guix configuration change out to some or
+all of the VMs listed in =peteches/machines.scm= via =guix deploy=. This
+document is the single source of truth for four questions that were
+previously answered ad hoc, which is how the fleet ended up in an
+inconsistent state (some VMs on a generation from Aug 31, most still on one
+from Aug 23, with no record of why):
+
+1. *When* a deploy is required, and to which hosts.
+2. *How* it is carried out (skill usage, not raw commands).
+3. *How success is verified*, per host.
+4. *How to roll back* a host that fails or misbehaves after deploying.
+
+Read this before running any deploy that touches more than the one VM you
+happen to be looking at.
+
+* When to deploy
+
+The blast radius of a change determines who needs a deploy, not which file
+you happened to be editing when you made it.
+
+| Change touches                                                             | Who must be deployed                                  |
+|------------------------------------------------------------------------------+--------------------------------------------------------|
+| A single =peteches/systems/<name>.scm=                                     | Just =<name>=                                          |
+| A shared module: =peteches/systems/vm-base.scm=, =common.scm=, =base.scm=  | Every VM built from that constructor (all VMs for =vm-base.scm=; nug/nyarlothotep for =base.scm=) |
+| A service *type* in =peteches/services/= or =peteches/home/services/=      | Every host whose system/home config extends that service |
+| A package in =peteches/packages/=                                          | Every host whose config installs that package          |
+| A channel pin bump (=peteches/channels/*.scm=)                              | The *entire fleet* — a channel bump changes what every subsequent build resolves to, even for hosts whose own =.scm= file didn't change |
+| =peteches/home/modules/= (home-environment fragments)                      | The desktops (nug, nyarlothotep) reconfigured locally, plus any headless account with a home-environment (claude-workstation, criticalgrind) |
+
+Rules:
+
+- *Deploy promptly after merge.* A shared-module or channel change that
+  lands on =main= but is only deployed to the host someone happened to be
+  testing is exactly how the fleet drifts. Finish the fleet deploy in the
+  same session as the merge, not "later."
+- *Don't cherry-pick hosts for a fleet-wide change.* If the change's blast
+  radius (table above) says "every VM," deploy to every VM that answers to
+  a liveness check (see Step 2 of the skill below), not just the ones you
+  personally care about right now. A host that's down at deploy time is
+  *skipped and recorded*, not silently left off the target list.
+- *Don't bundle unrelated changes into one fleet deploy.* If you're deploying
+  a channel bump, don't also sneak in an unrelated single-host tweak in the
+  same run — if the run fails partway, you want a clean rollback story (see
+  "Rollback" below), and that's much harder when the diff being deployed is
+  a grab-bag.
+- A single-host change (row 1) can be deployed whenever convenient; it has
+  no fleet-consistency implication.
+
+* How to deploy
+
+*Always use the =deploy-vms= skill* (=.claude/skills/deploy-vms/=) instead of
+calling =scripts/deploy.scm= or =guix deploy= directly. This is not a style
+preference — the skill exists specifically to close two gaps that raw
+invocations don't handle:
+
+- *Host-name anchoring.* A bare =--hosts arr= substring-matches =prowlarr=
+  too. The skill always anchors on the exact =<name>-machine= variable name.
+- *Isolation and reporting.* Each host is deployed in its own invocation, so
+  one failing host doesn't abort or obscure the rest, and you get a
+  pass/fail table at the end instead of interleaved output from a combined
+  run.
+
+Usage:
+
+#+begin_src text
+deploy-vms                      # whole fleet, one host at a time
+deploy-vms git loki grafana     # only the named hosts
+deploy-vms comfyui --dry-run    # passthrough args forwarded verbatim
+#+end_src
+
+Per the skill's own rules: confirm full-fleet scope with the user before
+starting if it wasn't unambiguous that "everything" was intended, run hosts
+strictly sequentially (never in parallel — they share this machine's
+=guix-daemon= and substitute cache), and don't let one unreachable or
+failing host stop the rest of the list.
+
+Before kicking off a fleet-wide deploy for a shared-module or channel
+change, sanity-check the build locally first so a typo doesn't get
+discovered independently on 15 different VMs:
+
+#+begin_src bash
+guix system build -L . --dry-run peteches/systems/<any-affected-host>.scm
+#+end_src
+
+* Verifying success, per host
+
+A deploy that exits =0= is necessary but not sufficient — =scripts/deploy.scm=
+exiting cleanly only means the SSH session and the store transfer succeeded,
+not that the intended service is actually serving. Check both.
+
+** 1. Generation actually advanced
+
+From this machine (claude-workstation), using the automation identity
+explicitly — plain hostnames don't resolve here (no full SSH config is
+deployed to this account) and =~/.ssh/config='s =Host localhost= stanza only
+covers the local socket, so pass =-i= by hand:
+
+#+begin_src bash
+ssh -i /run/secrets/peteches-automation-ssh-key peteches@<lan-ip> \
+    'guix system describe 2>&1 | head -1'
+#+end_src
+
+Expect a generation number/timestamp *newer* than the one recorded before
+the deploy started. A stray =/etc/profile: line 9: ... No such file or
+directory= line ahead of the real output is a harmless warning from that
+line sourcing a not-yet-linked extensions directory — ignore it, don't treat
+it as a failure.
+
+Use the VM's LAN IP from =proxmox-vms.org=, not its hostname — this account
+has no =~/.ssh/config= entries for the fleet's short names or =.ts= aliases.
+
+** 2. The service actually restarted, not just the config
+
+Generation-bump alone doesn't prove the *service* picked up the change — a
+config swap that isn't followed by a live reload (see the ACL-gap failure
+mode below) leaves the *old* process serving on a correctly-updated =/etc=,
+and a port/health check in that state still reports healthy. Compare the
+service's process start time against the generation switch time:
+
+#+begin_src bash
+# when the current generation was switched to
+stat -c '%y' /var/guix/profiles/system
+# when the service process actually started, and what store path it's running
+sudo herd status <service>
+#+end_src
+
+If =herd status='s "It is running since ..." time is *before* the
+generation-switch time, the service is still running the old configuration
+regardless of what =/etc= or =guix system describe= say — run
+=sudo herd restart <service>= and re-check. Only once the process start
+time is *after* the generation switch is it safe to trust the port/health
+check below as evidence the *new* config is what's actually serving.
+
+** 3. The service itself answers
+
+Once §2 confirms the service restarted into the current generation, check
+the port it actually listens on:
+
+| Host                    | Check                                              |
+|--------------------------+-----------------------------------------------------|
+| prometheus               | =curl -sf http://<ip>:9090/-/healthy=              |
+| grafana                  | =curl -sf http://<ip>:3000/api/health=             |
+| loki                     | =curl -sf http://<ip>:3100/ready=                  |
+| pihole                   | =curl -sf http://<ip>/admin/= (or =dig @<ip> +short google.com=) |
+| git                      | =ssh -T git@<ip>= against gitolite; =curl= cgit over Tailscale |
+| jellyfin                 | =curl -sf http://<ip>:8096/health=                 |
+| caddy                    | =curl -sfk https://<ip>/=                          |
+| prowlarr                 | =curl -sf http://<ip>:9696/ping=                   |
+| arr                      | =curl -sf http://<ip>:8989/ping= (Sonarr), =:7878/ping= (Radarr) |
+| downloads                | =curl -sf http://<ip>:6789/= (NZBGet), =:9091/transmission/rpc= |
+| rustdesk                 | TCP connect on its relay port                      |
+| concourse-db             | =pg_isready -h <ip>=                               |
+| concourse-web01          | =curl -sf http://<ip>:8080/api/v1/info=            |
+| concourse-worker01       | check registered on web01: =fly workers=           |
+| vault                    | =curl -sf http://<ip>:8200/v1/sys/health= (expect sealed, not connection-refused) |
+| critical-grind-campaign  | =curl -sf http://<ip>:8080/healthz= (or app's actual health route) |
+| critical-grind-outline   | =curl -sf http://<ip>:3000/=                       |
+| plane                    | =curl -sf http://<ip>/=                            |
+| comfyui                  | =curl -sf http://<ip>:8188/system_stats=           |
+| guix-build               | =curl -sf http://<ip>:3000/nix-cache-info= (substitute server) |
+| claude-workstation       | No network service to probe — it's this session's own VM (or a peer Claude Code account on it). Check via SSH: =claude --version= runs, and =emacsclient -e t= / the anvil daemon responds (see CLAUDE.md's Anvil section) |
+
+If a health endpoint isn't known/doesn't exist for a service, a bare TCP
+connect to its port is the floor: =timeout 3 bash -c "echo > /dev/tcp/<ip>/<port>"=.
+
+** 4. Known failure mode: shepherd-reload ACL gap
+
+Deploying from claude-workstation can end with:
+
+#+begin_example
+guix deploy: error: unauthorized public key: (public-key ...)
+#+end_example
+
+on the *final* step (the live =upgrade-shepherd-services= archive send) —
+even though the new generation and =/etc= were already switched over
+correctly by the steps before it. This is a store-archive trust (ACL) gap
+(claude-workstation's =guix-daemon= signing key isn't in the target's
+=/etc/guix/acl=), not an SSH/login failure.
+
+When you see this: don't report the deploy as failed outright. Check §1
+above — the generation almost always did advance. If §2's restart check
+shows the process predates the switch, the service needs a live reload it
+never got — SSH in and finish it by hand:
+
+#+begin_src bash
+ssh -i /run/secrets/peteches-automation-ssh-key peteches@<lan-ip> \
+    'sudo herd reload <service>'   # or 'restart' if the service has no reload action
+#+end_src
+
+Note in the deploy report which hosts needed this manual step.
+
+* Rollback
+
+=guix deploy= has no built-in "undo" — rollback happens on the target VM
+using generations that are already in its profile, which is faster and
+safer than trying to redeploy an old commit from here.
+
+** Single host
+
+#+begin_src bash
+ssh -i /run/secrets/peteches-automation-ssh-key peteches@<lan-ip>
+sudo guix system list-generations      # find the last-known-good number
+sudo guix system roll-back             # steps back exactly one generation
+# or, to jump to a specific one:
+sudo guix system switch-generation <N>
+sudo reboot                            # only if the failure involves the kernel/bootloader;
+                                        # a service-level regression usually just needs:
+sudo herd restart <service>
+#+end_src
+
+After rolling back, re-run the §"Verifying success" checks against the
+rolled-back generation to confirm it's actually healthy — a generation can
+be "last known good" and still have drifted (e.g. an expired cert) since it
+was current.
+
+** Fleet-wide change
+
+If a shared-module or channel-wide deploy causes problems on multiple hosts,
+don't roll back each VM individually as the first response — first decide
+whether the fix is "revert the commit and redeploy" or "roll back each
+affected VM's generation":
+
+- *Revert + redeploy* is preferred when the bad change hasn't finished
+  rolling out to the whole target list yet, or when you want =main= to stop
+  matching the bad config (so nobody accidentally deploys it again). Revert
+  in git, then run =deploy-vms= again against the same host list.
+- *Per-VM =guix system roll-back** is faster when the change is already live
+  everywhere and you need service back immediately; it doesn't touch git
+  history, so remember the repo's =HEAD= still contains the bad commit until
+  someone reverts it — the next unrelated fleet deploy could reintroduce the
+  regression if this isn't followed up.
+
+Either way, record which hosts were rolled back and which were redeployed —
+don't leave the fleet in a mixed state without noting it, which is the exact
+problem this document exists to prevent.
+
+* Fleet consistency audit
+
+Periodically (and always immediately after a fleet-wide deploy), confirm
+every reachable VM is actually on the generation you expect, rather than
+assuming a deploy that reported success actually landed everywhere. This is
+the check to run when asked to "check the fleet" or "when was the last
+deploy":
+
+#+begin_src bash
+declare -A ips=(
+  [prometheus]=192.168.51.187 [grafana]=192.168.51.188 [pihole]=192.168.51.189
+  [loki]=192.168.51.190       [git]=192.168.51.191      [jellyfin]=192.168.51.192
+  [caddy]=192.168.51.193      [prowlarr]=192.168.51.194 [arr]=192.168.51.195
+  [downloads]=192.168.51.196  [rustdesk]=192.168.51.197 [concourse-db]=192.168.51.198
+  [concourse-web01]=192.168.51.199 [concourse-worker01]=192.168.51.200
+  [vault]=192.168.51.201      [critical-grind-campaign]=192.168.51.202
+  [critical-grind-outline]=192.168.51.203 [plane]=192.168.51.204
+  [claude-workstation]=192.168.51.205
+  [comfyui]=192.168.51.206    [guix-build]=192.168.51.207
+)
+for h in "${!ips[@]}"; do
+  ip=${ips[$h]}
+  (result=$(timeout 15 ssh -o ConnectTimeout=8 -o BatchMode=yes \
+              -i /run/secrets/peteches-automation-ssh-key "peteches@$ip" \
+              'guix system describe 2>&1 | head -1' 2>&1)
+   printf '%-25s %-16s %s\n' "$h" "$ip" "$result") &
+done
+wait
+#+end_src
+
+Interpreting results:
+
+- A generation/timestamp: host is up and reporting current state. Compare
+  timestamps across the fleet — outliers (much older than the rest after a
+  fleet-wide change) are the drift this document exists to prevent.
+- =ssh: connect ... No route to host= *and* the IP doesn't answer =ping=
+  either: the VM is powered off, not a deploy/SSH problem. Confirm in the
+  Proxmox console before treating it as a failed deploy.
+- =Permission denied (publickey,password)=: the automation key genuinely
+  isn't authorized on that host — different problem from "powered off,"
+  investigate separately (this is not the ACL-gap failure mode in
+  §"Verifying success", which manifests as a =guix deploy=-time error, not
+  an SSH login failure).
+
+IPs and short names above are current as of this writing; =proxmox-vms.org=
+is the authoritative source if the fleet has grown — regenerate the
+association array from there rather than trusting a stale copy indefinitely.
