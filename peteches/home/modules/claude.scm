@@ -48,7 +48,8 @@
             home-claude-mcp-server-name
             home-claude-mcp-server-command
             home-claude-mcp-server-args
-            home-claude-mcp-server-env))
+            home-claude-mcp-server-env
+            home-claude-mcp-server-transport))
 
 ;; TRANSPORT is "stdio" (default) or "http". stdio servers run a local
 ;; COMMAND/ARGS; http servers are hosted endpoints registered by URL only

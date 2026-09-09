@@ -34,9 +34,13 @@
 ;;; mcp.json has the same {name: {command, args, env}} shape Claude Code's
 ;;; mcp-servers already carry, so the exact list built for an account's
 ;;; Claude config (anvil bridges, graphify, comfyui, …) is passed straight
-;;; through here too; only NAME/COMMAND/ARGS/ENV are read -- TRANSPORT/URL/
-;;; OAUTH-SCOPES/SCOPE (claude-specific, e.g. for hosted http servers) are
-;;; ignored, since no account here configures one of those for pi. Written
+;;; through here too; only NAME/COMMAND/ARGS/ENV are read for each entry
+;;; actually rendered -- TRANSPORT is also read, but only to filter: an
+;;; http-transport server (e.g. ygo's hosted Linear/Notion/Granola/Better
+;;; Stack servers, see claude-workstation-ygo.scm) has no COMMAND to
+;;; invoke, so it's dropped from mcp.json rather than rendered
+;;; (pi-mcp-adapter has no http-transport support wired up here).
+;;; URL/OAUTH-SCOPES/SCOPE are unused. Written
 ;;; to ~/.pi/agent/mcp.json, the adapter's own global-override file (see
 ;;; its README's file-layout precedence table) -- a fully static file,
 ;;; unlike claude.scm's activation-time `claude mcp add', because
@@ -54,7 +58,8 @@
                 #:select (home-claude-mcp-server-name
                           home-claude-mcp-server-command
                           home-claude-mcp-server-args
-                          home-claude-mcp-server-env))
+                          home-claude-mcp-server-env
+                          home-claude-mcp-server-transport))
   #:export (home-pi-service-type
             home-pi-configuration))
 
@@ -121,13 +126,23 @@
           (list "}")))
      (list "}"))))
 
+;; SERVERS is shared verbatim with this account's Claude Code config (see
+;; MCP-SERVERS' docstring above), so it can include http-transport entries
+;; (e.g. ygo's Linear/Notion/Granola/Better Stack servers -- see
+;; claude-workstation-ygo.scm) whose COMMAND is #f. home-pi-mcp-json-entry
+;; only knows how to render a stdio COMMAND/ARGS invocation, so those are
+;; dropped here rather than crashing mixed-text-file on a #f command.
 (define (home-pi-mcp-json servers)
-  (apply mixed-text-file "mcp.json"
-         (append
-          (list "{\"mcpServers\":{")
-          (apply append
-                 (intersperse (list ",") (map home-pi-mcp-json-entry servers)))
-          (list "}}"))))
+  (let ((stdio-servers
+         (filter (lambda (s)
+                   (string=? (home-claude-mcp-server-transport s) "stdio"))
+                 servers)))
+    (apply mixed-text-file "mcp.json"
+           (append
+            (list "{\"mcpServers\":{")
+            (apply append
+                   (intersperse (list ",") (map home-pi-mcp-json-entry stdio-servers)))
+            (list "}}")))))
 
 (define (home-pi-files-service config)
   (let ((dir        (home-pi-configuration-config-directory config))
