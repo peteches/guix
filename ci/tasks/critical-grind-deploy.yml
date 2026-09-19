@@ -154,6 +154,26 @@ run:
 
     guix-repo/scripts/deploy.scm --hosts critical-grind-campaign "${DEPLOY_EXTRA_ARGS[@]}"
 
+    # ── restart the shepherd service ────────────────────────────────────
+    # `guix deploy' activates the new system generation and hands shepherd
+    # the new service definition, but does NOT restart an already-running
+    # service on its own -- shepherd just marks it "Replacement pending
+    # (restart to upgrade)" and leaves the old process running forever.
+    # Confirmed live: dozens of prior "succeeded" deploy builds never
+    # actually served their new code because of exactly this gap (the app
+    # process's start time never moved past its original boot, no matter
+    # how many deploys landed). Same pinned host-key as
+    # peteches/machines.scm's critical-grind-campaign-machine entry --
+    # `guix deploy' verifies it internally via guile-ssh above, but a plain
+    # `ssh' here needs its own known_hosts entry.
+    if [ "$DRY_RUN" != "true" ]; then
+      echo "=== restarting critical-grind shepherd service ==="
+      echo 'critical-grind-campaign.spaniel-cordylus.ts.net ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIIZyL51uII6JZ9C75dHa0cWYHWJp5qgdddbWp+E1UnME' \
+        >> "$HOME/.ssh/known_hosts"
+      ssh -o BatchMode=yes -i /home/peteches/.ssh/id_ed25519 peteches@critical-grind-campaign.spaniel-cordylus.ts.net \
+        sudo herd restart critical-grind
+    fi
+
     shred -u /home/peteches/.ssh/id_ed25519
 
     if [ "$DRY_RUN" = "true" ]; then
