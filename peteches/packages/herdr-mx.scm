@@ -15,19 +15,23 @@
 ;; standard `herdr' package from (peteches packages herdr) as their
 ;; server, since they are attached *to*, not multi-remote clients.
 ;;
-;; Pinned to the 2026-08-22 preview build rather than the v0.8.0-mx.1
-;; stable tag: the mx client on dagon was reproducibly SIGSEGVing
-;; (confirmed via a captured core + gdb backtrace -- crash thread had a
-;; unique stack against ~28 idle pool threads, i.e. a race under
-;; concurrent pane/agent load) and the three preview builds since
-;; v0.8.0-mx.1 land fixes for a "wedged remote server" and hardened
-;; live-handoff/status paths -- exactly the multi-remote code paths this
-;; crash was hitting. No matching issue was open upstream at the time.
+;; Pinned to a preview build rather than the v0.8.0-mx.1 stable tag: the
+;; mx client on dagon was reproducibly SIGSEGVing (confirmed via a
+;; captured core + gdb backtrace -- crash thread had a unique stack
+;; against ~28 idle pool threads, i.e. a race under concurrent
+;; pane/agent load) and the preview builds since v0.8.0-mx.1 land fixes
+;; for a "wedged remote server" and hardened live-handoff/status paths
+;; -- exactly the multi-remote code paths this crash was hitting. No
+;; matching issue was open upstream at the time.
+;;
+;; Bumped 2026-09-19 to the 2026-09-11 preview (commit 79803d18: bound
+;; owned SSH bridge lifetime across reconnects, #92) -- another fix in
+;; the same remote/reconnect code path as the original crash.
 ;; Preview tags don't share stable's "v<version>" naming, hence the
 ;; separate pkg-tag.
 (define-public herdr-mx
-  (let* ((pkg-tag "mx-preview-2026-08-22-1600-be4d15051d3f")
-         (pkg-version "0.8.0-mx-preview.2026.08.22"))
+  (let* ((pkg-tag "mx-preview-2026-09-11-0302-79803d1841bb")
+         (pkg-version "0.8.0-mx-preview.2026.09.11"))
     (package
       (name "herdr-mx")
       (version pkg-version)
@@ -38,7 +42,7 @@
                "https://github.com/2lab-ai/herdr-mx/releases/download/"
                pkg-tag "/herdr-linux-x86_64"))
          (sha256
-          (base32 "0ig0zvw108mwdzwnimkkdsvfgkbbwavd69zf3iwhlgn5qc87ajgi"))))
+          (base32 "13r6g69kiymqarw0cl8hvn1k67zv88lx3w9xlrhxlrjp62p5s117"))))
       (build-system copy-build-system)
       (arguments
        (list
