@@ -565,31 +565,121 @@
       ;; the two were never run concurrently in testing and the card
       ;; doesn't have room for both at once at this model's size.
       ;;
-      ;; model-path/model-name/context-size/gpu-layers/cuda-device below
-      ;; are exactly the configuration confirmed live: Qwen3.8-27B-Q4_K_M
-      ;; (17.77GB GGUF) loads with --gpulayers 999 (full GPU offload) up to
-      ;; --contextsize 98304 on this card (~518MB VRAM headroom left at
-      ;; that point -- the practical ceiling for this checkpoint here),
-      ;; sustaining ~43 tokens/s single-stream -- both a larger context
-      ;; (98,304 vs. 27,000) and faster (~43 vs. ~32 tokens/s) than the
-      ;; vLLM deployment of the AWQ-INT4 quant of the same model previously
-      ;; tried on nug (see that host's git history before its retirement),
-      ;; thanks to this GGUF quant's smaller footprint (17.77GB vs.
-      ;; 19.24GB) and llama.cpp only maintaining real per-token KV cache
-      ;; for 16 of this hybrid Gated-DeltaNet architecture's 64 layers (the
-      ;; other 48 use the much cheaper fixed-size recurrent state instead
-      ;; -- confirmed live in koboldcpp's own load log).
+      ;; model-name is huihui-ai's abliterated (uncensored) build of the
+      ;; same Qwen3.8-27B checkpoint below, swapped in for the stock one --
+      ;; same base model and quant tier (UD-DW Q4_K_M, 16.6GB vs. the
+      ;; original Q4_K_M's 17.77GB), so the tuning below should still hold,
+      ;; but it was only confirmed live against the original file -- worth
+      ;; re-checking VRAM headroom at full context once this is deployed.
+      ;;
+      ;; model-name points at a stable "current-model.gguf" symlink inside
+      ;; model-path rather than a specific checkpoint filename, so swapping
+      ;; between the coding tune above and an RP tune (e.g.
+      ;; Huihui-Qwen3.5-27B-abliterated) is a plain `ln -sfn <file>
+      ;; current-model.gguf` on the VM followed by `herd restart koboldcpp`
+      ;; -- no Guix reconfigure/redeploy needed to change checkpoints, only
+      ;; to change the flags below (context-size/extra-args) if a different
+      ;; checkpoint needs different tuning.
+      ;;
+      ;; model-path/context-size/gpu-layers/cuda-device below are exactly
+      ;; the configuration confirmed live against the coding checkpoint:
+      ;; Qwen3.8-27B-Q4_K_M (17.77GB GGUF) loads with --gpulayers 999 (full
+      ;; GPU offload) up to --contextsize 98304 on this card (~518MB VRAM
+      ;; headroom left at that point -- the practical ceiling for this
+      ;; checkpoint here), sustaining ~43 tokens/s single-stream -- both a
+      ;; larger context (98,304 vs. 27,000) and faster (~43 vs. ~32
+      ;; tokens/s) than the vLLM deployment of the AWQ-INT4 quant of the
+      ;; same model previously tried on nug (see that host's git history
+      ;; before its retirement), thanks to this GGUF quant's smaller
+      ;; footprint (17.77GB vs. 19.24GB) and llama.cpp only maintaining
+      ;; real per-token KV cache for 16 of this hybrid Gated-DeltaNet
+      ;; architecture's 64 layers (the other 48 use the much cheaper
+      ;; fixed-size recurrent state instead -- confirmed live in
+      ;; koboldcpp's own load log).
       (service koboldcpp-service-type
                (koboldcpp-configuration
                 (service-name "koboldcpp")
                 (auto-start? #f)
                 (model-path "/media/models/koboldcpp-test")
-                (model-name "Qwen3.8-27B-Q4_K_M.gguf")
+                (model-name "current-model.gguf")
                 (host "0.0.0.0")
                 (port 5001)
-                (context-size 98304)
+                ;; 262144 = this checkpoint's n_ctx_train (confirmed live in
+                ;; koboldcpp's own load log) -- the model's full native
+                ;; context, not reachable at fp16 on this 24GB card but
+                ;; fits with room to spare once the KV cache is quantized
+                ;; (see --quantkv below). Going past n_ctx_train would be
+                ;; RoPE extrapolation past what the model was trained for,
+                ;; so this is the real ceiling, not just a VRAM one.
+                (context-size 262144)
                 (gpu-layers 999)
-                (cuda-device "0")))
+                (cuda-device "0")
+                ;; Caddy's koboldcpp.ts.peteches.co.uk reverse proxy
+                ;; (peteches/systems/caddy.scm) reaches this over Tailscale,
+                ;; so the port must be open -- was missing, leaving the
+                ;; service unreachable despite running.
+                (open-firewall? #t)
+                (extra-args
+                 (list
+                  ;; q4_0 KV quantization (flash attention is on by
+                  ;; default in this koboldcpp version, which quantkv
+                  ;; requires for both K and V rather than K only).
+                  ;; Confirmed live: this quant level loads and serves the
+                  ;; full 262144-token context above with ~815MB VRAM
+                  ;; headroom to spare on this RTX 4090, and passed a
+                  ;; 3-needle retrieval test (facts planted at 10/50/90%
+                  ;; depth in a ~216k-token prompt, all recalled verbatim
+                  ;; via koboldcpp's OpenAI-compatible API) with no
+                  ;; degradation vs. the fp16 baseline. q8_0 also passed
+                  ;; the same test but only reaches 155648 tokens before
+                  ;; hitting the same VRAM ceiling -- q4_0 gets the whole
+                  ;; native context with more headroom, not less, so
+                  ;; there's no reason to settle for q8_0 here.
+                  "--quantkv" "q4_0"
+                  ;; Server-side backstop: pi (the coding-agent client)
+                  ;; was found requesting completions sized to fill
+                  ;; whatever context room remained (seen live: a
+                  ;; 36,409-token generation request), which reads as
+                  ;; "stuck" since it just grinds toward that oversized
+                  ;; target instead of stopping at a normal reply length.
+                  ;; Fixed client-side in configs/pi/defaults/models.json
+                  ;; (maxTokens decoupled from contextWindow), but cap it
+                  ;; here too so any client misbehaving the same way
+                  ;; can't do it again. 8192 was too tight in practice --
+                  ;; it clipped a legitimate long-form task mid-generation
+                  ;; ("stopReason": "length" at exactly 8192, confirmed
+                  ;; live in a pi session doing a 35-item audit writeup).
+                  ;; 32768 is still nowhere near "fill the 262144-token
+                  ;; window" territory that caused the original bug, but
+                  ;; gives genuine long single-pass output room to finish.
+                  "--genlimit" "32768"
+                  ;; Tool calls were coming back as garbled pseudo-XML text
+                  ;; (mismatched <function=bash>...</parameter> tags) that
+                  ;; pi's client can't parse, instead of a real structured
+                  ;; tool call -- reads as the session just sitting there
+                  ;; inert. Root cause per `koboldcpp --help`: plain
+                  ;; --jinja explicitly does NOT apply to tool calls
+                  ;; ("Tool calls are done without jinja"); koboldcpp falls
+                  ;; back to its own generic tool-call formatting, which
+                  ;; this Qwen checkpoint wasn't trained to match.
+                  ;; --jinja_tools routes tool-call formatting through the
+                  ;; model's actual GGUF-embedded Jinja template instead.
+                  "--jinja_tools"
+                  ;; Tried --reasoningeffort low, then --jinjathink false +
+                  ;; --jinja_kwargs '{"enable_thinking":false}', to bound/
+                  ;; disable thinking server-side -- neither is actually
+                  ;; needed. Reasoning-length control belongs in the
+                  ;; client instead: koboldcpp Lite's own Settings > Tokens
+                  ;; > Thinking > Reasoning Effort actively force-closes
+                  ;; the <think> block once its budget is hit (rather than
+                  ;; hoping the model honors a hint) and sends
+                  ;; "reasoning_effort" per-request, which per koboldcpp's
+                  ;; own docs overrides any server-side default anyway --
+                  ;; so a server flag here would at best be redundant, and
+                  ;; at worst (the enable_thinking:false path) forces
+                  ;; thinking off entirely for both the RP and coding
+                  ;; checkpoints with no per-session override.
+                  ))))
       (service alloy-service-type
                (alloy-configuration
                 (hostname "comfyui.peteches.co.uk")

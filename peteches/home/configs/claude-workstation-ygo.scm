@@ -20,8 +20,8 @@
 ;;; to the peteches/criticalgrind configs, so only ygo's Claude knows it
 ;;; exists.
 ;;;
-;;; Also registers Linear, Notion, Granola and Better Stack as `http'-
-;;; transport MCP servers -- all four are hosted, OAuth-authenticated
+;;; Also registers Linear, Notion, Granola, Better Stack and Descope as
+;;; `http'-transport MCP servers -- all five are hosted, OAuth-authenticated
 ;;; endpoints (not local packages), so there is no package to build and no
 ;;; API key to wire through sops-secrets. Registration just points Claude
 ;;; Code at the URL; the first `/mcp' run inside a session on this account
@@ -37,6 +37,7 @@
   ;; then re-enters this half-loaded module tree and every module fails to bind.
   ;; See the note in (peteches home modules claude-workstation).
   #:use-module ((gnu packages golang) #:select (go-1.26))
+  #:use-module ((gnu packages commencement) #:select (gcc-toolchain))
   #:use-module ((gnu packages containers) #:select (podman))
   #:use-module ((gnu packages databases) #:select (postgresql-17 redis))
   #:use-module (peteches packages go-tools)
@@ -88,6 +89,18 @@
          (name "betterstack")
          (transport "http")
          (url "https://mcp.betterstack.com"))
+        ;; Descope's hosted MCP server for managing this account's Descope
+        ;; *project* (users, tenants, auth flows, audit logs, FGA) -- NOT
+        ;; the separate docs-mcp.descope.com server, which would duplicate
+        ;; the docs_search/docs_ask_question tools this one already exposes.
+        ;; EU endpoint (mcp.euc1.descope.com), not the US default
+        ;; (mcp.descope.com) -- this account's Descope project is EU-hosted.
+        ;; No documented required OAuth scope string, so #:oauth-scopes is
+        ;; left at its default, same as betterstack above.
+        (home-claude-mcp-server
+         (name "descope")
+         (transport "http")
+         (url "https://mcp.euc1.descope.com"))
         ;; Slack, unlike the three above, has no hosted OAuth MCP endpoint --
         ;; it runs locally (stdio) and reads its auth token from the
         ;; environment. SLACK_MCP_XOXP_TOKEN below (via #:secret-env-vars)
@@ -136,7 +149,23 @@
    ;; criticalgrind's config already makes for psql). Pinned to postgresql-17
    ;; specifically (not the bare `postgresql' = postgresql-14 default) so
    ;; `psql --version' matches the native server it actually talks to.
-   #:extra-packages (list go-1.26 go-golangci-lint yarn podman postgresql-17 redis)
+   ;; gcc-toolchain: cgo and `go test -race' need a C compiler -- Go's cgo
+   ;; invokes `gcc' (falling back to `cc') for any package that uses cgo,
+   ;; and there is no C toolchain at the system level either (%base-packages
+   ;; is minimal), so without this ygo's `go build' fails with
+   ;; `cgo: C compiler "gcc" not found'. Same fix criticalgrind's config
+   ;; already carries.
+   #:extra-packages (list go-1.26 go-golangci-lint yarn podman postgresql-17 redis gcc-toolchain)
+   ;; CPATH: gcc's built-in header search path contains only the glibc store
+   ;; directory baked in at build time -- NOT this profile's include/ tree,
+   ;; which is where the kernel headers (linux/errno.h and friends) that
+   ;; glibc's own headers require actually live (they ship inside the
+   ;; gcc-toolchain store item, unioned into the profile). Without this,
+   ;; every cgo build -- and any plain C compile -- fails with
+   ;; `linux/errno.h: No such file or directory' even though gcc itself is
+   ;; on PATH. The profile's include/ is a stable path (it is re-created in
+   ;; place on every home reconfigure), so pointing CPATH at it is safe.
+   #:env-vars '(("CPATH" . "$HOME/.guix-home/profile/include"))
    #:mcp-servers %ygo-mcp-servers
    ;; Non-secret feature flag: the slack-mcp-server binary registers
    ;; conversations_add_message (message posting) only when this is set --

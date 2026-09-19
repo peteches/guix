@@ -13,9 +13,9 @@
       "models": [
         {
           "id": "koboldcpp/Qwen3.8-27B-Q4_K_M",
-          "name": "Qwen3.8 27B Q4_K_M (comfyui, koboldcpp)",
-          "contextWindow": 98304,
-          "maxTokens": 98304,
+          "name": "Qwen3.8 27B abliterated Q4_K_M (comfyui, koboldcpp)",
+          "contextWindow": 262144,
+          "maxTokens": 32768,
           "input": ["text"]
         }
       ]

@@ -455,6 +455,7 @@ unset _claude_completion
           (mcp-servers '())
           (mcp-env '())
           (secret-env-vars '())
+          (env-vars '())
           (extra-packages '())
           (extra-claude-files '())
           (with-anvil? #t)
@@ -478,8 +479,13 @@ tunnels over the same SSH auth already configured for this account.
 SECRET-ENV-VARS is an alist of (ENV-VAR .
 RUN-SECRETS-PATH): at shell startup each ENV-VAR is exported from the contents
 of RUN-SECRETS-PATH (normally a sops-secret's /run/secrets/... path) if that
-path is readable -- see claude-workstation.scm's #:sops-secrets. EXTRA-PACKAGES
-are added to the base tool set.  EXTRA-CLAUDE-FILES is an alist of (RELATIVE-
+path is readable -- see claude-workstation.scm's #:sops-secrets. ENV-VARS is
+a plain (non-secret) alist of (ENV-VAR . VALUE) exported into the account's
+shell via home-environment-variables-service-type (i.e. into
+~/.guix-home/setup-environment, sourced by ~/.profile) -- for ambient
+environment a home package needs, e.g. CPATH for a C toolchain; $HOME in a
+value is expanded by the shell when the file is sourced. EXTRA-PACKAGES are
+added to the base tool set.  EXTRA-CLAUDE-FILES is an alist of (RELATIVE-
 PATH . FILE-LIKE), each landing at ~/.claude/RELATIVE-PATH alongside (not
 replacing) the shared configs/claude/defaults set -- for an account-specific
 agent, skill or similar that doesn't belong to any one project (a project's
@@ -562,6 +568,9 @@ HERDR-SPACES reaches the criticalgrind/ygo accounts' own herdr servers."
       (simple-service 'mcp-env
                       home-environment-variables-service-type
                       mcp-env)
+      (simple-service 'env-vars
+                      home-environment-variables-service-type
+                      env-vars)
       (simple-service 'git-identity
                       home-files-service-type
                       (list (list ".config/git/config"
