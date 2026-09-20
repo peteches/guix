@@ -26,7 +26,7 @@ run:
     cd guix-repo
     git config user.name "concourse-ci"
     git config user.email "concourse-ci@critical-grind-campaign"
-    git add peteches/channels/critical-grind.scm
+    git add peteches/channels/critical-grind.scm peteches/channels/deploy-critical-grind.scm
     # A prior run of this same job may have already pushed this exact bump
     # (push happens before the deploy step, by design, so a downstream
     # deploy failure doesn't lose the record of intent) -- retrying then
