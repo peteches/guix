@@ -64,6 +64,7 @@
   #:use-module (peteches home modules gpg)
   #:use-module (peteches home modules pi)
   #:use-module ((peteches packages pi-coding-agent) #:select (pi-mcp-adapter))
+  #:use-module ((peteches packages pi-interactive-subagents) #:select (pi-interactive-subagents))
   #:use-module (peteches packages emacs-anvil)
   #:use-module (peteches packages graphify)
   #:use-module (peteches packages herdr)
@@ -630,7 +631,7 @@ HERDR-SPACES reaches the criticalgrind/ygo accounts' own herdr servers."
       (service home-pi-service-type
                (home-pi-configuration
                 (config-directory (repo-directory "configs/pi/defaults"))
-                (extensions (list pi-mcp-adapter))
+                (extensions (list pi-mcp-adapter pi-interactive-subagents))
                 (mcp-servers %all-mcp-servers))))
      (if (null? extra-claude-files)
          '()
