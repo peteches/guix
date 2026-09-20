@@ -45,11 +45,15 @@
     (build-system copy-build-system)
     (arguments
      (list
-      ;; The three things pi needs at runtime: the package.json manifest,
-      ;; the extension sources, and the bundled agent definitions.  test/
-      ;; and the docs are not needed by the loader.
+      ;; The four things pi needs at runtime: the package.json manifest,
+      ;; the status config (config.json.example -- the extension's
+      ;; readStatusConfigFile falls back to it when no config.json exists,
+      ;; and parseStatusConfig accepts its {status:{enabled}} shape), the
+      ;; extension sources, and the bundled agent definitions.  test/ and
+      ;; the docs are not needed by the loader.
       #:install-plan
       #~(list (list "package.json" "lib/node_modules/pi-interactive-subagents/package.json")
+              (list "config.json.example" "lib/node_modules/pi-interactive-subagents/config.json.example")
               (list "pi-extension" "lib/node_modules/pi-interactive-subagents/pi-extension")
               (list "agents" "lib/node_modules/pi-interactive-subagents/agents"))))
     (home-page "https://github.com/peteches/pi-interactive-subagents")
