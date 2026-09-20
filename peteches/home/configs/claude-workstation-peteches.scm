@@ -23,6 +23,7 @@
   #:use-module (gnu home services)
   #:use-module ((peteches packages comfyui-mcp) #:select (node-comfyui-mcp))
   #:use-module ((peteches packages pi-dictate) #:select (pi-dictate))
+  #:use-module ((peteches packages claude-workstation-scripts) #:select (claude-workstation-peteches-scripts))
   #:use-module ((gnu packages audio) #:select (sox))
   #:use-module (peteches home modules claude-workstation)
   #:use-module (peteches home modules claude))
@@ -80,25 +81,30 @@
  ;; docs/secrets-management.org for creating the encrypted file).  The
  ;; key is never baked into the world-readable store.
  #:pi-extensions (list pi-dictate)
- #:extra-packages (list sox)
+ #:extra-packages (list sox claude-workstation-peteches-scripts)
  #:secret-env-vars '(("DEEPGRAM_API_KEY" . "/run/secrets/deepgram-api-key"))
  ;; This VM has no local audio input, so pi-dictate's `rec` is shadowed
- ;; by a wrapper (co-located with this config, exec bit set) that
- ;; captures a desktop's PulseAudio session instead -- the desktops
- ;; expose their session servers over TCP at Hyprland session start,
- ;; see configs/hypr/peteches/autostart.lua.  The wrapper picks WHICH
+ ;; by a wrapper that captures a desktop's PulseAudio session instead --
+ ;; the desktops expose their session servers over TCP at Hyprland
+ ;; session start, see configs/hypr/peteches/autostart.lua.  The wrapper
+ ;; (packaged in claude-workstation-scripts.scm with an explicit chmod
+ ;; phase, since the daemon's add-to-store strips exec bits) picks WHICH
  ;; desktop dynamically per dictation session: it inspects the VM's
  ;; established SSH connections (herdr --remote or plain ssh) and
  ;; captures the mic of whichever desktop is driving the VM right now,
  ;; so dagon and nyarlothotep alternate without any reconfigure (see
- ;; the wrapper's own header for the both/none tie-breaks).  The
- ;; PULSE_SERVER below is only the fallback for when NEITHER desktop
- ;; has a live session.
+ ;; the wrapper's own header for the both/none tie-breaks).  It is
+ ;; exposed as ~/.local/bin/rec -- first on PATH -- as a symlink to the
+ ;; executable store file (a plain local-file here would land in the
+ ;; store mode 444 and be unrunnable) and execs the profile's rec (sox,
+ ;; EXTRA-PACKAGES) with -d pulse.  The PULSE_SERVER below is only the
+ ;; fallback for when NEITHER desktop has a live session.
  #:extra-services
  (list (simple-service 'pi-dictate-rec-wrapper
                        home-files-service-type
                        (list (list ".local/bin/rec"
-                                   (local-file "claude-workstation-peteches-rec"))))
+                                   (file-append claude-workstation-peteches-scripts
+                                                "/bin/rec-mic"))))
        (simple-service 'pi-dictate-pulse-server
                        home-environment-variables-service-type
                        '(("PULSE_SERVER" . "nyarlothotep.spaniel-cordylus.ts.net"))))
