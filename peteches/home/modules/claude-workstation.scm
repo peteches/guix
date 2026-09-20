@@ -471,6 +471,8 @@ unset _claude_completion
           (env-vars '())
           (extra-packages '())
           (extra-claude-files '())
+          (extra-services '())
+          (pi-extensions '())
           (with-anvil? #t)
           (with-herdr? #t)
           (herdr-spaces '())
@@ -504,7 +506,17 @@ replacing) the shared configs/claude/defaults set -- for an account-specific
 agent, skill or similar that doesn't belong to any one project (a project's
 own CLAUDE.md/.claude/agents/ takes precedence over an account-wide file for
 project-specific instructions). A RELATIVE-PATH colliding with a defaults/
-entry is a build-time error, not a silent override. HERDR-SPACES is a list
+entry is a build-time error, not a silent override. PI-EXTENSIONS is a
+list of additional pi extension packages (e.g. pi-dictate from peteches
+packages pi-dictate) appended to the always-installed pi-mcp-adapter /
+pi-interactive-subagents pair in this account's home-pi-configuration
+-- see (peteches home modules pi)'s EXTENSIONS field for the symlink
+mechanism. An extension's non-npm runtime needs (a package on PATH, an
+API key in the environment) are the caller's to wire, e.g. via
+EXTRA-PACKAGES and SECRET-ENV-VARS. EXTRA-SERVICES is a list of
+additional home services for this account (e.g. a wrapper script into
+~/.local/bin via home-files-service-type, or account-only environment
+via home-environment-variables-service-type). HERDR-SPACES is a list
 of (NAME RELATIVE-PATH SUDO-USER) triples (see
 herdr-spaces-bootstrap-script) -- when non-empty and WITH-HERDR?, a
 shepherd one-shot idempotently creates these herdr workspaces once the
@@ -643,7 +655,8 @@ HERDR-SPACES reaches the criticalgrind/ygo accounts' own herdr servers."
       (service home-pi-service-type
                (home-pi-configuration
                 (config-directory (repo-directory "configs/pi/defaults"))
-                (extensions (list pi-mcp-adapter pi-interactive-subagents))
+                (extensions (append (list pi-mcp-adapter pi-interactive-subagents)
+                                    pi-extensions))
                 (mcp-servers %all-mcp-servers))))
      (if (null? extra-claude-files)
          '()
@@ -657,4 +670,5 @@ HERDR-SPACES reaches the criticalgrind/ygo accounts' own herdr servers."
      (if with-herdr? (herdr-services) '())
      (if (and with-herdr? (not (null? herdr-spaces)))
          (herdr-spaces-services herdr-spaces)
-         '()))))))
+         '())
+     extra-services)))))

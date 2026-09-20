@@ -20,7 +20,10 @@
 
 (define-module (peteches home configs claude-workstation-peteches)
   #:use-module (guix gexp)
+  #:use-module (gnu home services)
   #:use-module ((peteches packages comfyui-mcp) #:select (node-comfyui-mcp))
+  #:use-module ((peteches packages pi-dictate) #:select (pi-dictate))
+  #:use-module ((gnu packages audio) #:select (sox))
   #:use-module (peteches home modules claude-workstation)
   #:use-module (peteches home modules claude))
 
@@ -67,6 +70,38 @@
  (list (home-claude-mcp-server
         (name "comfyui")
         (command (file-append node-comfyui-mcp "/bin/comfyui-mcp"))))
+ ;; Voice dictation in pi (alt+m): the pi-dictate extension, packaged in
+ ;; peteches/packages/pi-dictate.scm.  Its two non-npm runtime needs are
+ ;; wired here: sox supplies the `rec` binary it spawns for audio capture
+ ;; (EXTRA-PACKAGES), and DEEPGRAM_API_KEY is exported into the shell at
+ ;; startup from the sops secret the system decrypts to
+ ;; /run/secrets/deepgram-api-key (SECRET-ENV-VARS -- see the
+ ;; #:sops-secrets entry in peteches/systems/claude-workstation.scm and
+ ;; docs/secrets-management.org for creating the encrypted file).  The
+ ;; key is never baked into the world-readable store.
+ #:pi-extensions (list pi-dictate)
+ #:extra-packages (list sox)
+ #:secret-env-vars '(("DEEPGRAM_API_KEY" . "/run/secrets/deepgram-api-key"))
+ ;; This VM has no local audio input, so pi-dictate's `rec` is shadowed
+ ;; by a wrapper (co-located with this config, exec bit set) that
+ ;; captures a desktop's PulseAudio session instead -- the desktops
+ ;; expose their session servers over TCP at Hyprland session start,
+ ;; see configs/hypr/peteches/autostart.lua.  The wrapper picks WHICH
+ ;; desktop dynamically per dictation session: it inspects the VM's
+ ;; established SSH connections (herdr --remote or plain ssh) and
+ ;; captures the mic of whichever desktop is driving the VM right now,
+ ;; so dagon and nyarlothotep alternate without any reconfigure (see
+ ;; the wrapper's own header for the both/none tie-breaks).  The
+ ;; PULSE_SERVER below is only the fallback for when NEITHER desktop
+ ;; has a live session.
+ #:extra-services
+ (list (simple-service 'pi-dictate-rec-wrapper
+                       home-files-service-type
+                       (list (list ".local/bin/rec"
+                                   (local-file "claude-workstation-peteches-rec"))))
+       (simple-service 'pi-dictate-pulse-server
+                       home-environment-variables-service-type
+                       '(("PULSE_SERVER" . "nyarlothotep.spaniel-cordylus.ts.net"))))
  #:herdr-spaces %peteches-herdr-spaces
  #:automation-ssh-identity %automation-ssh-key))
 

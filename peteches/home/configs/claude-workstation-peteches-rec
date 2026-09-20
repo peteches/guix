@@ -1,0 +1,62 @@
+#!/bin/sh
+# pi-dictate (voice dictation in pi, alt+m) spawns `rec` from PATH to
+# capture 16kHz/16-bit mono PCM.  This VM has no local audio input, so
+# this wrapper shadows the profile's rec and captures from the
+# desktop's PulseAudio session instead: the desktops expose their
+# per-user session servers over TCP at Hyprland session start,
+# restricted to this VM's Tailscale IP (see
+# configs/hypr/peteches/autostart.lua), and PULSE_SERVER below points
+# rec at one of them.
+#
+# WHICH DESKTOP?  The one driving the VM right now.  This wrapper
+# inspects the VM's established SSH connections -- herdr --remote or
+# plain ssh from either desktop -- and points PULSE_SERVER at that
+# desktop for THIS invocation only, so dagon and nyarlothotep can
+# alternate without any reconfigure.  Decoding is pure shell from
+# /proc/net/tcp (little-endian hex IPs, local port 0016 = 22, state
+# 01 = established); no ss/who/awk needed.
+#
+# Tie-breaks, documented:
+#   - BOTH desktops connected at once: dagon wins.  A stale
+#     ControlMaster (ssh ControlPersist 10m) or a forgotten session
+#     from the other desktop can misdirect a dictation session in
+#     that case -- close the stale session if the meter tracks the
+#     wrong machine's mic.
+#   - NEITHER connected (dictating from somewhere else): the ambient
+#     PULSE_SERVER from setup-environment (nyarlothotep) is left in
+#     place.
+#
+# Desktop IPs (LAN / Tailscale):
+#   dagon         192.168.50.214  100.120.105.116
+#   nyarlothotep  192.168.50.215  100.117.130.53
+
+connected_desktop() {
+  ips=""
+  if [ -r /proc/net/tcp ]; then
+    while read -r _ local_addr remote_addr state _rest; do
+      [ "$state" = "01" ] || continue
+      case $local_addr in *:0016) ;; *) continue ;; esac
+      h=${remote_addr%:*}
+      # IPv4 only (8 hex chars); both desktops are reached over IPv4,
+      # LAN or tailnet.
+      [ ${#h} -eq 8 ] || continue
+      ips="$ips $((0x${h:6:2})).$((0x${h:4:2})).$((0x${h:2:2})).$((0x${h:0:2}))"
+    done < /proc/net/tcp
+  fi
+  case $ips in
+    *192.168.50.214*|*100.120.105.116*)
+      echo dagon.spaniel-cordylus.ts.net; return ;;
+  esac
+  case $ips in
+    *192.168.50.215*|*100.117.130.53*)
+      echo nyarlothotep.spaniel-cordylus.ts.net; return ;;
+  esac
+}
+
+d=$(connected_desktop)
+if [ -n "$d" ]; then
+  PULSE_SERVER=$d
+  export PULSE_SERVER
+fi
+
+exec "$HOME/.guix-home/profile/bin/rec" -d pulse "$@"
