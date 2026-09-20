@@ -67,7 +67,7 @@
   #:use-module ((peteches packages pi-interactive-subagents) #:select (pi-interactive-subagents))
   #:use-module (peteches packages emacs-anvil)
   #:use-module (peteches packages graphify)
-  #:use-module (peteches packages herdr)
+  #:use-module (peteches packages herdr-mx)
   #:use-module (peteches packages github-cli)
   #:use-module (peteches packages onepassword-cli)
   #:use-module (peteches packages concourse)
@@ -75,7 +75,7 @@
 
 (define %claude-workstation-base-packages
   (list claude-code claude-completion git openssh node ripgrep jq curl
-        coreutils less graphify herdr python-minimal github-cli
+        coreutils less graphify herdr-mx python-minimal github-cli
         onepassword-cli proxychains-ng fly))
 
 ;; --- Anvil headless emacs daemon --------------------------------------
@@ -126,6 +126,18 @@
            (respawn? #t))))))
 
 ;; --- Herdr headless server ---------------------------------------------
+;; The herdr-MX build, not upstream herdr: the desktop's herdr-mx client is
+;; a protocol fork (PROTOCOL_VERSION 21 / WIRE_ABI_EPOCH 3; upstream 0.8.x
+;; is 20) and cannot attach to an upstream server.  Its add-remote worker
+;; self-provisions -- it copies its own executable to the remote
+;; ~/.local/bin/herdr and runs its own server -- UNLESS `command -v herdr'
+;; on the remote finds a binary matching the client exactly (version +
+;; protocol + bridge subcommands).  Serving the same herdr-mx build from
+;; the guix store on PATH (the guix-home profile) makes that probe report
+;; AlreadyInstalled, so nothing is ever installed to ~/.local/bin.  The
+;; pin must be identical on both machines; it is one package definition,
+;; so reconfigure both from the same repo state.
+;;
 ;; `herdr server` runs the persistent-session server in the foreground --
 ;; the same shape as `emacs --fg-daemon' above, so it fits the same
 ;; make-forkexec-constructor pattern.  Its own client-side logging
@@ -141,7 +153,7 @@
            (provision '(herdr-server))
            (documentation "Headless herdr server for persistent agent sessions.")
            (start #~(make-forkexec-constructor
-                     (list #$(file-append herdr "/bin/herdr") "server")
+                     (list #$(file-append herdr-mx "/bin/herdr") "server")
                      #:log-file
                      (string-append
                       (or (getenv "XDG_CONFIG_HOME")
@@ -195,7 +207,7 @@ own home on ITS OWN herdr server."
   (mixed-text-file
    "herdr-spaces-bootstrap.sh"
    "#!/bin/sh\nset -eu\n\n"
-   "HERDR=" (file-append herdr "/bin/herdr") "\n"
+   "HERDR=" (file-append herdr-mx "/bin/herdr") "\n"
    "JQ=" (file-append jq "/bin/jq") "\n"
    "SSH=" (file-append openssh "/bin/ssh") "\n\n"
    "wait_for_socket() {\n"
