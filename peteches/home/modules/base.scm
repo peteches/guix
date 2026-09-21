@@ -283,7 +283,10 @@
 
    ;; Browsers (Firefox profiles + Nyxt)
    (service firefox-service-type
-	    (firefox-configuration (profiles base-firefox-profiles)))
+	    (firefox-configuration (profiles base-firefox-profiles)
+				   ;; nvidia VAAPI force-enables — must be
+				   ;; global so every profile gets them.
+				   (global-prefs %nvidia-vaapi-prefs)))
    (service nyxt-service-type
 	    (home-nyxt-base-configuration
 	     (config-directory (repo-directory "configs/nyxt"))))

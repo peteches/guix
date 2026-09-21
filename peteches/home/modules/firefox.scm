@@ -30,7 +30,12 @@
 ;; force-enabled to be given a chance at all. Scoped to dagon (nvidia
 ;; host, nug's successor) — forcing gfx.x11-egl.force-enabled on
 ;; nyarlothotep's AMD/Mesa Wayland session is untested and not needed there.
-(define %nvidia-vaapi-prefs
+;;;
+;;; These are passed as the firefox-configuration's `global-prefs', which
+;;; merge-prefs folds into EVERY profile.  They must not be attached to a
+;;; single profile's #:prefs — doing so leaves Default and ygo on software
+;;; video decode.
+(define-public %nvidia-vaapi-prefs
   (if (member (gethostname) '("dagon"))
       '(("media.hardware-video-decoding.force-enabled" . #t)
 	("media.rdd-ffmpeg.enabled"                     . #t)
@@ -66,8 +71,7 @@
 
 			      ;; WebRTC handling (disable or restrict to proxy only)
 			      ("media.peerconnection.enabled"                         . #f)
-			      ("media.peerconnection.ice.proxy_only"                  . #t)
-			      ,@%nvidia-vaapi-prefs))))
+			      ("media.peerconnection.ice.proxy_only"                  . #t)))))
 
 (define-public base-firefox-global-prefs
   '(
