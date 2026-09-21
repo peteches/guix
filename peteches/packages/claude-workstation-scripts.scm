@@ -26,7 +26,12 @@
 ;; gexp inlines as the sox STORE PATH -- so the wrapper (the profile's
 ;; rec) execs the real sox rec and not itself.  (file-append is not
 ;; available in the build environment, which is why the path comes from
-;; the gexp inlining rather than a build phase.)  The chmod phase is
+;; the gexp inlining rather than a build phase.)  The exec line uses
+;; sox's `-d` (--default-device, a BOOLEAN -- it does not take a driver
+;; name); with PULSE_SERVER set by the selection logic above, sox's
+;; default device is the desktop's PulseAudio session, so it captures
+;; that mic.  (An earlier `-d pulse` made sox treat `pulse` as a
+;; filename -- "can't open input file `pulse'".)  The chmod phase is
 ;; required because copy-build-system does not preserve +x -- the same
 ;; make-executable pattern peteches-desktop-scripts uses.
 
@@ -75,7 +80,7 @@ esac
     (source
      (mixed-text-file "rec"
        %rec-selection-logic
-       "exec " (file-append sox "/bin/rec") " -d pulse \"$@\"\n"))
+       "exec " (file-append sox "/bin/rec") " -d \"$@\"\n"))
     (build-system copy-build-system)
     (arguments
      (list
