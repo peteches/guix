@@ -1,0 +1,11 @@
+---
+description: Set which desktop's mic pi-dictate captures (alt+m in pi)
+argument-hint: "[dagon|nyarlothotep]"
+---
+Set the dictation host to `${1:-nyarlothotep}`. Run this exact command via the bash tool:
+
+```sh
+mkdir -p ~/.config/dictate && printf '%s\n' "${1:-nyarlothotep}" > ~/.config/dictate/host && cat ~/.config/dictate/host
+```
+
+Then reply with one line confirming the host. The choice persists in `~/.config/dictate/host` until changed again; pi-dictate (alt+m) will capture that desktop's microphone.

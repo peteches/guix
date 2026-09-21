@@ -73,38 +73,37 @@
         (command (file-append node-comfyui-mcp "/bin/comfyui-mcp"))))
  ;; Voice dictation in pi (alt+m): the pi-dictate extension, packaged in
  ;; peteches/packages/pi-dictate.scm.  Its two non-npm runtime needs are
- ;; wired here: sox supplies the `rec` binary it spawns for audio capture
- ;; (EXTRA-PACKAGES), and DEEPGRAM_API_KEY is exported into the shell at
+ ;; wired here: the profile's `rec` is a wrapper that captures a
+ ;; desktop's mic (EXTRA-PACKAGES, see the note below), and DEEPGRAM_API_KEY is exported into the shell at
  ;; startup from the sops secret the system decrypts to
  ;; /run/secrets/deepgram-api-key (SECRET-ENV-VARS -- see the
  ;; #:sops-secrets entry in peteches/systems/claude-workstation.scm and
  ;; docs/secrets-management.org for creating the encrypted file).  The
  ;; key is never baked into the world-readable store.
  #:pi-extensions (list pi-dictate)
- #:extra-packages (list sox claude-workstation-peteches-scripts)
+ #:extra-packages (list claude-workstation-peteches-scripts)
  #:secret-env-vars '(("DEEPGRAM_API_KEY" . "/run/secrets/deepgram-api-key"))
- ;; This VM has no local audio input, so pi-dictate's `rec` is shadowed
- ;; by a wrapper that captures a desktop's PulseAudio session instead --
- ;; the desktops expose their session servers over TCP at Hyprland
- ;; session start, see configs/hypr/peteches/autostart.lua.  The wrapper
- ;; (packaged in claude-workstation-scripts.scm with an explicit chmod
- ;; phase, since the daemon's add-to-store strips exec bits) picks WHICH
- ;; desktop dynamically per dictation session: it inspects the VM's
- ;; established SSH connections (herdr --remote or plain ssh) and
- ;; captures the mic of whichever desktop is driving the VM right now,
- ;; so dagon and nyarlothotep alternate without any reconfigure (see
- ;; the wrapper's own header for the both/none tie-breaks).  It is
- ;; exposed as ~/.local/bin/rec -- first on PATH -- as a symlink to the
- ;; executable store file (a plain local-file here would land in the
- ;; store mode 444 and be unrunnable) and execs the profile's rec (sox,
- ;; EXTRA-PACKAGES) with -d pulse.  The PULSE_SERVER below is only the
- ;; fallback for when NEITHER desktop has a live session.
+ ;; This VM has no local audio input, so the profile's `rec` (which
+ ;; pi-dictate spawns for audio capture) is a wrapper that points
+ ;; PULSE_SERVER at a desktop's PulseAudio session instead -- the
+ ;; desktops expose their session servers over TCP at Hyprland session
+ ;; start, see configs/hypr/peteches/autostart.lua.  The wrapper is the
+ ;; claude-workstation-peteches-scripts package, which provides bin/rec
+ ;; (so it IS the profile's rec -- a plain guix store path, no
+ ;; ~/.local/bin) and bakes the real sox rec's store path into its
+ ;; final exec line so it does not exec itself.  It does NOT
+ ;; auto-detect which desktop: both can be connected at once and
+ ;; guessing is confusing, so the choice is EXPLICIT.  The /dictate pi
+ ;; slash command (a prompt template, installed below at
+ ;; ~/.pi/agent/prompts/dictate.md) writes the choice to
+ ;; ~/.config/dictate/host, which the wrapper reads per invocation.  The
+ ;; PULSE_SERVER below is only the fallback for when no choice has been
+ ;; made yet -- a static default (nyarlothotep), not a switch.
  #:extra-services
- (list (simple-service 'pi-dictate-rec-wrapper
+ (list (simple-service 'pi-dictate-prompt
                        home-files-service-type
-                       (list (list ".local/bin/rec"
-                                   (file-append claude-workstation-peteches-scripts
-                                                "/bin/rec-mic"))))
+                       (list (list ".pi/agent/prompts/dictate.md"
+                                   (local-file "claude-workstation-peteches-dictate-prompt"))))
        (simple-service 'pi-dictate-pulse-server
                        home-environment-variables-service-type
                        '(("PULSE_SERVER" . "nyarlothotep.spaniel-cordylus.ts.net"))))
