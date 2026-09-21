@@ -40,6 +40,8 @@
   #:use-module ((gnu packages commencement) #:select (gcc-toolchain))
   #:use-module ((gnu packages containers) #:select (podman))
   #:use-module ((gnu packages databases) #:select (postgresql-17 redis))
+  #:use-module ((gnu packages image-processing) #:select (opencv))
+  #:use-module ((gnu packages pkg-config) #:select (pkg-config))
   #:use-module (peteches packages go-tools)
   #:use-module (peteches packages yarn)
   #:use-module ((peteches packages mcp) #:select (slack-mcp-server))
@@ -155,7 +157,8 @@
    ;; is minimal), so without this ygo's `go build' fails with
    ;; `cgo: C compiler "gcc" not found'. Same fix criticalgrind's config
    ;; already carries.
-   #:extra-packages (list go-1.26 go-golangci-lint yarn podman postgresql-17 redis gcc-toolchain)
+   #:extra-packages (list go-1.26 go-golangci-lint yarn podman postgresql-17 redis gcc-toolchain
+                          opencv pkg-config)
    ;; CPATH: gcc's built-in header search path contains only the glibc store
    ;; directory baked in at build time -- NOT this profile's include/ tree,
    ;; which is where the kernel headers (linux/errno.h and friends) that
@@ -165,6 +168,13 @@
    ;; `linux/errno.h: No such file or directory' even though gcc itself is
    ;; on PATH. The profile's include/ is a stable path (it is re-created in
    ;; place on every home reconfigure), so pointing CPATH at it is safe.
+   ;;
+   ;; opencv/pkg-config: gocv (github.com/hybridgroup/gocv, pulled via
+   ;; ygocloud's go.mod -- there is no Guix package for the Go module itself)
+   ;; cgo-binds to the system OpenCV via pkg-config at build time. Without
+   ;; both on PATH, `go build'/`go test' against any package importing gocv
+   ;; fails with `Package opencv4 was not found in the pkg-config search
+   ;; path'.
    #:env-vars '(("CPATH" . "$HOME/.guix-home/profile/include"))
    #:mcp-servers %ygo-mcp-servers
    ;; Non-secret feature flag: the slack-mcp-server binary registers
