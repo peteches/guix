@@ -34,6 +34,7 @@
   #:use-module (gnu services base)
   #:use-module (gnu services desktop)
   #:use-module (gnu packages base)           ; glibc-locales
+  #:use-module (gnu packages admin)          ; solaar
   #:use-module (nongnu packages linux)
   #:use-module (peteches systems base)
   #:use-module (peteches systems network-mounts))
@@ -75,6 +76,9 @@
   scoreplay-cifs-mount)
 
  #:extra-packages (list glibc-locales)
+
+ #:extra-services
+ (list (udev-rules-service 'solaar solaar))
 
  ;; Feature flags
  #:laptop? #f

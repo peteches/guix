@@ -46,6 +46,15 @@ if nvidia_hosts[hostname] then
   -- different backend (e.g. nouveau_drv_video.so, also present in the
   -- same DRI search path) instead of the nvidia one.
   hl.env("LIBVA_DRIVER_NAME", "nvidia")
+
+  -- base.scm's hyprland-launcher setenv's these before exec'ing Hyprland,
+  -- which is enough for Hyprland's own GPU use, but Hyprland does not
+  -- forward its exec-time environment to spawned clients -- only vars
+  -- declared here (Hyprland's env= mechanism) reach them. Without these,
+  -- clients (e.g. Alacritty) can't resolve the nvidia EGL/GBM vendor and
+  -- silently fall back to Mesa's llvmpipe (CPU) software rendering.
+  hl.env("GBM_BACKEND", "nvidia-drm")
+  hl.env("__GLX_VENDOR_LIBRARY_NAME", "nvidia")
 end
 hl.env("XDG_CURRENT_DESKTOP", "Hyprland")
 hl.env("XDG_SESSION_TYPE", "wayland")
