@@ -211,6 +211,16 @@
                   "tcp dport 22 accept comment \"ssh\""
                   "tcp dport 9100 accept comment \"prometheus node-exporter\""
                   "tcp dport { 5001, 5002, 5003 } accept comment \"KoboldCpp\""
+                  ;; pi-dictate (voice dictation in pi on claude-workstation):
+                  ;; the VM's `rec` wrapper captures a desktop's mic over the
+                  ;; PulseAudio TCP module (module-native-protocol-tcp, port
+                  ;; 4713), which the desktops load at Hyprland session start
+                  ;; (configs/hypr/peteches/autostart.lua).  That module's
+                  ;; auth-ip-acl already restricts to claude-workstation's
+                  ;; Tailscale IP; this rule opens the port to the SAME IP so
+                  ;; the firewall doesn't drop the VM's connection.  See
+                  ;; peteches/packages/claude-workstation-scripts.scm.
+                  "tcp dport 4713 ip saddr 100.94.152.119 accept comment \"pi-dictate Pulse capture from claude-workstation\""
                   "tcp dport 80 accept comment \"required for certbot acme approvals\""
 
                   "ip protocol icmp accept comment \"icmpv4\""
