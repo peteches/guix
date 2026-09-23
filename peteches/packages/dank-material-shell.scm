@@ -32,10 +32,12 @@
   #:use-module (guix packages)
   #:use-module (guix git-download)
   #:use-module (guix build-system go)
+  #:use-module (guix build-system copy)
   #:use-module (guix gexp)
   #:use-module ((guix licenses) #:prefix license:)
   #:use-module (gnu packages golang-xyz)
   #:use-module (gnu packages golang-build)
+  #:use-module (gnu packages golang-compression)
   #:use-module (gnu packages golang-web)
   #:use-module (gnu packages golang-crypto)
   #:use-module (gnu packages golang-check)
@@ -348,6 +350,175 @@ etc.) used by third-party Go programs to talk to a locally running
 themselves -- see the @code{tailscale} package for those.")
     (license license:bsd-3)))
 
+;;; Source-only propagation packages for the Go modules DMS v1.6.2 grew
+;;; since the v1.5.0 closure was written.  None of these modules has a
+;;; buildable root package (or has its v2/v3 module at the repo root, which
+;;; Guix's GO111MODULE=off import-path resolution can't map), so instead of
+;;; compiling them we copy their source into the GOPATH layout under their
+;;; full import path -- the same pattern as
+;;; go-github-com-mark3labs-mcp-go-source above.  DMS's own build then
+;;; compiles only the subpackages it actually imports; every third-party
+;;; dependency of those subpackages is already in DMS's input list, as
+;;; confirmed by the exhaustive 'cannot find package' list from the failed
+;;; v1.6.2 build.
+;;;
+
+(define-public go-github-com-avengemedia-dankgo
+  (package
+    (name "go-github-com-avengemedia-dankgo")
+    (version "1.6.1-0.20260908011626-07e1ef7caaea")
+    (source
+     (origin
+       (method git-fetch)
+       (uri (git-reference
+             (url "https://github.com/AvengeMedia/dankgo")
+             (commit "07e1ef7caaea834ba30b98f45fe05b8ade6304ef")))
+       (file-name (git-file-name name version))
+       (sha256
+        (base32 "1p478gkmz2bq8jh9psnf8z9yr52rxvn8yy7i9a9dgkl10xi9p077"))))
+    (build-system copy-build-system)
+    (arguments
+     (list
+      #:phases
+      #~(modify-phases %standard-phases
+          (add-after 'install 'install-source
+            (lambda _
+              (let* ((out #$output)
+                     (dest (string-append out
+                                          "/src/github.com/AvengeMedia/dankgo")))
+                (mkdir-p dest)
+                (copy-recursively "." dest)))))))
+    (home-page "https://github.com/AvengeMedia/dankgo")
+    (synopsis "DankGo wayland/clipboard/shell support libraries (source)")
+    (description
+     "Source-only bundle of the AvengeMedia/dankgo Go module.  DMS imports
+its wayland client, clipboard, logging and shell-app subpackages; they are
+compiled by DMS's own build.")
+    (license license:expat)))
+
+(define-public go-github-com-avengemedia-dgop
+  (package
+    (name "go-github-com-avengemedia-dgop")
+    (version "1.6.1-0.20260916132520-8a12dbc6e287")
+    (source
+     (origin
+       (method git-fetch)
+       (uri (git-reference
+             (url "https://github.com/AvengeMedia/dgop")
+             (commit "8a12dbc6e28715592a14bf53ccb1ba22b6b76718")))
+       (file-name (git-file-name name version))
+       (sha256
+        (base32 "0m6y7vxyhli8hcj427vjjjiwq4lx56q016i69707jk64p4sw3s1r"))))
+    (build-system copy-build-system)
+    (arguments
+     (list
+      #:phases
+      #~(modify-phases %standard-phases
+          (add-after 'install 'install-source
+            (lambda _
+              (let* ((out #$output)
+                     (dest (string-append out
+                                          "/src/github.com/AvengeMedia/dgop")))
+                (mkdir-p dest)
+                (copy-recursively "." dest)))))))
+    (home-page "https://github.com/AvengeMedia/dgop")
+    (synopsis "DGoP process/disk management libraries (source)")
+    (description
+     "Source-only bundle of the AvengeMedia/dgop Go module.  DMS imports
+its gops subpackage; it is compiled by DMS's own build.")
+    (license license:expat)))
+
+(define-public go-github-com-dlclark-regexp2-v2
+  (package
+    (name "go-github-com-dlclark-regexp2-v2")
+    (version "2.5.1")
+    (source
+     (origin
+       (method git-fetch)
+       (uri (git-reference
+             (url "https://github.com/dlclark/regexp2")
+             (commit (string-append "v" version))))
+       (file-name (git-file-name name version))
+       (sha256
+        (base32 "1xld5hb2v2ih8sjjz8n0x38fv0d4xdwykhfl94yfdjc7f6ym7vik"))))
+    (build-system copy-build-system)
+    (arguments
+     (list
+      #:phases
+      #~(modify-phases %standard-phases
+          (add-after 'install 'install-source
+            (lambda _
+              (let* ((out #$output)
+                     (dest (string-append out
+                                          "/src/github.com/dlclark/regexp2/v2")))
+                (mkdir-p dest)
+                (copy-recursively "." dest)))))))
+    (home-page "https://github.com/dlclark/regexp2")
+    (synopsis "regexp2/v2 .NET-compatible regular expressions (source)")
+    (description
+     "Source-only bundle of the dlclark/regexp2 v2 Go module; compiled by
+the packages that import it.")
+    (license license:expat)))
+
+(define-public go-github-com-nadim147c-material-v3
+  (package
+    (name "go-github-com-nadim147c-material-v3")
+    (version "3.1.1")
+    (source
+     (origin
+       (method git-fetch)
+       (uri (git-reference
+             (url "https://github.com/Nadim147c/material")
+             (commit (string-append "v" version))))
+       (file-name (git-file-name name version))
+       (sha256
+        (base32 "1g7czr154pcbnzhchkqqclq70s5ym09lm691r8kbri9z5dv544pn"))))
+    (build-system copy-build-system)
+    (arguments
+     (list
+      #:phases
+      #~(modify-phases %standard-phases
+          (add-after 'install 'install-source
+            (lambda _
+              (let* ((out #$output)
+                     (dest (string-append out
+                                          "/src/github.com/Nadim147c/material/v3")))
+                (mkdir-p dest)
+                (copy-recursively "." dest)))))))
+    (home-page "https://github.com/Nadim147c/material")
+    (synopsis "Material color/quantization libraries (source)")
+    (description
+     "Source-only bundle of the Nadim147c/material v3 Go module; compiled
+by the packages that import it.")
+    (license (list license:asl2.0 license:expat))))
+
+(define-public go-github-com-klauspost-compress-1.19
+  (package
+    (inherit go-github-com-klauspost-compress)
+    (version "1.19.2")
+    (source
+     (origin
+       (method git-fetch)
+       (uri (git-reference
+             (url "https://github.com/klauspost/compress")
+             (commit (string-append "v" version))))
+       (file-name (git-file-name (package-name go-github-com-klauspost-compress)
+                                  version))
+       (sha256
+        (base32 "0wc04kf6692mq5xdy5n55wd7hsvq4c5rv18h8m1gr0dkpd7q9i66"))))
+    (build-system copy-build-system)
+    (arguments
+     (list
+      #:phases
+      #~(modify-phases %standard-phases
+          (add-after 'install 'install-source
+            (lambda _
+              (let* ((out #$output)
+                     (dest (string-append out
+                                          "/src/github.com/klauspost/compress")))
+                (mkdir-p dest)
+                (copy-recursively "." dest)))))))))
+
 ;;;
 ;;; DankMaterialShell itself, bumped to v1.6.2.
 ;;;
@@ -416,7 +587,13 @@ themselves -- see the @code{tailscale} package for those.")
            go-go-etcd-io-bbolt
            go-go4-org-mem
            go-golang-org-x-image-0.39
-           go-tailscale-com))))
+           go-tailscale-com
+           ;; New in v1.6.x (see the source-only definitions above):
+           go-github-com-avengemedia-dankgo
+           go-github-com-avengemedia-dgop
+           go-github-com-dlclark-regexp2-v2
+           go-github-com-nadim147c-material-v3
+           go-github-com-klauspost-compress-1.19))))
 
 (define-public dank-material-shell-1.5.0
   (package
