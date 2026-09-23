@@ -30,6 +30,18 @@
 ;;; package.json declaring a "pi.extensions" field. Declarative equivalent
 ;;; of `pi install npm:<name>', without a runtime npm/network step.
 ;;;
+;;; EXTRA-EXTENSION-FILES (a list of (NAME . FILE) pairs) places FILE at
+;;; ~/.pi/agent/extensions/NAME for single-file extensions -- pi's loader
+;;; discovers loose .ts files in extensions/ as well as package
+;;; directories (a typical install carries auto-continue.ts). This is how
+;;; the repo ships herdr's bundled pi integration (herdr-agent-state.ts,
+;;; the file `herdr integration install pi' would otherwise write by
+;;; hand): committed under configs/pi/ so the integration is declarative
+;;; and survives a fresh machine. The content is versioned with the herdr
+;;; binary (HERDR_INTEGRATION_VERSION in its header; `herdr integration
+;;; status' checks it), so re-copy it from a running install when herdr
+;;; updates the integration.
+;;;
 ;;; MCP-SERVERS reuses <home-claude-mcp-server> from (peteches home modules
 ;;; claude) rather than a parallel record type -- pi-mcp-adapter's
 ;;; mcp.json has the same {name: {command, args, env}} shape Claude Code's
@@ -71,6 +83,8 @@
                     (default #f))
   (extensions       home-pi-configuration-extensions
                     (default '()))
+  (extra-extension-files home-pi-configuration-extra-extension-files
+                         (default '()))
   (mcp-servers      home-pi-configuration-mcp-servers
                     (default '())))
 
@@ -89,6 +103,16 @@
 ~/.pi/agent/extensions/<name>, where pi's extension loader discovers it."
   (list (string-append ".pi/agent/extensions/" (package-name pkg))
         (file-append pkg "/lib/node_modules/" (package-name pkg))))
+
+;; Render one (NAME . FILE) pair from EXTRA-EXTENSION-FILES as a home-files
+;; entry placing FILE at ~/.pi/agent/extensions/NAME. pi's extension loader
+;; discovers loose files as well as package directories (a typical install
+;; carries auto-continue.ts), so a single-file extension such as herdr's
+;; bundled herdr-agent-state.ts (`herdr integration install pi') can be
+;; committed to the repo and placed here without the runtime step.
+(define (home-pi-extra-extension-entry pair)
+  (list (string-append ".pi/agent/extensions/" (car pair))
+        (cdr pair)))
 
 ;; Interleave SEP between the elements of LST -- used below to join JSON
 ;; fragment-lists with "," without a trailing/leading comma.
@@ -148,6 +172,7 @@
 (define (home-pi-files-service config)
   (let ((dir        (home-pi-configuration-config-directory config))
         (extensions (home-pi-configuration-extensions config))
+        (extra      (home-pi-configuration-extra-extension-files config))
         (servers    (home-pi-configuration-mcp-servers config)))
     (append
      (if dir
@@ -155,6 +180,7 @@
               (directory-children dir))
          '())
      (map home-pi-extension-entry extensions)
+     (map home-pi-extra-extension-entry extra)
      (if (null? servers)
          '()
          (list (list ".pi/agent/mcp.json" (home-pi-mcp-json servers)))))))

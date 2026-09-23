@@ -657,6 +657,9 @@ HERDR-SPACES reaches the criticalgrind/ygo accounts' own herdr servers."
                 (config-directory (repo-directory "configs/pi/defaults"))
                 (extensions (append (list pi-mcp-adapter pi-interactive-subagents)
                                     pi-extensions))
+                (extra-extension-files
+                 (list (cons "herdr-agent-state.ts"
+                             (local-file (source-path "configs/pi/herdr-agent-state.ts")))))
                 (mcp-servers %all-mcp-servers))))
      (if (null? extra-claude-files)
          '()
