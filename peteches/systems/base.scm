@@ -96,6 +96,7 @@
   #:use-module (peteches services firewall)
   #:use-module (peteches services tailscale)
   #:use-module (peteches services sops-key-generator)
+  #:use-module (peteches services nvidia)
   #:use-module (peteches packages nvidia-container-runtime)
   #:use-module (peteches packages hyprland)
   ;; NOTE: `greetd-gtkgreet-service' (singular) is exported but no such

@@ -317,6 +317,116 @@ more), shipped as prebuilt WASM/JS bundles.")
 ComfyUI server's HTTP and WebSocket API.")
     (license license:expat)))
 
+;; 0.52.203 requires @modelcontextprotocol/sdk ~1.30.0.  1.30.1's
+;; runtime dependency set is identical to 1.29.0's — every range is
+;; satisfied by the same store packages — so this is a straight version
+;; bump of node-modelcontextprotocol-sdk-1.29.0 from (peteches packages
+;; claude-agent-acp-deps).
+(define-public node-modelcontextprotocol-sdk-1.30.1
+  (package
+    (name "node-modelcontextprotocol-sdk")
+    (version "1.30.1")
+    (source
+     (origin
+       (method url-fetch)
+       (uri
+        "https://registry.npmjs.org/@modelcontextprotocol/sdk/-/sdk-1.30.1.tgz")
+       (sha256
+        (base32 "03n29734jxqawfdsbssl9spzx5mnhznhnaswv0g4bpd86bablkib"))))
+    (build-system node-build-system)
+    (arguments
+     (list
+      #:tests? #f
+      #:phases
+      #~(modify-phases %standard-phases
+          (delete 'build)
+          (add-after 'patch-dependencies 'delete-version-overrides
+            (lambda _
+              (modify-json (delete-fields '("overrides" "resolutions")
+                                          #:strict? #f))))
+          (add-after 'patch-dependencies 'delete-dev-dependencies
+            (lambda _
+              (modify-json (delete-dependencies '("ws" "tsx"
+                                                  "eslint"
+                                                  "vitest"
+                                                  "prettier"
+                                                  "@types/ws"
+                                                  "supertest"
+                                                  "@eslint/js"
+                                                  "typescript"
+                                                  "@types/cors"
+                                                  "@types/node"
+                                                  "@types/express"
+                                                  "eslint-plugin-n"
+                                                  "@types/supertest"
+                                                  "typescript-eslint"
+                                                  "@types/cross-spawn"
+                                                  "@types/eventsource"
+                                                  "@types/content-type"
+                                                  "@cfworker/json-schema"
+                                                  "eslint-config-prettier"
+                                                  "@typescript/native-preview"
+                                                  "@types/express-serve-static-core"
+                                                  "@modelcontextprotocol/conformance"))))))))
+    (inputs (list node-zod-to-json-schema-3.25.2
+                  node-express-rate-limit-8.5.2
+                  node-eventsource-parser-3.1.0
+                  node-json-schema-typed-8.0.2
+                  node-hono-node-server-1.19.14
+                  node-pkce-challenge-5.0.1
+                  node-content-type-1.0.5
+                  node-eventsource-3.0.7
+                  node-cross-spawn-7.0.6
+                  node-ajv-formats-3.0.1
+                  node-raw-body-3.0.2
+                  node-express-5.2.1
+                  node-jose-6.2.3
+                  node-hono-4.12.23
+                  node-cors-2.8.6
+                  node-zod-4.4.3
+                  node-ajv-8.20.0
+                  node-cfworker-json-schema-4.1.1))
+    (home-page "https://modelcontextprotocol.io")
+    (synopsis "Model Context Protocol implementation for TypeScript")
+    (description "Model Context Protocol implementation for TypeScript")
+    (license license:expat)))
+
+;; 0.52.203 requires dotenv ^17.4.2.  Zero runtime dependencies.
+(define-public node-dotenv-17.4.2
+  (package
+    (name "node-dotenv")
+    (version "17.4.2")
+    (source
+     (origin
+       (method url-fetch)
+       (uri "https://registry.npmjs.org/dotenv/-/dotenv-17.4.2.tgz")
+       (sha256
+        (base32 "160kmw4fg071z4gdv3nckyp7zkhjxp1xqxfa9nri1490x0mqaj46"))))
+    (build-system node-build-system)
+    (arguments (list #:tests? #f))
+    (home-page "https://github.com/motdotla/dotenv")
+    (synopsis "Loads variables from a .env file into process.env")
+    (description "Loads variables from a .env file into process.env")
+    (license license:bsd-2)))
+
+;; 0.52.203 pins undici 7.29.0.  Zero runtime dependencies.
+(define-public node-undici-7.29.0
+  (package
+    (name "node-undici")
+    (version "7.29.0")
+    (source
+     (origin
+       (method url-fetch)
+       (uri "https://registry.npmjs.org/undici/-/undici-7.29.0.tgz")
+       (sha256
+        (base32 "0w1sbb463k7552q5l8y67wfby87pn585vvn313y6aivk4bc0a87c"))))
+    (build-system node-build-system)
+    (arguments (list #:tests? #f))
+    (home-page "https://undici.nodejs.org")
+    (synopsis "An HTTP/1.1 client, written from scratch for Node.js")
+    (description "An HTTP/1.1 client, written from scratch for Node.js")
+    (license license:expat)))
+
 (define-public node-comfyui-mcp
   (package
     (name "node-comfyui-mcp")
@@ -350,6 +460,10 @@ ComfyUI server's HTTP and WebSocket API.")
                                                   "tsx"
                                                   "typescript"
                                                   "vitest"
+                                                  ;; Dev-only linter added in 0.52.203; not needed to serve
+                                                  ;; MCP (dist/ ships prebuilt and the build phase is deleted).
+                                                  "oxlint"
+                                                  "@oxlint/plugins"
                                                   ;; Optional providers for the bundled agent sidebar.
                                                   ;; None are needed to serve MCP against a local
                                                   ;; ComfyUI, and packaging them would drag in most of
@@ -433,11 +547,12 @@ ComfyUI server's HTTP and WebSocket API.")
                   node-yaml-2.9.0
                   node-ws-8.21.3
                   node-sharp-native-0.35.3
-                  node-dotenv-16.6.1
+                  node-dotenv-17.4.2
                   node-comfyorg-sdk-0.1.7
                   node-better-sqlite3-13.0.3
                   node-stable-canvas-comfyui-client-1.5.9
-                  node-modelcontextprotocol-sdk-1.29.0))
+                  node-undici-7.29.0
+                  node-modelcontextprotocol-sdk-1.30.1))
     (home-page "https://comfyui-mcp.artokun.io/docs")
     (synopsis "MCP server for driving ComfyUI")
     (description
