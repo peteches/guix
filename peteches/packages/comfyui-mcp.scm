@@ -403,7 +403,19 @@ ComfyUI server's HTTP and WebSocket API.")
        (sha256
         (base32 "160kmw4fg071z4gdv3nckyp7zkhjxp1xqxfa9nri1490x0mqaj46"))))
     (build-system node-build-system)
-    (arguments (list #:tests? #f))
+    (arguments
+     (list
+      #:tests? #f
+      #:phases
+      #~(modify-phases %standard-phases
+          (add-after 'patch-dependencies 'delete-dev-dependencies
+            (lambda _
+              (modify-json (delete-dependencies '("tap" "sinon"
+                                                  "decache"
+                                                  "standard"
+                                                  "typescript"
+                                                  "@types/node"
+                                                  "standard-version"))))))))
     (home-page "https://github.com/motdotla/dotenv")
     (synopsis "Loads variables from a .env file into process.env")
     (description "Loads variables from a .env file into process.env")
@@ -421,7 +433,35 @@ ComfyUI server's HTTP and WebSocket API.")
        (sha256
         (base32 "0w1sbb463k7552q5l8y67wfby87pn585vvn313y6aivk4bc0a87c"))))
     (build-system node-build-system)
-    (arguments (list #:tests? #f))
+    (arguments
+     (list
+      #:tests? #f
+      #:phases
+      #~(modify-phases %standard-phases
+          (add-after 'patch-dependencies 'delete-dev-dependencies
+            (lambda _
+              (modify-json (delete-dependencies '("@fastify/busboy"
+                                                  "@matteo.collina/tspl"
+                                                  "@metcoder95/https-pem"
+                                                  "@sinonjs/fake-timers"
+                                                  "@types/node"
+                                                  "abort-controller"
+                                                  "borp"
+                                                  "c8"
+                                                  "cross-env"
+                                                  "dns-packet"
+                                                  "esbuild"
+                                                  "eslint"
+                                                  "fast-check"
+                                                  "husky"
+                                                  "jest"
+                                                  "jsondiffpatch"
+                                                  "neostandard"
+                                                  "node-forge"
+                                                  "proxy"
+                                                  "tsd"
+                                                  "typescript"
+                                                  "ws"))))))))
     (home-page "https://undici.nodejs.org")
     (synopsis "An HTTP/1.1 client, written from scratch for Node.js")
     (description "An HTTP/1.1 client, written from scratch for Node.js")
