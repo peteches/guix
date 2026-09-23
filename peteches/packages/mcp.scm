@@ -129,7 +129,10 @@ Outline knowledge bases.")
     (propagated-inputs (list go-gopkg-in-yaml-v3 go-github-com-rs-zerolog
                              go-github-com-mark3labs-mcp-go-source
                              go-github-com-joho-godotenv
-                             go-mvdan-cc-sh-v3))
+                             go-mvdan-cc-sh-v3
+                             ;; New in 1.1.0 (tools_fs.go, sandbox_linux.go).
+                             go-github-com-bmatcuk-doublestar-v4
+                             go-github-com-landlock-lsm-go-landlock))
     (home-page "https://github.com/sonirico/mcp-shell")
     (synopsis "mcp-shell 🐚")
     (description
