@@ -6,7 +6,7 @@
   #:use-module (guix build-system copy))
 
 (define-public go-golangci-lint
-  (let* ((pkg-version "2.13.1")
+  (let* ((pkg-version "2.13.2")
          (tarball (string-append
                    "https://github.com/golangci/golangci-lint/releases/download/v"
                    pkg-version "/golangci-lint-" pkg-version
@@ -19,7 +19,7 @@
          (method url-fetch)
          (uri tarball)
          (sha256
-          (base32 "1k5rrzi1jqn22p7vlwn0f34010ixpi035kpiykkqp95ask4znyxi"))))
+          (base32 "1mi1l1fmdpaplrcqlrs44il9gblb4r9nphia1wl5807ck0xx8xr2"))))
       (build-system copy-build-system)
       (arguments
        (list

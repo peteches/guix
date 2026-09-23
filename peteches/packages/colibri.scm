@@ -42,17 +42,17 @@
 (define-public colibri-engine
   (package
     (name "colibri-engine")
-    (version "1.9.0")
+    (version "1.12.0")
     (source
      (origin
        (method git-fetch)
        (uri (git-reference
              (url "https://github.com/JustVugg/colibri")
-             (commit "184e05221a43b3bbeb3321e3438c067b3a46e202"))) ;v1.9.0
+             (commit "dcd73832f293750086643e1f0ccd2cd6d067259c"))) ;v1.12.0
        (file-name (git-file-name name version))
        (sha256
         (base32
-         "0j4a78blxvxg53fqzclrqr9ifi71cahxxj8i796mwbmrxfaxfsyy"))))
+         "1br9bps97nc42frh0xisf2y6hg4lxs53zf6ss720rfwmg9wca829"))))
     (build-system gnu-build-system)
     (arguments
      (list

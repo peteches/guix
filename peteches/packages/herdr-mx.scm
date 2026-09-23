@@ -19,23 +19,16 @@
 ;; binary matching the client exactly -- which the store build on PATH
 ;; does.  The pin must be identical on both machines.
 ;;
-;; Pinned to a preview build rather than the v0.8.0-mx.1 stable tag: the
-;; mx client on dagon was reproducibly SIGSEGVing (confirmed via a
-;; captured core + gdb backtrace -- crash thread had a unique stack
-;; against ~28 idle pool threads, i.e. a race under concurrent
-;; pane/agent load) and the preview builds since v0.8.0-mx.1 land fixes
-;; for a "wedged remote server" and hardened live-handoff/status paths
-;; -- exactly the multi-remote code paths this crash was hitting. No
-;; matching issue was open upstream at the time.
-;;
-;; Bumped 2026-09-19 to the 2026-09-11 preview (commit 79803d18: bound
-;; owned SSH bridge lifetime across reconnects, #92) -- another fix in
-;; the same remote/reconnect code path as the original crash.
+;; Bumped 2026-09-21 to the v0.8.0-mx.1 stable tag.  (Earlier this was
+;; pinned to a preview build rather than the stable tag: the mx client
+;; on dagon was reproducibly SIGSEGVing under concurrent pane/agent
+;; load and the preview builds since v0.8.0-mx.1 landed fixes for the
+;; wedged-remote and live-handoff/status paths that crash was hitting.
 ;; Preview tags don't share stable's "v<version>" naming, hence the
-;; separate pkg-tag.
+;; separate pkg-tag.)
 (define-public herdr-mx
-  (let* ((pkg-tag "mx-preview-2026-09-11-0302-79803d1841bb")
-         (pkg-version "0.8.0-mx-preview.2026.09.11"))
+  (let* ((pkg-tag "v0.8.0-mx.1")
+         (pkg-version "0.8.0-mx.1"))
     (package
       (name "herdr-mx")
       (version pkg-version)
@@ -46,7 +39,7 @@
                "https://github.com/2lab-ai/herdr-mx/releases/download/"
                pkg-tag "/herdr-linux-x86_64"))
          (sha256
-          (base32 "13r6g69kiymqarw0cl8hvn1k67zv88lx3w9xlrhxlrjp62p5s117"))))
+          (base32 "07q281lqa1lq0m2kn4d1vs4w4ms0kzdgih8mv4782ii55azbxqjz"))))
       (build-system copy-build-system)
       (arguments
        (list

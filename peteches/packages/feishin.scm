@@ -11,7 +11,7 @@
 (define-public feishin-bin
   (package
     (name "feishin-bin")
-    (version "1.15.1")
+    (version "1.17.0")
     (source
      (origin
        (method url-fetch)
@@ -20,7 +20,7 @@
              version "/Feishin-linux-x86_64.AppImage"))
        (file-name (string-append "feishin-" version "-x86_64.AppImage"))
        (sha256
-        (base32 "05b5p7j0q9bskga01aq4m20dw7x661gilba5i4q3zl9rm8byj12x"))))
+        (base32 "18aby7aa87fnvfg7za2z2jgazxzf72315dxqsn3ymh8amg0mmk1i"))))
     (build-system chromium-binary-build-system)
     (native-inputs (list bash-minimal squashfs-tools))
     (arguments

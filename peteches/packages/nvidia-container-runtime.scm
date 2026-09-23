@@ -28,7 +28,7 @@
 (define-public nvidia-modprobe
   (package
     (name "nvidia-modprobe")
-    (version "610.57.04")
+    (version "615.71.09")
     (source
      (origin
        (method git-fetch)
@@ -37,7 +37,7 @@
              (commit version)))
        (file-name (git-file-name name version))
        (sha256
-        (base32 "0hvb1n5741zhxf4j3yplcna0krpnhmcvwshskp4z37yhb5ba17il"))))
+        (base32 "1swl10a00al1sq3v2ismk1p2afafqjknmr11rmzpxaai0xw0cgva"))))
     (build-system gnu-build-system)
     (arguments
      (list
@@ -297,7 +297,7 @@ int nvidia_cap_get_device_file_attrs(const char *path, unsigned int *major, unsi
 (define-public nvidia-container-toolkit
   (package
     (name "nvidia-container-toolkit")
-    (version "1.20.0")
+    (version "1.20.1")
     (source
      (origin
        (method git-fetch)
@@ -306,7 +306,7 @@ int nvidia_cap_get_device_file_attrs(const char *path, unsigned int *major, unsi
              (commit (string-append "v" version))))
        (file-name (git-file-name name version))
        (sha256
-        (base32 "1n4l7kh84rq1rvpxnqhrvbwc03ipjcp0qcs17acz1b189f7r7h67"))))
+        (base32 "0fg4gkymssppsnjnmvzsjrbk6xf4rpz7pij7xir3zq2lsi7vcsqc"))))
     (build-system go-build-system)
     (arguments
      (list

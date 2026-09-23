@@ -8,7 +8,7 @@
   #:use-module (gnu packages compression))
 
 (define %version
-  "1.75.0")
+  "1.75.1")
 
 (define-public rclone
   (package
@@ -22,7 +22,7 @@
              "/rclone-v" version "-linux-amd64.zip"))
        (sha256
         ;; guix download https://github.com/rclone/rclone/releases/download/v1.75.0/rclone-v1.75.0-linux-amd64.zip
-        (base32 "1apvpb566ini16d4m035hhld071lnqj72wlw01qhw9a8izh08a5a"))))
+        (base32 "1aqk18f0wsk7m16vjciy802s3cl7wzlkkwc0wgw6h4c4fakmlawq"))))
     (build-system copy-build-system)
     (native-inputs (list unzip))
     (arguments

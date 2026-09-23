@@ -6,7 +6,7 @@
   #:use-module (guix build-system copy))
 
 (define-public terragrunt
-  (let* ((pkg-version "1.1.3")
+  (let* ((pkg-version "1.1.6")
          (tarball (string-append
                    "https://github.com/gruntwork-io/terragrunt/releases/download/v"
                    pkg-version "/terragrunt_linux_amd64.tar.gz")))
@@ -18,7 +18,7 @@
          (method url-fetch)
          (uri tarball)
          (sha256
-          (base32 "1zd45kbwrhl742k43fx2mq7pnxd6xb4cfwhzkhz6ix95040bz6w8"))))
+          (base32 "01ksxawkl50zsqpwv4mhh8qbyd7iwcr6adcczpn9jla430shxjjx"))))
       (build-system copy-build-system)
       (arguments
        (list

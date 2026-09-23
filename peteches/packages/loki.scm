@@ -11,7 +11,7 @@
 (define-public loki
   (package
     (name "loki")
-    (version "3.7.6")
+    (version "3.7.8")
     (source
      (origin
        (method url-fetch)
@@ -19,7 +19,7 @@
              "https://github.com/grafana/loki/releases/download/v" version
              "/loki-linux-amd64.zip"))
        (sha256
-        (base32 "1sj8a9nmva2lnvbca8x62wy2lwlhnahdr99rpw814n0nfm117lh9"))))
+        (base32 "0qbx5y0qvk6whmzb0l5b4i6cx80rf2rnlrmk88bcslmskhna9bk2"))))
     (build-system copy-build-system)
     (native-inputs (list unzip))
     (arguments

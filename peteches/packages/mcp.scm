@@ -110,7 +110,7 @@ Outline knowledge bases.")
 (define-public go-github-com-sonirico-mcp-shell
   (package
     (name "go-github-com-sonirico-mcp-shell")
-    (version "0.7.1")
+    (version "1.1.0")
     (source
      (origin
        (method git-fetch)
@@ -119,7 +119,7 @@ Outline knowledge bases.")
              (commit (string-append "v" version))))
        (file-name (git-file-name name version))
        (sha256
-        (base32 "1m32wydj6hj4y9b5zjq0rpb80a4g9w0h2sgh1i3aqm2vl9f5wk1d"))))
+        (base32 "0lw3xs25ifx5s6kd4k12mpl46bw8vyjx9l2gf57g48nmvdgwlfj2"))))
     (build-system go-build-system)
     (arguments
      (list
@@ -144,13 +144,13 @@ clients.  In other words: the brain thinks, this runs the commands.")
 (define-public plane-mcp-server
   (package
     (name "plane-mcp-server")
-    (version "0.3.1")
+    (version "0.3.2")
     (source
      (origin
        (method url-fetch)
        (uri (pypi-uri "plane_mcp_server" version))
        (sha256
-        (base32 "12i4miqr97fnq0rzh1p6ar1fmjid13pkyygagfqg44f5kl6ypg7x"))))
+        (base32 "1qr203v14ampm830q5bkph43mlncx3f5f72i78q0v84m0pfmnf75"))))
     (build-system pyproject-build-system)
     (arguments
      ;; Tests need a live Plane workspace / Redis.

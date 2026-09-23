@@ -7,7 +7,7 @@
   #:use-module (gnu packages ncurses))
 
 (define-public pihole-ftl
-  (let* ((version "6.6.2")
+  (let* ((version "6.7.1")
          (url (string-append
                "https://github.com/pi-hole/FTL/releases/download/v" version
                "/pihole-FTL-amd64")))
@@ -19,7 +19,7 @@
          (method url-fetch)
          (uri url)
          (sha256
-          (base32 "1fswam72qz4f564zml8n2xi66d4rdlz6zdgvz3dnwx8qf58vvg91"))))
+          (base32 "0c8d1hlyry00s20lkl219spv0rz1qm7x6l81p35csxgbz4l0qmhy"))))
       (build-system copy-build-system)
       (arguments
        (list
@@ -170,7 +170,7 @@ Pi-hole administration tasks.")
 (define-public pihole-web
   (package
     (name "pihole-web")
-    (version "6.5.1")
+    (version "6.6")
     (source
      (origin
        (method url-fetch)
@@ -178,7 +178,7 @@ Pi-hole administration tasks.")
              "https://github.com/pi-hole/web/archive/refs/tags/v" version
              ".tar.gz"))
        (sha256
-        (base32 "1sd7kbpmdv8pk6sakl8d4g26d1hpiirvnc2vxv19qrx3y78h61nv"))))
+        (base32 "1xj56yx4dhvidxwf563b5fmagjd6vdi1ir7cnxhj2hqp4dkzm4k7"))))
     (build-system copy-build-system)
     (arguments
      (list

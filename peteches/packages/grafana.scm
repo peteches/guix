@@ -10,15 +10,15 @@
 (define-public grafana
   (package
     (name "grafana")
-    (version "13.0.1-security-01")
+    (version "13.2.2")
     (source
      (origin
        (method url-fetch)
-       ;; Security releases use a non-standard filename with embedded build number.
+       ;; Release filenames embed the CI build number.
        (uri
-        "https://dl.grafana.com/grafana/release/13.0.1+security-01/grafana_13.0.1+security-01_25720641773_linux_amd64.tar.gz")
+        "https://dl.grafana.com/grafana/release/13.2.2/grafana_13.2.2_34846740809_linux_amd64.tar.gz")
        (sha256
-        (base32 "0p4nh2vi2lhxzkqsfqmjfab49898nrywfk5dqbwnwy7viblhbkqq"))))
+        (base32 "13scaignw7h1lng60g8gn90zab5n8pfzpxp5faqgs94ql0wchqln"))))
     (build-system copy-build-system)
     ;; Copy the full tarball tree so --homepath can find public/ and conf/.
     (arguments

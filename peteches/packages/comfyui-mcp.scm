@@ -320,13 +320,13 @@ ComfyUI server's HTTP and WebSocket API.")
 (define-public node-comfyui-mcp
   (package
     (name "node-comfyui-mcp")
-    (version "0.52.53")
+    (version "0.52.203")
     (source
      (origin
        (method url-fetch)
-       (uri "https://registry.npmjs.org/comfyui-mcp/-/comfyui-mcp-0.52.53.tgz")
+       (uri "https://registry.npmjs.org/comfyui-mcp/-/comfyui-mcp-0.52.203.tgz")
        (sha256
-        (base32 "0yv9237q0z0g68k9bl9v7brr7zm069hplqy7h2qc37m24zvhwji1"))))
+        (base32 "0j4wz9m4v07niixjr0gjr2g6sr1pxibass573kywnwsl5aib89px"))))
     (build-system node-build-system)
     (arguments
      (list

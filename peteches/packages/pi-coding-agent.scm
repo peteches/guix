@@ -1548,14 +1548,14 @@
 (define-public pi-coding-agent
   (package
     (name "pi-coding-agent")
-    (version "0.84.2")
+    (version "0.87.0")
     (source
      (origin
        (method url-fetch)
        (uri
-        "https://registry.npmjs.org/@earendil-works/pi-coding-agent/-/pi-coding-agent-0.84.2.tgz")
+        "https://registry.npmjs.org/@earendil-works/pi-coding-agent/-/pi-coding-agent-0.87.0.tgz")
        (sha256
-        (base32 "1ylglvqwga8scrb4f7vx79ay6dbl8amk7gy7fh0iy30sgg6rkf4m"))))
+        (base32 "0sl69027ph9z2bnq88yg7iwzl9hcvm1xyq6wacmmj7d3wv036rws"))))
     (build-system node-build-system)
     (arguments
      (list
@@ -2425,14 +2425,14 @@ platform branch; installed here purely because it is a static
 (define-public pi-mcp-adapter
   (package
     (name "pi-mcp-adapter")
-    (version "2.31.0")
+    (version "2.36.0")
     (source
      (origin
        (method url-fetch)
        (uri
-        "https://registry.npmjs.org/pi-mcp-adapter/-/pi-mcp-adapter-2.31.0.tgz")
+        "https://registry.npmjs.org/pi-mcp-adapter/-/pi-mcp-adapter-2.36.0.tgz")
        (sha256
-        (base32 "0vcg5lh2fgpwbrc1qaij2sv7n0r1zg83i86lbp6irczv3gzp80sd"))))
+        (base32 "1w19nvb68a0p70ilnfjrinnhmz9m9hijw2jdcmxrnkivkkxsignb"))))
     (build-system node-build-system)
     (arguments
      (list

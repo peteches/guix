@@ -35,7 +35,7 @@
 (define-public pg-cron
   (package
     (name "pg-cron")
-    (version "1.6.7")
+    (version "1.6.8")
     (source
      (origin
        (method git-fetch)
@@ -45,7 +45,7 @@
        (file-name (git-file-name name version))
        (sha256
         (base32
-         "1sv40h3sm94qckzwmhff41vwvdi3z3ag4n1alqwvhc84w90xl251"))))
+         "1gqiggvk8bwd807s10151kw4yapcfc07hga9an5bv9b3a0hf15lb"))))
     (build-system gnu-build-system)
     (arguments
      (list

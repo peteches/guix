@@ -5,7 +5,7 @@
 ;; v0.5.1 (Nov 2025) and has never been bumped upstream.  That predates
 ;; DankMaterialShell's fix for Hyprland's Lua config migration (workspace
 ;; switcher clicks silently doing nothing) -- see PRs #2419 and #2443
-;; upstream, first released in DMS v1.5.0.  This file bumps DMS to v1.5.0
+;; upstream, first released in DMS v1.5.0.  This file bumps DMS to v1.6.2
 ;; locally, plus the handful of Go module dependencies it grew in the
 ;; ~30 releases since 0.5.1 that Guix proper doesn't have yet, and a few
 ;; existing Guix Go packages that are slightly too old for DMS's go.mod
@@ -26,7 +26,7 @@
 ;; on the CLI with an explicit version:
 ;;
 ;; Usage:
-;;   guix build -L ~/area_51/guix dank-material-shell@1.5.0
+;;   guix build -L ~/area_51/guix dank-material-shell@1.6.2
 
 (define-module (peteches packages dank-material-shell)
   #:use-module (guix packages)
@@ -349,13 +349,13 @@ themselves -- see the @code{tailscale} package for those.")
     (license license:bsd-3)))
 
 ;;;
-;;; DankMaterialShell itself, bumped to v1.5.0.
+;;; DankMaterialShell itself, bumped to v1.6.2.
 ;;;
 
 (define-public dank-material-shell-minimal-1.5.0
   (package
     (inherit dank-material-shell-minimal)
-    (version "1.5.0")
+    (version "1.6.2")
     (source
      (origin
        (method git-fetch)
@@ -364,12 +364,12 @@ themselves -- see the @code{tailscale} package for those.")
              (commit (string-append "v" version))))
        (file-name (git-file-name "dank-material-shell-minimal" version))
        (sha256
-        (base32 "14qh2ar16k2pvd2kfhv3yr6rqx7ig3g25bigzxicbr64ccyfrlfd"))))
+        (base32 "0yqg92yxfwsflsxy393fww2m1rndr5kvlyq80yd8wpm2g3gigxil"))))
     (arguments
      (list
       #:import-path "github.com/AvengeMedia/DankMaterialShell/core/cmd/dms"
       #:unpack-path "github.com/AvengeMedia/DankMaterialShell"
-      ;; DMS v1.5.0's go.mod declares `go 1.26.1' -- it uses errors.AsType,
+      ;; DMS v1.6.2's go.mod declares `go 1.26.5' -- it uses errors.AsType,
       ;; a generic errors.As variant only added in Go 1.26.  The default Go
       ;; go-build-system picks (1.25.x) is too old for it.
       #:go go-1.26
