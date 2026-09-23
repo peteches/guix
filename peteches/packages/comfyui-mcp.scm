@@ -438,6 +438,15 @@ ComfyUI server's HTTP and WebSocket API.")
       #:tests? #f
       #:phases
       #~(modify-phases %standard-phases
+          (delete 'build)
+          ;; Upstream's `prepare' script runs `husky', a git-hooks
+          ;; installer that is not runnable here and makes every
+          ;; dependent package fail to install this one.
+          (add-before 'repack 'disable-lifecycle-scripts
+            (lambda _
+              (modify-json (delete-fields '("scripts.prepare"
+                                            "scripts.postinstall")
+                                          #:strict? #f))))
           (add-after 'patch-dependencies 'delete-dev-dependencies
             (lambda _
               (modify-json (delete-dependencies '("@fastify/busboy"
