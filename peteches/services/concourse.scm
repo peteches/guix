@@ -288,7 +288,6 @@
     (list (shepherd-service (provision '(concourse-worker))
                             (documentation "Concourse CI worker node.")
                             (requirement '(networking file-systems
-                                           file-system-/sys/fs/cgroup
                                            sops-secrets))
                             (start #~(make-forkexec-constructor (list #$(file-append
                                                                          pkg

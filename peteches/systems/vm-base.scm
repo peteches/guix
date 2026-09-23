@@ -125,6 +125,7 @@
   #:use-module (peteches services firewall)
   #:use-module (peteches services restic)
   #:use-module (peteches services cifs)
+  #:use-module (peteches services nvidia)
   #:use-module (peteches packages generation-gc)
   #:use-module (sops secrets)
   #:use-module (sops services sops)
@@ -354,7 +355,7 @@ time.  A no-op on subsequent boots."
          (nvidia-services
           (if with-nvidia?
               (list
-               (service nvidia-service-type
+               (service nvidia-vm-service-type
                         (nvidia-configuration
                          (driver nvda*)
                          (firmware nvidia-firmware*)

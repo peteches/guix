@@ -477,7 +477,7 @@ for a non-NVIDIA host."
 						      #$(file-append nvidia-driver* "/lib") ":"
 						      #$(file-append nvidia-driver* "/lib64")
 						      ":${LD_LIBRARY_PATH}"))))
-			       (service nvidia-service-type
+			       (service nvidia-vm-service-type
 					(nvidia-configuration
 					 (driver nvda*)
 					 (firmware nvidia-firmware*)
