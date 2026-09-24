@@ -110,11 +110,14 @@
        (method git-fetch)
        (uri (git-reference
              (url "https://github.com/alecthomas/chroma")
-             (commit (string-append "v" version))))
+             ;; Pinned to the exact commit the v2.27.0 tag pointed at when
+             ;; fetched -- the tag was re-pointed upstream within hours of
+             ;; the first fetch, which broke the fixed-output hash.
+             (commit "a6d00fe2cdfc88da0b91396e577da16c75c9c7fb")))
        (file-name (git-file-name
                    (package-name go-github-com-alecthomas-chroma-v2) version))
        (sha256
-        (base32 "0brhsbfa3is8q4jnwr9j2zlxgklcaqv600n608knbv0sh095dlqr"))
+        (base32 "18p9inwlwkbsgi9frqhxhqqwdymnwm02iqpjdgk7dg8sa0ab92w8"))
        (modules '((guix build utils)))
        (snippet
         #~(begin
