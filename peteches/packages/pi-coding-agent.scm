@@ -2435,7 +2435,7 @@ platform branch; installed here purely because it is a static
        (uri
         "https://registry.npmjs.org/zod/-/zod-4.6.5.tgz")
        (sha256
-        (base32 "037m5i7rfk231iay8r90mxq6lpjwx1jfcyxympibvwvx45q7gbvg"))))
+        (base32 "1z1n1fsh2lrmmqpf7lm81p5r1qq6mi1sqnf2mz2c23g37m9hr357"))))
     (build-system node-build-system)
     (arguments
      (list
@@ -2446,6 +2446,63 @@ platform branch; installed here purely because it is a static
     (home-page "https://github.com/colinhacks/zod#readme")
     (synopsis "TypeScript schema validation library")
     (description "TypeScript schema validation library")
+    (license license:expat)))
+
+(define-public node-undici-6.28.1
+  (package
+    (name "node-undici")
+    (version "6.28.1")
+    (source
+     (origin
+       (method url-fetch)
+       (uri
+        "https://registry.npmjs.org/undici/-/undici-6.28.1.tgz")
+       (sha256
+        (base32 "0x4vnsjm4jn1i9p6mdmpvmxd08hs0jvi16zyqzd47zy0r6m930g1"))))
+    (build-system node-build-system)
+    (arguments
+     (list
+      #:tests? #f
+      #:phases
+      #~(modify-phases %standard-phases
+          (delete 'build)
+          (add-after 'patch-dependencies 'remove-dev-dependencies
+            (lambda _
+              (modify-json (delete-dev-dependencies)
+                           (delete-fields '("scripts"))))))))
+    (home-page "https://github.com/nodejs/undici#readme")
+    (synopsis "HTTP/1.1 client for Node.js")
+    (description "Standalone HTTP/1.1 client, a low-level fetch implementation.")
+    (license license:isc)))
+
+(define-public node-typesafe-ai-sdk-0.6.0
+  (package
+    (name "node-typesafe-ai-sdk")
+    (version "0.6.0")
+    (source
+     (origin
+       (method url-fetch)
+       (uri
+        "https://registry.npmjs.org/@typesafe-ai/sdk/-/sdk-0.6.0.tgz")
+       (sha256
+        (base32 "13ipcmirz9xmixp4yy1vx82f74qk025865ab53aqxi8ir4blbnfc"))))
+    (build-system node-build-system)
+    (arguments
+     (list
+      #:tests? #f
+      #:phases
+      #~(modify-phases %standard-phases
+          (delete 'build)
+          (add-after 'patch-dependencies 'delete-dev-dependencies
+            (lambda _
+              (modify-json (delete-dependencies
+                            '("@arethetypeswrong/cli" "@biomejs/biome"
+                              "@types/node" "@vitest/coverage-v8"
+                              "git-cliff" "jsr" "publint" "tsdown"
+                              "tsx" "typescript" "vitest"))))))))
+    (home-page "https://www.npmjs.com/package/@typesafe-ai/sdk")
+    (synopsis "Type-safe AI SDK client")
+    (description "Type-safe client for AI provider APIs, used by pi-mcp-adapter's JEV client.")
     (license license:expat)))
 
 ;; New runtime dependency of pi-mcp-adapter 2.36.0 (@modelcontextprotocol/
@@ -2463,7 +2520,7 @@ platform branch; installed here purely because it is a static
        (uri
         "https://registry.npmjs.org/@modelcontextprotocol/ext-tasks/-/ext-tasks-0.1.0.tgz")
        (sha256
-        (base32 "0ynsf47wx1mrn60gba3685hm3cfsw1l98ygvvpp330fc6303dz13"))))
+        (base32 "0mh3yz9aja861r1wwqk4s0hkrsw0aw65y9lqmfr1wmyrdlk8k3bj"))))
     (build-system node-build-system)
     (arguments
      (list
@@ -2556,7 +2613,9 @@ platform branch; installed here purely because it is a static
                   node-smol-toml-1.8.0
                   node-strip-json-comments-5.0.3
                   node-modelcontextprotocol-ext-tasks-0.1.0
-                  node-zod-4.6.5))
+                  node-zod-4.6.5
+                  node-undici-6.28.1
+                  node-typesafe-ai-sdk-0.6.0))
     (home-page "https://github.com/nicobailon/pi-mcp-adapter#readme")
     (synopsis "MCP client extension for the pi coding-agent CLI")
     (description
