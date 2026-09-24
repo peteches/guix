@@ -2422,6 +2422,67 @@ platform branch; installed here purely because it is a static
     (description "Strip comments from JSON (ESM)")
     (license license:expat)))
 
+;; pi-mcp-adapter 2.36.0 requires zod ^4.5.4 (both directly and via
+;; @modelcontextprotocol/ext-tasks); the previous node-zod-4.4.3 in its
+;; inputs was too old for that range.
+(define-public node-zod-4.6.5
+  (package
+    (name "node-zod")
+    (version "4.6.5")
+    (source
+     (origin
+       (method url-fetch)
+       (uri
+        "https://registry.npmjs.org/zod/-/zod-4.6.5.tgz")
+       (sha256
+        (base32 "037m5i7rfk231iay8r90mxq6lpjwx1jfcyxympibvwvx45q7gbvg"))))
+    (build-system node-build-system)
+    (arguments
+     (list
+      #:tests? #f
+      #:phases
+      #~(modify-phases %standard-phases
+          (delete 'build))))
+    (home-page "https://github.com/colinhacks/zod#readme")
+    (synopsis "TypeScript schema validation library")
+    (description "TypeScript schema validation library")
+    (license license:expat)))
+
+;; New runtime dependency of pi-mcp-adapter 2.36.0 (@modelcontextprotocol/
+;; ext-tasks ^0.1.0).  Its only runtime dependency is zod ^4.5.4 (provided by
+;; node-zod-4.6.5); the @modelcontextprotocol/client peer dependency is already
+;; in pi-mcp-adapter's inputs.  No install-lifecycle scripts, so it packs
+;; cleanly from the registry tarball.
+(define-public node-modelcontextprotocol-ext-tasks-0.1.0
+  (package
+    (name "node-modelcontextprotocol-ext-tasks")
+    (version "0.1.0")
+    (source
+     (origin
+       (method url-fetch)
+       (uri
+        "https://registry.npmjs.org/@modelcontextprotocol/ext-tasks/-/ext-tasks-0.1.0.tgz")
+       (sha256
+        (base32 "0ynsf47wx1mrn60gba3685hm3cfsw1l98ygvvpp330fc6303dz13"))))
+    (build-system node-build-system)
+    (arguments
+     (list
+      #:tests? #f
+      #:phases
+      #~(modify-phases %standard-phases
+          (delete 'build)
+          (add-after 'patch-dependencies 'delete-dev-dependencies
+            (lambda _
+              (modify-json (delete-dependencies
+                            '("@eslint/js" "eslint" "eslint-plugin-jsdoc"
+                              "fast-check" "globals" "prettier"
+                              "typescript-eslint" "@modelcontextprotocol/client"))))))))
+    (inputs (list node-zod-4.6.5))
+    (home-page "https://github.com/modelcontextprotocol/ext-tasks#readme")
+    (synopsis "MCP tasks extension types and runtime")
+    (description "MCP tasks extension types and runtime")
+    (license license:asl2.0)))
+
 (define-public pi-mcp-adapter
   (package
     (name "pi-mcp-adapter")
@@ -2494,7 +2555,8 @@ platform branch; installed here purely because it is a static
                   node-open-10.2.0
                   node-smol-toml-1.8.0
                   node-strip-json-comments-5.0.3
-                  node-zod-4.4.3))
+                  node-modelcontextprotocol-ext-tasks-0.1.0
+                  node-zod-4.6.5))
     (home-page "https://github.com/nicobailon/pi-mcp-adapter#readme")
     (synopsis "MCP client extension for the pi coding-agent CLI")
     (description
