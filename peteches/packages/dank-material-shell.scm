@@ -428,6 +428,144 @@ compiled by DMS's own build.")
 its gops subpackage; it is compiled by DMS's own build.")
     (license license:expat)))
 
+;; Second resolution layer: dgop/gops's own imports.  huma's core package
+;; and its casing/negotiation/validation/yaml subpackages have no
+;; third-party dependencies at all; the gopsutil subpackages DMS uses
+;; (cpu, disk, host, load, mem, net, process, sensors) import only x/sys
+;; (channel) on Linux -- their plan9stats/perfstat/wmi/purego imports are
+;; in Plan9/BSD/Windows/darwin build-tagged files that a Linux build never
+;; compiles -- plus tklauser/go-sysconf from cpu_linux.go and
+;; process_linux.go, which needs tklauser/numcpus.
+
+(define-public go-github-com-danielgtaylor-huma-v2
+  (package
+    (name "go-github-com-danielgtaylor-huma-v2")
+    (version "2.39.1")
+    (source
+     (origin
+       (method git-fetch)
+       (uri (git-reference
+             (url "https://github.com/danielgtaylor/huma")
+             (commit (string-append "v" version))))
+       (file-name (git-file-name name version))
+       (sha256
+        (base32 "08xq0vw5ijw6085yx9cf6s3j8j89h6m8dn94rm33bb16jcz1zqha"))))
+    (build-system copy-build-system)
+    (arguments
+     (list
+      #:phases
+      #~(modify-phases %standard-phases
+          (add-after 'install 'install-source
+            (lambda _
+              (let* ((out #$output)
+                     (dest (string-append out
+                                          "/src/github.com/danielgtaylor/huma/v2")))
+                (mkdir-p dest)
+                (copy-recursively "." dest)))))))
+    (home-page "https://github.com/danielgtaylor/huma")
+    (synopsis "Huma REST framework (source)")
+    (description
+     "Source-only bundle of the danielgtaylor/huma v2 Go module.  dgop's
+gops subpackage imports its core package, which has no third-party
+dependencies; compiled by the packages that import it.")
+    (license license:expat)))
+
+(define-public go-github-com-shirou-gopsutil-v4
+  (package
+    (name "go-github-com-shirou-gopsutil-v4")
+    (version "4.26.7")
+    (source
+     (origin
+       (method git-fetch)
+       (uri (git-reference
+             (url "https://github.com/shirou/gopsutil")
+             (commit (string-append "v" version))))
+       (file-name (git-file-name name version))
+       (sha256
+        (base32 "1ng12fgfd6v6gxq2m30kxa6z1m35i2x8c1g8pwq5v3hyqkfg69a8"))))
+    (build-system copy-build-system)
+    (arguments
+     (list
+      #:phases
+      #~(modify-phases %standard-phases
+          (add-after 'install 'install-source
+            (lambda _
+              (let* ((out #$output)
+                     (dest (string-append out
+                                          "/src/github.com/shirou/gopsutil/v4")))
+                (mkdir-p dest)
+                (copy-recursively "." dest)))))))
+    (home-page "https://github.com/shirou/gopsutil")
+    (synopsis "gopsutil/v4 system metrics (source)")
+    (description
+     "Source-only bundle of the shirou/gopsutil v4 Go module; compiled by
+the packages that import it.")
+    (license license:bsd-3)))
+
+(define-public go-github-com-tklauser-go-sysconf
+  (package
+    (name "go-github-com-tklauser-go-sysconf")
+    (version "0.3.16")
+    (source
+     (origin
+       (method git-fetch)
+       (uri (git-reference
+             (url "https://github.com/tklauser/go-sysconf")
+             (commit (string-append "v" version))))
+       (file-name (git-file-name name version))
+       (sha256
+        (base32 "1ipwx1q9wxsy84iwx97x7z9rcw6jqc1wpkfi5rdwzy069nr5pmc4"))))
+    (build-system copy-build-system)
+    (arguments
+     (list
+      #:phases
+      #~(modify-phases %standard-phases
+          (add-after 'install 'install-source
+            (lambda _
+              (let* ((out #$output)
+                     (dest (string-append out
+                                          "/src/github.com/tklauser/go-sysconf")))
+                (mkdir-p dest)
+                (copy-recursively "." dest)))))))
+    (home-page "https://github.com/tklauser/go-sysconf")
+    (synopsis "go-sysconf getconf wrapper (source)")
+    (description
+     "Source-only bundle of the tklauser/go-sysconf Go module; compiled by
+the packages that import it.")
+    (license license:bsd-3)))
+
+(define-public go-github-com-tklauser-numcpus
+  (package
+    (name "go-github-com-tklauser-numcpus")
+    (version "0.11.0")
+    (source
+     (origin
+       (method git-fetch)
+       (uri (git-reference
+             (url "https://github.com/tklauser/numcpus")
+             (commit (string-append "v" version))))
+       (file-name (git-file-name name version))
+       (sha256
+        (base32 "0nzx13c5j8byijq8anc25cgm3jnvigcwmdpkapq22iigl0d9vg1r"))))
+    (build-system copy-build-system)
+    (arguments
+     (list
+      #:phases
+      #~(modify-phases %standard-phases
+          (add-after 'install 'install-source
+            (lambda _
+              (let* ((out #$output)
+                     (dest (string-append out
+                                          "/src/github.com/tklauser/numcpus")))
+                (mkdir-p dest)
+                (copy-recursively "." dest)))))))
+    (home-page "https://github.com/tklauser/numcpus")
+    (synopsis "numcpus CPU count detection (source)")
+    (description
+     "Source-only bundle of the tklauser/numcpus Go module, a dependency of
+go-sysconf; compiled by the packages that import it.")
+    (license (list license:asl2.0 license:expat))))
+
 (define-public go-github-com-dlclark-regexp2-v2
   (package
     (name "go-github-com-dlclark-regexp2-v2")
@@ -593,7 +731,11 @@ by the packages that import it.")
            go-github-com-avengemedia-dgop
            go-github-com-dlclark-regexp2-v2
            go-github-com-nadim147c-material-v3
-           go-github-com-klauspost-compress-1.19))))
+           go-github-com-klauspost-compress-1.19
+           go-github-com-danielgtaylor-huma-v2
+           go-github-com-shirou-gopsutil-v4
+           go-github-com-tklauser-go-sysconf
+           go-github-com-tklauser-numcpus))))
 
 (define-public dank-material-shell-1.5.0
   (package
