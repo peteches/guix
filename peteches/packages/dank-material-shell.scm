@@ -101,10 +101,10 @@
      (list #:import-path "github.com/dlclark/regexp2"
            #:tests? #f))))
 
-(define-public go-github-com-alecthomas-chroma-v2-2.24
+(define-public go-github-com-alecthomas-chroma-v2-2.27
   (package
     (inherit go-github-com-alecthomas-chroma-v2)
-    (version "2.24.1")
+    (version "2.27.0")
     (source
      (origin
        (method git-fetch)
@@ -114,7 +114,7 @@
        (file-name (git-file-name
                    (package-name go-github-com-alecthomas-chroma-v2) version))
        (sha256
-        (base32 "0kww0yhwqzzgl8n3alislf0136rk7kh507bbvr32a30wmk5dzi81"))
+        (base32 "0brhsbfa3is8q4jnwr9j2zlxgklcaqv600n608knbv0sh095dlqr"))
        (modules '((guix build utils)))
        (snippet
         #~(begin
@@ -128,8 +128,12 @@
      (list #:import-path "github.com/alecthomas/chroma/v2"
            #:tests? #f))
     (native-inputs '())
+    ;; 2.27.0 migrated its Regexp usage from dlclark/regexp2 v1 to v2
+    ;; (CompiledRule.Regexp is now *regexp2/v2.Regexp) -- DMS v1.6.2's
+    ;; raku.go passes v2 regexps into chroma's CompiledRule and only
+    ;; compiles against this chroma version.
     (propagated-inputs
-     (list go-github-com-dlclark-regexp2-1.12))))
+     (list go-github-com-dlclark-regexp2-v2))))
 
 (define-public go-github-com-mdlayher-socket-0.6
   (package
@@ -713,7 +717,7 @@ by the packages that import it.")
            go-golang-org-x-exp
            go-github-com-go-git-go-git-v6
            go-github-com-spf13-afero
-           go-github-com-alecthomas-chroma-v2-2.24
+           go-github-com-alecthomas-chroma-v2-2.27
            go-github-com-fsnotify-fsnotify-1.10
            go-github-com-holoplot-go-evdev
            go-github-com-pilebones-go-udev
