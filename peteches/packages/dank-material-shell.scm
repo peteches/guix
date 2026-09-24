@@ -126,6 +126,11 @@
             (delete-file-recursively "cmd")))))
     (arguments
      (list #:import-path "github.com/alecthomas/chroma/v2"
+           ;; The inherited channel package pins go-1.25, whose toolchain
+           ;; build is not in the store (and the offload host that would
+           ;; build it is down); go-1.26 is in the store and satisfies
+           ;; chroma v2.27.0's 'go 1.25' floor.
+           #:go go-1.26
            #:tests? #f))
     (native-inputs '())
     ;; 2.27.0 migrated its Regexp usage from dlclark/regexp2 v1 to v2
