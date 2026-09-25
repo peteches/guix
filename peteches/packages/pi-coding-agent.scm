@@ -6,7 +6,13 @@
   #:use-module (guix gexp)
   #:use-module ((guix licenses)
                 #:prefix license:)
-  #:use-module (gnu packages node-xyz))
+  #:use-module (gnu packages node-xyz)
+  #:use-module (gnu packages xorg)
+  ;; For node-standardwebhooks-1.0.0 (a runtime dependency of
+  ;; node-anthropic-ai-sdk-0.124.0, needed by pi-ai 0.87.0).  That
+  ;; module is self-contained and does not import this one, so no
+  ;; circular dependency.
+  #:use-module (peteches packages claude-agent-acp-deps))
 
 ;; pi (https://pi.dev), the AI coding-agent CLI from
 ;; @earendil-works/pi-mono (github.com/earendil-works/pi-mono), by
@@ -423,16 +429,45 @@
     (description "Terminal string styling done right")
     (license license:expat)))
 
-(define-public node-semver-7.8.0
+(define-public node-chalk-6.0.0
   (package
-    (name "node-semver")
-    (version "7.8.0")
+    (name "node-chalk")
+    (version "6.0.0")
     (source
      (origin
        (method url-fetch)
-       (uri "https://registry.npmjs.org/semver/-/semver-7.8.0.tgz")
+       (uri "https://registry.npmjs.org/chalk/-/chalk-6.0.0.tgz")
        (sha256
-        (base32 "017wsvynr31d9zgw0p0jnng5kvf25465jnap9r136g4cm0r0rw7l"))))
+        (base32 "168kk0f5hcqirig59wp3zink5af72v7igv6r4qw8s2d6p0kcxl45"))))
+    (build-system node-build-system)
+    (arguments
+     (list
+      #:tests? #f
+      #:phases
+      #~(modify-phases %standard-phases
+          (delete 'build)
+          (add-after 'patch-dependencies 'delete-dev-dependencies
+            (lambda _
+              (modify-json (delete-dependencies
+                            '("@types/node" "ansi-styles" "ava"
+                              "c8" "color-convert" "execa"
+                              "log-update" "matcha" "typescript"
+                              "xo" "yoctodelay"))))))))
+    (home-page "https://github.com/chalk/chalk#readme")
+    (synopsis "Terminal string styling done right")
+    (description "Terminal string styling done right")
+    (license license:expat)))
+
+(define-public node-semver-7.8.5
+  (package
+    (name "node-semver")
+    (version "7.8.5")
+    (source
+     (origin
+       (method url-fetch)
+       (uri "https://registry.npmjs.org/semver/-/semver-7.8.5.tgz")
+       (sha256
+        (base32 "0pbx2afqpl5na8j25kgz496g6wrfaggrasrkj745fz8d63a4al6q"))))
     (build-system node-build-system)
     (arguments
      (list
@@ -450,16 +485,16 @@
     (description "The semantic version parser used by npm.")
     (license license:isc)))
 
-(define-public node-undici-8.9.0
+(define-public node-undici-8.10.2
   (package
     (name "node-undici")
-    (version "8.9.0")
+    (version "8.10.2")
     (source
      (origin
        (method url-fetch)
-       (uri "https://registry.npmjs.org/undici/-/undici-8.9.0.tgz")
+       (uri "https://registry.npmjs.org/undici/-/undici-8.10.2.tgz")
        (sha256
-        (base32 "176n8ls7jgfvc58ivfq8hhyicaf24mm0c22j6ay08bimx6rsnm7m"))))
+        (base32 "1ail8vmszm0fwsba0gwihzxbc9pscpim0ybjlr32d3fp6ap3h1kl"))))
     (build-system node-build-system)
     (arguments
      (list
@@ -543,16 +578,16 @@
     (description "Brace expansion as known from sh/bash")
     (license license:expat)))
 
-(define-public node-minimatch-10.2.5
+(define-public node-minimatch-10.2.6
   (package
     (name "node-minimatch")
-    (version "10.2.5")
+    (version "10.2.6")
     (source
      (origin
        (method url-fetch)
-       (uri "https://registry.npmjs.org/minimatch/-/minimatch-10.2.5.tgz")
+       (uri "https://registry.npmjs.org/minimatch/-/minimatch-10.2.6.tgz")
        (sha256
-        (base32 "1rd99j1d6x4lfb5ajnda6d16m7agx81x16qgwvxc7imz2mls9km6"))))
+        (base32 "1y2m0dvd682xw3phaacnlxb1i54h2257pr17axk2k0m2fj02qgas"))))
     (build-system node-build-system)
     (arguments
      (list
@@ -583,16 +618,16 @@
     (description "a glob matcher in javascript")
     (license license:blue-oak1.0.0)))
 
-(define-public node-grok-mermaid-0.2.2
+(define-public node-grok-mermaid-0.2.3
   (package
     (name "node-grok-mermaid")
-    (version "0.2.2")
+    (version "0.2.3")
     (source
      (origin
        (method url-fetch)
-       (uri "https://registry.npmjs.org/grok-mermaid/-/grok-mermaid-0.2.2.tgz")
+       (uri "https://registry.npmjs.org/grok-mermaid/-/grok-mermaid-0.2.3.tgz")
        (sha256
-        (base32 "0d19jjp06g4xcf8b24nhfnr25p18lxb9ksyaz2sg1r9vm4v85yb1"))))
+        (base32 "124c1lpl9q2wciip0fnpjphfrmiq32qa0vfbka3gwq9jymij1l21"))))
     (build-system node-build-system)
     (arguments
      (list
@@ -782,6 +817,56 @@
     (description "A markdown parser built for speed")
     (license license:expat)))
 
+(define-public node-marked-18.0.11
+  (package
+    (name "node-marked")
+    (version "18.0.11")
+    (source
+     (origin
+       (method url-fetch)
+       (uri "https://registry.npmjs.org/marked/-/marked-18.0.11.tgz")
+       (sha256
+        (base32 "155rcvljxqk6s957g70fjvwyxxz9zrlzl64im3hp67jmqxv59xff"))))
+    (build-system node-build-system)
+    (arguments
+     (list
+      #:tests? #f
+      #:phases
+      #~(modify-phases %standard-phases
+          (delete 'build)
+          (add-after 'patch-dependencies 'delete-dev-dependencies
+            (lambda _
+              (modify-json (delete-dependencies
+                            '("@arethetypeswrong/cli"
+                              "@markedjs/eslint-config"
+                              "@markedjs/testutils"
+                              "@semantic-release/commit-analyzer"
+                              "@semantic-release/git"
+                              "@semantic-release/github"
+                              "@semantic-release/npm"
+                              "@semantic-release/release-notes-generator"
+                              "cheerio"
+                              "commonmark"
+                              "cross-env"
+                              "dts-bundle-generator"
+                              "esbuild"
+                              "esbuild-plugin-umd-wrapper"
+                              "eslint"
+                              "highlight.js"
+                              "markdown-it"
+                              "marked-highlight"
+                              "marked-man"
+                              "recheck"
+                              "rimraf"
+                              "semantic-release"
+                              "titleize"
+                              "tslib"
+                              "typescript"))))))))
+    (home-page "https://marked.js.org")
+    (synopsis "A markdown parser built for speed")
+    (description "A markdown parser built for speed")
+    (license license:expat)))
+
 (define-public node-get-east-asian-width-1.6.0
   (package
     (name "node-get-east-asian-width")
@@ -810,46 +895,17 @@
     (description "Determine the East Asian Width of a Unicode character")
     (license license:expat)))
 
-(define-public node-earendil-works-pi-tui-0.84.2
+(define-public node-earendil-works-chord-0.87.0
   (package
-    (name "node-earendil-works-pi-tui")
-    (version "0.84.2")
+    (name "node-earendil-works-chord")
+    (version "0.87.0")
     (source
      (origin
        (method url-fetch)
        (uri
-        "https://registry.npmjs.org/@earendil-works/pi-tui/-/pi-tui-0.84.2.tgz")
+        "https://registry.npmjs.org/@earendil-works/chord/-/chord-0.87.0.tgz")
        (sha256
-        (base32 "0glrvz01zk0r9kgn00vsnnmnvivz4y24k2qv6kyp959ahmnw5gis"))))
-    (build-system node-build-system)
-    (arguments
-     (list
-      #:tests? #f
-      #:phases
-      #~(modify-phases %standard-phases
-          (delete 'build)
-          (add-after 'patch-dependencies 'delete-dev-dependencies
-            (lambda _
-              (modify-json (delete-dependencies '("chalk" "@xterm/headless"))))))))
-    (inputs (list node-get-east-asian-width-1.6.0 node-marked-18.0.5))
-    (home-page "https://github.com/earendil-works/pi#readme")
-    (synopsis
-     "Terminal User Interface library with differential rendering for efficient text-based applications")
-    (description
-     "Terminal User Interface library with differential rendering for efficient text-based applications")
-    (license license:expat)))
-
-(define-public node-earendil-works-pi-client-0.84.2
-  (package
-    (name "node-earendil-works-pi-client")
-    (version "0.84.2")
-    (source
-     (origin
-       (method url-fetch)
-       (uri
-        "https://registry.npmjs.org/@earendil-works/pi-client/-/pi-client-0.84.2.tgz")
-       (sha256
-        (base32 "0v7nspgqjn1zq7gy53s2dsr5mapd60p5r03h6rs8bssnanl60yyi"))))
+        (base32 "0rghq57vfng59cplbgk2prgzjv2hgqxg9zi0lwnrrj2g4wg84hgg"))))
     (build-system node-build-system)
     (arguments
      (list
@@ -860,7 +916,108 @@
           (add-after 'patch-dependencies 'delete-dev-dependencies
             (lambda _
               (modify-json (delete-dependencies '("shx" "vitest"))))))))
-    (inputs (list node-earendil-works-pi-protocol-0.84.2))
+    (inputs (list node-esbuild-0.28.2))
+    (home-page "https://github.com/earendil-works/pi#readme")
+    (synopsis
+     "Code orchestration and bundling utilities for pi, built on esbuild")
+    (description
+     "Code orchestration and bundling utilities for pi, built on esbuild.")
+    (license license:expat)))
+
+(define-public node-esbuild-0.28.2
+  (package
+    (name "node-esbuild")
+    (version "0.28.2")
+    (source
+     (origin
+       (method url-fetch)
+       (uri "https://registry.npmjs.org/esbuild/-/esbuild-0.28.2.tgz")
+       (sha256
+        (base32 "124sjlciwz2zhjkw6ivbdd4ipi5yqxwsb8kvwx8dqyjw4d6gjig0"))))
+    (build-system node-build-system)
+    (arguments
+     (list
+      #:tests? #f
+      #:phases
+      #~(modify-phases %standard-phases
+          (delete 'build)
+          (add-before 'configure 'force-ignore-scripts
+            (lambda _
+              ;; Ensure npm lifecycle scripts never run during the build
+              ;; (the `postinstall' script runs install.js, which
+              ;; verifies/downloads platform binaries).
+              (setenv "npm_config_ignore_scripts" "true")))
+          ;; Upstream's `postinstall' script runs install.js; strip it
+              ;; from the repacked tarball too, so no consumer that
+              ;; installs this item with scripts enabled re-runs it.
+          (add-before 'repack 'disable-lifecycle-scripts
+            (lambda _
+              (modify-json (delete-fields '("scripts.postinstall")
+                                          #:strict? #f)))))))
+    (home-page "https://github.com/evanw/esbuild#readme")
+    (synopsis "An extremely fast JavaScript and CSS bundler and minifier.")
+    (description "An extremely fast JavaScript and CSS bundler and minifier.")
+    (license license:expat)))
+
+(define-public node-earendil-works-pi-tui-0.87.0
+  (package
+    (name "node-earendil-works-pi-tui")
+    (version "0.87.0")
+    (source
+     (origin
+       (method url-fetch)
+       (uri
+        "https://registry.npmjs.org/@earendil-works/pi-tui/-/pi-tui-0.87.0.tgz")
+       (sha256
+        (base32 "189k2rwshkwr2hahzfh7v9qxqg3xd5w209cspdg6cjl156zfk0r0"))))
+    (build-system node-build-system)
+    (arguments
+     (list
+      #:tests? #f
+      #:phases
+      #~(modify-phases %standard-phases
+          (delete 'build)
+          ;; The npm tarball ships prebuilt native `.node` binaries
+          ;; (native/linux/prebuilds/*/linux-platform-x11.node) with an
+          ;; empty DT_RUNPATH, so the standard RUNPATH validation fails
+          ;; on their libxcb dependency.  libxcb is in `inputs` so the
+          ;; library is present in the runtime closure; the dynamic
+          ;; linker resolves it via LD_LIBRARY_PATH at dlopen time.
+          (delete 'validate-runpath)
+          (add-after 'patch-dependencies 'delete-dev-dependencies
+            (lambda _
+              (modify-json (delete-dependencies '("chalk" "@xterm/headless"))))))))
+    (inputs (list node-get-east-asian-width-1.6.0 node-marked-18.0.11 libxcb))
+    (home-page "https://github.com/earendil-works/pi#readme")
+    (synopsis
+     "Terminal User Interface library with differential rendering for efficient text-based applications")
+    (description
+     "Terminal User Interface library with differential rendering for efficient text-based applications")
+    (license license:expat)))
+
+(define-public node-earendil-works-pi-client-0.87.0
+  (package
+    (name "node-earendil-works-pi-client")
+    (version "0.87.0")
+    (source
+     (origin
+       (method url-fetch)
+       (uri
+        "https://registry.npmjs.org/@earendil-works/pi-client/-/pi-client-0.87.0.tgz")
+       (sha256
+        (base32 "04yj5v6lxvy5kqvppb9svls0j591flv3p5m2jybjp6z6pqrgib6a"))))
+    (build-system node-build-system)
+    (arguments
+     (list
+      #:tests? #f
+      #:phases
+      #~(modify-phases %standard-phases
+          (delete 'build)
+          (add-after 'patch-dependencies 'delete-dev-dependencies
+            (lambda _
+              (modify-json (delete-dependencies '("shx" "vitest"))))))))
+    (inputs (list node-earendil-works-chord-0.87.0
+                  node-earendil-works-pi-protocol-0.87.0))
     (home-page "https://github.com/earendil-works/pi#readme")
     (synopsis
      "Transport-neutral client for remote pi sessions over framed CBOR bytes")
@@ -893,17 +1050,17 @@
      "High-performance image processing library for native use and the web")
     (license license:asl2.0)))
 
-(define-public node-earendil-works-pi-protocol-0.84.2
+(define-public node-earendil-works-pi-protocol-0.87.0
   (package
     (name "node-earendil-works-pi-protocol")
-    (version "0.84.2")
+    (version "0.87.0")
     (source
      (origin
        (method url-fetch)
        (uri
-        "https://registry.npmjs.org/@earendil-works/pi-protocol/-/pi-protocol-0.84.2.tgz")
+        "https://registry.npmjs.org/@earendil-works/pi-protocol/-/pi-protocol-0.87.0.tgz")
        (sha256
-        (base32 "1pidcriarncpvkgls5q58zfrvzbjjv6k2rav4gr8kdnpigzczz6y"))))
+        (base32 "01vqy6qlki4fz3lamhqry7706q5f0x1aw02a8xs92ndywypy4j1v"))))
     (build-system node-build-system)
     (arguments
      (list
@@ -914,7 +1071,7 @@
           (add-after 'patch-dependencies 'delete-dev-dependencies
             (lambda _
               (modify-json (delete-dependencies '("shx" "vitest"))))))))
-    (inputs (list node-typebox-1.3.7))
+    (inputs (list node-earendil-works-chord-0.87.0 node-typebox-1.3.27))
     (home-page "https://github.com/earendil-works/pi#readme")
     (synopsis "Transport-neutral CBOR protocol for remote pi sessions")
     (description "Transport-neutral CBOR protocol for remote pi sessions")
@@ -1014,16 +1171,16 @@
     (description "JavaScript parser and stringifier for YAML")
     (license license:isc)))
 
-(define-public node-ignore-7.0.5
+(define-public node-ignore-7.0.8
   (package
     (name "node-ignore")
-    (version "7.0.5")
+    (version "7.0.8")
     (source
      (origin
        (method url-fetch)
-       (uri "https://registry.npmjs.org/ignore/-/ignore-7.0.5.tgz")
+       (uri "https://registry.npmjs.org/ignore/-/ignore-7.0.8.tgz")
        (sha256
-        (base32 "1062hjm3bgg9013nvl33mmz3cchvcjhndq6gj61sgzazvqwnqbg8"))))
+        (base32 "0g1w3m9vs05xaq69xfsvwmmqpb7my5vkwanyfnf3zm70vs14hv25"))))
     (build-system node-build-system)
     (arguments
      (list
@@ -1080,16 +1237,16 @@
     (description "The official TypeScript library for the OpenAI API")
     (license license:asl2.0)))
 
-(define-public node-typebox-1.3.7
+(define-public node-typebox-1.3.27
   (package
     (name "node-typebox")
-    (version "1.3.7")
+    (version "1.3.27")
     (source
      (origin
        (method url-fetch)
-       (uri "https://registry.npmjs.org/typebox/-/typebox-1.3.7.tgz")
+       (uri "https://registry.npmjs.org/typebox/-/typebox-1.3.27.tgz")
        (sha256
-        (base32 "0fl6l3ylrdgbgvdss4c5s3l5i0kcbadr8a73kk53cjg6c0jr9l5i"))))
+        (base32 "18yx379gsc6vqdmq80innpazfpi09ph8bcc4vrklbx387p6qna2s"))))
     (build-system node-build-system)
     (arguments
      (list
@@ -1197,6 +1354,126 @@
     (home-page "https://github.com/TooTallNate/proxy-agents#readme")
     (synopsis "An HTTP(s) proxy `http.Agent` implementation for HTTP")
     (description "An HTTP(s) proxy `http.Agent` implementation for HTTP")
+    (license license:expat)))
+
+(define-public node-agent-base-9.0.0
+  (package
+    (name "node-agent-base")
+    (version "9.0.0")
+    (source
+     (origin
+       (method url-fetch)
+       (uri "https://registry.npmjs.org/agent-base/-/agent-base-9.0.0.tgz")
+       (sha256
+        (base32 "17x8rcirms5s8d21m7ldrfzkn3nvx3c6prhxk54npy2gjb7gwq93"))))
+    (build-system node-build-system)
+    (arguments
+     (list
+      #:tests? #f
+      #:phases
+      #~(modify-phases %standard-phases
+          (delete 'build)
+          (add-after 'patch-dependencies 'delete-dev-dependencies
+            (lambda _
+              (modify-json (delete-dependencies
+                            '("@types/debug" "@types/node" "@types/semver"
+                              "@types/ws" "async-listen" "typescript"
+                              "ws" "tsconfig"))))))))
+    (home-page "https://github.com/TooTallNate/proxy-agents#readme")
+    (synopsis "Turn a callable into an http.Agent")
+    (description "Turn a callable into an http.Agent.")
+    (license license:expat)))
+
+(define-public node-proxy-agent-negotiate-1.1.0
+  (package
+    (name "node-proxy-agent-negotiate")
+    (version "1.1.0")
+    (source
+     (origin
+       (method url-fetch)
+       (uri
+        "https://registry.npmjs.org/proxy-agent-negotiate/-/proxy-agent-negotiate-1.1.0.tgz")
+       (sha256
+        (base32 "15qrra5km7sjly0mjs8q6r32w19sdn3ij779mzzv1a41sgaj7v3f"))))
+    (build-system node-build-system)
+    (arguments
+     (list
+      #:tests? #f
+      #:phases
+      #~(modify-phases %standard-phases
+          (delete 'build)
+          (add-after 'patch-dependencies 'delete-dev-dependencies
+            (lambda _
+              (modify-json (delete-dependencies
+                            '("@types/node" "typescript" "tsconfig"
+                              ;; Optional peerDependency; npm's offline
+                              ;; install fails with ENOTCACHED when it
+                              ;; cannot resolve it, so strip it.
+                              "kerberos"))))))))
+    (home-page "https://github.com/TooTallNate/proxy-agents#readme")
+    (synopsis "Negotiate the proxy agent to use for a given URL")
+    (description "Negotiate the proxy agent to use for a given URL.")
+    (license license:expat)))
+
+(define-public node-http-proxy-agent-9.1.0
+  (package
+    (name "node-http-proxy-agent")
+    (version "9.1.0")
+    (source
+     (origin
+       (method url-fetch)
+       (uri
+        "https://registry.npmjs.org/http-proxy-agent/-/http-proxy-agent-9.1.0.tgz")
+       (sha256
+        (base32 "0vd7jypljz7ak2zy5hlrgagq8qvxys3pvc6nhkg9pgpa6z2z3329"))))
+    (build-system node-build-system)
+    (arguments
+     (list
+      #:tests? #f
+      #:phases
+      #~(modify-phases %standard-phases
+          (delete 'build)
+          (add-after 'patch-dependencies 'delete-dev-dependencies
+            (lambda _
+              (modify-json (delete-dependencies
+                            '("@types/debug" "@types/node" "async-listen"
+                              "typescript" "tsconfig" "proxy"))))))))
+    (inputs (list node-debug-4.4.3 node-agent-base-9.0.0
+                  node-proxy-agent-negotiate-1.1.0))
+    (home-page "https://github.com/TooTallNate/proxy-agents#readme")
+    (synopsis "An HTTP(s) proxy `http.Agent` implementation for HTTP")
+    (description "An HTTP(s) proxy `http.Agent` implementation for HTTP.")
+    (license license:expat)))
+
+(define-public node-https-proxy-agent-9.1.0
+  (package
+    (name "node-https-proxy-agent")
+    (version "9.1.0")
+    (source
+     (origin
+       (method url-fetch)
+       (uri
+        "https://registry.npmjs.org/https-proxy-agent/-/https-proxy-agent-9.1.0.tgz")
+       (sha256
+        (base32 "1va0x7fvaa15xfnxk3zcbb5f8iymrdfkgklnhd76m48qsaw8cpzh"))))
+    (build-system node-build-system)
+    (arguments
+     (list
+      #:tests? #f
+      #:phases
+      #~(modify-phases %standard-phases
+          (delete 'build)
+          (add-after 'patch-dependencies 'delete-dev-dependencies
+            (lambda _
+              (modify-json (delete-dependencies
+                            '("@types/async-retry" "@types/debug"
+                              "@types/node" "async-listen" "async-retry"
+                              "typescript" "proxy" "tsconfig"))))))))
+    (inputs (list node-debug-4.4.3 node-agent-base-9.0.0
+                  node-proxy-agent-negotiate-1.1.0))
+    (home-page "https://github.com/TooTallNate/proxy-agents#readme")
+    (synopsis "An HTTP(s) proxy `https.Agent` implementation for HTTPS")
+    (description "An HTTP(s) proxy `https.Agent` implementation for HTTPS.")
     (license license:expat)))
 
 (define-public node-zod-4.4.3
@@ -1378,6 +1655,36 @@
     (description "The official TypeScript library for the Anthropic API")
     (license license:expat)))
 
+(define-public node-anthropic-ai-sdk-0.124.0
+  (package
+    (name "node-anthropic-ai-sdk")
+    (version "0.124.0")
+    (source
+     (origin
+       (method url-fetch)
+       (uri "https://registry.npmjs.org/@anthropic-ai/sdk/-/sdk-0.124.0.tgz")
+       (sha256
+        (base32 "1cmfv97wkqb7q1jhjld54hfd0icrnl1vcblq9sj4qkpwb138knd9"))))
+    (build-system node-build-system)
+    (arguments
+     (list
+      #:tests? #f
+      #:phases
+      #~(modify-phases %standard-phases
+          (delete 'build)
+          (add-after 'patch-dependencies 'delete-optional-peer
+            (lambda _
+              (modify-json (delete-dependencies
+                            ;; Optional peerDependency; npm's offline
+                            ;; install fails with ENOTCACHED when it
+                            ;; cannot resolve it, so strip it.
+                            '("zod"))))))))
+    (inputs (list node-standardwebhooks-1.0.0 node-json-schema-to-ts-3.1.1))
+    (home-page "https://www.npmjs.com/package/node-anthropic-ai-sdk")
+    (synopsis "The official TypeScript library for the Anthropic API")
+    (description "The official TypeScript library for the Anthropic API")
+    (license license:expat)))
+
 (define-public node-opentelemetry-api-1.9.0
   (package
     (name "node-opentelemetry-api")
@@ -1428,17 +1735,17 @@
     (description "Public API for OpenTelemetry")
     (license license:asl2.0)))
 
-(define-public node-earendil-works-pi-ai-0.84.2
+(define-public node-earendil-works-pi-ai-0.87.0
   (package
     (name "node-earendil-works-pi-ai")
-    (version "0.84.2")
+    (version "0.87.0")
     (source
      (origin
        (method url-fetch)
        (uri
-        "https://registry.npmjs.org/@earendil-works/pi-ai/-/pi-ai-0.84.2.tgz")
+        "https://registry.npmjs.org/@earendil-works/pi-ai/-/pi-ai-0.87.0.tgz")
        (sha256
-        (base32 "0hfgv921j2jg3hhv26zgsa4yygp25smsgn3cb7n2xsxhfrd7hqh2"))))
+        (base32 "0bw1msaxhd78dsrqm13ac3sfxsr0hwa3vpysz1v5y0wxh3ggkbgj"))))
     (build-system node-build-system)
     (arguments
      (list
@@ -1466,13 +1773,12 @@
                                                   "@aws-sdk/client-bedrock-runtime"
                                                   "@smithy/node-http-handler"
                                                   "@google/genai"))))))))
-    (inputs (list node-earendil-works-pi-telemetry-0.84.2
-                  node-opentelemetry-api-1.9.0
-                  node-https-proxy-agent
-                  node-anthropic-ai-sdk-0.91.1
-                  node-http-proxy-agent-7.0.2
+    (inputs (list node-earendil-works-pi-telemetry-0.87.0
+                  node-anthropic-ai-sdk-0.124.0
+                  node-http-proxy-agent-9.1.0
+                  node-https-proxy-agent-9.1.0
                   node-partial-json-0.1.7
-                  node-typebox-1.3.7
+                  node-typebox-1.3.27
                   node-openai-6.40.0))
     (home-page "https://github.com/earendil-works/pi#readme")
     (synopsis
@@ -1481,17 +1787,17 @@
      "Unified LLM API with automatic model discovery and provider configuration")
     (license license:expat)))
 
-(define-public node-earendil-works-pi-telemetry-0.84.2
+(define-public node-earendil-works-pi-telemetry-0.87.0
   (package
     (name "node-earendil-works-pi-telemetry")
-    (version "0.84.2")
+    (version "0.87.0")
     (source
      (origin
        (method url-fetch)
        (uri
-        "https://registry.npmjs.org/@earendil-works/pi-telemetry/-/pi-telemetry-0.84.2.tgz")
+        "https://registry.npmjs.org/@earendil-works/pi-telemetry/-/pi-telemetry-0.87.0.tgz")
        (sha256
-        (base32 "0w25g2j6mzzxjpbnxjwmn359lbkj029gb1cgv3082z5g91zaq2zx"))))
+        (base32 "07137ihnm3f55gy5y4xjcwnhlp2hjgkv2z73s9v26dks66ir9k9r"))))
     (build-system node-build-system)
     (arguments
      (list
@@ -1509,17 +1815,17 @@
      "Vendor-neutral telemetry contracts and typed schema utilities for pi")
     (license license:expat)))
 
-(define-public node-earendil-works-pi-agent-core-0.84.2
+(define-public node-earendil-works-pi-agent-core-0.87.0
   (package
     (name "node-earendil-works-pi-agent-core")
-    (version "0.84.2")
+    (version "0.87.0")
     (source
      (origin
        (method url-fetch)
        (uri
-        "https://registry.npmjs.org/@earendil-works/pi-agent-core/-/pi-agent-core-0.84.2.tgz")
+        "https://registry.npmjs.org/@earendil-works/pi-agent-core/-/pi-agent-core-0.87.0.tgz")
        (sha256
-        (base32 "1kxxsgx4pfr2nhgy9nx78gfdwwjxl698dlhmv5lzy2bcdwn5snsn"))))
+        (base32 "04jzpalfpxlpbswkh6hmbzq4czmxi7kd13mnfncrbxrb7xf291ar"))))
     (build-system node-build-system)
     (arguments
      (list
@@ -1532,12 +1838,13 @@
               (modify-json (delete-dependencies '("vitest" "typescript"
                                                   "@types/node"
                                                   "@vitest/coverage-v8"))))))))
-    (inputs (list node-earendil-works-pi-telemetry-0.84.2
-                  node-earendil-works-pi-ai-0.84.2
-                  node-typebox-1.3.7
-                  node-ignore-7.0.5
-                  node-yaml-2.9.0
-                  node-diff-8.0.4))
+    (inputs (list node-earendil-works-chord-0.87.0
+                  node-earendil-works-pi-ai-0.87.0
+                  node-earendil-works-pi-telemetry-0.87.0
+                  node-diff-8.0.4
+                  node-ignore-7.0.8
+                  node-typebox-1.3.27
+                  node-yaml-2.9.0))
     (home-page "https://github.com/earendil-works/pi#readme")
     (synopsis
      "General-purpose agent with transport abstraction, state management, and attachment support")
@@ -1574,6 +1881,23 @@
                                                   "@types/cross-spawn"
                                                   "@types/hosted-git-info"
                                                   "@types/proper-lockfile"
+                                                  ;; 0.87.0 added these
+                                                  ;; two devDependencies:
+                                                  ;; pi-server is a
+                                                  ;; development-only
+                                                  ;; server for the pi
+                                                  ;; editor integration
+                                                  ;; (never imported by
+                                                  ;; the CLI), and marked
+                                                  ;; is a test/doc tool
+                                                  ;; here -- pi-tui's
+                                                  ;; runtime marked
+                                                  ;; dependency is
+                                                  ;; satisfied inside
+                                                  ;; pi-tui's own store
+                                                  ;; item.
+                                                  "@earendil-works/pi-server"
+                                                  "marked"
                                                   ;; Rust NAPI native
                                                   ;; addon (prebuilt
                                                   ;; per-OS/arch
@@ -1652,26 +1976,26 @@
                 (chmod cli #o755)
                 (mkdir-p (string-append out "/bin"))
                 (symlink cli (string-append out "/bin/pi"))))))))
-    (inputs (list node-earendil-works-pi-agent-core-0.84.2
-                  node-earendil-works-pi-protocol-0.84.2
+    (inputs (list node-earendil-works-chord-0.87.0
+                  node-earendil-works-pi-agent-core-0.87.0
+                  node-earendil-works-pi-protocol-0.87.0
                   node-silvia-odwyer-photon-node-0.3.4
-                  node-earendil-works-pi-client-0.84.2
-                  node-earendil-works-pi-tui-0.84.2
-                  node-earendil-works-pi-ai-0.84.2
+                  node-earendil-works-pi-client-0.87.0
+                  node-earendil-works-pi-tui-0.87.0
+                  node-earendil-works-pi-ai-0.87.0
                   node-proper-lockfile
                   node-hosted-git-info-9.0.3
                   node-highlight-js-10.7.3
-                  node-grok-mermaid-0.2.2
+                  node-grok-mermaid-0.2.3
                   node-cross-spawn-7.0.6
-                  node-minimatch-10.2.5
-                  node-typebox-1.3.7
-                  node-undici-8.9.0
-                  node-semver-7.8.0
-                  node-ignore-7.0.5
-                  node-chalk-5.6.2
+                  node-minimatch-10.2.6
+                  node-typebox-1.3.27
+                  node-undici-8.10.2
+                  node-semver-7.8.5
+                  node-ignore-7.0.8
+                  node-chalk-6.0.0
                   node-yaml-2.9.0
                   node-jiti-2.7.0
-                  node-glob-13.0.6
                   node-diff-8.0.4))
     (home-page "https://pi.dev")
     (synopsis "Minimal, extensible AI coding-agent CLI")
