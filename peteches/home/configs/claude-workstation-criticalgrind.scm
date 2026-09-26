@@ -31,6 +31,7 @@
   ;; then re-enters this half-loaded module tree and every module fails to bind.
   ;; See the note in (peteches home modules claude-workstation).
   #:use-module ((peteches packages mcp) #:select (plane-mcp-server mcp-outline))
+  #:use-module ((peteches packages pi-observational-memory) #:select (pi-observational-memory))
   #:use-module ((gnu packages golang) #:select (go))
   #:use-module ((gnu packages golang-apps) #:select (gopls))
   #:use-module ((gnu packages debug) #:select (delve))
@@ -82,7 +83,8 @@
         (args (list "stdio")))
        (home-claude-mcp-server
         (name "outline")
-        (command (file-append mcp-outline "/bin/mcp-outline"))))))
+        (command (file-append mcp-outline "/bin/mcp-outline"))))
+ #:pi-extensions (list pi-observational-memory)))
 
 claude-workstation-criticalgrind-home
 
