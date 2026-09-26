@@ -23,6 +23,7 @@
   #:use-module (gnu home services)
   #:use-module ((peteches packages comfyui-mcp) #:select (node-comfyui-mcp))
   #:use-module ((peteches packages pi-dictate) #:select (pi-dictate))
+  #:use-module ((peteches packages pi-observational-memory) #:select (pi-observational-memory))
   #:use-module ((peteches packages claude-workstation-scripts) #:select (claude-workstation-peteches-scripts))
   #:use-module ((gnu packages audio) #:select (sox))
   #:use-module (peteches home modules claude-workstation)
@@ -80,7 +81,7 @@
  ;; #:sops-secrets entry in peteches/systems/claude-workstation.scm and
  ;; docs/secrets-management.org for creating the encrypted file).  The
  ;; key is never baked into the world-readable store.
- #:pi-extensions (list pi-dictate)
+ #:pi-extensions (list pi-dictate pi-observational-memory)
  #:extra-packages (list claude-workstation-peteches-scripts)
  #:secret-env-vars '(("DEEPGRAM_API_KEY" . "/run/secrets/deepgram-api-key"))
  ;; This VM has no local audio input, so the profile's `rec` (which
