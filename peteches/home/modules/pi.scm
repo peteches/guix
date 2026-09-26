@@ -12,6 +12,22 @@
 ;;; unlike Claude Code's ~/.claude.json there is no runtime-mutated state
 ;;; here to protect and no activation script is needed.
 ;;;
+;;; configs/pi/defaults/agents/ carries user-level overrides for the
+;;; pi-interactive-subagents bundled agent definitions (researcher.md,
+;;; scout.md, worker.md). The extension resolves each agent name in order:
+;;; <cwd>/.pi/agents/<name>.md, then <agent-dir>/agents/<name>.md, then its
+;;; own store-bundled agents/ — so the files here shadow the packaged ones
+;;; for every account. They are byte-identical to the bundled definitions
+;;; except for the `model:'/`thinking:' frontmatter lines: the fork pins
+;;; openrouter/z-ai/glm-5.3, and none of the workstation accounts have an
+;;; openrouter API key, so pinned spawns died with "No API key found for
+;;; openrouter". With the pin removed the spawned pi gets no --model flag
+;;; and pi's automatic startup selection picks the first model with
+;;; configured auth — for these accounts that is the local koboldcpp model
+;;; declared in models.json above (the only provider with a key; the static
+;;; apiKey "local" in models.json counts as configured auth). Keep the
+;;; bodies in sync with the fork when the package pin is bumped.
+;;;
 ;;; The default models.json wires up koboldcpp.ts.peteches.co.uk (Caddy's
 ;;; reverse proxy onto the comfyui VM's koboldcpp instance) as a custom
 ;;; provider. This replaced nug's own koboldcpp instance and its Tailscale
