@@ -38,6 +38,18 @@ was folded back into this repo — see `peteches/packages/`, `peteches/home/serv
 and `peteches/services/` below. They are ordinary local modules loaded via `-L .`, with
 no channel pin and no re-pinning step to change a service type.
 
+## Design Points
+
+**Wrappers are store packages, never `~/.local/bin` files.**
+NEVER create a package that installs a wrapper script into `~/.local/bin`
+(e.g. via a `home-files-service-type` entry) to shadow a wrapped binary.
+Instead, any wrapper should be a new package — e.g. `peteches-pi-wrapper` —
+that **inherits from the wrapped package** and **installs its wrapper in the
+store** (the wrapper is the package's own `bin` output). Then add the wrapper
+package to the profiles (system `#:extra-packages`, home packages, …)
+**instead of the wrapped package**, so the store `bin` on PATH *is* the
+wrapper.
+
 ## Knowledge Graph (graphify)
 
 `graphify-out/` is a regenerable knowledge graph over this repo (god nodes, community
