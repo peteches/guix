@@ -245,24 +245,19 @@ host    all     all     ::1/128                 trust\n"))
       ;; into the shell from the path below at startup).  Mode 0400
       ;; peteches-only: the key is read by peteches's shell, and the
       ;; other two accounts neither run pi-dictate nor need to see it.
-      ;; secrets/hosts/claude-workstation/deepgram.yaml does NOT exist
-      ;; yet -- create it before the next `guix system reconfigure'/
-      ;; redeploy of this VM (get the key from the Deepgram console at
-      ;; https://console.deepgram.com):
-      ;;   printf 'deepgram-api-key: dg_...\n' > secrets/hosts/claude-workstation/deepgram.yaml
-      ;;   sops -e -i secrets/hosts/claude-workstation/deepgram.yaml
-      ;; It is picked up automatically by the existing
-      ;; `secrets/hosts/claude-workstation/.*\.yaml$' creation_rule in
-      ;; .sops.yaml (both this VM's age key and the operator's PGP key as
-      ;; recipients) -- no .sops.yaml change needed. See
+      ;; secrets/hosts/claude-workstation/deepgram.yaml exists (added
+      ;; 2026-09-20, sourced from the Deepgram console at
+      ;; https://console.deepgram.com).  It is picked up automatically by
+      ;; the existing `secrets/hosts/claude-workstation/.*\.yaml$'
+      ;; creation_rule in .sops.yaml (both this VM's age key and the
+      ;; operator's PGP key as recipients).  See
       ;; docs/secrets-management.org.
       (sops-secret
        (key '("deepgram-api-key"))
        (file (local-file "../../secrets/hosts/claude-workstation/deepgram.yaml"))
        (user "peteches")
        (group "users")
-       (permissions #o400)
-       (path "/run/secrets/deepgram-api-key"))
+       (permissions #o400))
       ;; Private half of the guix-offload keypair, encrypted for this VM's
       ;; own age key -- see the matching public half added to
       ;; guix-offload-authorized-keys in peteches/systems/guix-build.scm. Same
