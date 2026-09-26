@@ -9,7 +9,7 @@
   #:use-module (gnu packages node-xyz)
   #:use-module (gnu packages xorg)
   ;; For node-standardwebhooks-1.0.0 (a runtime dependency of
-  ;; node-anthropic-ai-sdk-0.124.0, needed by pi-ai 0.87.0).  That
+  ;; node-anthropic-ai-sdk-0.124.0, needed by pi-ai 0.87.1).  That
   ;; module is self-contained and does not import this one, so no
   ;; circular dependency.
   #:use-module (peteches packages claude-agent-acp-deps))
@@ -895,17 +895,17 @@
     (description "Determine the East Asian Width of a Unicode character")
     (license license:expat)))
 
-(define-public node-earendil-works-chord-0.87.0
+(define-public node-earendil-works-chord-0.87.1
   (package
     (name "node-earendil-works-chord")
-    (version "0.87.0")
+    (version "0.87.1")
     (source
      (origin
        (method url-fetch)
        (uri
-        "https://registry.npmjs.org/@earendil-works/chord/-/chord-0.87.0.tgz")
+        "https://registry.npmjs.org/@earendil-works/chord/-/chord-0.87.1.tgz")
        (sha256
-        (base32 "0rghq57vfng59cplbgk2prgzjv2hgqxg9zi0lwnrrj2g4wg84hgg"))))
+        (base32 "1x29wwn1ks9r493hps8csmav6mz0cdp65xlahmzmpp2qr08jj6sd"))))
     (build-system node-build-system)
     (arguments
      (list
@@ -959,17 +959,17 @@
     (description "An extremely fast JavaScript and CSS bundler and minifier.")
     (license license:expat)))
 
-(define-public node-earendil-works-pi-tui-0.87.0
+(define-public node-earendil-works-pi-tui-0.87.1
   (package
     (name "node-earendil-works-pi-tui")
-    (version "0.87.0")
+    (version "0.87.1")
     (source
      (origin
        (method url-fetch)
        (uri
-        "https://registry.npmjs.org/@earendil-works/pi-tui/-/pi-tui-0.87.0.tgz")
+        "https://registry.npmjs.org/@earendil-works/pi-tui/-/pi-tui-0.87.1.tgz")
        (sha256
-        (base32 "189k2rwshkwr2hahzfh7v9qxqg3xd5w209cspdg6cjl156zfk0r0"))))
+        (base32 "0f5ymw1jgsd5x5klq961wymw4pwpypqcfd7077x3w04n9461a8v7"))))
     (build-system node-build-system)
     (arguments
      (list
@@ -995,17 +995,17 @@
      "Terminal User Interface library with differential rendering for efficient text-based applications")
     (license license:expat)))
 
-(define-public node-earendil-works-pi-client-0.87.0
+(define-public node-earendil-works-pi-client-0.87.1
   (package
     (name "node-earendil-works-pi-client")
-    (version "0.87.0")
+    (version "0.87.1")
     (source
      (origin
        (method url-fetch)
        (uri
-        "https://registry.npmjs.org/@earendil-works/pi-client/-/pi-client-0.87.0.tgz")
+        "https://registry.npmjs.org/@earendil-works/pi-client/-/pi-client-0.87.1.tgz")
        (sha256
-        (base32 "04yj5v6lxvy5kqvppb9svls0j591flv3p5m2jybjp6z6pqrgib6a"))))
+        (base32 "18kahvn3494m8ymsxs4y0s9sh893a72snl3n9x182fgpcg23pff1"))))
     (build-system node-build-system)
     (arguments
      (list
@@ -1016,8 +1016,8 @@
           (add-after 'patch-dependencies 'delete-dev-dependencies
             (lambda _
               (modify-json (delete-dependencies '("shx" "vitest"))))))))
-    (inputs (list node-earendil-works-chord-0.87.0
-                  node-earendil-works-pi-protocol-0.87.0))
+    (inputs (list node-earendil-works-chord-0.87.1
+                  node-earendil-works-pi-protocol-0.87.1))
     (home-page "https://github.com/earendil-works/pi#readme")
     (synopsis
      "Transport-neutral client for remote pi sessions over framed CBOR bytes")
@@ -1050,17 +1050,17 @@
      "High-performance image processing library for native use and the web")
     (license license:asl2.0)))
 
-(define-public node-earendil-works-pi-protocol-0.87.0
+(define-public node-earendil-works-pi-protocol-0.87.1
   (package
     (name "node-earendil-works-pi-protocol")
-    (version "0.87.0")
+    (version "0.87.1")
     (source
      (origin
        (method url-fetch)
        (uri
-        "https://registry.npmjs.org/@earendil-works/pi-protocol/-/pi-protocol-0.87.0.tgz")
+        "https://registry.npmjs.org/@earendil-works/pi-protocol/-/pi-protocol-0.87.1.tgz")
        (sha256
-        (base32 "01vqy6qlki4fz3lamhqry7706q5f0x1aw02a8xs92ndywypy4j1v"))))
+        (base32 "11arzzaqzx3glz3sa25dnlzqhh0a5wz9j7i14idn911kdrn5wp8c"))))
     (build-system node-build-system)
     (arguments
      (list
@@ -1071,7 +1071,7 @@
           (add-after 'patch-dependencies 'delete-dev-dependencies
             (lambda _
               (modify-json (delete-dependencies '("shx" "vitest"))))))))
-    (inputs (list node-earendil-works-chord-0.87.0 node-typebox-1.3.27))
+    (inputs (list node-earendil-works-chord-0.87.1 node-typebox-1.3.27))
     (home-page "https://github.com/earendil-works/pi#readme")
     (synopsis "Transport-neutral CBOR protocol for remote pi sessions")
     (description "Transport-neutral CBOR protocol for remote pi sessions")
@@ -1735,17 +1735,17 @@
     (description "Public API for OpenTelemetry")
     (license license:asl2.0)))
 
-(define-public node-earendil-works-pi-ai-0.87.0
+(define-public node-earendil-works-pi-ai-0.87.1
   (package
     (name "node-earendil-works-pi-ai")
-    (version "0.87.0")
+    (version "0.87.1")
     (source
      (origin
        (method url-fetch)
        (uri
-        "https://registry.npmjs.org/@earendil-works/pi-ai/-/pi-ai-0.87.0.tgz")
+        "https://registry.npmjs.org/@earendil-works/pi-ai/-/pi-ai-0.87.1.tgz")
        (sha256
-        (base32 "0bw1msaxhd78dsrqm13ac3sfxsr0hwa3vpysz1v5y0wxh3ggkbgj"))))
+        (base32 "180wff64wkxyv15h9hw312bm24lvlgv9mfzfdgw6a9nc4wpl7d1m"))))
     (build-system node-build-system)
     (arguments
      (list
@@ -1773,7 +1773,7 @@
                                                   "@aws-sdk/client-bedrock-runtime"
                                                   "@smithy/node-http-handler"
                                                   "@google/genai"))))))))
-    (inputs (list node-earendil-works-pi-telemetry-0.87.0
+    (inputs (list node-earendil-works-pi-telemetry-0.87.1
                   node-anthropic-ai-sdk-0.124.0
                   node-http-proxy-agent-9.1.0
                   node-https-proxy-agent-9.1.0
@@ -1787,17 +1787,17 @@
      "Unified LLM API with automatic model discovery and provider configuration")
     (license license:expat)))
 
-(define-public node-earendil-works-pi-telemetry-0.87.0
+(define-public node-earendil-works-pi-telemetry-0.87.1
   (package
     (name "node-earendil-works-pi-telemetry")
-    (version "0.87.0")
+    (version "0.87.1")
     (source
      (origin
        (method url-fetch)
        (uri
-        "https://registry.npmjs.org/@earendil-works/pi-telemetry/-/pi-telemetry-0.87.0.tgz")
+        "https://registry.npmjs.org/@earendil-works/pi-telemetry/-/pi-telemetry-0.87.1.tgz")
        (sha256
-        (base32 "07137ihnm3f55gy5y4xjcwnhlp2hjgkv2z73s9v26dks66ir9k9r"))))
+        (base32 "1x6sqnpzk2dpmc8lp1n9cs8yjdfvji2zy7y274djzw91bzg6pvvv"))))
     (build-system node-build-system)
     (arguments
      (list
@@ -1815,17 +1815,17 @@
      "Vendor-neutral telemetry contracts and typed schema utilities for pi")
     (license license:expat)))
 
-(define-public node-earendil-works-pi-agent-core-0.87.0
+(define-public node-earendil-works-pi-agent-core-0.87.1
   (package
     (name "node-earendil-works-pi-agent-core")
-    (version "0.87.0")
+    (version "0.87.1")
     (source
      (origin
        (method url-fetch)
        (uri
-        "https://registry.npmjs.org/@earendil-works/pi-agent-core/-/pi-agent-core-0.87.0.tgz")
+        "https://registry.npmjs.org/@earendil-works/pi-agent-core/-/pi-agent-core-0.87.1.tgz")
        (sha256
-        (base32 "04jzpalfpxlpbswkh6hmbzq4czmxi7kd13mnfncrbxrb7xf291ar"))))
+        (base32 "1i0jih4927cc9wj0slmq2qg8ymkk7qvjhrwkpgy4xbl2lz7nfqk4"))))
     (build-system node-build-system)
     (arguments
      (list
@@ -1838,9 +1838,9 @@
               (modify-json (delete-dependencies '("vitest" "typescript"
                                                   "@types/node"
                                                   "@vitest/coverage-v8"))))))))
-    (inputs (list node-earendil-works-chord-0.87.0
-                  node-earendil-works-pi-ai-0.87.0
-                  node-earendil-works-pi-telemetry-0.87.0
+    (inputs (list node-earendil-works-chord-0.87.1
+                  node-earendil-works-pi-ai-0.87.1
+                  node-earendil-works-pi-telemetry-0.87.1
                   node-diff-8.0.4
                   node-ignore-7.0.8
                   node-typebox-1.3.27
@@ -1855,14 +1855,14 @@
 (define-public pi-coding-agent
   (package
     (name "pi-coding-agent")
-    (version "0.87.0")
+    (version "0.87.1")
     (source
      (origin
        (method url-fetch)
        (uri
-        "https://registry.npmjs.org/@earendil-works/pi-coding-agent/-/pi-coding-agent-0.87.0.tgz")
+        "https://registry.npmjs.org/@earendil-works/pi-coding-agent/-/pi-coding-agent-0.87.1.tgz")
        (sha256
-        (base32 "0sl69027ph9z2bnq88yg7iwzl9hcvm1xyq6wacmmj7d3wv036rws"))))
+        (base32 "03sl4z2yrhwq39kw758986rnq1fk4kfciwybw5j69jg7c4yfw8ql"))))
     (build-system node-build-system)
     (arguments
      (list
@@ -1976,13 +1976,13 @@
                 (chmod cli #o755)
                 (mkdir-p (string-append out "/bin"))
                 (symlink cli (string-append out "/bin/pi"))))))))
-    (inputs (list node-earendil-works-chord-0.87.0
-                  node-earendil-works-pi-agent-core-0.87.0
-                  node-earendil-works-pi-protocol-0.87.0
+    (inputs (list node-earendil-works-chord-0.87.1
+                  node-earendil-works-pi-agent-core-0.87.1
+                  node-earendil-works-pi-protocol-0.87.1
                   node-silvia-odwyer-photon-node-0.3.4
-                  node-earendil-works-pi-client-0.87.0
-                  node-earendil-works-pi-tui-0.87.0
-                  node-earendil-works-pi-ai-0.87.0
+                  node-earendil-works-pi-client-0.87.1
+                  node-earendil-works-pi-tui-0.87.1
+                  node-earendil-works-pi-ai-0.87.1
                   node-proper-lockfile
                   node-hosted-git-info-9.0.3
                   node-highlight-js-10.7.3
