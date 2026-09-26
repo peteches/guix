@@ -26,9 +26,23 @@
 ;; wedged-remote and live-handoff/status paths that crash was hitting.
 ;; Preview tags don't share stable's "v<version>" naming, hence the
 ;; separate pkg-tag.)
+;;
+;; Reverted 2026-09-26 back to the mx-preview-2026-09-11 build -- the same
+;; build the 2026-09-21 bump above moved away from. This is a deliberate,
+;; risk-accepted choice, not an oversight: this exact preview is still the
+;; one documented above as SIGSEGVing/wedging under concurrent pane/agent
+;; load, and is also implicated in a same-day incident where a stale copy
+;; self-provisioned to ~/.local/bin/herdr on claude-workstation kept
+;; crash-looping (local API socket EAGAIN/empty-response on its own
+;; supervisor-refresh poll, then self-exit) and cascaded into dropping
+;; every attached remote. As of this revert, upstream has published no
+;; preview newer than 2026-09-11 to move to instead. Watch
+;; ~/.config/herdr/herdr-client.log on every machine for
+;; "main supervisor refresh failed" / "app.shutdown" clusters; if a crash
+;; cluster recurs, revert this pin to v0.8.0-mx.1.
 (define-public herdr-mx
-  (let* ((pkg-tag "v0.8.0-mx.1")
-         (pkg-version "0.8.0-mx.1"))
+  (let* ((pkg-tag "mx-preview-2026-09-11-0302-79803d1841bb")
+         (pkg-version "0.8.2-mx.preview-2026-09-11-0302-79803d1841bb"))
     (package
       (name "herdr-mx")
       (version pkg-version)
@@ -39,7 +53,7 @@
                "https://github.com/2lab-ai/herdr-mx/releases/download/"
                pkg-tag "/herdr-linux-x86_64"))
          (sha256
-          (base32 "07q281lqa1lq0m2kn4d1vs4w4ms0kzdgih8mv4782ii55azbxqjz"))))
+          (base32 "13r6g69kiymqarw0cl8hvn1k67zv88lx3w9xlrhxlrjp62p5s117"))))
       (build-system copy-build-system)
       (arguments
        (list
