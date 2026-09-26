@@ -2864,6 +2864,51 @@ platform branch; installed here purely because it is a static
     (description "MCP tasks extension types and runtime")
     (license license:asl2.0)))
 
+;; Override of node-modelcontextprotocol-ext-tasks-0.1.0 that
+;; bundles @modelcontextprotocol/client into the item's own
+;; node_modules, making the ext-tasks /client subpath self-contained.
+;; Why: pi-mcp-adapter's
+;; node_modules/@modelcontextprotocol/ext-tasks is a symlink to the
+;; plain item's store path; pi's jiti extension loader resolves it to
+;; that real path before loading, so the /client subpath's transitive
+;; `import { Client } from "@modelcontextprotocol/client"' can only
+;; resolve from within the item itself.  Upstream declares client an
+;; optional peerDependency, so the plain item (zod-only inputs) cannot
+;; satisfy it, and the sibling client symlink in pi-mcp-adapter's own
+;; node_modules is unreachable from the real path.
+;; NODE_OPTIONS=--preserve-symlinks does not help: jiti's bundled mlly
+;; resolver realpaths every module entry unconditionally (verified
+;; against the jiti bundled with pi-coding-agent 0.87.1).
+;; Adding client to `dependencies' before `patch-dependencies' makes
+;; the build rewrite it to a file: reference to the client input,
+;; which the standard node-build-system phases then install (as a
+;; real copy, via --install-links) into the item's node_modules.
+;; The client package is self-contained (its own deps are real copies
+;; in its node_modules), so its transitive imports resolve too.
+(define-public node-modelcontextprotocol-ext-tasks-0.1.0-with-client
+  (package/inherit node-modelcontextprotocol-ext-tasks-0.1.0
+    (inputs (list node-zod-4.6.5
+                  node-modelcontextprotocol-client-2.0.0))
+    (arguments
+     (list
+      #:tests? #f
+      #:phases
+      #~(modify-phases %standard-phases
+          (delete 'build)
+          (add-before 'patch-dependencies 'add-client-dependency
+            (lambda _
+              (modify-json
+               (lambda (pkg-meta)
+                 (assoc-set! pkg-meta "dependencies"
+                             (cons '("@modelcontextprotocol/client" . "0.0.0")
+                                   (assoc-ref pkg-meta "dependencies")))))))
+          (add-after 'patch-dependencies 'delete-dev-dependencies
+            (lambda _
+              (modify-json (delete-dependencies
+                            '("@eslint/js" "eslint" "eslint-plugin-jsdoc"
+                              "fast-check" "globals" "prettier"
+                              "typescript-eslint"))))))))))
+
 (define-public pi-mcp-adapter
   (package
     (name "pi-mcp-adapter")
@@ -2936,7 +2981,7 @@ platform branch; installed here purely because it is a static
                   node-open-10.2.0
                   node-smol-toml-1.8.0
                   node-strip-json-comments-5.0.3
-                  node-modelcontextprotocol-ext-tasks-0.1.0
+                  node-modelcontextprotocol-ext-tasks-0.1.0-with-client
                   node-zod-4.6.5
                   node-undici-6.28.1
                   node-typesafe-ai-sdk-0.6.0))
