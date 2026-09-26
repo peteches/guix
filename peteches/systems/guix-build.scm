@@ -12,10 +12,14 @@
 ;; has no offload keypair yet, so it isn't in this VM's
 ;; guix-offload-authorized-keys below.
 ;;
-;; The guix-publish config, the coordinator-signing-key trust, and the
-;; per-VM guix-offload authorized-keys list below are copied verbatim from
-;; nug.scm's working setup. Nothing here is new configuration — it's the
-;; same service, moved.
+;; The guix-publish host below MUST be "0.0.0.0", not "::": the fleet is
+;; IPv4-only (Tailscale DNS serves no AAAA records for .ts.net names) and
+;; shepherd binds every AF_INET6 endpoint with IPV6_V6ONLY=1, so "::"
+;; would be unreachable from any fleet client ("Connection refused" on
+;; port 3000). The service type supports only a single endpoint, so
+;; dual-stack is not possible. The coordinator-signing-key trust and the
+;; per-VM guix-offload authorized-keys list below are carried over from
+;; nug.scm's setup.
 
 (define-module (peteches systems guix-build)
   #:use-module (guix gexp)
@@ -84,7 +88,7 @@
                        (input (list "tcp dport 3000 accept comment \"guix-publish\""))))
       (service guix-publish-service-type
                (guix-publish-configuration
-                (host "::")
+                (host "0.0.0.0")
                 (port 3000)
                 (compression '(("zstd" 9)))
                 ;; #f, not nug.scm's #t: advertise? needs avahi-daemon for
