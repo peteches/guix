@@ -682,10 +682,18 @@ by the packages that import it.")
        (method git-fetch)
        (uri (git-reference
              (url "https://github.com/AvengeMedia/DankMaterialShell")
-             (commit (string-append "v" version))))
+             (commit (string-append "v" version))
+             ;; quickshell/DankCommon is a relative symlink to
+             ;; ../dank-qml-common/DankCommon -- a separate git submodule at
+             ;; the repo root, not nested under quickshell/.  Without a
+             ;; recursive checkout that submodule directory is empty and the
+             ;; symlink dangles, so quickshell silently drops every QML file
+             ;; that imports Common/Widgets from DankCommon (dozens of
+             ;; "Ignoring unresolvable import" warnings, then a blank shell).
+             (recursive? #t)))
        (file-name (git-file-name "dank-material-shell-minimal" version))
        (sha256
-        (base32 "0yqg92yxfwsflsxy393fww2m1rndr5kvlyq80yd8wpm2g3gigxil"))))
+        (base32 "0pg0wwi0kw955p9ifx00xs0nlvl5mc1hdy84rgqbal28bd2zyl2k"))))
     (arguments
      (list
       #:import-path "github.com/AvengeMedia/DankMaterialShell/core/cmd/dms"
@@ -709,9 +717,13 @@ by the packages that import it.")
           (add-after 'install 'install-config
             (lambda _
               (let* ((src (string-append #$source "/quickshell"))
-                     (tgt (string-append #$output "/share/quickshell")))
+                     (tgt (string-append #$output "/share/quickshell"))
+                     (common-src (string-append #$source "/dank-qml-common"))
+                     (common-tgt (string-append #$output "/share/dank-qml-common")))
                 (mkdir-p tgt)
-                (copy-recursively src tgt)))))))
+                (copy-recursively src tgt)
+                (mkdir-p common-tgt)
+                (copy-recursively common-src common-tgt)))))))
     (native-inputs
      (list go-github-com-charmbracelet-bubbles
            go-github-com-charmbracelet-bubbletea
