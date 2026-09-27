@@ -28,6 +28,25 @@
 ;;; apiKey "local" in models.json counts as configured auth). Keep the
 ;;; bodies in sync with the fork when the package pin is bumped.
 ;;;
+;;; configs/pi/defaults/settings.json (if present) is NOT symlinked like
+;;; every other config-directory child -- pi's SettingsManager actively
+;;; rewrites ~/.pi/agent/settings.json at runtime (defaultProvider,
+;;; defaultModel, lastChangelogVersion, compaction, etc. all get saved
+;;; there), same category of problem as Claude Code's ~/.claude.json (see
+;;; (peteches home modules claude)'s module docstring). A hard symlink into
+;;; the store would either fight every runtime save (if pi writes through
+;;; it) or -- what actually happened on the peteches account the first time
+;;; this was tried, 2026-09-27 -- get silently skipped by Guix Home's
+;;; file-conflict handling on any account that already has a real
+;;; settings.json, so the declared defaults never reach it and the mistake
+;;; is invisible (no error, no backup file, just silence). Instead
+;;; HOME-PI-SETTINGS-ACTIVATION below jq-merges configs/pi/defaults/
+;;; settings.json into ~/.pi/agent/settings.json on every activation
+;;; (creating it if absent), with the declared defaults taking precedence
+;;; on any overlapping key -- the same "shell out at activation, merge with
+;;; jq instead of symlinking" idiom claude.scm uses for ~/.claude.json's
+;;; oauth.scopes patch.
+;;;
 ;;; The default models.json wires up koboldcpp.ts.peteches.co.uk (Caddy's
 ;;; reverse proxy onto the comfyui VM's koboldcpp instance) as a custom
 ;;; provider. This replaced nug's own koboldcpp instance and its Tailscale
@@ -78,11 +97,14 @@
 
 (define-module (peteches home modules pi)
   #:use-module (gnu home services)
+  #:use-module (gnu services)
   #:use-module (guix gexp)
   #:use-module (guix packages)
   #:use-module (guix records)
   #:use-module (ice-9 ftw)
   #:use-module (srfi srfi-1)
+  #:use-module ((gnu packages bash) #:select (bash))
+  #:use-module ((gnu packages web) #:select (jq))
   #:use-module ((peteches home modules claude)
                 #:select (home-claude-mcp-server-name
                           home-claude-mcp-server-command
@@ -185,6 +207,9 @@
                    (intersperse (list ",") (map home-pi-mcp-json-entry stdio-servers)))
             (list "}}")))))
 
+;; settings.json is excluded here -- it is runtime-mutated by pi itself, so
+;; it is jq-merged at activation (HOME-PI-SETTINGS-ACTIVATION below)
+;; instead of symlinked. See the module docstring.
 (define (home-pi-files-service config)
   (let ((dir        (home-pi-configuration-config-directory config))
         (extensions (home-pi-configuration-extensions config))
@@ -193,7 +218,8 @@
     (append
      (if dir
          (map (lambda (entry) (home-pi-entry dir entry))
-              (directory-children dir))
+              (remove (lambda (entry) (string=? entry "settings.json"))
+                      (directory-children dir)))
          '())
      (map home-pi-extension-entry extensions)
      (map home-pi-extra-extension-entry extra)
@@ -214,6 +240,38 @@ pi-koboldcpp() {
 (define-public home-pi-koboldcpp-bashrc
   (plain-file "pi-koboldcpp.bash" %pi-koboldcpp-bashrc))
 
+;; Positional-arg bash script merging DEFAULTS into ~/.pi/agent/settings.json
+;; -- $1 is the defaults file, $2 the jq binary. Declared defaults win on any
+;; overlapping key (jq's `*' operator merges right-biased, recursively for
+;; nested objects), which is what lets a fleet-wide default like
+;; httpIdleTimeoutMs stay enforced across reconfigures without clobbering
+;; pi's own runtime keys (defaultProvider, defaultModel, compaction, …) that
+;; aren't present in the defaults file. Creates the file (a plain copy, not
+;; a symlink, so pi can keep rewriting it afterwards) if it doesn't exist
+;; yet, e.g. on a brand new account.
+(define %home-pi-settings-merge-script "\
+set -eu
+defaults=\"$1\"; jq_bin=\"$2\"
+target=\"$HOME/.pi/agent/settings.json\"
+mkdir -p \"$(dirname \"$target\")\"
+if [ -f \"$target\" ]; then
+  tmp=\"$target.merge.tmp\"
+  \"$jq_bin\" -s '.[0] * .[1]' \"$target\" \"$defaults\" > \"$tmp\" && mv \"$tmp\" \"$target\"
+else
+  cp \"$defaults\" \"$target\"
+fi
+")
+
+(define (home-pi-settings-activation config)
+  (let ((dir (home-pi-configuration-config-directory config)))
+    (if (and dir (file-exists? (string-append dir "/settings.json")))
+        (let ((defaults (local-file (string-append dir "/settings.json")))
+              (bash-bin (file-append bash "/bin/bash"))
+              (jq-bin   (file-append jq "/bin/jq")))
+          #~(system* #$bash-bin "-c" #$%home-pi-settings-merge-script
+                     "home-pi-settings-merge" #$defaults #$jq-bin))
+        #~(begin))))
+
 (define-public home-pi-service-type
   (service-type
    (name 'home-pi)
@@ -221,5 +279,7 @@ pi-koboldcpp() {
 MCP-adapter extensions, and mcp.json.")
    (extensions
     (list (service-extension home-files-service-type
-                             home-pi-files-service)))
+                             home-pi-files-service)
+          (service-extension home-activation-service-type
+                             home-pi-settings-activation)))
    (default-value (home-pi-configuration))))
