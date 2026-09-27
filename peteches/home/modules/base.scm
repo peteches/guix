@@ -3,7 +3,7 @@
 ;;; Exports `base-packages' and `base-services', which the two host configs
 ;;; in peteches/home/configs/ append their own extras onto.  Everything
 ;;; shared between dagon and nyarlothotep belongs here or in one of the
-;;; focused sibling modules (ssh, gpg, theming, ai, claude, mako, …), which
+;;; focused sibling modules (ssh, gpg, theming, ai, claude, …), which
 ;;; this module composes.
 ;;;
 ;;; Three distinct sources of code, easy to confuse:
@@ -75,7 +75,6 @@
   #:use-module (peteches home services wofi)
   #:use-module (peteches home services nyxt)
   ;; Shared config modules
-  #:use-module (peteches home modules mako)
   #:use-module (peteches home modules firefox)
   #:use-module (peteches home modules git)
   #:use-module (peteches home modules ssh)
@@ -173,7 +172,6 @@
    herdr-mx
    rustdesk
    dank-material-shell
-   mako
    (specification->package "hyprlock")
    (specification->package "gsettings-desktop-schemas")
    (specification->package "beeper-bin")
@@ -257,9 +255,6 @@
    (service home-aws-service-type)
 
    base-syncthing-service
-
-   ;; Notifications
-   base-mako-service
 
    ;; Git config
    (service home-git-service-type
