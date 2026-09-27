@@ -51,6 +51,7 @@
   #:use-module ((gnu packages node) #:select (node))
   #:use-module ((gnu packages rust-apps) #:select (ripgrep))
   #:use-module ((gnu packages networking) #:select (proxychains-ng))
+  #:use-module ((gnu packages admin) #:select (netcat))
   #:use-module ((gnu packages web) #:select (jq))
   #:use-module ((gnu packages curl) #:select (curl))
   #:use-module ((gnu packages base) #:select (coreutils))
@@ -76,7 +77,7 @@
 (define %claude-workstation-base-packages
   (list claude-code claude-completion git openssh node ripgrep jq curl
         coreutils less graphify herdr-mx python-minimal github-cli
-        onepassword-cli proxychains-ng fly))
+        onepassword-cli proxychains-ng netcat fly))
 
 ;; --- Anvil headless emacs daemon --------------------------------------
 ;; Bakes emacs-anvil's site-lisp onto the load-path directly so it needs

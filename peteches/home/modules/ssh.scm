@@ -251,4 +251,23 @@
 		     (name "claude-workstation-ygo.ts")
 		     (host-name "claude-workstation.spaniel-cordylus.ts.net")
 		     (user "ygo")
-		     (identity-file "~/.ssh/id_ed25519")))))))
+		     (identity-file "~/.ssh/id_ed25519"))
+		    ;; Reachable only via claude-workstation's split-tunnel
+		    ;; WireGuard (peteches services wireguard-socks5): its own
+		    ;; kernel routing has no path to this box, so a plain
+		    ;; ProxyJump (sshd's native direct-tcpip) hangs -- only
+		    ;; processes that explicitly dial the SOCKS5 proxy at
+		    ;; 10.200.0.2:1080 (inside the isolated wg0ns netns) get
+		    ;; there. Route the relay through proxychains4 + nc on
+		    ;; claude-workstation instead, same mechanism documented
+		    ;; in docs/secrets-management.org. -f is explicit because
+		    ;; PROXYCHAINS_CONF_FILE (like every other home-environment
+		    ;; variable) is only exported to login/interactive shells,
+		    ;; not to a non-interactive `ssh host -- cmd' invocation.
+		    (openssh-host
+		     (name "ygo-server")
+		     (host-name "64.225.95.106")
+		     (user "pete")
+		     (identity-file "~/.ssh/id_ed25519")
+		     (proxy (proxy-command
+			     "ssh claude-workstation -- proxychains4 -q -f ~/.config/proxychains.conf nc %h %p"))))))))

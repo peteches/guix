@@ -73,12 +73,15 @@
 ;; (nug's build-offload/publish successor) as a substitute server.
 ;;
 ;; nug-coordinator.pub was dropped following nug's decommission (reinstalled
-;; as the bare proxmox3 host -- no coordinator key survives it). dagon is
-;; nug's successor desktop but isn't a coordinator here yet: only its SSH
-;; login key is known so far (see %vm-peteches-authorized-keys in
-;; vm-base.scm); add dagon-coordinator.pub here once dagon's own
-;; /etc/guix/signing-key.pub is fetched, following the same pattern as the
-;; claude-workstation entry below.
+;; as the bare proxmox3 host -- no coordinator key survives it).
+;;
+;; dagon added 2026-09-27: deploying from dagon to claude-workstation hit the
+;; same `guix deploy: error: unauthorized public key' as claude-workstation's
+;; own gap below did against pihole -- dagon's /etc/guix/signing-key.pub was
+;; never added here. A manual `guix archive --authorize' on the target only
+;; "fixes" it until the next deploy, since that deploy's own /etc-populate
+;; step regenerates /etc/guix/acl from this declarative list and silently
+;; reverts the manual edit -- this list is the only fix that sticks.
 ;;
 ;; claude-workstation added 2026-08-22: deploys run from there (via the
 ;; automation SSH key) hit `guix deploy: error: unauthorized public key'
@@ -100,7 +103,9 @@
                           (plain-file "nyarlothotep-coordinator.pub"
                                       "(public-key (ecc (curve Ed25519) (q #C41C4703766F019CF43C8FBA3C7E284610799FBBF9875AB561AD7D8A74075AFE#)))")
                           (plain-file "claude-workstation-coordinator.pub"
-                                      "(public-key (ecc (curve Ed25519) (q #EFED7FDADFFF4E2559977AFD10310E21C4EEF7685C6297595D5333CBEF037EDE#)))"))))))
+                                      "(public-key (ecc (curve Ed25519) (q #EFED7FDADFFF4E2559977AFD10310E21C4EEF7685C6297595D5333CBEF037EDE#)))")
+                          (plain-file "dagon-coordinator.pub"
+                                      "(public-key (ecc (curve Ed25519) (q #0762DB77028F0E513B7E4CE6CBCAC22E9E49D80AC092072EB2F959D99B6B6437#)))"))))))
 
 (define-public common-home-services
   (list
