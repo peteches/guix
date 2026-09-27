@@ -120,7 +120,12 @@
    (comment "Pete McCabe")
    (group "users")
    (home-directory "/home/peteches")
-   (supplementary-groups '("wheel" "kvm" "netdev" "audio" "libvirt" "video" "dialout"))))
+   (supplementary-groups '("wheel" "kvm" "netdev" "audio" "libvirt" "video" "dialout"
+                           ;; write access to node-exporter's textfile-collector
+                           ;; directory (/var/lib/prometheus/node-exporter, 0775
+                           ;; group-owned) for user-space .prom drops -- e.g. the
+                           ;; herdr-mx WiFi/Tailscale diagnostic sampler.
+                           "prometheus-node-exporter"))))
 
 (define transform
   (options->transformation

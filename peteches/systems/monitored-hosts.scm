@@ -10,7 +10,9 @@
   ;; Replace TODO entries with actual IPs or resolvable hostnames once known.
   '(
     ;; ("dagon"        . "TODO:9100")
-    ;; ("nyarlothotep" . "TODO:9100")
+    ;; nyarlothotep is a laptop on DHCP (192.168.50.0/23) -- no stable LAN IP,
+    ;; so this uses its Tailscale address instead of the VMs' static-IP pattern.
+    ("nyarlothotep"  . "100.117.130.53:9100")
     ("pihole"       . "192.168.51.189:9100")
     ("prometheus"   . "192.168.51.187:9100")
     ("grafana"      . "192.168.51.188:9100")
