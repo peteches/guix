@@ -254,12 +254,14 @@ set -eu
 defaults=\"$1\"; jq_bin=\"$2\"
 target=\"$HOME/.pi/agent/settings.json\"
 mkdir -p \"$(dirname \"$target\")\"
-if [ -f \"$target\" ]; then
-  tmp=\"$target.merge.tmp\"
-  \"$jq_bin\" -s '.[0] * .[1]' \"$target\" \"$defaults\" > \"$tmp\" && mv \"$tmp\" \"$target\"
-else
-  cp \"$defaults\" \"$target\"
-fi
+# Both branches go through a `> tmp && mv` redirection rather than `cp`, so
+# the result always gets a fresh mode from the account's umask instead of
+# inheriting the store defaults file's read-only 444 -- a plain `cp` here
+# left pi unable to write its own runtime state back to this file on any
+# account without a pre-existing settings.json.
+[ -f \"$target\" ] || echo '{}' > \"$target\"
+tmp=\"$target.merge.tmp\"
+\"$jq_bin\" -s '.[0] * .[1]' \"$target\" \"$defaults\" > \"$tmp\" && mv \"$tmp\" \"$target\"
 ")
 
 (define (home-pi-settings-activation config)
