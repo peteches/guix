@@ -81,7 +81,7 @@ guix pull -C peteches/channels/manual.scm
 
 # Deploy to all VMs (or filter with --hosts)
 scripts/deploy.scm
-scripts/deploy.scm --hosts 192.168.51.187          # single VM by IP
+scripts/deploy.scm --hosts prometheus.spaniel-cordylus.ts.net  # single VM by tailnet name
 scripts/deploy.scm -h "host-name=prometheus"       # by hostname pattern
 scripts/deploy.scm -h "prometheus,loki" --dry-run  # multiple patterns
 
@@ -187,12 +187,9 @@ ls /var/guix/daemon-socket/socket   # present => builds work
 guix describe                       # lists channels => pulled guix in use
 ```
 
-The `manual.scm` channel file carries a `define-module` header (matching its
-path) but ends in a bare `(list …)`, so it doubles as a plain channel list for
-`guix pull -C` while still loading cleanly when `guix home`/`guix system` scan
-every module under `-L .` (a plain list with no module header fails that scan
-with `no code for module …`). It uses Guix record macros, so bare `guile`
-still cannot load it — validate with a read-only parse instead:
+The `manual.scm` channel file is a bare `(list …)` with no `define-module`
+header — a plain channel list for `guix pull -C`. It uses Guix record macros,
+so bare `guile` still cannot load it — validate with a read-only parse instead:
 ```bash
 guile -c '(call-with-input-file "peteches/channels/manual.scm"
             (lambda (p) (let loop () (unless (eof-object? (read p)) (loop)))))'
@@ -207,7 +204,7 @@ Two sources are easy to confuse when reading a `#:use-module` line:
 | Module prefix | Where it lives |
 |---|---|
 | `(gnu ...)`, `(guix ...)` | upstream Guix |
-| `(critical-grind packages ...)`, `(critical-grind services ...)` | the **`critical-grind` channel** — the application repo at `git@git.peteches.co.uk:critical-grind-campaign`, pinned in `peteches/channels/base.scm` — **not in this repo** |
+| `(critical-grind packages ...)`, `(critical-grind services ...)` | the **`critical-grind` channel** — the private application repo at `git@github.com:peteches/critical-grind-battlefronts.git`, pinned in its own dedicated file `peteches/channels/critical-grind.scm` (deliberately not in `base.scm`) — **not in this repo** |
 | `(peteches services ...)`, `(peteches home services ...)`, `(peteches packages ...)`, `(peteches systems ...)`, `(peteches home modules ...)`, `(peteches home configs ...)`, `(peteches channels ...)`, `(containers ...)` | this repo |
 
 So `alloy-service-type`, `restic-vm-backup-service-type`, `firewall-service-type`,
@@ -251,12 +248,12 @@ Each module's header comment documents its keyword arguments — read
 | `peteches/home/services/` | Reusable home service *types* (aws, git, hyprland, firefox, nyxt, wofi, mako, mpv, …) — folded in from the retired `peteches` channel |
 | `peteches/services/` | Reusable system service *types* (alloy, restic, firewall, tailscale, grafana, pihole, …) — folded in from the retired `peteches` channel |
 | `peteches/monitoring/` | Loki gexp helper — **dead code**, not exported, not called |
-| `peteches/channels/` | Channel lock files (three of them — see "Channels") |
+| `peteches/channels/` | Channel lock files (five of them — see "Channels") |
 | `peteches/packages/` | Package definitions — folded in from the retired `peteches` channel, plus `desktop-scripts.scm`, `claude-completion.scm`, `docker-compose.scm`, `emacs-anvil.scm` which were already local |
 | `peteches/repository.scm` | `repo-directory` / `source-path` — resolve repo assets via `%load-path` |
 | `peteches/utils.scm` | **Legacy**, unused; `gather-manifest-packages` reads a `manifests/` dir that no longer exists |
 | `peteches/deploy.scm` | **Legacy** `guix deploy` manifest, superseded by `machines.scm` — do not use |
-| `peteches/machines.scm` | Named `machine` records + `%all-machines` list |
+| `peteches/machines.scm` | Named `machine` records + `%all-machines` list — `host-name` is each VM's Tailscale MagicDNS name (`<host>.spaniel-cordylus.ts.net`), not its LAN IP |
 | `peteches/grafana-dashboards/` | Grafana dashboard JSON definitions |
 | `configs/` | Non-Scheme assets (emacs, hypr, matugen, nyxt, wofi, alacritty, bin, claude, dms) referenced via `repo-directory` |
 | `age-keys/` | SOPS age public keys, one per VM |
@@ -301,6 +298,9 @@ Each module's header comment documents its keyword arguments — read
 | `critical-grind-campaign.scm` | Critical Grind campaign system VM — Go/Gin app on :8080 + local PostgreSQL (192.168.51.202). Package and service come from the `critical-grind` channel |
 | `critical-grind-outline.scm` | Outline wiki VM — Podman container + local PostgreSQL/Redis (192.168.51.203, :3000) |
 | `plane.scm` | Plane project management VM — Podman containers + PostgreSQL/Redis/RabbitMQ (192.168.51.204, :80) |
+| `claude-workstation.scm` | Claude Code workstation VM — headless, three OS accounts (peteches, criticalgrind, ygo) each running claude-code with their own home config and MCP servers (192.168.51.205) |
+| `comfyui.scm` | ComfyUI VM — RTX 4090 GPU passthrough with nonguix driver/CUDA; successor to nug's desktop-hosted comfyui (192.168.51.206) |
+| `guix-build.scm` | Guix substitute server + build-offload target VM — successor to nug's guix-publish/offload role; signs with `guix-build-substitute-key.pub` (192.168.51.207) |
 | `guix-build-substitute-key.pub` | Guix-publish signing public key for guix-build's substitute server (nug's substitute-server successor) |
 
 #### `peteches/home/configs/`
@@ -343,14 +343,18 @@ Shared fragments — imported by host configs and composed into `base-packages` 
 
 #### `peteches/channels/`
 
-Three files carrying duplicated pinned commits, kept in sync **by hand**.
-Prefer the `/update-channels` skill over editing pins directly.
+Five files. The first three carry the routine channel set's pinned commits,
+duplicated and kept in sync **by hand**; the last two are a separate pair for
+the private `critical-grind` channel. Prefer the `/update-channels` skill
+over editing pins directly.
 
 | File | Purpose |
 |---|---|
-| `base.scm` | `%base-channels` — the reference. Module. Pinned: sops-guix, guix-science, guix-science-nonfree, nonguix, guix, critical-grind |
+| `base.scm` | `%base-channels` — the reference. Module. Pinned: sops-guix, guix-science, guix-science-nonfree, nonguix, guix |
 | `dagon.scm` | Module exporting `%dagon-channels` = `%base-channels` + guix-hpc-non-free |
 | `manual.scm` | **Full** plain channels list (all 6) for `guix pull -C` / symlinking to `~/.config/guix/channels.scm` |
+| `critical-grind.scm` | The `critical-grind` channel's own dedicated entry — a private GitHub repo fetched over SSH, deliberately **not** in `base.scm`/`manual.scm`; only machines that load the read-only deploy key into an agent should pull it |
+| `deploy-critical-grind.scm` | Duplicates `base.scm`'s entries plus `critical-grind.scm`'s, for an operator machine's `guix pull -C` with the deploy key in an ssh-agent |
 
 #### `peteches/packages/`
 
@@ -469,7 +473,7 @@ Home service *types*, folded in from the retired `peteches` channel.
 
 | File | Purpose |
 |---|---|
-| `peteches/machines.scm` | Named `machine` records + `%all-machines` list |
+| `peteches/machines.scm` | Named `machine` records + `%all-machines` list — `host-name` is each VM's Tailscale MagicDNS name (`<host>.spaniel-cordylus.ts.net`), not its LAN IP |
 | `peteches/repository.scm` | `repo-directory` / `source-path` — resolve repo assets through `%load-path` |
 | `peteches/utils.scm` | **Legacy/unused**: `gather-manifest-packages` (reads a nonexistent `manifests/` dir, hard-codes an absolute path), `apply-template-file` |
 | `peteches/deploy.scm` | **Legacy** `guix deploy` manifest listing only 5 of 17 machines. Superseded by `machines.scm` + `scripts/deploy.scm`. `docs/backups.org` and `proxmox-vms.org` still reference it — that guidance is stale |
@@ -487,7 +491,7 @@ Home service *types*, folded in from the retired `peteches` channel.
 | `docs/secrets-management.org` | SOPS + age keys workflow |
 | `docs/infrastructure.org` | Terraform + Concourse CI overview |
 | `docs/fleet-deployment.org` | Fleet deploy rules: when to deploy, `deploy-vms` skill usage, per-host success verification, rollback, consistency audit |
-| `.claude/skills/update-channels/` | Claude Code skill for updating pinned channel commits across all three channel files |
+| `.claude/skills/update-channels/` | Claude Code skill for updating pinned channel commits across all `peteches/channels/*.scm` files |
 
 ### System Configurations (`peteches/systems/`)
 
@@ -545,7 +549,7 @@ never by relative path, which would break under `-L .` and in worktrees.
 ### Channels (`peteches/channels/`)
 
 `base.scm` exports `%base-channels` — pinned: `sops-guix`, `guix-science`,
-`guix-science-nonfree`, `nonguix`, `guix` itself, and `critical-grind`.
+`guix-science-nonfree`, `nonguix`, `guix` itself.
 `dagon.scm` adds `guix-hpc-non-free` on top.
 
 There used to be a `peteches` channel here too (codeberg.org/peteches/guix-
@@ -562,22 +566,26 @@ service type is just editing the file.
 a channel supplying `(critical-grind packages campaign)` and
 `(critical-grind services campaign)`. It has **no channel introduction**, so
 commits are not signature-verified and every pull warns. Releasing a new
-version of the app is a commit bump in the three channel files — there is
-nothing to build by hand.
+version of the app is a commit bump in `critical-grind.scm` and
+`deploy-critical-grind.scm` — `scripts/bump-channel.sh` does exactly this —
+and there is nothing to build by hand.
 
-It is fetched over **smart HTTP** (`git.ts.peteches.co.uk/git/…`, served by
-`git-http-backend` on the git VM), not over gitolite's SSH. That is not a
-stylistic choice: `guix/git.scm` authenticates git fetches with
+It is a **private GitHub repo fetched over SSH**
+(`git@github.com:peteches/critical-grind-battlefronts.git`). That is why it
+lives in its own dedicated file (`critical-grind.scm`) rather than in
+`base.scm`/`manual.scm`: `guix/git.scm` authenticates git fetches with
 `(%make-auth-ssh-agent)` and nothing else — it never reads `~/.ssh/config` or a
-key file — so an `ssh://` channel URL requires the key loaded in an agent on
-**every** machine that pulls, CI containers included, and fails with a
-`remote rejected authentication` message that names neither ssh-agent nor the
-key. Repositories must carry `git-daemon-export-ok` to be fetchable this way;
-see `peteches/systems/git.scm`.
+key file — so an `ssh://` channel URL requires the key loaded in an agent, and
+only machines that load the read-only deploy key into an agent (the CI deploy
+task; optionally claude-workstation) should pull a channel they can
+authenticate. Exposing every machine's routine `guix pull` to it would fail
+with a `remote rejected authentication` message that names neither ssh-agent
+nor the key.
 
-**Pins are duplicated across three files** (`base.scm`, `dagon.scm`,
-`manual.scm`) with nothing enforcing agreement. Update them together — use
-the `/update-channels` skill.
+**Pins are duplicated across files** — the routine set across
+(`base.scm`, `dagon.scm`, `manual.scm`) and the critical-grind pin across
+(`critical-grind.scm`, `deploy-critical-grind.scm`) — with nothing enforcing
+agreement. Update them together — use the `/update-channels` skill.
 
 For `guix pull -C` or symlinking to `~/.config/guix/channels.scm`, use
 **`manual.scm`** (the full plain list).
