@@ -7,7 +7,7 @@
 ;;;                  Works from anywhere; no user/identity needed because
 ;;;                  the "*" block and the agent cover it.
 ;;;
-;;; Add both when provisioning a VM (see CLAUDE.md "Adding a New VM").
+;;; Add both when provisioning a VM (see AGENTS.md "Adding a New VM").
 ;;; The IPs here duplicate peteches/machines.scm and proxmox-vms.org —
 ;;; proxmox-vms.org is the authoritative inventory.
 ;;;

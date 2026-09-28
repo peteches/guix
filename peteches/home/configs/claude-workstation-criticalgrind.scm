@@ -41,7 +41,7 @@
   #:use-module (peteches home modules claude))
 
 ;; EDIT ME: the repos this account works on.  critical-grind-campaign is a
-;; channel served over smart HTTP (no key needed); see CLAUDE.md.
+;; channel served over smart HTTP (no key needed); see AGENTS.md.
 (define %criticalgrind-repos
   '(("critical-grind-campaign"
      "git@git.peteches.co.uk:critical-grind-campaign")))

@@ -57,7 +57,7 @@ Each VM in =main.tf= is a =module= block that calls =./modules/proxmox-vm= with:
 2. Run =terraform plan= locally (or push a branch — see CI below) to verify.
 3. Merge to =main= — CI applies automatically.
 4. After Terraform creates the VM, proceed with Guix steps from the "Adding a New
-   VM" section in =CLAUDE.md=.
+   VM" section in =AGENTS.md=.
 
 * Concourse CI (=ci/=)
 
@@ -149,7 +149,7 @@ fly -t <target> unpause-pipeline -p critical-grind-campaign
 
 1. Add Terraform module block in =main.tf=, push branch → Concourse plans it.
 2. Merge to =main= → Concourse applies → Proxmox VM created.
-3. Follow the Guix "Adding a New VM" checklist in =CLAUDE.md=:
+3. Follow the Guix "Adding a New VM" checklist in =AGENTS.md=:
    a. Add pihole custom-host entry.
    b. Add SSH config entry in home-configs.
    c. Add machine record in =machines.scm=.

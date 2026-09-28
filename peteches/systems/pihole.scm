@@ -8,7 +8,7 @@
 ;; MagicDNS at 100.100.100.100.
 ;;
 ;; `custom-hosts' is the LAN's forward DNS.  Add an entry here for each new
-;; VM (see CLAUDE.md "Adding a New VM"); it duplicates the IP list in
+;; VM (see AGENTS.md "Adding a New VM"); it duplicates the IP list in
 ;; peteches/machines.scm and peteches/home/modules/ssh.scm, with
 ;; proxmox-vms.org as the authoritative inventory.
 ;;

@@ -1,6 +1,6 @@
-# CLAUDE.md
+# AGENTS.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+This file provides guidance to AI coding agents (pi, and any similar harness) when working with code in this repository.
 
 ## Secret Handling — MANDATORY
 
@@ -33,7 +33,7 @@ A personal [GNU Guix](https://guix.gnu.org/) system configuration repository. Al
 
 Custom packages, home services, and system services used to live in a separate private
 Codeberg channel repo (`peteches/guix-channel`). Codeberg changed its ToS to prohibit
-AI-generated code, and since this repo is now developed with Claude Code, that channel
+AI-generated code, and since this repo is now developed with AI coding agents, that channel
 was folded back into this repo — see `peteches/packages/`, `peteches/home/services/`
 and `peteches/services/` below. They are ordinary local modules loaded via `-L .`, with
 no channel pin and no re-pinning step to change a service type.
@@ -217,7 +217,7 @@ service type is just editing the file; there is no channel to re-pin.
 These package/service directories used to live in a separate private Codeberg
 channel repo (`peteches/guix-channel`), pulled as `(peteches ...)` via
 `peteches/channels/base.scm`. Codeberg changed its ToS to prohibit
-AI-generated code; since this repo is developed with Claude Code, the channel
+AI-generated code; since this repo is developed with AI coding agents, the channel
 was folded back in here instead of continuing to host it there. The only
 channel that remains genuinely external is `critical-grind` (a separate
 application repo, not a modularisation of this one).
@@ -322,7 +322,7 @@ Shared fragments — imported by host configs and composed into `base-packages` 
 | `theming.scm` | `(peteches home modules theming)` — `base-theming-services` list (cursor, wallpaper, matugen, DMS plugin) |
 | `ai.scm` | `(peteches home modules ai)` — `base-ai-service`: ECA config **only**. Claude Code's MCP servers live in `claude.scm`. Its anvil path is stale/broken |
 | `claude.scm` | `(peteches home modules claude)` — defines `home-claude-service-type`: symlinks `configs/claude/defaults` into `~/.claude/` and registers MCP servers via `claude mcp add` |
-| `mako.scm` | `(peteches home modules mako)` — `base-mako-config` and `base-mako-service` |
+| `mako.scm` | `(peteches home modules mako)` — `base-mako-config` and `base-mako-service`. **Unused**: `base.scm` no longer composes it (dropped 2026-09-27 so DankMaterialShell is the sole owner of `org.freedesktop.Notifications`); `theming.scm` still emits matugen mako colours that nothing now consumes |
 | `firefox.scm` | `(peteches home modules firefox)` — Firefox profiles. `base-firefox-global-prefs`/`-extensions` are **unused**, so uBlock/DarkReader/PassFF are not installed |
 | `git.scm` | `(peteches home modules git)` — `peteches-gpg-for-git` package and `git-config` |
 | `scoreplay.scm` | `(peteches home modules scoreplay)` — `%scoreplay-ssh-hosts`. **Unused**: `ssh.scm` never splices it in, so these hosts are absent from `~/.ssh/config` |
@@ -454,7 +454,7 @@ Home service *types*, folded in from the retired `peteches` channel.
 | `git.scm` | `home-git-service-type` |
 | `hyprland.scm` | `home-hyprland-service-type` |
 | `koboldcpp.scm` | `koboldcpp-service-type` (home variant) |
-| `mako.scm` | `home-mako-service-type` |
+| `mako.scm` | `home-mako-service-type`. **Unused** — no longer composed into `base-services`; see the `home/modules/mako.scm` row |
 | `mpv.scm` | `home-mpv-service-type` |
 | `nyxt.scm` | `nyxt-service-type` |
 | `password-store.scm` | `home-password-store-service-type` |
@@ -525,7 +525,7 @@ The base firewall (`%vm-base-firewall`) has a **drop** input policy and opens on
 and `base-services`, composing feature modules from `peteches/home/services/`
 in this repo (imported as `(peteches home services ...)`) — emacs, git,
 hyprland, aws, nyxt, wofi, and more. The focused modules alongside it
-(`ssh.scm`, `gpg.scm`, `theming.scm`, `mako.scm`, `ai.scm`, `claude.scm`, …)
+(`ssh.scm`, `gpg.scm`, `theming.scm`, `ai.scm`, `claude.scm`, …)
 supply configuration values.
 
 `peteches/home/configs/dagon.scm` and `nyarlothotep.scm` append host-specific
@@ -545,7 +545,7 @@ There used to be a `peteches` channel here too (codeberg.org/peteches/guix-
 channel), providing the custom packages, home services and system services
 this repo consumes as `(peteches packages …)`, `(peteches home services …)`
 and `(peteches services …)`. Codeberg changed its ToS to prohibit
-AI-generated code, and since this repo is developed with Claude Code, that
+AI-generated code, and since this repo is developed with AI coding agents, that
 channel's contents were folded back into this repo instead — see
 `peteches/packages/`, `peteches/home/services/` and `peteches/services/`
 above. There is no pin to update and no commit to re-pin any more; editing a
@@ -635,7 +635,7 @@ reach for a relative path or an absolute one.
 
 ## Editing Lisp / Scheme / Guile Code
 
-This repository uses the **Anvil** MCP server (`anvil` in the MCP server list) which bridges Claude Code to a live Emacs instance. Emacs has `paredit-mode` active for all `.el`, `.scm`, and `.lisp` buffers.
+This repository uses the **Anvil** MCP server (`anvil` in the MCP server list) which bridges the coding agent to a live Emacs instance. Emacs has `paredit-mode` active for all `.el`, `.scm`, and `.lisp` buffers.
 
 **Always prefer Anvil for structural edits** — raw text substitution of parenthetical code is error-prone. Use the `emacs-eval` tool instead:
 
@@ -671,7 +671,7 @@ This repository uses the **Anvil** MCP server (`anvil` in the MCP server list) w
 
 ### When Anvil is unavailable
 
-Only fall back to `Edit`/`Write` tools if:
+Only fall back to your harness's plain file-editing tools (`edit`/`write` in pi, `Edit`/`Write` in Claude Code) if:
 - The `anvil` MCP server shows as disconnected, **and**
 - Emacs cannot be reached via `emacsclient`
 

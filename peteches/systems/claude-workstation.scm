@@ -22,7 +22,7 @@
 ;; this system, so `guix system reconfigure'/`guix deploy' activates all of
 ;; them (as guix-home-<account> shepherd services) in the same run as the
 ;; system itself. Editing a home config here only needs a system-level
-;; redeploy, via scripts/deploy.scm -- see CLAUDE.md.
+;; redeploy, via scripts/deploy.scm -- see AGENTS.md.
 ;;
 ;; WHY separate OS users rather than the container-session wrapper: each user
 ;; gets its own ~/.claude.json (auth + per-project state), so the two accounts
@@ -35,7 +35,7 @@
 ;;   * create + encrypt secrets/hosts/claude-workstation/slack.yaml (ygo's
 ;;     Slack MCP xoxp- token) -- see the #:sops-secrets entry below for the
 ;;     exact `sops -e -i' invocation.
-;; See CLAUDE.md "Adding a New VM" for the remaining fleet-integration files
+;; See AGENTS.md "Adding a New VM" for the remaining fleet-integration files
 ;; (ssh.scm, machines.scm, scripts/deploy.scm, pihole.scm, monitored-hosts,
 ;; prometheus.scm, proxmox-vms.org, infra/terraform).
 

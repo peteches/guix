@@ -21,7 +21,7 @@ seerr.scm -> seerr-deps.scm -> mermaid.scm.
   =(peteches packages mermaid)= need updating, or whether they already
   only touch the culminating binding (likely no change needed there,
   verify)
-- [X] Validate both new modules per CLAUDE.md's fresh-process-per-module
+- [X] Validate both new modules per AGENTS.md's fresh-process-per-module
   rule (use the =guix-module-validator= agent)
 
 Done 2026-08-21, redone in the dedicated worktree
@@ -211,7 +211,7 @@ Confirmed three different authoring idioms across peteches/packages/*.scm
 (inline literal, =let*=-bound, top-level =define %version=). Use
 =guix repl -L . -e '(package-version pkg)'=-style introspection, one
 =guix repl= process per *file* (batch all bindings within a file in one
-process; never share a process across files -- mirrors CLAUDE.md's
+process; never share a process across files -- mirrors AGENTS.md's
 load-check rule about stale stubs poisoning later resolve-interface
 calls).
 
@@ -233,7 +233,7 @@ value somewhere in that chain.
 Done: this is Step 1 of =review-packages=. Live-tested the full
 closure against the current repo: seed set from
 =peteches/systems|home|services= is 35 distinct =(peteches packages
-X)= modules (larger and different than the file map in CLAUDE.md,
+X)= modules (larger and different than the file map in AGENTS.md,
 which is stale -- confirms the skill must re-derive this each run,
 never trust a cached list). Transitive closure via precise
 =#:use-module (peteches packages Y)= greps inside

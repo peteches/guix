@@ -163,7 +163,7 @@ the port it actually listens on:
 | plane                    | =curl -sf http://<ip>/=                            |
 | comfyui                  | =curl -sf http://<ip>:8188/system_stats=           |
 | guix-build               | =curl -sf http://<ip>:3000/nix-cache-info= (substitute server) |
-| claude-workstation       | No network service to probe — it's this session's own VM (or a peer Claude Code account on it). Check via SSH: =claude --version= runs, and =emacsclient -e t= / the anvil daemon responds (see CLAUDE.md's Anvil section) |
+| claude-workstation       | No network service to probe — it's this session's own VM (or a peer Claude Code account on it). Check via SSH: =claude --version= runs, and =emacsclient -e t= / the anvil daemon responds (see AGENTS.md's Anvil section) |
 
 If a health endpoint isn't known/doesn't exist for a service, a bare TCP
 connect to its port is the floor: =timeout 3 bash -c "echo > /dev/tcp/<ip>/<port>"=.

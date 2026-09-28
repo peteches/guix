@@ -96,7 +96,7 @@
 ;; Opening a port means extending firewall-service-type from #:extra-services;
 ;; see git.scm or rustdesk.scm for the `simple-service' pattern.
 ;;
-;; See CLAUDE.md "Adding a New VM" for the other files that must be updated
+;; See AGENTS.md "Adding a New VM" for the other files that must be updated
 ;; in the same change (pihole hosts, ssh config, machines.scm, monitored-hosts,
 ;; terraform, age-keys).
 
@@ -194,7 +194,7 @@
                    %nscd-default-caches))))
 
 ;; /swapfile lives on the root filesystem -- every VM's root is /dev/vda2
-;; ext4 (see CLAUDE.md), so this path is safe to hard-code across the fleet.
+;; ext4 (see AGENTS.md), so this path is safe to hard-code across the fleet.
 (define %vm-swap-file "/swapfile")
 
 (define (swap-file-activation size-mb)
