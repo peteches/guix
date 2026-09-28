@@ -43,10 +43,6 @@ per-host `guix home` environments.
 | `proxmox-vms.org` | Authoritative VM inventory (IPs, VMIDs, specs) |
 | `.sops.yaml` | SOPS creation rules (per-VM age recipients) |
 
-**Legacy / dead code** (deletion candidates — see [Flags](#conventions--flags)):
-`peteches/deploy.scm`, `peteches/utils.scm`, `peteches/monitoring/loki.scm`, and
-`common-home-services` in `peteches/systems/common.scm`.
-
 ---
 
 ## The two OS constructors
@@ -191,16 +187,6 @@ it (bumping only one silently shipped a stale commit for generations — a docum
 
 ## Conventions & flags
 
-- **`peteches/deploy.scm`** — LEGACY, superseded by `machines.scm` + `scripts/deploy.scm`;
-  lists only 5 of 21 machines. `docs/backups.org` and `proxmox-vms.org` still reference
-  it — stale guidance; deletion candidate.
-- **`peteches/utils.scm`** — both exports (`gather-manifest-packages`,
-  `apply-template-file`) unreferenced; reads a nonexistent `manifests/` dir; hard-codes
-  an absolute path.
-- **`peteches/monitoring/loki.scm`** — dead code (not exported, not called). Routine log
-  shipping is Grafana Alloy on each VM.
-- **`common-home-services` in `peteches/systems/common.scm`** — leftover; nothing imports
-  it; the live home config is in `home/modules/base.scm` and the two have drifted.
 - **Broken export in `peteches/systems/base.scm`** — exports
   `greetd-gtkgreet-service` (singular) but only `greetd-gtkgreet-services` (plural) is
   defined; importing the singular fails (Guile only warns at compile time).
@@ -208,10 +194,6 @@ it (bumping only one silently shipped a stale commit for generations — a docum
   guix-build VM (nug was reinstalled as the proxmox3 host); kept for minimal diff churn.
   `parallel-builds 20` was copied from nug's 32-core box and OOM-killed on guix-build's
   8 cores (now 6).
-- **`CLAUDE.md` is partially stale** vs actual repo state — it says the critical-grind
-  channel is fetched over smart HTTP (actual: private GitHub over SSH), that
-  `machines.scm` uses LAN IPs (actual: Tailscale names), and that there are 3 channel
-  files (actual: 5); its file maps omit several newer VM configs.
 - **`critical-grind-campaign.scm` deviates from house style deliberately** (grub-efi-bootloader
   not `-removable`; UUID-matched filesystems) — adopted from an existing install; do
   not "fix".

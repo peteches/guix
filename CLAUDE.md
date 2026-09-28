@@ -247,12 +247,9 @@ Each module's header comment documents its keyword arguments — read
 | `peteches/home/modules/` | Shared home config fragments — `base.scm` plus focused modules (ssh, gpg, theming, ai, etc.) — configuration *values* |
 | `peteches/home/services/` | Reusable home service *types* (aws, git, hyprland, firefox, nyxt, wofi, mako, mpv, …) — folded in from the retired `peteches` channel |
 | `peteches/services/` | Reusable system service *types* (alloy, restic, firewall, tailscale, grafana, pihole, …) — folded in from the retired `peteches` channel |
-| `peteches/monitoring/` | Loki gexp helper — **dead code**, not exported, not called |
 | `peteches/channels/` | Channel lock files (five of them — see "Channels") |
 | `peteches/packages/` | Package definitions — folded in from the retired `peteches` channel, plus `desktop-scripts.scm`, `claude-completion.scm`, `docker-compose.scm`, `emacs-anvil.scm` which were already local |
 | `peteches/repository.scm` | `repo-directory` / `source-path` — resolve repo assets via `%load-path` |
-| `peteches/utils.scm` | **Legacy**, unused; `gather-manifest-packages` reads a `manifests/` dir that no longer exists |
-| `peteches/deploy.scm` | **Legacy** `guix deploy` manifest, superseded by `machines.scm` — do not use |
 | `peteches/machines.scm` | Named `machine` records + `%all-machines` list — `host-name` is each VM's Tailscale MagicDNS name (`<host>.spaniel-cordylus.ts.net`), not its LAN IP |
 | `peteches/grafana-dashboards/` | Grafana dashboard JSON definitions |
 | `configs/` | Non-Scheme assets (emacs, hypr, matugen, nyxt, wofi, alacritty, bin, claude, dms) referenced via `repo-directory` |
@@ -334,12 +331,6 @@ Shared fragments — imported by host configs and composed into `base-packages` 
 | `firefox-extensions/` | Firefox .xpi extensions (uBlock, DarkReader, PassFF, AWS SSO) |
 | `git-hooks/` | Git hook scripts (pre-commit) |
 | `git-ignore.txt` | Git global ignore patterns |
-
-#### `peteches/monitoring/`
-
-| File | Purpose |
-|---|---|
-| `loki.scm` | `loki-event-gexp` — **dead code**: not exported and never called. Routine log shipping is done by the Alloy service on each VM, not this |
 
 #### `peteches/channels/`
 
@@ -475,8 +466,6 @@ Home service *types*, folded in from the retired `peteches` channel.
 |---|---|
 | `peteches/machines.scm` | Named `machine` records + `%all-machines` list — `host-name` is each VM's Tailscale MagicDNS name (`<host>.spaniel-cordylus.ts.net`), not its LAN IP |
 | `peteches/repository.scm` | `repo-directory` / `source-path` — resolve repo assets through `%load-path` |
-| `peteches/utils.scm` | **Legacy/unused**: `gather-manifest-packages` (reads a nonexistent `manifests/` dir, hard-codes an absolute path), `apply-template-file` |
-| `peteches/deploy.scm` | **Legacy** `guix deploy` manifest listing only 5 of 17 machines. Superseded by `machines.scm` + `scripts/deploy.scm`. `docs/backups.org` and `proxmox-vms.org` still reference it — that guidance is stale |
 | `scripts/deploy.scm` | `guix deploy` wrapper — parses `--hosts` patterns, filters `%all-machines`, passes result via `-e`. Keeps its own `%machine-names` alist that must be updated alongside `machines.scm` |
 | `scripts/sync-restic-keys.sh` | Syncs restic backup keys to all VMs |
 | `proxmox-vms.org` | VM inventory: IPs, VMIDs, purpose — authoritative IP reference |
@@ -638,14 +627,11 @@ nothing checks for collisions. Check the current allocation first:
 command grep -rn '#:ipv6-address' peteches/systems/
 ```
 
-### Utilities (`peteches/utils.scm`) — legacy
+### Resolving repo-relative paths
 
-Both exports are unreferenced and should be treated as dead code:
-
-- `gather-manifest-packages` — reads manifest `.scm` files from a `manifests/` directory that **no longer exists**, and hard-codes the absolute path `/home/peteches/area_51/guix`, so it cannot work from a worktree.
-- `apply-template-file` — substitutes `${KEY}` placeholders from an alist. Unused.
-
-For resolving repo-relative paths, use `(peteches repository)` instead.
+Use `(peteches repository)` — `repo-directory` / `source-path` search
+`%load-path`, so they keep working under `-L .` and in worktrees. Never
+reach for a relative path or an absolute one.
 
 ## Editing Lisp / Scheme / Guile Code
 
