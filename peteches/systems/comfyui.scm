@@ -610,8 +610,18 @@
                 ;; fits with room to spare once the KV cache is quantized
                 ;; (see --quantkv below). Going past n_ctx_train would be
                 ;; RoPE extrapolation past what the model was trained for,
-                ;; so this is the real ceiling, not just a VRAM one.
-                (context-size 262144)
+                ;; so that remains the hard ceiling.
+                ;;
+                ;; Trimmed to 196608 anyway: the KV cache costs 18.0
+                ;; KiB/token here (4612 MiB for 262400 cells across the 16
+                ;; real-KV layers), and nothing has ever used the full
+                ;; window. Over 2300 logged requests the largest context
+                ;; was 209,958 tokens, p99 was 192,057, and pi itself
+                ;; peaked at 57,235. 196608 covers p99 with 3.4x headroom
+                ;; over pi's worst case and frees ~1.1GB of VRAM to fund
+                ;; --usemtp below; the top ~1% of the Lite client's
+                ;; requests will now context-shift rather than fit whole.
+                (context-size 196608)
                 (gpu-layers 999)
                 (cuda-device "0")
                 ;; Caddy's koboldcpp.ts.peteches.co.uk reverse proxy
@@ -665,6 +675,35 @@
                   ;; --jinja_tools routes tool-call formatting through the
                   ;; model's actual GGUF-embedded Jinja template instead.
                   "--jinja_tools"
+                  ;; Speculative decoding via the checkpoint's own MTP
+                  ;; head -- no draft model needed. `koboldcpp --analyze`
+                  ;; on this GGUF reports qwen35.nextn_predict_layers = 1
+                  ;; with a complete block at blk.64 (nextn.eh_proj,
+                  ;; enorm, hnorm, shared_head_norm plus its own attn/ffn
+                  ;; tensors), and the load log already reports "offloaded
+                  ;; 66/66 layers" -- so those weights were resident and
+                  ;; idle, since usemtp defaults to off.
+                  ;;
+                  ;; NOTE: this forecloses --parallelrequests, and
+                  ;; deliberately so. koboldcpp.py:2381 refuses continuous
+                  ;; batching outright when usemtp (or draftmodel) is set,
+                  ;; and gpttype_adapter.cpp:4873 requires !draft_ctx,
+                  ;; which --usemtp creates. No real loss: koboldcpp.py:2393
+                  ;; also refuses batching for any request carrying an
+                  ;; OpenAI tools array (set in transform_genparams at
+                  ;; :4430, which runs before the eligibility check at
+                  ;; :7311), which is all of pi's traffic. Batching would
+                  ;; additionally force --noshift (koboldcpp.py:2002) and
+                  ;; stall non-batchable requests behind in-flight ones.
+                  "--usemtp"
+                  ;; nextn_predict_layers = 1, so the head is trained one
+                  ;; token ahead and koboldcpp loops it autoregressively
+                  ;; (gpttype_adapter.cpp:968) -- acceptance decays on each
+                  ;; extra drafted token, so the default 4 over-drafts.
+                  ;; This also sets n_rs_seq (gpttype_adapter.cpp:3227),
+                  ;; scaling the 150MB recurrent-state buffer by roughly
+                  ;; 1+N, so a lower value is cheaper in VRAM too.
+                  "--draftamount" "3"
                   ;; Tried --reasoningeffort low, then --jinjathink false +
                   ;; --jinja_kwargs '{"enable_thinking":false}', to bound/
                   ;; disable thinking server-side -- neither is actually
