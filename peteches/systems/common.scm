@@ -18,15 +18,8 @@
 ;;;                             dagon (nug's successor desktop) isn't listed
 ;;;                             yet -- add it once dagon's own
 ;;;                             /etc/guix/signing-key.pub is known.
-;;;
-;;; `common-home-services' is a leftover: nothing imports it.  The live home
-;;; configuration is assembled in (peteches home modules base) instead, and
-;;; the two have drifted (this one still sets a pinentry-emacs gpg-agent,
-;;; whereas the home module uses the dispatching wrapper in
-;;; (peteches home modules gpg)).  Prefer the home module; do not add here.
 
 (define-module (peteches systems common)
-   #:use-module (peteches utils)
    #:use-module (peteches home services desktop)
    #:use-module (gnu services)
    #:use-module (gnu services base)
@@ -106,68 +99,3 @@
                                       "(public-key (ecc (curve Ed25519) (q #EFED7FDADFFF4E2559977AFD10310E21C4EEF7685C6297595D5333CBEF037EDE#)))")
                           (plain-file "dagon-coordinator.pub"
                                       "(public-key (ecc (curve Ed25519) (q #0762DB77028F0E513B7E4CE6CBCAC22E9E49D80AC092072EB2F959D99B6B6437#)))"))))))
-
-(define-public common-home-services
-  (list
-   ;; Set environment variables for every session
-   (simple-service 'profile-env-vars-service
-                   home-environment-variables-service-type
-                   '( ;; Sort hidden (dot) files first in `ls` listings
-                     ("LC_COLLATE" . "C")
-
-                     ;; Emacs is our editor
-                     ("VISUAL" . "emacsclient")
-                     ("EDITOR" . "emacsclient")
-
-                     ;; Add some things to $PATH (maybe integrate into other services?)
-                     ("PATH" . "$HOME/.bin:$HOME/.npm-global/bin:$PATH")
-
-                     ;; Make sure Flatpak apps are visible
-                     ("XDG_DATA_DIRS" . "$XDG_DATA_DIRS:$HOME/.local/share/flatpak/exports/share")))
-
-   ;; Set up the shell environment
-   (service home-bash-service-type
-            (home-bash-configuration
-             (bash-profile
-              `(,(plain-file "bash-profile-extras"
-                             (string-append
-                              ;; Load the Nix profile
-                              "if [ -f /run/current-system/profile/etc/profile.d/nix.sh ]; then\n"
-                              "  . /run/current-system/profile/etc/profile.d/nix.sh\n"
-                              "fi\n"))))
-             (bashrc
-              `(,(local-file "../files/bash-prompt")))))
-
-   ;; Place other files
-   (simple-service 'profile-files-service
-                   home-files-service-type
-                   (list `(".inputrc" ,(local-file "../files/inputrc"))))
-
-   ;; GnuPG configuration
-   (service home-gpg-agent-service-type
-            (home-gpg-agent-configuration
-             (pinentry-program
-              (file-append pinentry-emacs "/bin/pinentry-emacs"))
-             (ssh-support? #t)
-             (default-cache-ttl 28800)
-             (max-cache-ttl 28800)
-             (default-cache-ttl-ssh 28800)
-             (max-cache-ttl-ssh 28800)))
-
-   ;; Emacs configuration
-   ;; (service home-emacs-config-service-type)
-
-   ;; Run user dbus session
-   (service home-dbus-service-type)
-
-   ;; Set up desktop environment
-   (service home-desktop-service-type)
-
-   ;; File synchronization
-   (service home-syncthing-service-type)
-
-   ;; Monitor battery levels
-   (service home-batsignal-service-type)))
-
-   ;; Udiskie for auto-mounting devices
-   ;; (service home-udiskie-service-type)))
