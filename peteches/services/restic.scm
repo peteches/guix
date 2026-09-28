@@ -105,7 +105,7 @@
                           "Ensure "
                           #$key-file
                           " is authorised on the NAS,\n"
-                          "then re-run: guix deploy -L . peteches/deploy.scm
+                          "then re-run: scripts/deploy.scm
 ")))))))))
 
 (define (restic-vm-shepherd-services cfg)

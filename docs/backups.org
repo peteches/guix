@@ -71,7 +71,7 @@ Ensure the user's home directory exists and that the path
 
 ** 2. Collect public keys from each VM after first deploy
 
-After running =guix deploy -L . peteches/deploy.scm= for the first time, each
+After running =scripts/deploy.scm= for the first time, each
 VM generates its SSH keypair. Collect the public keys:
 
 #+BEGIN_SRC bash
@@ -86,7 +86,7 @@ the Synology (one key per line).
 ** 3. Complete initialization with a second deploy
 
 #+BEGIN_SRC bash
-guix deploy -L . peteches/deploy.scm
+scripts/deploy.scm
 #+END_SRC
 
 The activation script on each VM will:

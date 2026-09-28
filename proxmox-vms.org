@@ -254,29 +254,17 @@ Reboot. Then follow Step 3 above to authorize the deploy key.
 without requiring manual login. It builds the system locally and sends
 the store paths over SSH to the target.
 
-** The deploy file
+** The deploy manifest
 
-Create =peteches/deploy.scm= in the repo root:
+The deploy manifest lives in =peteches/machines.scm= — one =machine=
+record per VM, all maintained in that single file. Deploy with
+=scripts/deploy.scm=, a wrapper around =guix deploy= that reads
+=peteches/machines.scm= and supports =--hosts= filtering:
 
-#+begin_src scheme
-(use-modules (gnu machine)
-             (gnu machine ssh)
-             (peteches systems prometheus))
-
-(list
- (machine
-  (operating-system prometheus-os)
-  (environment managed-host-environment-type)
-  (configuration
-   (machine-ssh-configuration
-    (host-name "prometheus.peteches.co.uk")
-    (system "x86_64-linux")
-    (user "peteches")       ; must have passwordless sudo in sudoers
-    (identity "/home/peteches/.ssh/id_ed25519")))))
+#+begin_src shell
+scripts/deploy.scm                      ; deploy every VM
+scripts/deploy.scm --hosts prometheus   ; deploy one VM
 #+end_src
-
-For additional VMs, add more =machine= entries to the list. Each VM
-must export its OS from its module (the =prometheus-os= pattern above).
 
 ** Prerequisites
 1. *SSH access* — your key must be in =~/.ssh/authorized_keys= on each VM.
@@ -302,14 +290,14 @@ must export its OS from its module (the =prometheus-os= pattern above).
 ** Running a deployment
 
 #+begin_src shell
-# Deploy all machines in the file
-guix deploy -L . peteches/deploy.scm
+# Deploy all machines
+scripts/deploy.scm
 
 # Dry-run (build only, no switch)
-guix deploy -L . --dry-run peteches/deploy.scm
+scripts/deploy.scm --dry-run
 
-# Deploy a single machine by filtering (run from Scheme)
-# (not natively supported; edit deploy.scm to a single-entry list)
+# Deploy a single machine by filtering
+scripts/deploy.scm --hosts prometheus
 #+end_src
 
 ** Rolling back
@@ -317,8 +305,8 @@ guix deploy -L . --dry-run peteches/deploy.scm
 If a deployment breaks a VM, roll back on the VM itself:
 
 #+begin_src shell
-# Via guix deploy --roll-back
-guix deploy -L . --roll-back peteches/deploy.scm
+# Via scripts/deploy.scm --roll-back (passed through to guix deploy)
+scripts/deploy.scm --roll-back
 
 # Or directly on the VM
 ssh peteches@prometheus.peteches.co.uk sudo guix system roll-back
@@ -331,7 +319,7 @@ To change scrape targets or add recording rules, edit
 inline as a =plain-file=. After editing, deploy:
 
 #+begin_src shell
-guix deploy -L . peteches/deploy.scm
+scripts/deploy.scm --hosts prometheus
 #+end_src
 
 Prometheus is managed by Shepherd; the deploy reconfigures the system
