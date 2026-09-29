@@ -10,7 +10,12 @@
 ;; of HazAT/pi-interactive-subagents) with herdr support added: subagent
 ;; panes can run in herdr in addition to tmux (pane splits labeled with the
 ;; subagent's display name, pane wait-output as the exit-detection event
-;; path).  See the fork's README "Terminal multiplexers" section.
+;; path).  Since 3.8.0 the herdr surface also lays the panes out -- parent
+;; keeps 30% of the width (PI_SUBAGENT_HERDR_PARENT_RATIO), subagents stack
+;; evenly in the other 70%, re-applied after every spawn and close -- and
+;; /clear-subagents sweeps panes that outlived their run, using a per-session
+;; pane registry under artifacts/<sessionId>/subagent-panes.json.  See the
+;; fork's README "Terminal multiplexers" section.
 ;;
 ;; Packaged as the plain repository tree under
 ;; lib/node_modules/pi-interactive-subagents so that
@@ -32,16 +37,16 @@
 (define-public pi-interactive-subagents
   (package
     (name "pi-interactive-subagents")
-    (version "3.7.2")
+    (version "3.8.0")
     (source
      (origin
        (method git-fetch)
        (uri (git-reference
              (url "https://github.com/peteches/pi-interactive-subagents")
-             (commit "ee5dedd7e285c1e7574a9fdaf780234d07ec5945")))
+             (commit "c07dc58726dcc950b1db32449e0d39015cfc1639")))
        (file-name (git-file-name name version))
        (sha256
-        (base32 "00cmdbrc2mpbdr9micx2d0lm2yim3zqzsqk796xfvrbqrwwpz9nr"))))
+        (base32 "14x0031lgrf1sg5wsz94jbr0pk3nlb1m2r9gz7mwvzaqffqbx9nf"))))
     (build-system copy-build-system)
     (arguments
      (list
