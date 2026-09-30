@@ -172,20 +172,38 @@ PluginComponent {
     // signal file. This timer polls the file every 250ms and toggles
     // dictation when the content changes. Simple, reliable, no extra deps.
 
-    property string signalFile: (Quickshell.env("XDG_RUNTIME_DIR") || "/tmp") + "/dictate-toggle"
+    // XDG_RUNTIME_DIR is typically /run/user/<uid>. We resolve it via
+    // a Process below since Quickshell may not expose env() directly.
+    property string signalFile: ""
     property string lastSignal: ""
 
+    // Merged into the bottom Component.onCompleted block.
+
+    Process {
+        id: resolveRuntimeDir
+        command: ["sh", "-c", "printf '%s' \"${XDG_RUNTIME_DIR:-/tmp}\""]
+        stdout: StdioCollector {
+            onStreamFinished: {
+                root.signalFile = text.trim() + "/dictate-toggle"
+                console.info("Dictate: signal file at " + root.signalFile)
+                signalPoller.start()
+            }
+        }
+    }
     Timer {
         id: signalPoller
         interval: 250
         repeat: true
-        running: true
-        onTriggered: readSignal.running = true
+        running: false  // started by resolveRuntimeDir.onCompleted
+        onTriggered: {
+            if (root.signalFile !== "") readSignal.running = true
+        }
     }
 
     Process {
         id: readSignal
-        command: ["cat", root.signalFile]
+        // Only cat if the file exists; otherwise exit silently.
+        command: ["sh", "-c", "test -f \"$1\" && cat \"$1\" || true", "--", root.signalFile]
 
         stdout: StdioCollector {
             onStreamFinished: {
@@ -394,5 +412,6 @@ PluginComponent {
 
     Component.onCompleted: {
         console.info("Dictate plugin loaded")
+        resolveRuntimeDir.running = true
     }
 }
