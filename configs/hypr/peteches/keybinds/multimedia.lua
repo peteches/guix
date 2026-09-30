@@ -1,3 +1,5 @@
+Core = require("peteches.keybinds.core")
+
 -- -----------------------------------------------------------------------------
 -- Multimedia / hardware keys
 -- -----------------------------------------------------------------------------
@@ -47,4 +49,16 @@ hl.bind("SHIFT + XF86MonBrightnessDown", hl.dsp.exec_cmd("brightnessctl -d '*::k
 
 hl.bind("SHIFT + XF86MonBrightnessUp", hl.dsp.exec_cmd("brightnessctl -d '*::kbd_backlight' s 5%+"), {
   description = "Raise keyboard backlight",
+})
+
+-- -----------------------------------------------------------------------------
+-- Voice dictation (DMS Dictate plugin)
+-- -----------------------------------------------------------------------------
+
+-- Toggle dictation: start recording → stop → show result with TTS/edit/copy.
+-- The DMS Dictate plugin handles the full lifecycle (Deepgram STT, floating
+-- window, clipboard). Requires DEEPGRAM_API_KEY in the environment.
+-- Signals the plugin by touching a flag file; the plugin polls for it.
+hl.bind(Core.mod .. " + m", hl.dsp.exec_cmd("sh -c 'mkdir -p \"${XDG_RUNTIME_DIR:-/tmp}\" && printf \"%s\" \"$(date +%s%N)\" > \"${XDG_RUNTIME_DIR:-/tmp}/dictate-toggle\"'"), {
+  description = "Toggle voice dictation",
 })

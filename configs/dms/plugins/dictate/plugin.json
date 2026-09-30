@@ -1,0 +1,13 @@
+{
+  "id": "dictate",
+  "name": "Dictate",
+  "description": "Voice dictation via Deepgram Nova-3. Records from the default microphone, streams transcription in real time, supports TTS playback, text editing, and clipboard copy.",
+  "version": "0.1.0",
+  "author": "peteches",
+  "icon": "mic",
+  "type": "daemon",
+  "component": "./Dictate.qml",
+  "compositors": ["hyprland"],
+  "dependencies": ["rec", "python3"],
+  "permissions": ["process", "audio"]
+}

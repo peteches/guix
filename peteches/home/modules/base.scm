@@ -194,6 +194,12 @@
    (specification->package "ddcutil")
    (specification->package "pavucontrol-qt")
    (specification->package "python-minimal")
+   (specification->package "python-websockets")
+   ;; sox provides `rec` for audio capture (used by DMS Dictate plugin
+   ;; and any other local audio recording).
+   (specification->package "sox")
+   ;; espeak-ng for offline TTS (used by DMS Dictate plugin's Read Aloud).
+   (specification->package "espeak-ng")
    recutils
    eza
    fly

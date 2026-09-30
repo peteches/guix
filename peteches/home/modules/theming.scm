@@ -321,4 +321,7 @@
 		   home-xdg-configuration-files-service-type
 		   `(("DankMaterialShell/plugins/hyprSubmapHint"
 		      ,(local-file (repo-directory "configs/dms/plugins/hyprSubmapHint")
+				   #:recursive? #t))
+		     ("DankMaterialShell/plugins/dictate"
+		      ,(local-file (repo-directory "configs/dms/plugins/dictate")
 				   #:recursive? #t))))))
