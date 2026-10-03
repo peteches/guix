@@ -24,6 +24,17 @@ PluginComponent {
     // The full combined text shown in the editor.
     property string fullText: ""
 
+    // Live partial hypothesis from Deepgram (interim_results=true): shown
+    // while recording and replaced by the final utterance on endpointing.
+    property string interimText: ""
+
+    // What the editor displays: committed finals plus the in-flight partial.
+    readonly property string displayText: {
+        if (interimText === "")
+            return fullText
+        return fullText === "" ? interimText : fullText + " " + interimText
+    }
+
     // TTS playback state.
     property bool ttsPlaying: false
 
@@ -35,18 +46,46 @@ PluginComponent {
     // transcript fragment arrival.
     property real meterLevel: 0.0
 
+    // Last few stderr lines from dictate-stream.py, kept so an unexpected
+    // crash can be reported in the panel instead of vanishing.
+    property string stderrTail: ""
+
+    // Absolute path of this plugin's directory, resolved through the DMS
+    // PluginService (PluginComponent is instantiated with pluginId and
+    // pluginService set).  Used to locate dictate-stream.py: Qt.resolvedUrl()
+    // would hand python3 a "file://…" URL it cannot open.
+    readonly property string pluginDir: (pluginService && pluginId)
+        ? String(pluginService.getPluginPath(pluginId))
+        : ""
+
     // ── Helpers ────────────────────────────────────────────────────────────
 
     function reset() {
         state = "idle"
         fragments = []
         fullText = ""
+        interimText = ""
+        stderrTail = ""
         ttsPlaying = false
         errorMessage = ""
         meterLevel = 0.0
+        // Editing the transcript in the "result" state assigns TextArea.text
+        // imperatively, which breaks its binding.  Restore it, otherwise the
+        // next recording would display the previous session's text.
+        try {
+            textEdit.text = Qt.binding(function () {
+                return root.displayText;
+            });
+        } catch (e) {
+            // textEdit not instantiated yet (component still loading)
+        }
     }
 
     function startRecording() {
+        if (pluginDir === "") {
+            errorMessage = "Could not resolve the Dictate plugin directory"
+            return
+        }
         reset()
         state = "recording"
         dictateProcess.running = true
@@ -55,13 +94,55 @@ PluginComponent {
     function stopRecording() {
         if (state !== "recording") return
         state = "stopping"
-        dictateProcess.stdin.write("stop\n")
+        dictateProcess.write("stop\n")
     }
 
     function cancelRecording() {
-        dictateProcess.stdin.write("cancel\n")
+        dictateProcess.write("cancel\n")
         dictateProcess.running = false
         reset()
+    }
+
+    // One JSON line from dictate-stream.py.
+    function handleLine(line) {
+        var msg
+        try {
+            msg = JSON.parse(line)
+        } catch (e) {
+            return
+        }
+
+        if (msg.type === "ready") {
+            // Recording started successfully.
+            meterPulse.start()
+        } else if (msg.type === "transcript") {
+            root.fragments = root.fragments.concat([msg.text])
+            root.fullText = root.fragments.join(" ")
+            root.interimText = ""
+            // Pulse the meter on each new fragment.
+            root.meterLevel = 0.8
+        } else if (msg.type === "interim") {
+            // Partial hypothesis — live feedback while still speaking.
+            root.interimText = msg.text
+            root.meterLevel = 0.6
+        } else if (msg.type === "stopped") {
+            meterPulse.stop()
+            root.meterLevel = 0.0
+            root.interimText = ""
+            if (root.state === "stopping") {
+                root.state = root.fullText !== "" ? "result" : "idle"
+            }
+        } else if (msg.type === "final") {
+            // Full combined text from the helper.
+            if (msg.text && msg.text !== "") {
+                root.fullText = msg.text
+            }
+        } else if (msg.type === "error") {
+            meterPulse.stop()
+            root.errorMessage = msg.message || "Unknown error"
+            root.state = "idle"
+            dictateProcess.running = false
+        }
     }
 
     function copyToClipboard() {
@@ -87,44 +168,29 @@ PluginComponent {
     Process {
         id: dictateProcess
 
-        command: ["python3", Qt.resolvedUrl("./dictate-stream.py")]
+        command: ["python3", root.pluginDir + "/dictate-stream.py"]
 
-        stdin: StdioPipe {}
+        // Quickshell has no StdioPipe type: stdin is turned on with this flag
+        // and written to via Process.write().
+        stdinEnabled: true
 
-        stdout: StdioCollector {
-            splitMode: StdioCollector.SplitMode.NewLine
-            onLine: function(line) {
-                try {
-                    var msg = JSON.parse(line)
-                } catch(e) {
+        // Line splitting is SplitParser (splitMarker), not
+        // StdioCollector.splitMode; the per-line signal is `read`.
+        stdout: SplitParser {
+            splitMarker: "\n"
+            onRead: line => root.handleLine(line)
+        }
+
+        // Python tracebacks land here.  Previously dropped entirely, which is
+        // why a broken stream looked like an infinitely "Listening…" panel.
+        stderr: SplitParser {
+            splitMarker: "\n"
+            onRead: line => {
+                var text = String(line).trim()
+                if (text === "")
                     return
-                }
-
-                if (msg.type === "ready") {
-                    // Recording started successfully.
-                    meterPulse.start()
-                } else if (msg.type === "transcript") {
-                    root.fragments = root.fragments.concat([msg.text])
-                    root.fullText = root.fragments.join(" ")
-                    // Pulse the meter on each new fragment.
-                    root.meterLevel = 0.8
-                } else if (msg.type === "stopped") {
-                    meterPulse.stop()
-                    root.meterLevel = 0.0
-                    if (root.state === "stopping") {
-                        root.state = root.fullText !== "" ? "result" : "idle"
-                    }
-                } else if (msg.type === "final") {
-                    // Full combined text from the helper.
-                    if (msg.text && msg.text !== "") {
-                        root.fullText = msg.text
-                    }
-                } else if (msg.type === "error") {
-                    meterPulse.stop()
-                    root.errorMessage = msg.message || "Unknown error"
-                    root.state = "idle"
-                    dictateProcess.running = false
-                }
+                console.warn("Dictate stderr:", text)
+                root.stderrTail = (root.stderrTail + "\n" + text).split("\n").slice(-4).join("\n")
             }
         }
 
@@ -132,10 +198,12 @@ PluginComponent {
             meterPulse.stop()
             root.meterLevel = 0.0
             if (root.state === "recording" || root.state === "stopping") {
+                root.interimText = ""
                 if (root.fullText !== "") {
                     root.state = "result"
                 } else if (root.errorMessage === "") {
-                    root.errorMessage = "Process exited unexpectedly (code " + exitCode + ")"
+                    root.errorMessage = "dictate-stream.py exited (code " + exitCode + ")"
+                            + (root.stderrTail !== "" ? ":\n" + root.stderrTail : "")
                     root.state = "idle"
                 }
             }
@@ -169,49 +237,29 @@ PluginComponent {
 
     // ── Hyprland keybind integration ───────────────────────────────────────
     // The Hyprland keybind (SUPER+m) writes a nanosecond timestamp to a
-    // signal file. This timer polls the file every 250ms and toggles
-    // dictation when the content changes. Simple, reliable, no extra deps.
+    // signal file.  One long-lived `tail -F` watcher streams those lines back
+    // here, so there is no polling and no per-tick process spawn.
 
-    // XDG_RUNTIME_DIR is typically /run/user/<uid>. We resolve it via
-    // a Process below since Quickshell may not expose env() directly.
-    property string signalFile: ""
+    readonly property string signalFile: (Quickshell.env("XDG_RUNTIME_DIR") || "/tmp") + "/dictate-toggle"
     property string lastSignal: ""
 
-    // Merged into the bottom Component.onCompleted block.
-
     Process {
-        id: resolveRuntimeDir
-        command: ["sh", "-c", "printf '%s' \"${XDG_RUNTIME_DIR:-/tmp}\""]
-        stdout: StdioCollector {
-            onStreamFinished: {
-                root.signalFile = text.trim() + "/dictate-toggle"
-                console.info("Dictate: signal file at " + root.signalFile)
-                signalPoller.start()
-            }
-        }
-    }
-    Timer {
-        id: signalPoller
-        interval: 250
-        repeat: true
-        running: false  // started by resolveRuntimeDir.onCompleted
-        onTriggered: {
-            if (root.signalFile !== "") readSignal.running = true
-        }
-    }
+        id: signalWatcher
 
-    Process {
-        id: readSignal
-        // Only cat if the file exists; otherwise exit silently.
-        command: ["sh", "-c", "test -f \"$1\" && cat \"$1\" || true", "--", root.signalFile]
+        // Create the file if the keybind has never run, then follow it.
+        // `tail -n0` ignores any pre-existing content, so a stale timestamp
+        // from a previous session cannot trigger dictation at login.
+        command: ["sh", "-c", "f=\"$1\"; [ -e \"$f\" ] || : > \"$f\"; exec tail -n0 -F \"$f\"", "--", root.signalFile]
+        running: true
 
-        stdout: StdioCollector {
-            onStreamFinished: {
-                var content = text.trim()
-                if (content !== "" && content !== root.lastSignal) {
-                    root.lastSignal = content
-                    root.toggleDictation()
-                }
+        stdout: SplitParser {
+            splitMarker: "\n"
+            onRead: line => {
+                var content = String(line).trim()
+                if (content === "" || content === root.lastSignal)
+                    return
+                root.lastSignal = content
+                root.toggleDictation()
             }
         }
     }
@@ -262,7 +310,7 @@ PluginComponent {
                 anchors.horizontalCenter: parent.horizontalCenter
                 width: Math.min(parent.width - 32, 580)
                 implicitHeight: contentLayout.implicitHeight + 24
-                radius: Theme.cornerRadiusLarge
+                radius: Theme.cornerRadius
                 color: Theme.withAlpha(Theme.surfaceContainerHigh, 0.97)
                 border.color: root.state === "recording" ? Theme.primary : Theme.outlineVariant
                 border.width: root.state === "recording" ? 2 : 1
@@ -359,7 +407,7 @@ PluginComponent {
                             QQC2.TextArea {
                                 id: textEdit
                                 width: parent.width
-                                text: root.fullText
+                                text: root.displayText
                                 color: Theme.surfaceText
                                 font.pixelSize: Theme.fontSizeMedium
                                 font.family: "monospace"
@@ -411,7 +459,6 @@ PluginComponent {
     }
 
     Component.onCompleted: {
-        console.info("Dictate plugin loaded")
-        resolveRuntimeDir.running = true
+        console.info("Dictate plugin loaded, watching " + root.signalFile)
     }
 }

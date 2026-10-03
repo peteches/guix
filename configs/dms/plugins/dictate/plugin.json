@@ -7,7 +7,9 @@
   "icon": "mic",
   "type": "daemon",
   "component": "./Dictate.qml",
+  "startupCheck": "./StartupCheck.qml",
   "compositors": ["hyprland"],
   "dependencies": ["rec", "python3"],
-  "permissions": ["process", "audio"]
+  "capabilities": ["daemon", "dictation", "audio-capture", "clipboard"],
+  "permissions": ["process", "network"]
 }

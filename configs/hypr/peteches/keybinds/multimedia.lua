@@ -57,8 +57,12 @@ hl.bind("SHIFT + XF86MonBrightnessUp", hl.dsp.exec_cmd("brightnessctl -d '*::kbd
 
 -- Toggle dictation: start recording → stop → show result with TTS/edit/copy.
 -- The DMS Dictate plugin handles the full lifecycle (Deepgram STT, floating
--- window, clipboard). Requires DEEPGRAM_API_KEY in the environment.
--- Signals the plugin by touching a flag file; the plugin polls for it.
-hl.bind(Core.mod .. " + m", hl.dsp.exec_cmd("sh -c 'mkdir -p \"${XDG_RUNTIME_DIR:-/tmp}\" && printf \"%s\" \"$(date +%s%N)\" > \"${XDG_RUNTIME_DIR:-/tmp}/dictate-toggle\"'"), {
+-- window, clipboard). Needs a Deepgram API key: either DEEPGRAM_API_KEY in the
+-- shell's environment, /run/secrets/deepgram-api-key, or
+-- ~/.config/DankMaterialShell/dictate/deepgram-api-key.
+-- Signals the plugin by writing a timestamp line to a flag file, which the
+-- plugin follows with `tail -F` (no polling).  The trailing newline is
+-- required: the plugin's SplitParser only emits complete lines.
+hl.bind(Core.mod .. " + m", hl.dsp.exec_cmd("sh -c 'mkdir -p \"${XDG_RUNTIME_DIR:-/tmp}\" && printf \"%s\\n\" \"$(date +%s%N)\" > \"${XDG_RUNTIME_DIR:-/tmp}/dictate-toggle\"'"), {
   description = "Toggle voice dictation",
 })
