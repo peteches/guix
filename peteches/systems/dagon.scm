@@ -14,12 +14,27 @@
 ;;     directly — no separate /boot partition, no LVM.  GRUB's
 ;;     cryptodisk support is enabled automatically because
 ;;     `mapped-devices' includes a luks-device-mapping.
+;;   - SOPS is bootstrapped in two passes because dagon had no age identity
+;;     at all (nyarlothotep already ran sops-key-generator).  Pass 1 — what
+;;     is wired below — only starts sops-key-generator-service-type, which
+;;     writes /etc/age/keys.txt on first boot; no sops-secret is declared
+;;     yet, because a secret dagon cannot decrypt would fail activation.
+;;     After reconfiguring:
+;;       1. `ssh dagon cat /etc/age/keys.pub > age-keys/dagon.pub'
+;;          (the generator also writes the public half, mode 0644; never
+;;          print or commit the private /etc/age/keys.txt),
+;;       2. add a `secrets/hosts/dagon/.*\.yaml$' creation rule to .sops.yaml
+;;          and add dagon to the `secrets/shared/deepgram\.yaml$' rule,
+;;       3. `sops updatekeys secrets/shared/deepgram.yaml',
+;;       4. pass 2: add the sops-secrets-service-type block below (copy
+;;          nyarlothotep.scm's deepgram-api-key entry verbatim) and
+;;          reconfigure again.
 ;;   - #:offload-builds? is #f for this initial install.  Wiring up
 ;;     offload to guix-build (nug's build-offload/publish successor,
 ;;     peteches/systems/guix-build.scm) needs a guix-offload SSH keypair
 ;;     delivered via SOPS (secrets/hosts/dagon/guix-build.yaml), which in
-;;     turn needs dagon's age public key — only available after first
-;;     boot.  Once that exists, follow nyarlothotep.scm's pattern
+;;     turn needs dagon's age public key — only available after the pass 1
+;;     reconfigure above.  Once that exists, follow nyarlothotep.scm's pattern
 ;;     (sops-key-generator-service-type + sops-secrets-service-type),
 ;;     flip this to #t, and add dagon's offload pubkey to guix-build.scm's
 ;;     guix-offload-authorized-keys.
@@ -37,7 +52,10 @@
   #:use-module (gnu packages admin)          ; solaar
   #:use-module (nongnu packages linux)
   #:use-module (peteches systems base)
-  #:use-module (peteches systems network-mounts))
+  #:use-module (peteches systems network-mounts)
+  #:use-module (peteches services sops-key-generator)
+  #:use-module (sops secrets)
+  #:use-module (sops services sops))
 
 (use-service-modules base linux cups desktop networking ssh xorg)
 
@@ -78,7 +96,12 @@
  #:extra-packages (list glibc-locales)
 
  #:extra-services
- (list (udev-rules-service 'solaar solaar))
+ (list (udev-rules-service 'solaar solaar)
+       ;; SOPS pass 1: give dagon an age identity (/etc/age/keys.txt).
+       ;; No sops-secret yet — see the header comment for pass 2, which adds
+       ;; the Deepgram key the DMS Dictate plugin reads from
+       ;; /run/secrets/deepgram-api-key.
+       (service sops-key-generator-service-type))
 
  ;; Feature flags
  #:laptop? #f

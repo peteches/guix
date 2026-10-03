@@ -95,6 +95,21 @@
                   (key '("ssh-private-key"))
                   (file (local-file "../../secrets/hosts/nyarlothotep/guix-build.yaml"))
                   (path "/run/secrets/guix-offload-key")
+                  (permissions #o400))
+                 ;; Deepgram Nova-3 API key, consumed by the DMS Dictate plugin
+                 ;; (configs/dms/plugins/dictate/dictate-stream.py reads
+                 ;; /run/secrets/deepgram-api-key when DEEPGRAM_API_KEY is not in
+                 ;; the shell's environment -- it is not: DMS is started from
+                 ;; Hyprland with a bare session environment).  Mode 0400
+                 ;; peteches-only, same as claude-workstation's copy; the file is
+                 ;; shared with claude-workstation, see the
+                 ;; secrets/shared/deepgram\.yaml$ creation rule in .sops.yaml.
+                 (sops-secret
+                  (key '("deepgram-api-key"))
+                  (file (local-file "../../secrets/shared/deepgram.yaml"))
+                  (path "/run/secrets/deepgram-api-key")
+                  (user "peteches")
+                  (group "users")
                   (permissions #o400)))))))
 
     ;; Flags
