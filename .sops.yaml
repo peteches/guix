@@ -115,6 +115,21 @@ creation_rules:
     age:
       - age1hefq7zlvxhmn6f7gq6s4e27z4ykckel704tgcxz89tqxferg2amshtt9qr  # nug
 
+  # Its own rule rather than the general secrets/shared/.*\.yaml$ one, for the
+  # same reason as colibri above: recipients are "the machines that actually do
+  # voice dictation" (Deepgram Nova-3 STT), not every VM.  Consumed by
+  #   - the DMS Dictate plugin on the desktops (peteches/systems/dagon.scm,
+  #     peteches/systems/nyarlothotep.scm) -> /run/secrets/deepgram-api-key
+  #   - pi-dictate / the `rec` wrapper on claude-workstation, which also keeps
+  #     its own secrets/hosts/claude-workstation/deepgram.yaml copy
+  # dagon joins this list once its age key exists (it needs the sops bootstrap
+  # in peteches/systems/dagon.scm first -- see that file's header comment).
+  - path_regex: secrets/shared/deepgram\.yaml$
+    pgp: "5FFB7006A36B0AEDE8D08E3753B1E002546A642A"
+    age:
+      - age1gcrgp0sy04kdxuyn2rmkeknx32jvw55yku8v0mwyhypagds5z9jqz0h0z2  # claude-workstation
+      - age1e5298p2egdrwj7wjh5n4pkpu60f92pkqajnt7lv20tcrynurt4aq7v2v5r  # nyarlothotep
+
   # Every VM's age key -- policy is that all VMs get all shared secrets,
   # so this list should track exactly the set of VMs with an age key
   # (i.e. every host with its own creation_rule above), not a subset.
