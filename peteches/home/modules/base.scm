@@ -83,10 +83,12 @@
   #:use-module (peteches home modules theming)
   #:use-module (peteches home modules ai)
   #:use-module (peteches home modules claude)
+  #:use-module (peteches home modules pi)
   ;; Your config fragments
   #:use-module (peteches packages gurps)
   #:use-module (peteches packages claude-code)
   #:use-module (peteches packages claude-completion)
+  #:use-module ((peteches packages pi-coding-agent) #:select (pi-coding-agent pi-mcp-adapter))
   #:use-module (peteches packages emacs-anvil)
   #:use-module (peteches packages graphify)
   #:use-module (peteches packages herdr-mx)
@@ -167,6 +169,7 @@
    alacritty
    claude-code
    claude-completion
+   pi-coding-agent
    emacs-anvil
    graphify
    herdr-mx
@@ -228,6 +231,43 @@
    btop
    proxmox-scripts
    (specification->package "imagemagick")))
+
+;; MCP server set for the pi coding-agent config: the same anvil (Emacs) /
+;; comfyui / graphify stdio servers the Claude Code config below uses, so pi
+;; has the same tool access.  Declared once here and passed to the
+;; home-pi-service-type rather than inlined.
+(define %desktop-mcp-servers
+  (let* ((bash-path (file-append bash "/bin/bash"))
+         ;; Point at the packaged emacs-anvil launcher.  Old setup used a
+         ;; straight.el checkout under ~/.config/emacs which no longer exists.
+         (script    (file-append emacs-anvil "/bin/anvil-stdio.sh")))
+    (list
+     (home-claude-mcp-server
+      (name "anvil")
+      (command bash-path)
+      (args (list script
+                  "--server-id=anvil"
+                  "--init-function=anvil-enable"
+                  "--stop-function=anvil-disable")))
+     (home-claude-mcp-server
+      (name "anvil-emacs-eval")
+      (command bash-path)
+      (args (list script "--server-id=emacs-eval")))
+     ;; The packaged server, not `npx -y comfyui-mcp': comfyui-mcp depends on
+     ;; two native addons (better-sqlite3 and sharp), which npx builds from
+     ;; source on first use.  That needs a C toolchain that isn't on PATH
+     ;; here, and npx swallowed the failure, so the server only ever showed
+     ;; as "failed to connect".
+     (home-claude-mcp-server
+      (name "comfyui")
+      (command (file-append node-comfyui-mcp "/bin/comfyui-mcp")))
+     ;; Stdio only (see graphify.scm on why the HTTP transport isn't
+     ;; available). No args: it defaults to reading graphify-out/graph.json
+     ;; relative to the launch cwd, which Claude Code sets to the current
+     ;; project directory.
+     (home-claude-mcp-server
+      (name "graphify")
+      (command (file-append graphify "/bin/graphify-mcp"))))))
 
 ;; 2) Shared services (with your existing configs).
 (define-public base-services
@@ -462,6 +502,16 @@ unset _claude_completion
 
    base-ai-service
 
+
+   ;; pi coding-agent (https://pi.dev) -- the `pi' binary
+   ;; (pi-coding-agent, in base-packages) plus its ~/.pi config:
+   ;; models.json (the remote koboldcpp model) and the same MCP
+   ;; servers as the Claude Code config below.
+   (service home-pi-service-type
+	    (home-pi-configuration
+	     (config-directory (repo-directory "configs/pi/defaults"))
+	     (extensions (list pi-mcp-adapter))
+	     (mcp-servers %desktop-mcp-servers)))
    (service home-claude-service-type
 	    (home-claude-configuration
 	     (config-directory (repo-directory "configs/claude/defaults"))
