@@ -2,12 +2,16 @@
 ;;
 ;; Successor to nug's desktop-hosted comfyui-service-type — nug itself is
 ;; being reinstalled as the Proxmox host (proxmox3) this VM runs on, so its
-;; GPU-bound services had to move into VMs. Unlike nug, this VM runs ComfyUI
-;; ONLY: vllm-code-agent, koboldcpp-qwen/rp, sillytavern and colibri were
-;; retired (the local-LLM experiments didn't pan out), and nginx/certbot were
-;; dropped entirely — comfyui was already reachable with real TLS via the
-;; existing caddy VM's `comfyui.ts.peteches.co.uk` reverse-proxy entry
-;; (see caddy.scm), which only needs repointing at this VM's hostname.
+;; GPU-bound services had to move into VMs. Unlike nug, this VM runs two GPU
+;; workloads -- ComfyUI and koboldcpp -- which are mutually exclusive by
+;; configuration because 24GB of VRAM cannot hold both (see the note on the
+;; koboldcpp service below). nug's other GPU services (vllm-code-agent,
+;; koboldcpp-rp, sillytavern, colibri) were retired -- the local-LLM
+;; experiments didn't pan out, though koboldcpp has since come back as pi's
+;; LLM backend -- and nginx/certbot were dropped entirely — comfyui was
+;; already reachable with real TLS via the existing caddy VM's
+;; `comfyui.ts.peteches.co.uk` reverse-proxy entry (see caddy.scm), which
+;; only needs repointing at this VM's hostname.
 ;;
 ;; The comfyui-configuration below (custom nodes, CUDA/CMake environment
 ;; variables, the libstdc++ C99 shim) is copied verbatim from nug.scm's
@@ -143,6 +147,17 @@
   (service comfyui-service-type
            (list
 	    (comfyui-configuration
+	     ;; Manual start only -- ComfyUI and the koboldcpp service below
+	     ;; share this VM's single RTX 4090 and 24GB cannot hold both.
+	     ;; koboldcpp's live allocations total ~20.4GB (15.1GB weights +
+	     ;; 3.7GB KV + 0.6GB recurrent state + 1.0GB compute + ~1.5GB CUDA
+	     ;; context), leaving ~1.7GB free; ComfyUI's idle CUDA context alone
+	     ;; is 386MB and an SDXL/Flux workflow needs 8-16GB. Both daemons
+	     ;; auto-started until 2026-10-04, which put them in silent
+	     ;; contention -- no OOM only because no image job had run since.
+	     ;; `herd stop koboldcpp; herd start comfyui` for an image session,
+	     ;; then the reverse when done.
+	     (auto-start? #f)
 	     (listen "0.0.0.0,::")
 	     (extra-model-paths-config %comfyui-model-paths)
 	     (runtime-packages (list uv))
@@ -558,19 +573,27 @@
 	       (comfyui-custom-node
 		(name "ComfyUI-Impact-Subpack")
 		(git-repo-url "https://github.com/ltdrdata/ComfyUI-Impact-Subpack")))))))
-      ;; Off by default (auto-start? #f) -- ad-hoc GPU-context experiments,
-      ;; not a standing service. Shares this VM's single RTX 4090 with
-      ;; ComfyUI, so `herd stop comfyui` first, `herd start koboldcpp` to
-      ;; use it, then `herd stop koboldcpp; herd start comfyui` when done --
-      ;; the two were never run concurrently in testing and the card
-      ;; doesn't have room for both at once at this model's size.
+      ;; The primary workload on this VM, and the sole LLM backend for
+      ;; every pi session on claude-workstation (all three accounts, via
+      ;; configs/pi/defaults/models.json -> Caddy's
+      ;; koboldcpp.ts.peteches.co.uk). Was declared auto-start? #f for
+      ;; "ad-hoc GPU-context experiments" but has in practice run
+      ;; continuously (11 days uptime, observed 2026-10-04), so it now
+      ;; auto-starts -- otherwise, with ComfyUI also manual-start above, a
+      ;; reboot would leave this VM serving nothing.
+      ;;
+      ;; Shares this VM's single RTX 4090 with ComfyUI, which is therefore
+      ;; manual-start: the card cannot hold both. See the
+      ;; comfyui-configuration comment above for the VRAM arithmetic and
+      ;; the stop/start dance.
       ;;
       ;; model-name is huihui-ai's abliterated (uncensored) build of the
       ;; same Qwen3.8-27B checkpoint below, swapped in for the stock one --
       ;; same base model and quant tier (UD-DW Q4_K_M, 16.6GB vs. the
-      ;; original Q4_K_M's 17.77GB), so the tuning below should still hold,
-      ;; but it was only confirmed live against the original file -- worth
-      ;; re-checking VRAM headroom at full context once this is deployed.
+      ;; original Q4_K_M's 17.77GB). Headroom has now been re-checked
+      ;; against this file (load log 2026-09-28 22:00:47): it is resident at
+      ;; 15,092.05 MiB -- 1,164 MiB lighter than the original's 16,256.70
+      ;; MiB -- and still offloads 66/66 layers, so the tuning below holds.
       ;;
       ;; model-name points at a stable "current-model.gguf" symlink inside
       ;; model-path rather than a specific checkpoint filename, so swapping
@@ -581,47 +604,69 @@
       ;; to change the flags below (context-size/extra-args) if a different
       ;; checkpoint needs different tuning.
       ;;
-      ;; model-path/context-size/gpu-layers/cuda-device below are exactly
-      ;; the configuration confirmed live against the coding checkpoint:
-      ;; Qwen3.8-27B-Q4_K_M (17.77GB GGUF) loads with --gpulayers 999 (full
-      ;; GPU offload) up to --contextsize 98304 on this card (~518MB VRAM
-      ;; headroom left at that point -- the practical ceiling for this
-      ;; checkpoint here), sustaining ~43 tokens/s single-stream -- both a
-      ;; larger context (98,304 vs. 27,000) and faster (~43 vs. ~32
-      ;; tokens/s) than the vLLM deployment of the AWQ-INT4 quant of the
+      ;; --gpulayers 999 gives full GPU offload (66/66 layers per the load
+      ;; log). The ~43 tokens/s single-stream figure measured against the
+      ;; original coding checkpoint still holds, and is both larger-context
+      ;; and faster than the vLLM deployment of the AWQ-INT4 quant of the
       ;; same model previously tried on nug (see that host's git history
-      ;; before its retirement), thanks to this GGUF quant's smaller
-      ;; footprint (17.77GB vs. 19.24GB) and llama.cpp only maintaining
-      ;; real per-token KV cache for 16 of this hybrid Gated-DeltaNet
+      ;; before its retirement) -- thanks to this GGUF quant's smaller
+      ;; footprint (17.77GB vs. 19.24GB) and to llama.cpp maintaining real
+      ;; per-token KV cache for only 16 of this hybrid Gated-DeltaNet
       ;; architecture's 64 layers (the other 48 use the much cheaper
       ;; fixed-size recurrent state instead -- confirmed live in
       ;; koboldcpp's own load log).
+      ;;
+      ;; Measured 2026-10-04 across the week's 12,739 requests, generation
+      ;; speed degrades ~3.5x over the context range. That, not VRAM, is
+      ;; the real cost of a large window, and is why context-size below is
+      ;; sized to observed demand:
+      ;;   0-16k: 87.3 T/s   64k: 62.1 T/s   128k: 44.8 T/s   176k+: 24.8
+      ;;   32k:   70.9 T/s   96k: 54.6 T/s   160k: 36.6 T/s
       (service koboldcpp-service-type
                (koboldcpp-configuration
                 (service-name "koboldcpp")
-                (auto-start? #f)
+                (auto-start? #t)
                 (model-path "/media/models/koboldcpp-test")
                 (model-name "current-model.gguf")
                 (host "0.0.0.0")
                 (port 5001)
                 ;; 262144 = this checkpoint's n_ctx_train (confirmed live in
                 ;; koboldcpp's own load log) -- the model's full native
-                ;; context, not reachable at fp16 on this 24GB card but
-                ;; fits with room to spare once the KV cache is quantized
-                ;; (see --quantkv below). Going past n_ctx_train would be
-                ;; RoPE extrapolation past what the model was trained for,
-                ;; so that remains the hard ceiling.
+                ;; context, and a hard ceiling: going past it would be RoPE
+                ;; extrapolation beyond what the model was trained for.
                 ;;
-                ;; Trimmed to 196608 anyway: the KV cache costs 18.0
-                ;; KiB/token here (4612 MiB for 262400 cells across the 16
-                ;; real-KV layers), and nothing has ever used the full
-                ;; window. Over 2300 logged requests the largest context
-                ;; was 209,958 tokens, p99 was 192,057, and pi itself
-                ;; peaked at 57,235. 196608 covers p99 with 3.4x headroom
-                ;; over pi's worst case and frees ~1.1GB of VRAM to fund
-                ;; --usemtp below; the top ~1% of the Lite client's
-                ;; requests will now context-shift rather than fit whole.
-                (context-size 196608)
+                ;; Sized to demand, not to VRAM. 147456 leaves usable prompt
+                ;; space of 131072 once --genlimit below is reserved, since
+                ;; koboldcpp subtracts the generation budget from the context
+                ;; window rather than adding to it. Over 1,678 pi requests
+                ;; since the 196608 deploy on 2026-09-28, demand measured
+                ;; p50 59,167 / p90 108,258 / p95 115,897 / p99 132,020 /
+                ;; max 208,782 -- so 131072 covers p95 with 13% headroom and
+                ;; lands within 1% of p99, and only 19 requests (1.1%)
+                ;; context-shift rather than fit whole.
+                ;;
+                ;; The binding constraint is host RAM, not VRAM. koboldcpp's
+                ;; SmartCache keeps KV snapshots in RAM and, for this hybrid
+                ;; recurrent model, the C++ "RNN Lifeboat" path runs it
+                ;; whether --smartcache is passed or not, across 7 slots at
+                ;; ~18.65 KB per token of live context. Worst-case slot RAM
+                ;; is thus 7 x (usable prompt x 18.65 KB): at the previous
+                ;; 163,840 usable that was 20.9 GB against a 19.5 GB VM,
+                ;; which is why the box was thrashing (koboldcpp VmSwap
+                ;; 9.5 GB, 49 MiB RAM available, vmstat si/so to 59 MB/s,
+                ;; PSI memory full avg300=13.36 -- 13% of all wall-clock
+                ;; time stalled on memory). At 131,072 usable it is 16.7 GB.
+                ;;
+                ;; VRAM-wise this *frees* ~916 MiB: KV costs 19.13 KiB/token
+                ;; (17.998 across the 16 real-KV layers + 1.125 for the
+                ;; 1-layer MTP draft cache), so 196,864 cells cost 3,676.78
+                ;; MiB and 147,712 cells cost 2,761 MiB -- on a card that
+                ;; already had ~1.7 GB spare with nothing worth spending it
+                ;; on. Must be kept in step with contextWindow in
+                ;; configs/pi/defaults/models.json (= context-size minus
+                ;; --genlimit) or pi compacts against a window the server
+                ;; cannot actually accept.
+                (context-size 147456)
                 (gpu-layers 999)
                 (cuda-device "0")
                 ;; Caddy's koboldcpp.ts.peteches.co.uk reverse proxy
@@ -635,8 +680,10 @@
                   ;; default in this koboldcpp version, which quantkv
                   ;; requires for both K and V rather than K only).
                   ;; Confirmed live: this quant level loads and serves the
-                  ;; full 262144-token context above with ~815MB VRAM
-                  ;; headroom to spare on this RTX 4090, and passed a
+                  ;; full 262144-token native context with ~815MB VRAM
+                  ;; headroom to spare on this RTX 4090 (measured against
+                  ;; the heavier original checkpoint; the lighter
+                  ;; abliterated one leaves more), and passed a
                   ;; 3-needle retrieval test (facts planted at 10/50/90%
                   ;; depth in a ~216k-token prompt, all recalled verbatim
                   ;; via koboldcpp's OpenAI-compatible API) with no
@@ -644,7 +691,11 @@
                   ;; the same test but only reaches 155648 tokens before
                   ;; hitting the same VRAM ceiling -- q4_0 gets the whole
                   ;; native context with more headroom, not less, so
-                  ;; there's no reason to settle for q8_0 here.
+                  ;; there's no reason to settle for q8_0 here. (That
+                  ;; 155648 figure predates the lighter abliterated
+                  ;; checkpoint; q8_0 would now reach further, but with no
+                  ;; measured retrieval gain over q4_0 it isn't worth the
+                  ;; halved context.)
                   "--quantkv" "q4_0"
                   ;; Server-side backstop: pi (the coding-agent client)
                   ;; was found requesting completions sized to fill
@@ -659,10 +710,21 @@
                   ;; it clipped a legitimate long-form task mid-generation
                   ;; ("stopReason": "length" at exactly 8192, confirmed
                   ;; live in a pi session doing a 35-item audit writeup).
-                  ;; 32768 is still nowhere near "fill the 262144-token
-                  ;; window" territory that caused the original bug, but
-                  ;; gives genuine long single-pass output room to finish.
-                  "--genlimit" "32768"
+                  ;;
+                  ;; Halved from 32768 to 16384 on 2026-10-04, for two
+                  ;; reasons. (1) This budget is reserved *inside*
+                  ;; --contextsize above, so it directly shrinks usable
+                  ;; prompt space and inflates every SmartCache save-state
+                  ;; slot -- 32768 was costing 32,768 x 18.65 KB = 611 MB of
+                  ;; host RAM per slot, 4.3 GB across all 7. (2) Measured
+                  ;; over 1,678 pi requests, output length is p50 91 /
+                  ;; p90 1,305 / p95 1,804 / p99 6,993; only 17 generations
+                  ;; (1.0%) exceeded 8192 tokens and 12 exceeded 16384.
+                  ;; 16384 still gives p99 2.3x headroom while staying far
+                  ;; from the fill-the-window pattern that motivated this
+                  ;; flag. Must be kept in step with maxTokens in
+                  ;; configs/pi/defaults/models.json.
+                  "--genlimit" "16384"
                   ;; Tool calls were coming back as garbled pseudo-XML text
                   ;; (mismatched <function=bash>...</parameter> tags) that
                   ;; pi's client can't parse, instead of a real structured
