@@ -56,6 +56,24 @@
 ;;; plain domain behind Caddy's own cert — left in place, unverified,
 ;;; since it's harmless if unneeded.
 ;;;
+;;; models.json is plain JSON and cannot carry comments, so the coupling
+;;; between its two size fields and the server's flags is documented here.
+;;; Both must track the koboldcpp service on comfyui
+;;; (peteches/systems/comfyui.scm):
+;;;
+;;;   contextWindow = --contextsize - --genlimit   (147456 - 16384 = 131072)
+;;;   maxTokens     = --genlimit                                      (16384)
+;;;
+;;; koboldcpp reserves the generation budget *inside* the context window
+;;; rather than adding to it, so the prompt space a client may actually use
+;;; is that difference, not the raw --contextsize. Declaring contextWindow as
+;;; --contextsize itself (196608, as it was until 2026-10-04) makes pi
+;;; compact against a window the server cannot accept: sessions grew past
+;;; the real 163840 limit, every subsequent turn context-shifted and
+;;; re-prefilled ~160k tokens, and koboldcpp's log showed a 924-request
+;;; pile-up at exactly 163840 tokens. Measured over one week that was 31.4
+;;; GPU-hours of prefill -- 45% of all request time, from 7.4% of requests.
+;;;
 ;;; EXTENSIONS (a list of packages, e.g. pi-mcp-adapter from peteches
 ;;; packages pi-coding-agent) symlinks each package's own
 ;;; lib/node_modules/<package-name> output to
