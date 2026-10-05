@@ -635,38 +635,54 @@
                 ;; context, and a hard ceiling: going past it would be RoPE
                 ;; extrapolation beyond what the model was trained for.
                 ;;
-                ;; Sized to demand, not to VRAM. 147456 leaves usable prompt
-                ;; space of 131072 once --genlimit below is reserved, since
-                ;; koboldcpp subtracts the generation budget from the context
-                ;; window rather than adding to it. Over 1,678 pi requests
-                ;; since the 196608 deploy on 2026-09-28, demand measured
-                ;; p50 59,167 / p90 108,258 / p95 115,897 / p99 132,020 /
-                ;; max 208,782 -- so 131072 covers p95 with 13% headroom and
-                ;; lands within 1% of p99, and only 19 requests (1.1%)
-                ;; context-shift rather than fit whole.
+                ;; Chosen so usable prompt space is 131072, because
+                ;; koboldcpp subtracts --genlimit from the context window
+                ;; rather than adding to it: 163840 - 32768 = 131072.
+                ;; Confirmed live -- under the 147456/16384 pairing below,
+                ;; received prompt sizes topped out at p99 = 131,072
+                ;; exactly, i.e. contextsize - genlimit.
+                ;;
+                ;; 131072 usable is sized to demand, not to VRAM: over 1,678
+                ;; pi requests demand measured p50 59,167 / p90 108,258 /
+                ;; p95 115,897 / p99 132,020 / max 208,782, so it covers p95
+                ;; with 13% headroom and lands within 1% of p99, and only 19
+                ;; requests (1.1%) context-shift rather than fit whole. It
+                ;; also removed the pathology this was tuned for: the old
+                ;; 196608/32768 pairing left 163,840 usable while clients
+                ;; were told 196,608, producing a 924-request pile-up at
+                ;; 163,925-163,984 that burned 31.4 GPU-hours of re-prefill
+                ;; in a week (45% of all request time, from 7.4% of
+                ;; requests). After the fix the most repeated CtxLimit value
+                ;; occurred twice.
+                ;;
+                ;; contextsize was first cut to 147456 alongside --genlimit
+                ;; 16384, which gave the same 131072 usable prompt but
+                ;; starved generation -- see the --genlimit note below. It
+                ;; is 163840 rather than 147456 so the generation budget can
+                ;; return to 32768 without giving up any prompt space.
                 ;;
                 ;; The binding constraint is host RAM, not VRAM. koboldcpp's
                 ;; SmartCache keeps KV snapshots in RAM and, for this hybrid
                 ;; recurrent model, the C++ "RNN Lifeboat" path runs it
                 ;; whether --smartcache is passed or not, across 7 slots at
-                ;; ~18.65 KB per token of live context. Worst-case slot RAM
-                ;; is thus 7 x (usable prompt x 18.65 KB): at the previous
-                ;; 163,840 usable that was 20.9 GB against a 19.5 GB VM,
-                ;; which is why the box was thrashing (koboldcpp VmSwap
-                ;; 9.5 GB, 49 MiB RAM available, vmstat si/so to 59 MB/s,
-                ;; PSI memory full avg300=13.36 -- 13% of all wall-clock
-                ;; time stalled on memory). At 131,072 usable it is 16.7 GB.
+                ;; ~18.65 KB per token of live context. Before the fix that
+                ;; reached 20.9 GB against a 19.5 GB VM and the box thrashed
+                ;; (koboldcpp VmSwap 9.5 GB, 49 MiB RAM available, vmstat
+                ;; si/so to 59 MB/s, PSI memory full avg300=13.36 -- 13% of
+                ;; all wall-clock time stalled on memory). What actually
+                ;; cleared it was pi compacting at 131072 instead of driving
+                ;; sessions into the wall: afterwards PSI was 0.00, si 0,
+                ;; VmSwap 2.8 GB and the live slots 8.0 GB, slot size being
+                ;; bounded by tokens in use rather than by contextsize.
                 ;;
-                ;; VRAM-wise this *frees* ~916 MiB: KV costs 19.13 KiB/token
-                ;; (17.998 across the 16 real-KV layers + 1.125 for the
-                ;; 1-layer MTP draft cache), so 196,864 cells cost 3,676.78
-                ;; MiB and 147,712 cells cost 2,761 MiB -- on a card that
-                ;; already had ~1.7 GB spare with nothing worth spending it
-                ;; on. Must be kept in step with contextWindow in
-                ;; configs/pi/defaults/models.json (= context-size minus
-                ;; --genlimit) or pi compacts against a window the server
-                ;; cannot actually accept.
-                (context-size 147456)
+                ;; VRAM cost of 163840 over 147456 is ~585 MiB (KV is
+                ;; 19.13 KiB/token: 17.998 across the 16 real-KV layers plus
+                ;; 1.125 for the 1-layer MTP draft cache), comfortably inside
+                ;; the ~3.1 GB the smaller window freed. Must be kept in step
+                ;; with contextWindow in configs/pi/defaults/models.json
+                ;; (= context-size minus --genlimit) or pi compacts against a
+                ;; window the server cannot actually accept.
+                (context-size 163840)
                 (gpu-layers 999)
                 (cuda-device "0")
                 ;; Caddy's koboldcpp.ts.peteches.co.uk reverse proxy
@@ -711,20 +727,30 @@
                   ;; ("stopReason": "length" at exactly 8192, confirmed
                   ;; live in a pi session doing a 35-item audit writeup).
                   ;;
-                  ;; Halved from 32768 to 16384 on 2026-10-04, for two
-                  ;; reasons. (1) This budget is reserved *inside*
-                  ;; --contextsize above, so it directly shrinks usable
-                  ;; prompt space and inflates every SmartCache save-state
-                  ;; slot -- 32768 was costing 32,768 x 18.65 KB = 611 MB of
-                  ;; host RAM per slot, 4.3 GB across all 7. (2) Measured
-                  ;; over 1,678 pi requests, output length is p50 91 /
-                  ;; p90 1,305 / p95 1,804 / p99 6,993; only 17 generations
-                  ;; (1.0%) exceeded 8192 tokens and 12 exceeded 16384.
-                  ;; 16384 still gives p99 2.3x headroom while staying far
-                  ;; from the fill-the-window pattern that motivated this
-                  ;; flag. Must be kept in step with maxTokens in
+                  ;; Cut to 16384 on 2026-10-04 and reverted the next day
+                  ;; -- the same failure mode the 8192 note above records.
+                  ;; The case for cutting it was that this budget is
+                  ;; reserved *inside* --contextsize (so it shrinks usable
+                  ;; prompt space) and that measured output length is p50 91
+                  ;; / p90 1,305 / p95 1,804 / p99 6,993, with only 12 of
+                  ;; 1,678 generations exceeding 16384. Both measurements
+                  ;; were right and the conclusion was wrong: that ~0.7%
+                  ;; tail is exactly the work that has to finish in one
+                  ;; pass, so capping it does not remove long generations,
+                  ;; it converts successful ones into visible failures.
+                  ;; Post-deploy, 8 of 944 requests (0.85%) were cut at
+                  ;; precisely 16,384 output tokens with 60-77k of context
+                  ;; still free, which pi surfaces as "Response was
+                  ;; truncated before completion" -- roughly a 9x rise on
+                  ;; the 0.6% rate at 32768. Do not retune this from output
+                  ;; length percentiles alone.
+                  ;;
+                  ;; Back to 32768, with the prompt-space cost paid by
+                  ;; raising --contextsize above instead, so usable prompt
+                  ;; stays at 131072 and nothing is traded away. Must be
+                  ;; kept in step with maxTokens in
                   ;; configs/pi/defaults/models.json.
-                  "--genlimit" "16384"
+                  "--genlimit" "32768"
                   ;; Tool calls were coming back as garbled pseudo-XML text
                   ;; (mismatched <function=bash>...</parameter> tags) that
                   ;; pi's client can't parse, instead of a real structured

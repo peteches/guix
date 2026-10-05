@@ -61,8 +61,8 @@
 ;;; Both must track the koboldcpp service on comfyui
 ;;; (peteches/systems/comfyui.scm):
 ;;;
-;;;   contextWindow = --contextsize - --genlimit   (147456 - 16384 = 131072)
-;;;   maxTokens     = --genlimit                                      (16384)
+;;;   contextWindow = --contextsize - --genlimit   (163840 - 32768 = 131072)
+;;;   maxTokens     = --genlimit                                      (32768)
 ;;;
 ;;; koboldcpp reserves the generation budget *inside* the context window
 ;;; rather than adding to it, so the prompt space a client may actually use
