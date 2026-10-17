@@ -19,6 +19,7 @@
   #:use-module (gnu home)
   #:use-module (gnu home services)
   #:use-module (gnu home services guix)
+  #:use-module (gnu home services xdg)
   #:use-module (peteches channels base)
   #:use-module (peteches packages lycheeslicer)
   #:use-module (peteches packages rclone)
@@ -74,5 +75,14 @@
 	       (profiles %mpv-profiles)))
 
      (service home-channels-service-type
-	      %base-channels))
+	      %base-channels)
+
+     ;; OAuth redirect for Lychee Slicer: the app listens on the
+     ;; lycheeslicer:// URI scheme (its .desktop declares the handler),
+     ;; but nothing associates it without this, so browser logins fail
+     ;; to redirect back.  Merges with the firefox mime service, which
+     ;; owns the http/https defaults.
+     (service home-xdg-mime-applications-service-type
+	      (home-xdg-mime-applications-configuration
+	       (default '(("x-scheme-handler/lycheeslicer" . "lycheeslicer.desktop"))))))
     base-services))))
