@@ -31,7 +31,7 @@
   #:use-module (peteches home modules base))
 
 (home-environment
- (packages (append (list lycheeslicer-7.6.2 rclone zoom) base-packages))
+ (packages (append (list lycheeslicer-8.0.2 rclone zoom) base-packages))
  (services
   (modify-services
    (append
