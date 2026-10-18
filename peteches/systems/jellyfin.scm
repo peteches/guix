@@ -13,6 +13,7 @@
   #:use-module (peteches systems vm-base)
   #:use-module (peteches services alloy)
   #:use-module (peteches services jellyfin)
+  #:use-module (peteches services media-normalise)
   #:use-module (peteches services restic)
   #:use-module (peteches services seerr)
   #:use-module (peteches services tailscale)
@@ -94,6 +95,11 @@
       (service jellyfin-service-type
                (jellyfin-configuration
                 (hardware-accel 'nvenc)))
+      ;; Nightly offline re-encode + Radarr/Sonarr re-import so clients
+      ;; direct-play instead of transcoding on the fly.  Inert until the
+      ;; radarr/sonarr API key sops secrets exist (preflight aborts).
+      (service media-normalise-service-type
+               (media-normalise-configuration))
       (service alloy-service-type
                (alloy-configuration
                 (hostname "jellyfin.peteches.co.uk")
