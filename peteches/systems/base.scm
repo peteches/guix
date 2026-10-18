@@ -76,6 +76,7 @@
 
   #:use-module (gnu packages fonts)
   #:use-module (gnu packages linux)  ; linux-firmware, intel-microcode
+  #:use-module (gnu packages glib)   ; dbus (dbus-uuidgen for machine-id activation)
 
 
   #:use-module (nongnu services nvidia)
@@ -509,6 +510,25 @@ for a non-NVIDIA host."
          (printing-services (if with-printing? (list (service cups-service-type)) '()))
          (bluetooth-services (if with-bluetooth? (list (service bluetooth-service-type)) '()))
          (nonguix-services (if with-nonguix? (list (nonguix-substitute-service)) '()))
+	 ;; CEF/Chromium-based apps (e.g. LycheeSlicer 8's Emeraude engine) read
+	 ;; the machine UUID from /var/lib/dbus/machine-id.  systemd-based distros
+	 ;; always have that file; Guix System never creates it, and such apps
+	 ;; then fail in obscure ways -- LycheeSlicer hangs forever on its
+	 ;; "Check licenses" splash because its license binding rejects with
+	 ;; "Machine UUID not available !".  Seed it once from /etc/machine-id
+	 ;; when present, else generate one; /var is persistent, so the UUID
+	 ;; (and any license bound to it) stays stable across reboots.
+	 (machine-id-services
+	  (list (simple-service 'dbus-machine-id activation-service-type
+				#~(begin
+				    (use-modules (guix build utils))
+				    (unless (file-exists? "/var/lib/dbus/machine-id")
+				      (mkdir-p "/var/lib/dbus")
+				      (if (file-exists? "/etc/machine-id")
+					  (copy-file "/etc/machine-id"
+						     "/var/lib/dbus/machine-id")
+					  (invoke #$(file-append dbus "/bin/dbus-uuidgen")
+						  "--ensure=/var/lib/dbus/machine-id")))))))
          (sops-services
           (if with-sops?
               (cons (service sops-key-generator-service-type)
@@ -537,6 +557,7 @@ for a non-NVIDIA host."
 		  printing-services
 		  bluetooth-services
 		  nonguix-services
+		  machine-id-services
 		  nvidia-services
 		  docker-services
 		  peteches-tailscale-services
