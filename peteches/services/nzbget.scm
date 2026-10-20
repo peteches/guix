@@ -44,6 +44,8 @@
                (default 8))
   (encryption? nzbget-news-server-encryption?
                (default #t))
+  (ip-version nzbget-news-server-ip-version
+              (default "auto"))
   (retention nzbget-news-server-retention
              (default 0))
   (level nzbget-news-server-level
@@ -177,6 +179,12 @@ Passwords are omitted and injected at startup via --option."
                                      ".Encryption="
                                      (bool->nzbget (nzbget-news-server-encryption?
                                                     s))
+                                     "\n"
+                                     "Server"
+                                     num
+                                     ".IpVersion="
+                                     (nzbget-news-server-ip-version
+                                      s)
                                      "\n"
                                      "Server"
                                      num

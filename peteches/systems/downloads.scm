@@ -128,6 +128,7 @@
                         (username "peteches")
                         (password-file "/run/secrets/nzbget-frugal-password")
                         (connections 15)
+                        (ip-version "ipv4")
                         (encryption? #t))
                        ;; Frugal's "separate EU Bonus server", offered as a
                        ;; backup/fill server (1TB/month cap).  Level 1 so NZBGet
