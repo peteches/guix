@@ -1,5 +1,5 @@
-;; downloads.scm — NZBGet (Usenet) + Transmission (torrents) on a Proxmox VM.
-;; NZBGet on port 6789, Transmission on port 9091, both via Tailscale.
+;; downloads.scm — NZBGet (Usenet) on a Proxmox VM.
+;; NZBGet on port 6789, via Tailscale.
 ;;
 ;; Bootstrap note: the CIFS mount and SOPS secrets require the VM's age key
 ;; to be enrolled first.  See the deployment plan for the two-pass sequence.
@@ -16,7 +16,6 @@
   #:use-module (peteches services alloy)
   #:use-module (peteches services media-accounts)
   #:use-module (peteches services nzbget)
-  #:use-module (peteches services transmission)
   #:use-module (peteches services restic)
   #:use-module (peteches services tailscale)
   #:use-module (sops secrets)
@@ -57,7 +56,7 @@
      (restic-vm-backup-configuration
       (vm-name "downloads")
       (synology-host "nas.peteches.co.uk")
-      (backup-paths '("/var/lib/nzbget" "/var/lib/transmission"))
+      (backup-paths '("/var/lib/nzbget"))
       (password-file "/run/secrets/restic-password")
       (ssh-key-file "/run/secrets/restic-ssh-key"))
      #:sops-secrets
@@ -92,11 +91,6 @@
        (path "/run/secrets/nzbget-frugal-password")
        (permissions #o400))
       (sops-secret
-       (key '("rpc-password"))
-       (file (local-file "../../secrets/hosts/downloads/transmission.yaml"))
-       (path "/run/secrets/transmission-password")
-       (permissions #o400))
-      (sops-secret
        (key '("ssh-private-key"))
        (file (local-file "../../secrets/hosts/downloads/guix-build.yaml"))
        (path "/run/secrets/guix-offload-key")
@@ -117,12 +111,29 @@
                 (news-servers
                  (list (nzbget-news-server
                         (name "Frugal")
-                        (host "eunews-v6.frugalusenet.com")
+                        ;; IPv4 endpoint: after the UCG-Fibre swap the LAN only
+                        ;; gets a ULA prefix via RA (no global v6 route), so the
+                        ;; -v6 hostname is unreachable (ENETUNREACH).  Frugal's
+                        ;; servers are dual-stack per their FAQ.
+                        (host "eunews.frugalusenet.com")
                         (port 563)
                         (username "peteches")
                         (password-file "/run/secrets/nzbget-frugal-password")
                         (connections 15)
-                        (encryption? #t))))
+                        (encryption? #t))
+                       ;; Frugal's "separate EU Bonus server", offered as a
+                       ;; backup/fill server (1TB/month cap).  Level 1 so NZBGet
+                       ;; only falls back to it for articles the main server
+                       ;; 430s -- e.g. the old Psychoville sets.
+                       (nzbget-news-server
+                        (name "FrugalBonus")
+                        (host "bonus.frugalusenet.com")
+                        (port 563)
+                        (username "peteches")
+                        (password-file "/run/secrets/nzbget-frugal-password")
+                        (connections 8)
+                        (encryption? #t)
+                        (level 1))))
                 (categories
                  (list (nzbget-category (name "tv")
                                         (dest-dir "/media/downloads/usenet/completed/tv"))
@@ -134,12 +145,6 @@
 					(dest-dir "/media/downloads/usenet/completed/standup-comedy"))
                        (nzbget-category (name "books")
                                         (dest-dir "/media/downloads/usenet/completed/books"))))))
-      (service transmission-service-type
-               (transmission-configuration
-                (rpc-authentication-required? #t)
-                (rpc-password-file "/run/secrets/transmission-password")
-
-                (categories '("tv" "film"))))
       (service alloy-service-type
                (alloy-configuration
                 (hostname "downloads.peteches.co.uk")
@@ -148,7 +153,6 @@
                                  (cons "/var/log/ntpd.log" "ntpd")
                                  (cons "/var/log/alloy.log" "alloy")
                                  (cons "/var/log/tailscaled-*.log" "tailscale")
-                                 (cons "/var/log/nzbget.log" "nzbget")
-                                 (cons "/var/log/transmission.log" "transmission"))))))))))
+                                 (cons "/var/log/nzbget.log" "nzbget"))))))))))
 
 downloads-os

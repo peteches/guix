@@ -152,7 +152,7 @@ the port it actually listens on:
 | caddy                    | =curl -sfk https://<ip>/=                          |
 | prowlarr                 | =curl -sf http://<ip>:9696/ping=                   |
 | arr                      | =curl -sf http://<ip>:8989/ping= (Sonarr), =:7878/ping= (Radarr) |
-| downloads                | =curl -sf http://<ip>:6789/= (NZBGet), =:9091/transmission/rpc= |
+| downloads                | =curl -sf http://<ip>:6789/= (NZBGet) |
 | rustdesk                 | TCP connect on its relay port                      |
 | concourse-db             | =pg_isready -h <ip>=                               |
 | concourse-web01          | =curl -sf http://<ip>:8080/api/v1/info=            |

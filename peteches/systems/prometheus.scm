@@ -245,12 +245,6 @@
                            (targets '("192.168.51.196:6789"))
                            (labels '(("instance" . "nzbget")))))))
                   (prometheus-scrape-config
-                   (job-name "transmission")
-                   (static-configs
-                    (list (prometheus-static-config
-                           (targets '("192.168.51.196:9091"))
-                           (labels '(("instance" . "transmission")))))))
-                  (prometheus-scrape-config
                    (job-name "concourse")
                    (metrics-path "/api/v1/metrics")
                    (static-configs
