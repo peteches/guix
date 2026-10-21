@@ -79,29 +79,38 @@
                  "  }\n"))
 
 (define (render-syslog-block address port protocol format)
+  ;; NOTE: loki.source.syslog strips every `__'-prefixed label (including
+  ;; __syslog_message_hostname) before forwarding, so the hostname->host
+  ;; mapping must run *inside* the source via relabel_rules, not in a
+  ;; downstream loki.relabel component.  The loki.relabel component here is
+  ;; therefore rules-only; the source writes straight to loki.write.
   (if (not port) ""
-      (string-append "\nloki.source.syslog \"default\" {\n"
+      (string-append "\nloki.relabel \"syslog\" {\n"
+                     ;; Required by Alloy even though nothing forwards to this
+                     ;; component: it exists purely so the source can borrow
+                     ;; its rules via relabel_rules.  Do NOT route the source
+                     ;; through it -- re-applying the host rule downstream
+                     ;; would see the (already stripped) __syslog_message_*
+                     ;; labels as empty and blank out the host label again.
+                     "  forward_to = [loki.write.default.receiver]\n"
+                     "  rule {\n"
+                     "    target_label = \"job\"\n"
+                     "    replacement  = \"syslog\"\n"
+                     "  }\n"
+                     "  rule {\n"
+                     "    source_labels = [\"__syslog_message_hostname\"]\n"
+                     "    target_label  = \"host\"\n"
+                     "  }\n"
+                     "}\n\n"
+                     "loki.source.syslog \"default\" {\n"
                      (if (member protocol
                                  '("tcp" "both"))
                          (render-syslog-listener address port "tcp" format) "")
                      (if (member protocol
                                  '("udp" "both"))
                          (render-syslog-listener address port "udp" format) "")
-                     "  forward_to = [loki.relabel.syslog.receiver]
-"
-                     "}\n\n"
-                     "loki.relabel \"syslog\" {\n"
-                     "  forward_to = [loki.write.default.receiver]
-"
-                     "  rule {\n"
-                     "    target_label = \"job\"\n"
-                     "    replacement  = \"syslog\"\n"
-                     "  }\n"
-                     "  rule {\n"
-                     "    source_labels = [\"__syslog_message_hostname\"]
-"
-                     "    target_label  = \"host\"\n"
-                     "  }\n"
+                     "  relabel_rules = loki.relabel.syslog.rules\n"
+                     "  forward_to = [loki.write.default.receiver]\n"
                      "}\n")))
 
 (define (render-alloy-river config)
