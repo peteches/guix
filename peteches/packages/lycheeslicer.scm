@@ -104,6 +104,88 @@
               (delete-file "LycheeSlicer.desktop")
               (delete-file "LycheeSlicer.svg")
               #t))
+          ;; The 8.0.2 Linux build's hollowing bridge is broken around
+          ;; SharedArrayBuffers: getHollowingVoxels returns the voxel grid
+          ;; as a plain ArrayBuffer (the CEF V8 API cannot create SABs),
+          ;; and getHollowingGeometry refuses to compute from it: the
+          ;; native runtime wants SAB-backed data ("not a SharedArrayBuffer
+          ;; TypedArray") and aborts every recomputation with "Can't
+          ;; compute hollowed geometry" (previously-cached hollow meshes
+          ;; still display, so the breakage looks object-specific).
+          ;; Feeding it an SAB is impossible: CEF's signature validation
+          ;; for the parameter ([Undefined | TypedArray | ArrayBuffer])
+          ;; rejects every SAB-backed value before the runtime ever sees
+          ;; it, and the voxel mutators (hollowingVoxelsInfill,
+          ;; ...DisablePockets, ...) declare plain ArrayBuffer parameters
+          ;; too.  The signature does allow Undefined, though, and the
+          ;; native job keeps its own internal voxel grid -- the very data
+          ;; getHollowingVoxels reads out -- so the shim intercepts
+          ;; getHollowingGeometry and replaces the buffer argument with
+          ;; undefined, which makes the computation run entirely
+          ;; native-side ("voxelsWasUsed": false).  Verified live via CDP
+          ;; on every scene object with a non-empty internal grid:
+          ;; hollowingHasGeometry=true.
+          (add-after 'binary-unpack 'install-hollowing-geometry-shim
+            (lambda _
+              (call-with-output-file "lib/LycheeSlicer/bin/hollowing-geometry-shim.js"
+                (lambda (port)
+                  (call-with-input-file #$(plain-file "lycheeslicer-hollowing-geometry-shim.js" "
+/* Guix packaging shim for LycheeSlicer 8.0.2 (see peteches/packages/lycheeslicer.scm).
+ * getHollowingGeometry aborts with 'Can't compute hollowed geometry' when
+ * handed the plain ArrayBuffer the app passes (the native runtime wants
+ * SharedArrayBuffer-backed data, yet CEF's signature validation would
+ * itself reject every SAB-backed value).  The parameter also accepts
+ * Undefined, and the native hollowing job keeps its own internal voxel
+ * grid -- passing undefined makes it compute from that instead (result:
+ * 'voxelsWasUsed': false, hollowingHasGeometry: true). */
+(function () {
+  \"use strict\";
+  function shim() {
+    if (typeof Addon3DCore === \"undefined\") return false; /* retry later */
+    try {
+      if (!Addon3DCore.getHollowingGeometry || Addon3DCore.__guixHollowShim) return true;
+      var original = Addon3DCore.getHollowingGeometry;
+      Addon3DCore.getHollowingGeometry = function () {
+        var args = Array.prototype.slice.call(arguments);
+        for (var i = 0; i < args.length; i++) {
+          if (typeof args[i] !== \"function\" &&
+              (args[i] instanceof ArrayBuffer || ArrayBuffer.isView(args[i]))) {
+            args[i] = undefined;
+          }
+        }
+        return original.apply(this, args);
+      };
+      Addon3DCore.__guixHollowShim = true;
+      return true;
+    } catch (e) {
+      return true; /* give up quietly rather than poll forever */
+    }
+  }
+  if (!shim()) {
+    var timer = setInterval(function () { if (shim()) clearInterval(timer); }, 5);
+    setTimeout(function () { clearInterval(timer); }, 15000);
+  }
+})();
+")
+                    (lambda (in) (dump-port in port)))))
+              (for-each
+               (lambda (entry)
+                 (let* ((page (car entry))
+                        (bundle (cdr entry))
+                        (file (string-append "lib/LycheeSlicer/bin/" page ".html"))
+                        (anchor (string-append "<script src=\"./" bundle ".js\"")))
+                   (substitute* file
+                     ((anchor)
+                      (string-append "<script src=\"./hollowing-geometry-shim.js\"></script>"
+                                     anchor)))
+                   ;; Fail loudly on version bumps that move the anchor.
+                   (unless (zero? (system* "grep" "-q" "hollowing-geometry-shim.js" file))
+                     (error "hollowing shim injection failed" file))))
+               '(("index3D" . "render3D")
+                 ("indexCLI" . "renderCLI")
+                 ("indexLysToLyl" . "renderLysToLyl")
+                 ("indexPreview3D" . "renderPreview3D")))
+              #t))
           ;; The AppImage desktop file runs "Exec=AppRun %u", where AppRun
           ;; cds into the app dir and execs ./LycheeSlicer --no-sandbox.
           ;; Launchers like wofi have no ambient LD_LIBRARY_PATH, so point
