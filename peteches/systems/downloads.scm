@@ -90,6 +90,14 @@
        (file (local-file "../../secrets/hosts/downloads/nzbget.yaml"))
        (path "/run/secrets/nzbget-frugal-password")
        (permissions #o400))
+      ;; NB: the sops key name must differ from the mount path's basename:
+      ;; sops-guix decrypts to /run/secrets/<key> and then symlinks that to
+      ;; the path, so identical names collide (EEXIST) at every boot.
+      (sops-secret
+       (key '("blocknews"))
+       (file (local-file "../../secrets/hosts/downloads/blocknews.yaml"))
+       (path "/run/secrets/blocknews-password")
+       (permissions #o400))
       (sops-secret
        (key '("ssh-private-key"))
        (file (local-file "../../secrets/hosts/downloads/guix-build.yaml"))
@@ -133,7 +141,23 @@
                         (password-file "/run/secrets/nzbget-frugal-password")
                         (connections 8)
                         (encryption? #t)
-                        (level 1))))
+                        (level 1))
+                       ;; Block account (Frugal yearly-plan redemption):
+                       ;; aggregates missing articles/par-blocks across many
+                       ;; servers, so it only ever sees what both Frugal
+                       ;; spools 430.  Level 2 = pure fill.
+                       (nzbget-news-server
+                        (name "Blocknews")
+                        ;; The generic blocknews.net hostname has its SSL ports
+                        ;; closed (443 is plain NNTP only); the regional
+                        ;; hostnames serve SSL on 563.  EU server = closest.
+                        (host "eunews.blocknews.net")
+                        (port 563)
+                        (username "peteches")
+                        (password-file "/run/secrets/blocknews-password")
+                        (connections 8)
+                        (encryption? #t)
+                        (level 2))))
                 (categories
                  (list (nzbget-category (name "tv")
                                         (dest-dir "/media/downloads/usenet/completed/tv"))
