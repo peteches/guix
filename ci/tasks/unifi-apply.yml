@@ -11,8 +11,8 @@ inputs:
   path: repo
 
 params:
-  AWS_ACCESS_KEY_ID: ((minio_access_key))
-  AWS_SECRET_ACCESS_KEY: ((minio_secret_key))
+  AWS_ACCESS_KEY_ID: ((terraform.minio_access_key))
+  AWS_SECRET_ACCESS_KEY: ((terraform.minio_secret_key))
   UNIFI_API_KEY: ((unify_api_key))
 
 run:
