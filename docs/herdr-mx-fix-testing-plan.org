@@ -1,0 +1,353 @@
+#+TITLE: Testing the peteches/herdr-mx fork fixes
+#+STARTUP: showall
+
+* What is actually under test
+
+Facts verified on claude-workstation (2026-09-27), not assumptions:
+
+| Fact | Value |
+|---|---|
+| Local clone | ~/area_51/herdr-mx, branch =mx=, clean except untracked =.claude/= |
+| Origin | =git@github.com:peteches/herdr-mx.git= (public: GitHub API returns 200) |
+| Fork CI state | **0 workflow runs, 0 tags** — the =preview-mx= workflow has never published here |
+| HEAD | =8f61aff2 fix(client): stop main-summary refresh from blocking the event loop= |
+| Guix pin | =peteches/packages/herdr-mx.scm= → =mx-preview-2026-09-11-0302-79803d1841bb= |
+| Pin ↔ commit | that tag's sha = =79803d18= = **HEAD~2** |
+| Upstream | 2lab-ai's newest release is still =mx-preview-2026-09-11-0302-79803d1841bb= — nothing newer to move to |
+| Installed here | =herdr 0.8.2-mx.preview-2026-09-11-0302-79803d1841bb= via ~/.guix-home/profile/bin/herdr |
+| Stale self-provisioned copy | none (no =~/.local/bin/herdr=) — the 2026-09-26 incident's residue is gone |
+
+So exactly **two untested commits**, both client-side only:
+
+1. =5362b91b fix(client): target agent focus with the public pane id, not the terminal id= (refs #91)
+2. =8f61aff2 fix(client): stop main-summary refresh from blocking the event loop= (+ a 60 s info-level
+   =client event loop heartbeat= log line, and =pending_main_refresh= coalescing reused on both paths)
+
+Diff scope: =src/client/mod.rs= and =src/client/supervisor.rs= only, +162/−29. Four =#[test]= fns added
+(=step_agent_focus_request_targets_public_pane_id=, =from_api_agent_id_is_public_pane_id_not_terminal_id=,
+=agent_focus_request_targets_public_pane_id_from_api_summary=, =main_summary_refresh_replaces_main_summary_only=).
+**No protocol/ABI change**: =PROTOCOL_VERSION= 21 and =WIRE_ABI_EPOCH= 3 are untouched, so a fork build still
+speaks the same wire format as the pinned one.
+
+* Constraints that shape the plan
+
+1. **The fixes are client-side; the client does not run on this VM.**
+   =herdr-mx= reaches the desktops through =base-packages= (peteches/home/modules/base.scm:172) and this VM
+   only runs the *server* (shepherd =herdr-server=, peteches/home/modules/claude-workstation.scm:157).
+   Layers 1–3 below can run here; the behavioural proof needs dagon or nyarlothotep.
+
+2. **Version parity is a hard gate, and failing it is the documented incident.**
+   =version_line_matches_current= compares the *full* version string (=0.8.2-mx.<build-id>=). If a fork-built
+   client does not print exactly what =command -v herdr= prints on the remote, the probe fails and add-remote
+   **self-provisions its own exe into the remote's =~/.local/bin/herdr=** — the crash-loop/cascade from
+   2026-09-26. ⇒ *Build one artifact and install it on both sides in the same window.*
+   (=build.rs= derives FULL_VERSION from =HERDR_BUILD_CHANNEL= + =HERDR_BUILD_ID=; a dirty tree also appends a
+   =-dirty.<hash>= build commit, so commit before building.)
+
+3. **Toolchain gap.** =rust-toolchain.toml= pins Rust **1.96.1**; Guix only has **rust 1.93.0** (no =rust-1.96=),
+   and this VM has no =cargo=, =rustc=, =just=, no =nix=, and =gh= is **not authenticated**. Guix *does* have
+   =zig 0.15.2= (the version the vendored libghostty-vt requires), =cmake=, =ninja=, =musl=, =cargo-nextest=.
+   A previous build succeeded here (=target/debug= dated 2026-09-26, warm 164 MB =~/.cargo/registry=,
+   =vendor/libghostty-vt/zig-out= present), so a =guix shell= build is plausible — but unproven at 1.93.
+
+* The short version — no Guix changes, no deploy, no static binary
+
+Three facts found after writing the layers below collapse most of the ceremony:
+
+1. **Guix's rust 1.93.0 already compiles this tree.** =target/debug/deps/herdr-bb9535b2fd2cf40b= (built here
+   2026-09-26, i.e. at =79803d18=) embeds =1.93.0 (254b59607 2026-01-19)=. The 1.96.1 pin is a rustup
+   convention, not a hard requirement — Guix's cargo ignores =rust-toolchain.toml=.
+2. **A static (musl) build is impossible with Guix's rust, and unnecessary.** Its =lib/rustlib= ships only
+   =x86_64-unknown-linux-gnu= and Guix has no =rustup= package. Static musl needs the rustup installer or CI.
+   A dynamic Guix build runs fine on the machine that built it — which is all a test needs.
+3. **Version parity can be satisfied with a build env var instead of a deploy.** =build.rs::full_version()=
+   composes FULL_VERSION purely from =HERDR_BUILD_CHANNEL= + =HERDR_BUILD_ID= (no commit, no =-dirty= marker).
+   Building with the *deployed* build id makes =remote_binary_matches= (version line + protocol) pass against
+   the existing workstation server → **no self-provisioning into =~/.local/bin/herdr=** → the 2026-09-26
+   incident cannot recur. Safe because these commits leave =PROTOCOL_VERSION= 21 / =WIRE_ABI_EPOCH= 3 alone.
+
+**Shortcut loop (recommended first; supersedes Layer 0 route A and all of Layers 4–5 for the test phase):**
+
+#+begin_src bash
+# ---- 0. get the tree (public repo: https needs no auth; use the ssh URL if you prefer)
+mkdir -p ~/area_51 && cd ~/area_51
+[ -d herdr-mx/.git ] || git clone https://github.com/peteches/herdr-mx.git
+cd ~/area_51/herdr-mx
+git fetch origin && git checkout mx && git merge --ff-only origin/mx   # ff-only: never clobbers local work
+git log --oneline -1                    # expect 8f61aff2
+
+# ---- 1. toolchain shell
+# On claude-workstation the warm 164 MB ~/.cargo/registry and the prebuilt
+# vendor/libghostty-vt/zig-out + .zig-cache make this build fast; elsewhere it is
+# a cold ~10-25 min build needing ~5 GB for target/.
+# NB: zig must be 0.15.2 -- plain `zig` resolves to 0.16.0 in Guix.
+guix shell rust rust:cargo cargo-nextest just zig@0.15.2 cmake ninja pkg-config git -- bash
+#+end_src
+
+Inside that shell:
+
+#+begin_src bash
+cd ~/area_51/herdr-mx
+rustc --version; zig version            # 1.93.0 / 0.15.2
+
+# ---- 2. the four new unit tests
+cargo nextest run --locked -E 'test(pane_id) or test(main_summary)'
+
+# ---- 3. build the candidate so it prints the SAME version as the deployed server
+HERDR_BUILD_CHANNEL=mx HERDR_BUILD_ID=preview-2026-09-11-0302-79803d1841bb \
+  cargo build --release --locked
+
+# ---- 4. stage it out-of-store
+mkdir -p /var/tmp/herdr-test
+install -Dm755 target/release/herdr /var/tmp/herdr-test/herdr
+/var/tmp/herdr-test/herdr --version     # expect herdr 0.8.2-mx.preview-2026-09-11-0302-79803d1841bb
+#+end_src
+
+Non-interactive one-shot form (steps 2–4 in a single shell entry), if you would rather paste once:
+
+#+begin_src bash
+cd ~/area_51/herdr-mx && guix shell rust rust:cargo cargo-nextest just zig@0.15.2 cmake ninja pkg-config git -- \
+  bash -ec '
+    cargo nextest run --locked -E "test(pane_id) or test(main_summary)"
+    HERDR_BUILD_CHANNEL=mx HERDR_BUILD_ID=preview-2026-09-11-0302-79803d1841bb \
+      cargo build --release --locked
+    mkdir -p /var/tmp/herdr-test
+    install -Dm755 target/release/herdr /var/tmp/herdr-test/herdr
+    /var/tmp/herdr-test/herdr --version'
+#+end_src
+
+**Build result (2026-09-29, claude-workstation, Guix rust 1.93.0):** succeeded in 2m23s (incremental —
+=target/= was warm). =/var/tmp/herdr-test/herdr= prints exactly
+=herdr 0.8.2-mx.preview-2026-09-11-0302-79803d1841bb=, 24,570,408 bytes,
+sha256 =de26d5a6d6e61bb31c8f8f82c4ded9fb14b2c6a8e9b3044c4bf814210935a679=. Dynamic, but with only two store
+dependencies, so it is copyable to any Guix machine that has both items:
+
+- =/gnu/store/m31vlvwm79m89fk3xk0z4h7snk61y510-glibc-2.41=
+- =/gnu/store/7iwcvd0gjrfq6bj7zvf3r59baw6vib5a-gcc-14.3.0-lib=
+
+**Known breakage at =8f61aff2= (found by this build attempt, not by the build):** the *test* target does not
+compile. =8f61aff2= removed =ClientSupervisorModel::refresh_main_summary_from_api= (only the comment at
+=src/client/mod.rs:6134= survives), but the test added by the earlier =5362b91b= still calls it at
+=src/client/supervisor.rs:4973= (=agent_focus_request_targets_public_pane_id_from_api_summary=). So
+=cargo nextest= / =cargo test= / =just test= all fail to build on every machine — Layer 1 is blocked until
+this is fixed. =cargo build --release= is unaffected (it does not compile test targets). The fix is to drive
+the snapshot API instead:
+
+#+begin_src rust
+model.apply_main_supervisor_snapshot(MainSupervisorSnapshot {
+    remotes: None,
+    ui_settings: None,
+    summary: ServerSummary::from_api(
+        vec![workspace_info("w1", "herdr", true)],
+        vec![agent_info("term_abc", "w1", "claude",
+                        crate::api::schema::AgentStatus::Idle, false, "w1:p1")],
+    ),
+});
+#+end_src
+
+(=MainSupervisorSnapshot= at =supervisor.rs:4131=, =apply_main_supervisor_snapshot= at =:1426=,
+=fetch_main_supervisor_snapshot= is the off-loop worker's fetch half.) =FakeSupervisorApi= then goes unused in
+that test. This is exactly what fork CI would have caught — see Layer 0 route A.
+
+Then run =/var/tmp/herdr-test/herdr= as the client — on dagon, where the multi-remote client actually lives.
+Getting it there is the only open question, since **claude-workstation cannot SSH to dagon**
+(=Permission denied (publickey)=; this VM's =~/.ssh/config= has only =localhost=):
+
+| Option | Cost | Note |
+|---|---|---|
+| Build on dagon instead (same =guix shell= command) | cold clone + cold crates (~164 MB) + cold zig fetch + full release build | zero cross-machine assumptions; workstation untouched |
+| Copy the dynamic binary workstation → dagon | one =scp= from the desktop side | only works if dagon has the same =/gnu/store/…-glibc…/lib/ld-linux-x86-64.so.2=; compare =readelf -l /var/tmp/herdr-test/herdr= (INTERP) on the workstation with =test -e <that path>= on dagon |
+| Fork CI (=preview-mx.yml=) → curl the musl fat bundle on dagon | enable Actions (0 runs today); =origin/mx= is already at =8f61aff2= | its version string is a *new* build id → parity mismatch → would self-provision. Use CI for the *packaged* step (Layer 4), not for the quick test |
+
+Test it against the real remotes (that is what the fixes touch), or isolate with =HERDR_CONFIG_PATH= /
+=HERDR_ENV=1= (the =herdr-dev= namespace) if you would rather not share the desktop's live config.
+Evidence to collect is unchanged: heartbeat cadence + no gaps under load (3b), focus lands on the right
+pane (3a), no =main supervisor refresh failed= / =app.shutdown= / SIGSEGV.
+**Rollback = =rm -rf /var/tmp/herdr-test=** and, if anything did self-provision,
+=rm -f ~/.local/bin/herdr= on the workstation. Layers 4–5 only become relevant once you decide to keep it.
+
+* Layer 0 — pick the build route (do this first)
+
+| Route | What it gives | Cost / risk |
+|---|---|---|
+| **A. Fork CI** — enable Actions on =peteches/herdr-mx=, push =mx=, let =.github/workflows/preview-mx.yml= publish | the *same* musl static-pie fat bundle the pinned release is, at tag =mx-preview-<date>-<sha>=, url-fetchable straight into a Guix package | needs =gh auth login= + Actions enabled on the fork; =TAP_PUSH_KEY= absent is fine (that step no-ops); ~15 min per run |
+| **B. Local =guix shell= build** | fastest iterate-on-tests loop, no auth, no network CI | Rust 1.93 vs pinned 1.96.1 may not compile; glibc build ≠ the musl artifact you would deploy — never package this binary |
+| **C. Real Guix source package** (=cargo-build-system= + =cargo-vendor= of the whole crate tree + zig for libghostty-vt) | reproducible, no upstream release dependency | by far the most work; only worth it if the fork becomes the long-term source of truth |
+
+**Recommendation:** B for Layers 1–3 (cheap, local, throwaway), A for Layers 4–5 (the deployable artifact).
+**Probe B before investing in it:**
+
+#+begin_src bash
+cd ~/area_51/herdr-mx
+guix shell -L ~/area_51/guix rust cargo cargo-nextest zig cmake ninja pkg-config git just -- \
+  cargo check --locked        # ~2 min with the warm registry; fails fast if 1.93 is too old
+#+end_src
+
+If =cargo check= fails on the toolchain, B is dead: everything moves to A (CI builds with exactly 1.96.1).
+
+* Layer 1 — in-repo static + unit gates (cheap, run first)
+
+The repo's own convention (AGENTS.md → Testing) is *just recipes, not raw cargo*:
+
+#+begin_src bash
+just lint          # cargo fmt --check + clippy --all-targets --locked -- -D warnings
+just test          # nextest --locked + python maintenance tests + ui-hot-path-architecture
+                   # + integration-assets (bun) + plugin-marketplace (bun)
+#+end_src
+
+Targeted at the two fixes:
+
+#+begin_src bash
+just test-one step_agent_focus_request_targets_public_pane_id
+just test-one from_api_agent_id_is_public_pane_id_not_terminal_id
+just test-one agent_focus_request_targets_public_pane_id_from_api_summary
+just test-one main_summary_refresh_replaces_main_summary_only
+#+end_src
+
+Protocol/ABI regression (must stay green — it is what makes the fork build wire-compatible with the
+pinned server):
+
+#+begin_src bash
+cargo nextest run --locked -E 'test(abi) or test(wire) or test(protocol)'
+grep -n 'WIRE_ABI_EPOCH\|pub const PROTOCOL_VERSION' src/protocol/abi.rs src/protocol/*.rs
+#+end_src
+
+=just windows-lint= is optional here (the diff is unix client paths), but it is cheap insurance that no
+=cfg(windows)= compile broke. Skip the =bun=/python legs only if those tools are unavailable — say so
+explicitly rather than letting =just test= silently skip (commit =b30a75d3= exists precisely because a
+fixture check was skipping itself).
+
+**Pass criteria:** fmt/clippy clean with =-D warnings=; full nextest green; the four new tests green;
+ABI epoch 3 / protocol 21 unchanged.
+
+* Layer 2 — isolated live runtime on this VM (never the production server)
+
+Use the repo's own =.agents/skills/herdr-throwaway-repro= skill, plus AGENTS.md's socket-isolation recipe:
+
+#+begin_src bash
+# talks to the herdr-dev server, NOT ~/.config/herdr (which holds the live shepherd server)
+env -u HERDR_SOCKET_PATH -u HERDR_CLIENT_SOCKET_PATH cargo run -- <command>
+#+end_src
+
+Non-negotiables from that skill: never run in the default session, never stop/restart/kill the main
+server (three OS accounts' shepherd =herdr-server= instances live here), unique session name, cleanup only
+the pane you created, artifacts in =/var/tmp=, IDs read from command output and never constructed.
+
+* Layer 3 — reproduce the two bugs (the actual point of the exercise)
+
+** 3a. #91 — agent focus targets the public pane id, not the terminal id
+   - Disposable named session, ≥2 panes with distinguishable agents.
+   - Drive the focus path the way the mx client does (sidebar/API summary → =AgentFocusRequest=), and assert
+     focus lands on the intended pane.
+   - **Run the same steps against the installed =79803d18= build first** and record the wrong behaviour.
+     Without that baseline the fix is unfalsifiable.
+
+** 3b. Event-loop stall → freezes + stuck "offline" badge
+   The new observable is the heartbeat: =client event loop heartbeat= at info level, every 60 s
+   (=LOOP_HEARTBEAT_INTERVAL=), in =~/.config/herdr/herdr-client.log= — a wedged loop reads as a *gap*.
+   1. Idle: heartbeat present at ~60 s cadence, no gaps.
+   2. Load: burst =SupervisorSummaryChanged(main)= / =ImmediateFocused= refreshes — several panes with
+      chatty output plus agent-state churn across ≥2 attached remotes (this is where the inline
+      =refresh_main_summary_from_api()= used to back up the bounded =event_tx= and stall every other
+      producer: secondary reconnects, remote summary-subscription threads).
+   3. Assert: no heartbeat gap > ~2 intervals, no =main supervisor refresh failed= cluster, no =app.shutdown=,
+      sidebar badge does not stick on "offline" while the connection is healthy, no SIGSEGV.
+   4. **Baseline the same load on the pinned build** — the freeze/badge symptom should reproduce there and
+      not on the candidate. That contrast *is* the test result.
+   5. Coalescing check: a burst should produce one refresh, not N (=pending_main_refresh=).
+
+** 3c. Handoff / reconnect regressions (the neighbouring risk)
+   #+begin_src bash
+   scripts/smoke_live_handoff_sessions.sh
+   cargo nextest run --locked -E 'test(live_handoff) or test(detach_reattach) or test(multi_client)'
+   #+end_src
+
+** 3d. Performance gates AGENTS.md requires before treating a build as release-worthy
+   #+begin_src bash
+   just bench-render-scale       # hidden vs visible, 1 vs ≥15 populated panes
+   just bench-release-smoke      # ~3–5 min, compares against the current stable binary
+   #+end_src
+   The change moves work *off* the loop thread, so a stall-to-latency trade is exactly what these catch.
+
+* Layer 4 — package the candidate in Guix (additive, never in place)
+
+Do **not** edit the pinned =herdr-mx=. Add a sibling definition so rollback is a one-line swap:
+
+- New =herdr-mx-fork= in =peteches/packages/herdr-mx.scm= (or =herdr-mx-local.scm=), same
+  =copy-build-system= / =#:install-plan '(("herdr-linux-x86_64" "bin/herdr"))= / =chmod 555= shape, but
+  =url-fetch= from **the fork's** release:
+  =https://github.com/peteches/herdr-mx/releases/download/mx-preview-<build-id>/herdr-linux-x86_64=,
+  sha256 from =guix hash -x <file>=. This follows the =pi-interactive-subagents.scm= precedent of pinning a
+  commit of your own GitHub fork.
+- Swap the *two* consumers, and only those two, to =herdr-mx-fork=:
+  =peteches/home/modules/base.scm:172= (desktops) and
+  =peteches/home/modules/claude-workstation.scm= (=herdr-server= exec + the spaces bootstrap script).
+  Both must move together — constraint 2.
+- Record in the package comment *why* the pin diverges from upstream and what would make it revert.
+
+Validation (AGENTS.md "Validating changes"):
+
+#+begin_src bash
+guix build -L . peteches/packages/herdr-mx.scm:herdr-mx-fork
+guix system build -L . --dry-run peteches/systems/claude-workstation.scm
+# ONE MODULE PER PROCESS — batching load checks gives false greens
+for m in "(peteches packages herdr-mx)" "(peteches home modules base)" \
+         "(peteches home modules claude-workstation)"; do
+  printf '%-44s ' "$m"
+  guix repl -L . -- /dev/stdin <<EOF >/dev/null 2>&1 && echo OK || echo FAIL
+(resolve-interface '$m)
+EOF
+done
+#+end_src
+
+Then run the =review-packages= skill over the new definition before deploying.
+
+* Layer 5 — deploy both sides together, then soak
+
+Follow =docs/fleet-deployment.org= and the =deploy-vms= skill (not raw =scripts/deploy.scm=):
+
+1. Deploy this VM: =deploy-vms claude-workstation= (server side; affects all three accounts' herdr servers).
+2. Reconfigure the desktops **locally on each** (they are deliberately absent from =machines.scm=):
+   =guix home reconfigure peteches/home/configs/<host>.scm= on dagon and nyarlothotep.
+3. Per-host verification:
+   - generation bump (=guix system describe= / =guix home describe=)
+   - =herdr --version= **identical** on client and server
+   - =command -v herdr= resolves to a =/gnu/store/...= path on every machine
+   - **no** =~/.local/bin/herdr= anywhere (if one appeared, parity failed — remove it and stop)
+   - shepherd: =herdr-server= running, =herd status herdr-server= clean; desktop attaches and the sidebar
+     lists the remotes
+4. Soak 24–48 h of normal multi-remote use, watching on each desktop:
+   =tail -F ~/.config/herdr/herdr-client.log= for =main supervisor refresh failed=, =app.shutdown= clusters,
+   SIGSEGV, heartbeat gaps; plus the two original symptoms (#91 mis-focus, stuck "offline" badge, freezes).
+5. **Rollback:** revert the two consumer lines to =herdr-mx=, redeploy/reconfigure, and delete any
+   self-provisioned =~/.local/bin/herdr=. The pinned upstream preview is untouched, so this is a 2-line revert.
+6. Only after a clean soak: consider sending the two commits upstream to 2lab-ai as a PR (AGENTS.md
+   external-contributor guardrail: never push master, never merge) and/or moving the pin permanently.
+
+* Risks and gotchas
+
+- **Rust 1.93 vs 1.96.1** — the local route may simply not compile. Layer 0's =cargo check= probe answers
+  this in minutes; if it fails, CI (route A) is the only build path.
+- **glibc ≠ musl** — a locally built binary is for Layers 1–3 only. Never package or deploy it: the shipped
+  artifact is static-pie musl with no patchelf, and a glibc build would also break the "identical pin on both
+  machines" property in a way that is invisible until add-remote self-provisions.
+- **Dirty tree changes the build id** (=build_commit= appends =-dirty.<hash>=) — commit or stash before any
+  build whose version string matters.
+- **Testing inside a live herdr session** — always clear =HERDR_SOCKET_PATH= / =HERDR_CLIENT_SOCKET_PATH=,
+  or the candidate will attach to (or worse, restart) the production server.
+- **Three accounts on this VM** — the workstation runs a herdr server for peteches, criticalgrind and ygo;
+  a server-side deploy touches all three, and the desktops' remote lists point at them.
+- **Fork CI publish permissions** — =preview-mx.yml='s publish job needs =contents: write=; on a fork with
+  Actions newly enabled, the first run may need the workflow permission granted in repo settings.
+- **Don't declare success from a green test run.** The four new unit tests already pass on the author's
+  machine by construction; the evidence that matters is Layer 3's before/after contrast under load and the
+  Layer 5 soak.
+
+* Suggested order of work
+
+1. Layer 0 probe (=cargo check= in =guix shell=) — 5 min, decides everything downstream.
+2. Layer 1 (=just lint=, =just test=, four targeted tests, ABI check).
+3. Layer 3a/3b baselines against the **installed** =79803d18= build, in a throwaway session (Layer 2 rules).
+4. Enable fork Actions, push =mx=, let =preview-mx= publish (route A) → sha256.
+5. Layer 4 packaging + validation + =review-packages=.
+6. Layer 5 deploy both sides, verify parity, soak, then decide: keep, upstream, or revert.
