@@ -4,15 +4,22 @@
 #
 # Only `house` runs a DHCP server; every other zone is static (VMs via Guix,
 # plus the NAS and Proxmox node).
+#
+# Every block pins `setting_preference` and `ipv6_interface_type` to valid
+# values. Provider v0.59.0 serialises an unset value for either as "" and the
+# UCGF (UniFi Network 10.6) rejects the networkconf create with
+# api.err.InvalidPayload — the provider's own issues #544/#550/#570 were
+# measured against a UCG-Fiber on exactly this firmware. The proper
+# omit-when-unset fix (#570) is not in any released provider version yet, so
+# we pin the fields instead.
 
 # mgmt — VLAN 10 — Proxmox node (static)
 resource "unifi_network" "mgmt" {
   name   = "mgmt"
   subnet = "10.0.10.1/24"
   vlan   = 10
-  # Pin to a valid enum: the provider serialises an unset value as "" and the
-  # UCGF (UniFi Network 10.x) rejects the create with InvalidPayload (#252).
-  ipv6_client_address_assignment = "slaac"
+  setting_preference  = "manual"
+  ipv6_interface_type = "none"
   dhcp_server = {
     enabled = false
   }
@@ -23,7 +30,8 @@ resource "unifi_network" "infra" {
   name   = "infra"
   subnet = "10.0.20.1/24"
   vlan   = 20
-  ipv6_client_address_assignment = "slaac"
+  setting_preference  = "manual"
+  ipv6_interface_type = "none"
   dhcp_server = {
     enabled = false
   }
@@ -34,7 +42,8 @@ resource "unifi_network" "monitoring" {
   name   = "monitoring"
   subnet = "10.0.30.1/24"
   vlan   = 30
-  ipv6_client_address_assignment = "slaac"
+  setting_preference  = "manual"
+  ipv6_interface_type = "none"
   dhcp_server = {
     enabled = false
   }
@@ -45,7 +54,8 @@ resource "unifi_network" "media" {
   name   = "media"
   subnet = "10.0.40.1/24"
   vlan   = 40
-  ipv6_client_address_assignment = "slaac"
+  setting_preference  = "manual"
+  ipv6_interface_type = "none"
   dhcp_server = {
     enabled = false
   }
@@ -56,7 +66,8 @@ resource "unifi_network" "critical_grind" {
   name   = "critical-grind"
   subnet = "10.0.50.1/24"
   vlan   = 50
-  ipv6_client_address_assignment = "slaac"
+  setting_preference  = "manual"
+  ipv6_interface_type = "none"
   dhcp_server = {
     enabled = false
   }
@@ -67,7 +78,8 @@ resource "unifi_network" "apps" {
   name   = "apps"
   subnet = "10.0.60.1/24"
   vlan   = 60
-  ipv6_client_address_assignment = "slaac"
+  setting_preference  = "manual"
+  ipv6_interface_type = "none"
   dhcp_server = {
     enabled = false
   }
@@ -78,7 +90,8 @@ resource "unifi_network" "workstations" {
   name   = "workstations"
   subnet = "10.0.70.1/24"
   vlan   = 70
-  ipv6_client_address_assignment = "slaac"
+  setting_preference  = "manual"
+  ipv6_interface_type = "none"
   dhcp_server = {
     enabled = false
   }
@@ -89,7 +102,8 @@ resource "unifi_network" "house" {
   name   = "house"
   subnet = "10.0.80.1/24"
   vlan   = 80
-  ipv6_client_address_assignment = "slaac"
+  setting_preference  = "manual"
+  ipv6_interface_type = "none"
   dhcp_server = {
     enabled = true
     start   = "10.0.80.10"
@@ -103,7 +117,8 @@ resource "unifi_network" "storage" {
   name   = "storage"
   subnet = "10.0.90.1/24"
   vlan   = 90
-  ipv6_client_address_assignment = "slaac"
+  setting_preference  = "manual"
+  ipv6_interface_type = "none"
   dhcp_server = {
     enabled = false
   }
