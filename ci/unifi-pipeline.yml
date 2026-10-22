@@ -1,0 +1,26 @@
+jobs:
+- name: plan-main
+  plan:
+  - get: repo-main
+    trigger: true
+  - task: plan
+    file: repo-main/ci/tasks/unifi-plan.yml
+
+- name: apply-main
+  plan:
+  - get: repo-main
+    passed:
+    - plan-main
+    trigger: true
+  - task: apply
+    file: repo-main/ci/tasks/unifi-apply.yml
+
+resources:
+- name: repo-main
+  source:
+    branch: main
+    paths:
+    - infra/unifi/*
+    - ci/tasks/unifi-*
+    uri: https://github.com/peteches/guix
+  type: git
