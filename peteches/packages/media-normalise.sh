@@ -49,10 +49,26 @@ api() {  # app METHOD /path [json-body]
 uri() { jq -sRr @uri <<<"$1"; }
 
 # ── predicates ──────────────────────────────────────────────────────────────
+# House video: HEVC Main 10, 8-bit or 10-bit.  The HDR transfer function is
+# preserved from the source (HDR stays HDR, SDR stays SDR), so we do not
+# require smpte2084 — and hevc_nvenc will not emit it for an SDR source.
+house_video() {  # file -> 0 if acceptable house video (HEVC Main 10, 8- or 10-bit)
+  # Parse each field directly rather than matching the combined CSV, because
+  # ffprobe reorders -show_entries output (the order is not the requested one).
+  local f=$1 codec profile pixfmt
+  codec=$($FP -v error -select_streams v:0 -show_entries stream=codec_name -of csv=p=0 "$f" 2>/dev/null | head -1)
+  profile=$($FP -v error -select_streams v:0 -show_entries stream=profile -of csv=p=0 "$f" 2>/dev/null | head -1)
+  pixfmt=$($FP -v error -select_streams v:0 -show_entries stream=pix_fmt -of csv=p=0 "$f" 2>/dev/null | head -1)
+  [[ $codec == hevc && $profile == "Main 10" ]] || return 1
+  case $pixfmt in
+    yuv420p|yuv420p10le) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
 conforming() {  # already house format?
-  local f=$1 v a s c
-  v=$($FP -v error -select_streams v:0 -show_entries stream=codec_name,profile,color_transfer,pix_fmt -of csv=p=0 "$f" 2>/dev/null || true)
-  [[ $v == "hevc,Main 10,smpte2084,yuv420p10le" ]] || return 1
+  local f=$1 a s c
+  house_video "$f" || return 1
   s=$($FP -v error -select_streams s -show_entries stream=codec_type -of csv=p=0 "$f" 2>/dev/null || true)
   [[ -z $s ]] || return 1                      # image subs would force burn-in
   while IFS= read -r c; do
@@ -80,11 +96,50 @@ split_of() {  # library path -> films|tv|standup-comedy
 }
 
 # ── encode + verify ─────────────────────────────────────────────────────────
+# Pick the hardware decoder for the input's video codec.  The house *encoder*
+# is always hevc_nvenc, but the *decoder* must match the source codec (H.264,
+# HEVC, VP9, AV1).  Returns empty for codecs with no cuvid decoder, in which
+# case we fall back to software decode.  (head -1: ffprobe lists each stream
+# twice for files with programs, e.g. m2ts.)
+hw_decoder() {  # input file -> cuvid decoder name (empty = software decode)
+  local codec
+  codec=$($FP -v error -select_streams v:0 -show_entries stream=codec_name -of csv=p=0 "$1" 2>/dev/null | head -1 || true)
+  case $codec in
+    h264) echo "h264_cuvid" ;;
+    hevc) echo "hevc_cuvid" ;;
+    vp9)  echo "vp9_cuvid" ;;
+    av1)  echo "av1_cuvid" ;;
+    *)    echo "" ;;
+  esac
+}
+
+# Pick the audio stream to encode.  The main surround mix is the stream with
+# the most channels, and its position varies by disc (on some the first audio
+# stream is a stereo downmix or a commentary, not the 5.1 main mix).  ffprobe
+# lists each stream twice for files with programs (m2ts), so parse the
+# top-level .streams with jq and return the 0-indexed position of the
+# highest-channel-count stream.  Falls back to 0 when there is no audio.
+best_audio() {  # input file -> 0-indexed position of the most-channel audio stream
+  local r
+  r=$($FP -v error -select_streams a -show_entries stream=channels -of json "$1" 2>/dev/null \
+    | jq -r '(.streams) as $a | ($a | map(.channels) | max) as $m
+             | ($a | to_entries | map(select(.value.channels == $m)) | .[0].key)' 2>/dev/null) || r=0
+  [[ $r == null || -z $r ]] && r=0
+  echo "$r"
+}
+
 encode() {  # src dst
-  local src=$1 dst=$2
+  local src=$1 dst=$2 dec hw
+  dec=$(hw_decoder "$src")
+  if [[ -n $dec ]]; then
+    hw="-hwaccel cuda -c:v $dec"
+  else
+    hw=""
+  fi
+  # shellcheck disable=SC2086
   $FF -hide_banner -nostdin -loglevel error -y \
-      -hwaccel cuda -c:v hevc_cuvid -i "$src" \
-      -map 0:v:0 -map 0:a:0 -sn -map_metadata -1 \
+      $hw -i "$src" \
+      -map 0:v:0 -map "0:a:$(best_audio "$src")" -sn -map_metadata -1 \
       -c:v hevc_nvenc -preset p6 -profile:v main10 -tier high \
       -rc vbr -cq "$CQ" -maxrate "$MAXRATE" -bufsize $((MAXRATE * 2)) \
       -g 96 -keyint_min 96 \
@@ -94,9 +149,8 @@ encode() {  # src dst
 }
 
 verify() {  # staged file -> 0 if it is a valid house-format file
-  local f=$1 v s dur sdur
-  v=$($FP -v error -select_streams v:0 -show_entries stream=codec_name,profile,color_transfer,pix_fmt -of csv=p=0 "$f" 2>/dev/null || true)
-  [[ $v == "hevc,Main 10,smpte2084,yuv420p10le" ]] || { log "verify: bad video ($v)"; return 1; }
+  local f=$1 s dur sdur
+  house_video "$f" || { log "verify: bad video"; return 1; }
   s=$($FP -v error -select_streams s -show_entries stream=codec_type -of csv=p=0 "$f" 2>/dev/null || true)
   [[ -z $s ]] || { log "verify: subtitle streams present"; return 1; }
   head -c 65536 "$f" | grep -qa moov || { log "verify: no moov in head (not faststart/unfinished)"; return 1; }
@@ -204,15 +258,24 @@ process_file() {
   base=$(basename "$src"); base=${base%.*}
   dir="$STAGING_ROOT/$(split_of "$src")/$base"
   staged="$dir/$base.mp4"
-  log "encode: $src -> $staged"
   [[ $DRY_RUN -eq 1 ]] && { log "encode: dry-run, skipping"; return 0; }
   mkdir -p "$dir"
-  SRC_CURRENT=$src
-  if ! encode "$src" "$staged"; then
-    log "encode FAILED: $src"; rm -rf -- "$dir"; return 0
+  # Cache: reuse a previously-encoded staged file rather than re-encoding from
+  # scratch.  A staged file left by an earlier run (a verify or import failure)
+  # is a complete encode, so we only re-verify it.  This makes verify fixes
+  # cheap — no 30-minute re-encode on every change.
+  if [[ -s $staged ]]; then
+    log "reusing cached encode: $staged"
+  else
+    log "encode: $src -> $staged"
+    SRC_CURRENT=$src
+    if ! encode "$src" "$staged"; then
+      log "encode FAILED: $src"; rm -rf -- "$dir"; return 0
+    fi
   fi
   if ! verify "$staged"; then
-    log "verify FAILED: $staged (quarantined, source untouched)"; rm -rf -- "$dir"; return 0
+    log "verify FAILED: $staged (kept in staging; source untouched)"
+    return 0
   fi
   if import_item "$app" "$staged" "$dir"; then
     rm -rf -- "$dir"
@@ -233,11 +296,16 @@ main() {
     [[ -r $(key_file "$app") ]] || die "API key for $app missing at $(key_file "$app")"
   done
   local root
-  while IFS= read -r -d '' f; do
-    case $f in
-      *.mp4|*.mkv|*.m2ts|*.ts|*.avi|*.wmv|*.mpg|*.mpeg) process_file "$f" ;;
-    esac
-  done < <(find $LIBRARY_ROOTS -type f -print0 | sort -z)
+  # LIBRARY_ROOTS is newline-separated (roots contain spaces, e.g. film titles);
+  # iterate over the lines and quote each root so find does not word-split it.
+  while IFS= read -r root; do
+    [[ -z $root ]] && continue
+    while IFS= read -r -d '' f; do
+      case $f in
+        *.mp4|*.mkv|*.m2ts|*.ts|*.avi|*.wmv|*.mpg|*.mpeg) process_file "$f" ;;
+      esac
+    done < <(find "$root" -type f -print0 | sort -z)
+  done <<<"$LIBRARY_ROOTS"
   log "=== media-normalise run end ==="
 }
 
