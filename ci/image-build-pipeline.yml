@@ -76,6 +76,17 @@ resources:
     - ci/tasks/build-vm-image.yml
     - ci/tasks/generate-age-key.yml
 
+- name: repo-agents
+  type: git
+  source:
+    uri: https://github.com/peteches/guix
+    branch: main
+    paths:
+    - peteches/systems/agents.scm
+    - peteches/channels/channels-nug.scm
+    - ci/tasks/build-vm-image.yml
+    - ci/tasks/generate-age-key.yml
+
 # Per-VM S3 resources — written after a successful image build to trigger the
 # terraform pipeline's provision job. MinIO bucket versioning must be enabled
 # on vm-images so each put creates a new version:
@@ -108,6 +119,16 @@ resources:
     use_path_style: true
     bucket: vm-images
     versioned_file: triggers/claude-workstation/image-url
+    access_key_id: ((image-build.minio_access_key))
+    secret_access_key: ((image-build.minio_secret_key))
+
+- name: agents-image-url
+  type: s3
+  source:
+    endpoint: https://minio.ts.peteches.co.uk
+    use_path_style: true
+    bucket: vm-images
+    versioned_file: triggers/agents/image-url
     access_key_id: ((image-build.minio_access_key))
     secret_access_key: ((image-build.minio_secret_key))
 
@@ -199,6 +220,35 @@ jobs:
       MINIO_ENDPOINT: https://minio.ts.peteches.co.uk
       VAULT_ADDR: https://vault.ts.peteches.co.uk
   - put: claude-workstation-image-url
+    params:
+      file: presigned-url/url
+
+- name: generate-agents-age-key
+  plan:
+  - get: repo
+  - task: generate-key
+    file: repo/ci/tasks/generate-age-key.yml
+    params:
+      VM_NAME: agents
+      VAULT_ADDR: https://vault.ts.peteches.co.uk
+
+- name: build-agents-image
+  plan:
+  - get: repo
+    resource: repo-agents
+    trigger: true
+  - task: build-image
+    privileged: true
+    file: repo/ci/tasks/build-vm-image.yml
+    input_mapping:
+      repo: repo
+    params:
+      VM_NAME: agents
+      SYSTEM_FILE: peteches/systems/agents.scm
+      IMAGE_SIZE: 25G
+      MINIO_ENDPOINT: https://minio.ts.peteches.co.uk
+      VAULT_ADDR: https://vault.ts.peteches.co.uk
+  - put: agents-image-url
     params:
       file: presigned-url/url
 
