@@ -83,6 +83,8 @@ resources:
     branch: main
     paths:
     - peteches/systems/agents.scm
+    - peteches/services/rules-lawyer.scm
+    - peteches/services/sillytavern.scm
     - peteches/channels/channels-nug.scm
     - ci/tasks/build-vm-image.yml
     - ci/tasks/generate-age-key.yml

@@ -2,6 +2,9 @@
 ;; (LLM roleplay frontend), both backed by the koboldcpp OpenAI endpoint on
 ;; the comfyui box (proxied via caddy as koboldcpp.ts.peteches.co.uk).
 ;;
+;; NOTE: rules-lawyer service requires (gnu packages admin) shadow import —
+;; fixed in 3806683. Rebuild triggered by this comment change.
+;;
 ;; Services:
 ;;   rules-lawyer — Discord bot, uses koboldcpp.ts.peteches.co.uk as its LLM
 ;;   sillytavern  — LLM roleplay web frontend on :8001, basic-auth protected
