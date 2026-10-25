@@ -3,7 +3,8 @@
 ;; the comfyui box (proxied via caddy as koboldcpp.ts.peteches.co.uk).
 ;;
 ;; NOTE: rules-lawyer service requires (gnu packages admin) shadow import —
-;; fixed in 3806683. Rebuild triggered by this comment change.
+;; fixed in 3806683. Placeholder SOPS files added for image build;
+;; real encryption pending age key generation.
 ;;
 ;; Services:
 ;;   rules-lawyer — Discord bot, uses koboldcpp.ts.peteches.co.uk as its LLM
