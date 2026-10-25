@@ -114,6 +114,9 @@
                    (domain "koboldcpp.ts.peteches.co.uk")
                    (upstream "comfyui.spaniel-cordylus.ts.net:5001"))
                   (caddy-reverse-proxy
+                   (domain "sillytavern.ts.peteches.co.uk")
+                   (upstream "agents.spaniel-cordylus.ts.net:8001"))
+                  (caddy-reverse-proxy
                    (domain "pihole.ts.peteches.co.uk")
                    (upstream "pihole.spaniel-cordylus.ts.net:80/admin"))
                   (caddy-reverse-proxy
