@@ -5,6 +5,7 @@
   #:use-module (gnu services shepherd)
   #:use-module (gnu services base)
   #:use-module (gnu system shadow)
+  #:use-module ((gnu packages admin) #:select (shadow))
   #:use-module (gnu packages node)
   #:use-module (peteches packages rules-lawyer)
   #:use-module (srfi srfi-13)
