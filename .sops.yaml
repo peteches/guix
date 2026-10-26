@@ -64,6 +64,10 @@ creation_rules:
     age:
       - age127sr66dp0za797zes24lxlsj4pvc5nn0097mpcdmrckf468ycfdsjrhe6g # concourse-web01
 
+  - path_regex: secrets/hosts/agents/.*\.yaml$
+    pgp: "5FFB7006A36B0AEDE8D08E3753B1E002546A642A"
+    age: "age1ytrm8ea22xsvzlhqxc7jykuscn8wp4hmj8vg9ul7fcy9ncxutcwqepxjtd"
+
   - path_regex: secrets/groups/media/.*\.yaml$
     pgp: "5FFB7006A36B0AEDE8D08E3753B1E002546A642A"
     age:
