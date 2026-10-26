@@ -270,4 +270,21 @@
 		     (user "pete")
 		     (identity-file "~/.ssh/id_ed25519")
 		     (proxy (proxy-command
+			     "ssh claude-workstation -- proxychains4 -q -f ~/.config/proxychains.conf nc %h %p")))
+		    ;; ygo's Swiss droplets: the same split-tunnel WireGuard
+		    ;; constraint as ygo-server above -- no kernel route from
+		    ;; the desktops, only the SOCKS5 proxy in
+		    ;; claude-workstation's wg0ns netns reaches them, so they
+		    ;; relay through the same proxychains4 + nc command.
+		    (openssh-host
+		     (name "ygoswiss1")
+		     (host-name "185.209.215.175")
+		     (user "ubuntu")
+		     (proxy (proxy-command
+			     "ssh claude-workstation -- proxychains4 -q -f ~/.config/proxychains.conf nc %h %p")))
+		    (openssh-host
+		     (name "ygoswiss2")
+		     (host-name "185.209.215.76")
+		     (user "ubuntu")
+		     (proxy (proxy-command
 			     "ssh claude-workstation -- proxychains4 -q -f ~/.config/proxychains.conf nc %h %p"))))))))
