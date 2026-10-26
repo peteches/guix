@@ -55,6 +55,9 @@ creation_rules:
   - path_regex: secrets/hosts/nyarlothotep/.*\.yaml
     pgp: "5FFB7006A36B0AEDE8D08E3753B1E002546A642A"
     age: "age1e5298p2egdrwj7wjh5n4pkpu60f92pkqajnt7lv20tcrynurt4aq7v2v5r"
+  - path_regex: secrets/hosts/dagon/.*\.yaml$
+    pgp: "5FFB7006A36B0AEDE8D08E3753B1E002546A642A"
+    age: "age18wjwyhsuj5u2a0w8flze8wenhmfr347x38lfnce9tdue5we9vpfsdn5caw"
 
   - path_regex: secrets/groups/concourse/vault.yaml
     pgp: "5FFB7006A36B0AEDE8D08E3753B1E002546A642A"
@@ -122,13 +125,12 @@ creation_rules:
   #     peteches/systems/nyarlothotep.scm) -> /run/secrets/deepgram-api-key
   #   - pi-dictate / the `rec` wrapper on claude-workstation, which also keeps
   #     its own secrets/hosts/claude-workstation/deepgram.yaml copy
-  # dagon joins this list once its age key exists (it needs the sops bootstrap
-  # in peteches/systems/dagon.scm first -- see that file's header comment).
   - path_regex: secrets/shared/deepgram\.yaml$
     pgp: "5FFB7006A36B0AEDE8D08E3753B1E002546A642A"
     age:
       - age1gcrgp0sy04kdxuyn2rmkeknx32jvw55yku8v0mwyhypagds5z9jqz0h0z2  # claude-workstation
       - age1e5298p2egdrwj7wjh5n4pkpu60f92pkqajnt7lv20tcrynurt4aq7v2v5r  # nyarlothotep
+      - age18wjwyhsuj5u2a0w8flze8wenhmfr347x38lfnce9tdue5we9vpfsdn5caw  # dagon
 
   # Every VM's age key -- policy is that all VMs get all shared secrets,
   # so this list should track exactly the set of VMs with an age key
@@ -180,4 +182,3 @@ creation_rules:
   - path_regex: secrets/hosts/claude-workstation/peteches-automation-ssh\.yaml$
     pgp: "5FFB7006A36B0AEDE8D08E3753B1E002546A642A"
     age: "age1gcrgp0sy04kdxuyn2rmkeknx32jvw55yku8v0mwyhypagds5z9jqz0h0z2"
-

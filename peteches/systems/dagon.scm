@@ -14,30 +14,27 @@
 ;;     directly — no separate /boot partition, no LVM.  GRUB's
 ;;     cryptodisk support is enabled automatically because
 ;;     `mapped-devices' includes a luks-device-mapping.
-;;   - SOPS is bootstrapped in two passes because dagon had no age identity
-;;     at all (nyarlothotep already ran sops-key-generator).  Pass 1 — what
-;;     is wired below — only starts sops-key-generator-service-type, which
-;;     writes /etc/age/keys.txt on first boot; no sops-secret is declared
-;;     yet, because a secret dagon cannot decrypt would fail activation.
-;;     After reconfiguring:
-;;       1. `ssh dagon cat /etc/age/keys.pub > age-keys/dagon.pub'
-;;          (the generator also writes the public half, mode 0644; never
-;;          print or commit the private /etc/age/keys.txt),
-;;       2. add a `secrets/hosts/dagon/.*\.yaml$' creation rule to .sops.yaml
-;;          and add dagon to the `secrets/shared/deepgram\.yaml$' rule,
-;;       3. `sops updatekeys secrets/shared/deepgram.yaml',
-;;       4. pass 2: add the sops-secrets-service-type block below (copy
-;;          nyarlothotep.scm's deepgram-api-key entry verbatim) and
-;;          reconfigure again.
+;;   - SOPS was bootstrapped in two passes because dagon had no age identity
+;;     at install time (nyarlothotep already ran sops-key-generator).
+;;     Pass 1 — sops-key-generator-service-type, wired below — wrote
+;;     /etc/age/keys.txt on first boot (2026-10-05); the public half was
+;;     committed to age-keys/dagon.pub, dagon was added to the
+;;     `secrets/shared/deepgram\.yaml$' recipient list in .sops.yaml (plus a
+;;     `secrets/hosts/dagon/.*\.yaml$' creation rule), and
+;;     `sops updatekeys secrets/shared/deepgram.yaml' was run.  Pass 2 —
+;;     wired below — decrypts the Deepgram key to
+;;     /run/secrets/deepgram-api-key for the DMS Dictate plugin.  Pass 2
+;;     could only land once pass 1's key existed: a secret dagon cannot
+;;     decrypt would fail activation.
 ;;   - #:offload-builds? is #f for this initial install.  Wiring up
 ;;     offload to guix-build (nug's build-offload/publish successor,
 ;;     peteches/systems/guix-build.scm) needs a guix-offload SSH keypair
-;;     delivered via SOPS (secrets/hosts/dagon/guix-build.yaml), which in
-;;     turn needs dagon's age public key — only available after the pass 1
-;;     reconfigure above.  Once that exists, follow nyarlothotep.scm's pattern
-;;     (sops-key-generator-service-type + sops-secrets-service-type),
-;;     flip this to #t, and add dagon's offload pubkey to guix-build.scm's
-;;     guix-offload-authorized-keys.
+;;     delivered via SOPS (secrets/hosts/dagon/guix-build.yaml — the
+;;     `secrets/hosts/dagon/.*\.yaml$' creation rule for it is already in
+;;     .sops.yaml).  Once that secret exists, add its sops-secret entry to
+;;     the sops-secrets-service-type block below (nyarlothotep.scm's
+;;     ssh-private-key entry is the pattern), flip this to #t, and add
+;;     dagon's offload pubkey to guix-build.scm's guix-offload-authorized-keys.
 ;;
 ;; The file evaluates to a bare `operating-system' record as its last
 ;; expression, which is what `guix system' consumes.
@@ -97,11 +94,31 @@
 
  #:extra-services
  (list (udev-rules-service 'solaar solaar)
-       ;; SOPS pass 1: give dagon an age identity (/etc/age/keys.txt).
-       ;; No sops-secret yet — see the header comment for pass 2, which adds
-       ;; the Deepgram key the DMS Dictate plugin reads from
-       ;; /run/secrets/deepgram-api-key.
-       (service sops-key-generator-service-type))
+       ;; SOPS pass 1: give dagon an age identity (/etc/age/keys.txt) on
+       ;; first boot; the sops-secrets service below (pass 2) decrypts the
+       ;; shared secrets with it — see the header comment.
+       (service sops-key-generator-service-type)
+       (service sops-secrets-service-type
+                (sops-service-configuration
+                 (age-key-file "/etc/age/keys.txt")
+                 (secrets
+                  (list
+                   ;; Deepgram Nova-3 API key, consumed by the DMS Dictate
+                   ;; plugin (configs/dms/plugins/dictate/dictate-stream.py
+                   ;; reads /run/secrets/deepgram-api-key when DEEPGRAM_API_KEY
+                   ;; is not in the shell's environment -- it is not: DMS is
+                   ;; started from Hyprland with a bare session environment).
+                   ;; Mode 0400 peteches-only, same as nyarlothotep's and
+                   ;; claude-workstation's copies; the file is shared, see
+                   ;; the secrets/shared/deepgram\.yaml$ creation rule in
+                   ;; .sops.yaml.
+                   (sops-secret
+                    (key '("deepgram-api-key"))
+                    (file (local-file "../../secrets/shared/deepgram.yaml"))
+                    (path "/run/secrets/deepgram-api-key")
+                    (user "peteches")
+                    (group "users")
+                    (permissions #o400)))))))
 
  ;; Feature flags
  #:laptop? #f
