@@ -196,6 +196,8 @@
 		  (pihole-custom-host (address "192.168.51.206")
 				      (hostname "comfyui.peteches.co.uk"))
 		  (pihole-custom-host (address "192.168.51.207")
-				      (hostname "guix-build.peteches.co.uk")))))))))))
+				      (hostname "guix-build.peteches.co.uk"))
+		  (pihole-custom-host (address "192.168.51.208")
+			      (hostname "agents.peteches.co.uk")))))))))))
 
 pihole-os

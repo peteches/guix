@@ -140,6 +140,14 @@
 		     (user "peteches")
 		     (identity-file "~/.ssh/id_ed25519"))
 		    (openssh-host
+		     (name "agents.ts")
+		     (host-name "agents.spaniel-cordylus.ts.net"))
+		    (openssh-host
+		     (name "agents")
+		     (host-name "192.168.51.208")
+		     (user "peteches")
+		     (identity-file "~/.ssh/id_ed25519"))
+		    (openssh-host
 		     (name "prowlarr.ts")
 		     (host-name "prowlarr.spaniel-cordylus.ts.net"))
 		    (openssh-host

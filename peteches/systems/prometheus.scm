@@ -193,7 +193,10 @@
                       (labels '(("instance" . "comfyui"))))
                      (prometheus-static-config
                       (targets '("192.168.51.207:12345"))
-                      (labels '(("instance" . "guix-build")))))))
+                      (labels '(("instance" . "guix-build"))))
+                     (prometheus-static-config
+                      (targets '("192.168.51.208:12345"))
+                      (labels '(("instance" . "agents")))))))
                   (prometheus-scrape-config
                    (job-name "proxmox")
                    (metrics-path "/pve")

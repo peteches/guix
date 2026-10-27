@@ -54,6 +54,7 @@
   #:use-module (peteches systems claude-workstation)
   #:use-module (peteches systems comfyui)
   #:use-module (peteches systems guix-build)
+  #:use-module (peteches systems agents)
   )
 
 ;; SSH private key used to connect out to every machine below. Dagon and
@@ -328,6 +329,20 @@
      (user "peteches")
      (identity %deploy-identity)))))
 
+(define-public agents-machine
+  (machine
+   (operating-system agents-os)
+   (environment managed-host-environment-type)
+   (configuration
+    (machine-ssh-configuration
+     (host-name "agents.spaniel-cordylus.ts.net")
+     ;; TODO: ssh-keyscan 192.168.51.208 after first boot and replace this.
+     ;; The VM pipeline provisions the host; guix deploy refuses on mismatch.
+     (host-key "TODO-REPLACE-WITH-SSH-KEYSCAN-OUTPUT")
+     (system "x86_64-linux")
+     (user "peteches")
+     (identity %deploy-identity)))))
+
 (define-public %all-machines
   (list prometheus-machine
         grafana-machine
@@ -350,4 +365,5 @@
         claude-workstation-machine
         comfyui-machine
         guix-build-machine
+        agents-machine
         ))
