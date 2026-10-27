@@ -537,3 +537,50 @@ module "claude-workstation" {
   image_file = lookup(var.vm_image_files, "claude-workstation", null)
 
 }
+
+module "agents" {
+  source    = "./modules/proxmox-vm"
+  vmid      = 119
+  name      = "agents"
+  node_name = var.node_name
+
+  bios          = "ovmf"
+  machine       = "q35"
+  scsi_hardware = "virtio-scsi-pci"
+  on_boot       = true
+  started       = true
+  memory        = 4096
+
+  cpu = {
+    cores = 4
+    # sillytavern/rules-lawyer's Node native deps (sharp et al) require
+    # x86-64-v2 (SSE4.2, POPCNT); qemu64 doesn't offer it.
+    type = "x86-64-v2-AES"
+  }
+
+  efi_disk = {
+    datastore_id      = "local-lvm"
+    type              = "4m"
+    pre_enrolled_keys = false
+  }
+
+  disk = {
+    datastore_id = "local-lvm"
+    interface    = "virtio0"
+    # Must be >= the 25G qcow2 the image build pipeline produces, plus
+    # headroom for the media the harnesses generate locally.
+    size         = 75
+  }
+
+  network_device = {
+    bridge = "vmbr0"
+    model  = "virtio"
+  }
+
+  agent = {
+    enabled = true
+  }
+
+  image_file = lookup(var.vm_image_files, "agents", null)
+
+}
