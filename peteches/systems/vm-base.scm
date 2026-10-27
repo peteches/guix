@@ -48,6 +48,22 @@
 ;;                        peteches/systems/guix-build.scm's authorized_keys
 ;;                        service.
 ;;   #:with-nvidia?       nonguix NVIDIA driver + CUDA (jellyfin, for NVENC).
+;;   #:with-intel-gpu?    adds (peteches packages intel-gpu-firmware)'s ~13MiB
+;;                        i915/+xe/ subset to #:firmware, for a passed-through
+;;                        Intel Arc card driven by `xe'.  REQUIRES a
+;;                        non-deblobbed kernel: linux-libre strips the firmware
+;;                        filenames out of the in-tree xe/i915 drivers, so the
+;;                        blobs can never be requested and the probe fails with
+;;                        -ENOENT.  Pass #:kernel (nongnu packages linux)'s
+;;                        `linux' alongside it — this is enforced below, not
+;;                        left to chance.  NVIDIA needs no such switch because
+;;                        nvidia.ko is out-of-tree and keeps its own strings.
+;;                        Switching the kernel does NOT break #:with-nvidia?:
+;;                        Guix rebuilds every kernel-loadable-modules entry
+;;                        against the OS's actual kernel via package-for-kernel
+;;                        (gnu/services.scm), so nvidia-module is recompiled for
+;;                        whichever kernel is selected.  dagon is the existing
+;;                        proof of nonfree-kernel + NVIDIA.
 ;;   #:with-swap?         DEFAULT #t — a /swapfile on the root filesystem,
 ;;                        created (fallocate + mkswap) by a one-shot
 ;;                        activation service the first time it's missing.
@@ -104,6 +120,7 @@
   #:use-module (srfi srfi-1)
   #:use-module (srfi srfi-13)
   #:use-module (guix gexp)
+  #:use-module (guix packages)
   #:use-module (gnu system)
   #:use-module (gnu system accounts)
   #:use-module (gnu system shadow)
@@ -127,6 +144,7 @@
   #:use-module (peteches services cifs)
   #:use-module (peteches services nvidia)
   #:use-module (peteches packages generation-gc)
+  #:use-module (peteches packages intel-gpu-firmware)
   #:use-module (sops secrets)
   #:use-module (sops services sops)
   #:use-module (gnu services linux)
@@ -300,6 +318,7 @@ time.  A no-op on subsequent boots."
           (with-nvidia? #f)
           ;; '580 or '595 — see nvidia-packages-for-version above.
           (nvidia-driver-version '580)
+          (with-intel-gpu? #f)
           (with-automation-key? #t)
           (automation-key-extra-users '())
           (with-swap? #t)
@@ -307,6 +326,16 @@ time.  A no-op on subsequent boots."
           (with-generation-gc? #t)
           (generation-gc-keep 4)
           (generation-gc-schedule "23 3 * * 0"))
+  ;; Enforce the #:with-intel-gpu? kernel requirement documented above.  This
+  ;; is the part of the flag that earns its keep: without it the flag silently
+  ;; installs 13MiB of firmware that a libre kernel is structurally incapable
+  ;; of asking for, and the only symptom is the same opaque -ENOENT.
+  (when (and with-intel-gpu?
+             (string-contains (package-name kernel) "libre"))
+    (error
+     "make-vm-os: #:with-intel-gpu? needs a non-deblobbed kernel, got"
+     (package-name kernel)
+     "— pass #:kernel (nongnu packages linux)'s `linux' and #:with-nonguix? #t"))
   (let* ((nonguix-services (if with-nonguix? (list (nonguix-substitute-service)) '()))
          (swap-services
           (if with-swap?
@@ -442,7 +471,12 @@ time.  A no-op on subsequent boots."
       (kernel-loadable-modules (if with-nvidia?
                                    (list nvidia-module*)
                                    '()))
-      (firmware firmware)
+      ;; NOTE: this is independent of the NVIDIA firmware, which reaches the
+      ;; system through nvidia-vm-service-type above rather than this field.
+      (firmware (append firmware
+                        (if with-intel-gpu?
+                            (list intel-gpu-firmware)
+                            '())))
       (locale "en_GB.utf8")
       (timezone "Europe/London")
       (keyboard-layout (keyboard-layout "us"))

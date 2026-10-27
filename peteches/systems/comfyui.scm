@@ -30,10 +30,27 @@
 ;; missing/unformatted disk blocks boot. ColdStorage's copy is left in place
 ;; afterward as a live backup, not deleted.
 ;;
-;; GPU passthrough (hostpci0) is configured on the Proxmox side (qm), not
-;; here — #:with-nvidia? just adds the nonguix driver/CUDA stack so the
-;; guest can actually use the card once Proxmox hands it over. Mirrors
-;; jellyfin.scm's existing RTX 2060 passthrough on proxmox1.
+;; GPU passthrough is configured on the Proxmox side (qm/terraform), not here
+;; — this file only supplies what the *guest* needs to use the cards once
+;; Proxmox hands them over.  Two GPUs are passed through to VM 120:
+;;
+;;   hostpci0  01:00  NVIDIA RTX 4090  — driven by the nonguix NVIDIA stack
+;;                                      (#:with-nvidia? below).  Shared by
+;;                                      ComfyUI and koboldcpp.
+;;   hostpci1  09:00  Intel Arc B70    — Battlemage [8086:e223], driven by the
+;;                                      in-tree `xe' driver (#:with-intel-gpu?).
+;;
+;; Both declared in infra/terraform/main.tf's `comfyui' module; hostpci1 was
+;; specced there but never actually applied to Proxmox until 2026-10-27.
+;;
+;; The B70 is the reason this VM runs the NONFREE kernel (see #:kernel below).
+;; linux-libre deblobs firmware filenames out of in-tree drivers, so its xe.ko
+;; declares zero MODULE_FIRMWARE entries and GuC loading fails with -ENOENT —
+;; the card enumerates over PCI but never binds, leaving no /dev/dri node.
+;; nonguix's `linux' retains them (41 firmware entries in xe.ko at 7.1.8).
+;; This does not disturb the 4090: nvidia.ko is out-of-tree and Guix rebuilds
+;; it against whichever kernel the OS selects (package-for-kernel in
+;; gnu/services.scm), which is the same combination dagon already runs.
 
 (define-module (peteches systems comfyui)
   #:use-module (guix gexp)
@@ -46,6 +63,8 @@
   #:use-module ((gnu packages build-tools) #:select (uv))
   #:use-module ((gnu packages commencement) #:select (gcc-toolchain-14))
   #:use-module ((gnu packages linux) #:select (linux-libre-headers))
+  ;; Nonfree kernel — required by #:with-intel-gpu?, see the header note.
+  #:use-module ((nongnu packages linux) #:select (linux))
   #:use-module ((gnu packages glib) #:select (glib))
   #:use-module (peteches systems vm-base)
   #:use-module (peteches services alloy)
@@ -134,6 +153,12 @@
      ;; Revisit both once guix-build exists.
      #:sops-secrets '()
      #:with-nug-offload? #f
+     ;; Nonfree kernel, needed for the Arc B70's `xe' firmware (header note).
+     ;; #:with-nonguix? registers the nonguix substitute server so the kernel
+     ;; and the NVIDIA stack are fetched rather than built locally.
+     #:kernel linux
+     #:with-nonguix? #t
+     #:with-intel-gpu? #t
      #:with-nvidia? #t
      ;; RTX 4090 (Ada Lovelace) is well clear of the 590+ pre-Turing GPU
      ;; cutoff that bit dagon's Pascal-based GTX 1060 — see (peteches
