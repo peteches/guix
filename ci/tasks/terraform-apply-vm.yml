@@ -16,11 +16,6 @@ params:
   # interpolates it against the `concourse` credential manager and fails with
   # "undefined var: VM_NAME".
   VM_NAME:
-  # Proxmox cluster node the VM is placed on. Declared here with the
-  # historical default (proxmox1) so jobs that don't supply it are
-  # unchanged; provision-agents overrides it because the agents VM lives
-  # on proxmox3. NOT a ((var)) — same reason as VM_NAME.
-  NODE_NAME: proxmox1
   # AWS creds are for the Terraform S3 state backend (init reads/writes state in
   # MinIO); the image was already fetched by the fetch-vm-image task.
   AWS_ACCESS_KEY_ID: ((terraform.minio_access_key))
@@ -42,7 +37,6 @@ run:
     # at the build root.
     IMAGE_PATH="$(pwd)/image/${VM_NAME}.qcow2"
     export TF_VAR_vm_image_files="{\"${VM_NAME}\":\"${IMAGE_PATH}\"}"
-    export TF_VAR_node_name="${NODE_NAME}"
     cd repo/infra/terraform
     terraform init
     terraform apply -auto-approve -target="module.${VM_NAME}"

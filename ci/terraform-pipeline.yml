@@ -106,8 +106,6 @@ jobs:
     file: repo-main/ci/tasks/terraform-apply-vm.yml
     params:
       VM_NAME: agents
-      # The agents VM is placed on proxmox3, not the default proxmox1.
-      NODE_NAME: proxmox3
 
 # Add one provision job per additional VM following the pattern above.
 

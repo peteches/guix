@@ -121,3 +121,15 @@ variable "cloud_init" {
     error_message = "cloud_init must include ipv4_address, ipv6_address, or both."
   }
 }
+
+variable "host_pci" {
+  type = list(object({
+    device = string
+    id     = string
+    pcie   = optional(bool, false)
+    rombar = optional(bool, true)
+    xvga   = optional(bool, false)
+  }))
+  default     = []
+  description = "Host PCI devices to passthrough (GPUs etc). device is the Proxmox name 'hostpciX' (X 0-3); id is the PCI address (e.g. 01:00). Empty by default."
+}

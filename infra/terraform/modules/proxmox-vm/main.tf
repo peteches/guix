@@ -75,6 +75,17 @@ resource "proxmox_virtual_environment_vm" "vm" {
     }
   }
 
+  dynamic "hostpci" {
+    for_each = var.host_pci
+    content {
+      device = hostpci.value.device
+      id     = hostpci.value.id
+      pcie   = hostpci.value.pcie
+      rombar = hostpci.value.rombar
+      xvga   = hostpci.value.xvga
+    }
+  }
+
   # Keeping an empty block avoids Terraform trying to remove it or set type=l26.
   operating_system {}
 

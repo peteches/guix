@@ -10,12 +10,6 @@ variable "proxmox_api_token" {
   description = "Proxmox API token in 'user@pam!tokenid=secret' format. Set via TF_VAR_proxmox_api_token."
 }
 
-variable "node_name" {
-  type        = string
-  default     = "proxmox1"
-  description = "Proxmox cluster node name"
-}
-
 variable "vm_image_files" {
   type        = map(string)
   default     = {}
