@@ -295,10 +295,16 @@
    (environment managed-host-environment-type)
    (configuration
     (machine-ssh-configuration
-     (host-name "claude-workstation.spaniel-cordylus.ts.net")
-     ;; TODO: ssh-keyscan 192.168.51.205 after first boot and replace this.
-     ;; The VM pipeline provisions the host; guix deploy refuses on mismatch.
-     (host-key "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIKJiP5mksOP24+DCSLHsDxy0Ge3V33eNTVTJq0VyvJwj")
+     ;; TEMPORARY (2026-10-27): LAN IP until the tailnet name is reclaimed
+     ;; from the destroyed node's stale entry (the new VM is
+     ;; `claude-workstation-1` until then). Revert to
+     ;; claude-workstation.spaniel-cordylus.ts.net once the old node is
+     ;; removed and the hostname is set back.
+     (host-name "192.168.51.205")
+     ;; Re-keyed 2026-10-27: the VM was rebuilt from the MinIO image after
+     ;; the 2026-10-27 terraform incident; this is the new VM's host key
+     ;; (ssh-keyscan 192.168.51.205).
+     (host-key "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIAPxQTffohUYNtxPBwcpGvIhm/niIQ5478vfzZzL0o5m")
      (system "x86_64-linux")
      (user "peteches")
      (identity %deploy-identity)))))
