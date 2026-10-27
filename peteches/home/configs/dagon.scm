@@ -68,7 +68,7 @@
 ;; Packages unique to dagon (same set as nug).
 (define dagon-extra-packages
   (list lycheeslicer-8.0.2
-	zoom
+	zoom-7
 	steam-nvidia
 	nvda
 	nvidia-prime

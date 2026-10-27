@@ -53,9 +53,10 @@
   #:use-module (guix utils)
   #:use-module ((guix licenses) :prefix license:)
   #:use-module ((nonguix licenses) :prefix license:)
+  #:use-module (nongnu packages nvidia)
   #:use-module (nonguix build-system binary))
 
-(define-public zoom
+(define-public zoom-7
   (package
     (name "zoom")
     (version "7.1.5.4332")
@@ -182,6 +183,21 @@
                      '("QML2_IMPORT_PATH" = ())
                      '("QT_PLUGIN_PATH" = ())
                      '("QT_SCREEN_SCALE_FACTORS" = ())
+                     ;; Use the NVIDIA GPU for GL rendering (not Mesa/llvmpipe).
+                     ;; Mirror the system's hyprland-launcher (base.scm): point
+                     ;; the GL vendor dispatch at nvidia, and put libglvnd + the
+                     ;; nvidia driver libs first in LD_LIBRARY_PATH (below) so
+                     ;; they are found before the mesa libs.
+                     ;; NB: GBM_BACKEND is NOT set here -- it is a Wayland/EGL
+                     ;; variable and causes Qt to try the wayland platform
+                     ;; plugin, which aborts. X11 apps only need the GLX/EGL
+                     ;; vendor dispatch vars below.
+                     '("__GLX_VENDOR_LIBRARY_NAME" = ("nvidia"))
+                     '("__EGL_VENDOR_LIBRARY_DIRS" = ("/run/current-system/profile/share/glvnd/egl_vendor.d"))
+                     ;; Force the X11 (xcb) Qt platform plugin. Without this,
+                     ;; the EGL vendor dispatch vars above cause Qt to try the
+                     ;; wayland platform plugin, which aborts.
+                     '("QT_QPA_PLATFORM" = ("xcb"))
                      `("FONTCONFIG_PATH" ":" prefix
                        (,(string-join
                           (list
@@ -189,7 +205,10 @@
                            #$output)
                           ":")))
                      `("LD_LIBRARY_PATH" prefix
-                       ,(list (string-append #$(this-package-input "nss") "/lib/nss")
+                       ,(list #$(file-append libglvnd "/lib")
+                              #$(file-append nvidia-driver "/lib")
+                              #$(file-append nvidia-driver "/lib64")
+                              (string-append #$(this-package-input "nss") "/lib/nss")
                               #$@(map (lambda (pkg)
                                         (file-append (this-package-input pkg) "/lib"))
                                       ;; aomhost inherits this environment.
@@ -334,6 +353,7 @@
                   mit-krb5
                   nspr
                   nss
+                  nvidia-driver
                   pango
                   pulseaudio
                   xcb-util
