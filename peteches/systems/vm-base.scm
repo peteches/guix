@@ -48,9 +48,16 @@
 ;;                        peteches/systems/guix-build.scm's authorized_keys
 ;;                        service.
 ;;   #:with-nvidia?       nonguix NVIDIA driver + CUDA (jellyfin, for NVENC).
+;;                        The nvidia firmware is routed through the OS
+;;                        #:firmware field (shared directory-union with the
+;;                        Intel GPU firmware), not the service's own
+;;                        activation — see the #:firmware note below.
 ;;   #:with-intel-gpu?    adds (peteches packages intel-gpu-firmware)'s ~13MiB
 ;;                        i915/+xe/ subset to #:firmware, for a passed-through
-;;                        Intel Arc card driven by `xe'.  REQUIRES a
+;;                        Intel Arc card driven by `xe'.  Also installs
+;;                        `igt-gpu-tools' for monitoring: `intel_gpu_top' does
+;;                        not support `xe' driver devices, so use the same
+;;                        package's `gputop' for the Arc card.  REQUIRES a
 ;;                        non-deblobbed kernel: linux-libre strips the firmware
 ;;                        filenames out of the in-tree xe/i915 drivers, so the
 ;;                        blobs can never be requested and the probe fails with
@@ -384,10 +391,19 @@ time.  A no-op on subsequent boots."
          (nvidia-services
           (if with-nvidia?
               (list
+               ;; firmware is deliberately #f: the nvidia firmware reaches the
+               ;; kernel through the OS #:firmware field below, in the same
+               ;; directory-union as the Intel GPU firmware.  The service's
+               ;; own firmware activation would otherwise clobber
+               ;; /sys/module/firmware_class/parameters/path with the
+               ;; nvidia-only directory — that sysfs parameter takes a single
+               ;; directory and last write wins, so a second GPU's blobs
+               ;; (e.g. xe/bmg_guc_70.bin for a passed-through Arc card) would
+               ;; be invisible to the kernel and its driver would fail to bind.
                (service nvidia-vm-service-type
                         (nvidia-configuration
                          (driver nvda*)
-                         (firmware nvidia-firmware*)
+                         (firmware #f)
                          (module nvidia-module*)
                          (modprobe nvidia-modprobe*)))
                (simple-service 'nvidia-runtime-state
@@ -471,9 +487,16 @@ time.  A no-op on subsequent boots."
       (kernel-loadable-modules (if with-nvidia?
                                    (list nvidia-module*)
                                    '()))
-      ;; NOTE: this is independent of the NVIDIA firmware, which reaches the
-      ;; system through nvidia-vm-service-type above rather than this field.
+      ;; ALL GPU firmware goes through this field: the firmware service makes
+      ;; one directory-union of everything listed here and issues a single
+      ;; activate-firmware call pointing the kernel at it.  firmware_class.path
+      ;; accepts a single directory, so every additional activate-firmware
+      ;; caller (the nvidia service's own activation is therefore disabled
+      ;; above) would leave the other firmware invisible to the kernel.
       (firmware (append firmware
+                        (if with-nvidia?
+                            (list nvidia-firmware*)
+                            '())
                         (if with-intel-gpu?
                             (list intel-gpu-firmware)
                             '())))
@@ -493,7 +516,11 @@ time.  A no-op on subsequent boots."
        (name-service-switch
         (inherit %mdns-host-lookup-nss)
         (hosts (list %files %dns))))
-      (packages (append extra-packages nvidia-packages %vm-base-packages))
+      (packages (append extra-packages nvidia-packages
+                        (if with-intel-gpu?
+                            (list igt-gpu-tools)
+                            '())
+                        %vm-base-packages))
       (services
        (modify-services final-services
          (nscd-service-type cfg => (nscd-without-hosts-cache cfg))
