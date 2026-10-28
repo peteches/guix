@@ -422,13 +422,13 @@
          "export NEO_L0_OverridePreemptionSurfaceSizeInMb=64"
          "export NEO_OverridePreemptionSurfaceSizeInMb=64"
          (string-append "BUNDLE=" #$pkg)
-         (string-append "MODEL_ROOT=" model-root)
-         (string-append "HF_REPO=" hf-repo)
-         (string-append "CFG=" cfg)
-         (string-append "LOG=" log)
-         (string-append "PORT=" (number->string port))
-         (string-append "HOST=" host)
-         (string-append "PACK_DIR=" pack-dir)
+         (string-append "MODEL_ROOT=" #$model-root)
+         (string-append "HF_REPO=" #$hf-repo)
+         (string-append "CFG=" #$cfg)
+         (string-append "LOG=" #$log)
+         (string-append "PORT=" (number->string #$port))
+         (string-append "HOST=" #$host)
+         (string-append "PACK_DIR=" #$pack-dir)
          ""
          "# Idempotent, resume-capable fetch: skip when the file is present at"
          "# the published size; otherwise download to a .part (curl -C -"
@@ -473,14 +473,14 @@
          "  \"$BUNDLE/bin/strata\" install --family qwen --model q2_0 --yes"
          "fi"
          ""
-         fetch-calls
+         #$fetch-calls
          ""
          "# Build the native pack (idempotent — native_experts.txt is written"
          "# last by iq_pack.py, so its absence means the pack is unfinished)."
          "if [ ! -f \"$PACK_DIR/native_experts.txt\" ]; then"
          "  echo \"[strata] building the native pack (a few minutes)\""
          "  (cd \"$BUNDLE\" && \"$BUNDLE/python/bin/python3\" tools/iq_pack.py \\"
-         "     --gguf \"$MODEL_ROOT/" shard1 "\" \\"
+         (string-append "     --gguf \"$MODEL_ROOT/" #$shard1 "\" \\")
          "     --out \"$PACK_DIR\")"
          "fi"
          ""
@@ -494,24 +494,24 @@
          "  \"cwd\": \"$BUNDLE\","
          "  \"args\": ["
          "    \"--pack\", \"$PACK_DIR\","
-         "    \"--native\", \"$MODEL_ROOT/" shard1 "\","
-         "    \"--ple-gguf\", \"$MODEL_ROOT/" shard2 "\","
+         (string-append "    \"--native\", \"$MODEL_ROOT/" #$shard1 "\",")
+         (string-append "    \"--ple-gguf\", \"$MODEL_ROOT/" #$shard2 "\",")
          "    \"--expert-cache\", \"64\","
          "    \"--prefill\", \"auto\","
          "    \"--spec\", \"2\","
-         "    \"--mtp\", \"$MODEL_ROOT/" mtp-dir "\","
-         "    \"--max-context\", \"" (number->string context) "\","
+         (string-append "    \"--mtp\", \"$MODEL_ROOT/" #$mtp-dir "\",")
+         (string-append "    \"--max-context\", \"" (number->string #$context) "\",")
          "    \"--mmap-experts\","
          "    \"--vision\""
          "  ],"
          "  \"tokenizer\": \"$PACK_DIR/tokenizer\","
          "  \"vision\": {"
-         "    \"model\": \"$MODEL_ROOT/" shard1 "\","
-         "    \"mmproj\": \"$MODEL_ROOT/" mmproj "\""
+         (string-append "    \"model\": \"$MODEL_ROOT/" #$shard1 "\",")
+         (string-append "    \"mmproj\": \"$MODEL_ROOT/" #$mmproj "\"")
          "  },"
          "  \"host\": \"$HOST\","
-         "  \"port\": " (number->string port) ","
-         "  \"api_key\": " api-key-json ","
+         (string-append "  \"port\": " (number->string #$port) ",")
+         (string-append "  \"api_key\": " #$api-key-json ",")
          "  \"log\": \"$LOG\""
          "}"
          "EOF"
