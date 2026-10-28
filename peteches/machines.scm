@@ -48,9 +48,7 @@
   #:use-module (peteches systems concourse-web01)
   #:use-module (peteches systems concourse-worker01)
   #:use-module (peteches systems vault)
-  #:use-module (peteches systems critical-grind-outline)
   #:use-module (peteches systems plane)
-  #:use-module (peteches systems critical-grind-campaign)
   #:use-module (peteches systems claude-workstation)
   #:use-module (peteches systems comfyui)
   #:use-module (peteches systems guix-build)
@@ -253,17 +251,39 @@
      (user "peteches")
      (identity %deploy-identity)))))
 
+;; The critical-grind VMs depend on the `critical-grind' channel -- a private
+;; GitHub repo fetched over SSH that is only pulled on machines that load the
+;; read-only deploy key into an ssh-agent (see peteches/channels/).  Their
+;; system modules therefore cannot load on a host without the channel, so the
+;; machines are defined conditionally: #f when the channel is unavailable, and
+;; excluded from %all-machines.  This keeps (peteches machines) -- and hence
+;; scripts/deploy.scm -- loadable on every host, not just the ones that can
+;; reach the channel.
+(define (maybe-critical-grind-machine system-module os-symbol host-name host-key)
+  "Return a managed-host machine for the OS that SYSTEM-MODULE exports under
+OS-SYMBOL, or #f when that module (i.e. the critical-grind channel) cannot be
+loaded on this host."
+  (let ((os (false-if-exception
+             (and=> (resolve-interface system-module)
+                   (lambda (mod) (module-ref mod os-symbol))))))
+    (and os
+         (machine
+          (operating-system os)
+          (environment managed-host-environment-type)
+          (configuration
+           (machine-ssh-configuration
+            (host-name host-name)
+            (host-key host-key)
+            (system "x86_64-linux")
+            (user "peteches")
+            (identity %deploy-identity)))))))
+
 (define-public critical-grind-outline-machine
-  (machine
-   (operating-system critical-grind-outline-os)
-   (environment managed-host-environment-type)
-   (configuration
-    (machine-ssh-configuration
-     (host-name "critical-grind-outline.spaniel-cordylus.ts.net")
-     (host-key "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJMkUD28mvqVRXcx+uvbPdahm+DEfhl6EvbIudm6KhyM")
-     (system "x86_64-linux")
-     (user "peteches")
-     (identity %deploy-identity)))))
+  (maybe-critical-grind-machine
+   '(peteches systems critical-grind-outline)
+   'critical-grind-outline-os
+   "critical-grind-outline.spaniel-cordylus.ts.net"
+   "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJMkUD28mvqVRXcx+uvbPdahm+DEfhl6EvbIudm6KhyM"))
 
 (define-public plane-machine
   (machine
@@ -278,16 +298,11 @@
      (identity %deploy-identity)))))
 
 (define-public critical-grind-campaign-machine
-  (machine
-   (operating-system critical-grind-campaign-os)
-   (environment managed-host-environment-type)
-   (configuration
-    (machine-ssh-configuration
-     (host-name "critical-grind-campaign.spaniel-cordylus.ts.net")
-     (host-key "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIIZyL51uII6JZ9C75dHa0cWYHWJp5qgdddbWp+E1UnME")
-     (system "x86_64-linux")
-     (user "peteches")
-     (identity %deploy-identity)))))
+  (maybe-critical-grind-machine
+   '(peteches systems critical-grind-campaign)
+   'critical-grind-campaign-os
+   "critical-grind-campaign.spaniel-cordylus.ts.net"
+   "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIIZyL51uII6JZ9C75dHa0cWYHWJp5qgdddbWp+E1UnME"))
 
 (define-public claude-workstation-machine
   (machine
@@ -350,26 +365,29 @@
      (identity %deploy-identity)))))
 
 (define-public %all-machines
-  (list prometheus-machine
-        grafana-machine
-        loki-machine
-        pihole-machine
-        git-machine
-        jellyfin-machine
-        caddy-machine
-        prowlarr-machine
-        arr-machine
-        downloads-machine
-        rustdesk-machine
-        concourse-db-machine
-        concourse-web01-machine
-        vault-machine
-        concourse-worker01-machine
-        critical-grind-outline-machine
-        plane-machine
-        critical-grind-campaign-machine
-        claude-workstation-machine
-        comfyui-machine
-        guix-build-machine
-        agents-machine
-        ))
+  ;; filter identity drops the critical-grind machines when they are #f
+  ;; (their channel is unavailable on this host).
+  (filter identity
+          (list prometheus-machine
+                grafana-machine
+                loki-machine
+                pihole-machine
+                git-machine
+                jellyfin-machine
+                caddy-machine
+                prowlarr-machine
+                arr-machine
+                downloads-machine
+                rustdesk-machine
+                concourse-db-machine
+                concourse-web01-machine
+                vault-machine
+                concourse-worker01-machine
+                critical-grind-outline-machine
+                plane-machine
+                critical-grind-campaign-machine
+                claude-workstation-machine
+                comfyui-machine
+                guix-build-machine
+                agents-machine
+                )))
