@@ -520,7 +520,8 @@
          "# bin/strata (sh) -> the private CPython server, all one PID, so"
          "# shepherd tracks the server and TERM to it stops the engine."
          "exec \"$BUNDLE/bin/strata\" serve --profile \"$CFG\" --engine strata --host \"$HOST\" --port \"$PORT\""
-         "\n"))))
+         "\n")
+        "\n")))
 
 ;;; ── Service extension helpers ────────────────────────────────────────────
 
