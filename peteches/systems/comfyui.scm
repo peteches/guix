@@ -64,6 +64,13 @@
   #:use-module ((gnu packages commencement) #:select (gcc-toolchain-14))
   #:use-module ((gnu packages linux) #:select (linux-libre-headers))
   ;; Nonfree kernel — required by #:with-intel-gpu?, see the header note.
+  ;; Uses the nonguix channel default `linux' (the latest nonfree kernel). Its
+  ;; in-tree `xe' driver retains the firmware entries the B70 needs AND
+  ;; enumerates the Arc Pro B70 (0x8086:0xe223, Battlemage): the xe driver
+  ;; binds the card and presents a /dev/dri render node. Do NOT pin this to an
+  ;; older kernel (e.g. linux-6.12) — the 6.12 xe driver's device table does
+  ;; not include 0xe223, so the B70 is detected over PCI but never bound, and
+  ;; no render node appears (verified on 6.12.103: xe loads, card unbound).
   #:use-module ((nongnu packages linux) #:select (linux))
   #:use-module ((gnu packages glib) #:select (glib))
   #:use-module (peteches systems vm-base)
@@ -71,7 +78,14 @@
   #:use-module (peteches services comfyui)
   #:use-module (peteches services koboldcpp)
   #:use-module (peteches services restic)
+  #:use-module (peteches services strata)
   #:use-module (peteches services tailscale)
+  #:use-module (peteches packages strata)
+  #:use-module (gnu packages base)         ; glibc (for the /lib64 symlink)
+  #:use-module (gnu packages gcc)          ; gcc `lib' output (libstdc++/libgcc_s)
+  #:use-module (gnu packages oneapi)       ; level-zero (libze_loader.so.1)
+  #:use-module (gnu packages opencl)       ; opencl-icd-loader (libOpenCL.so.1)
+  #:use-module (gnu packages compression)  ; zstd (libzstd.so.1, an IGC dep)
   #:use-module (sops secrets)
   #:use-module (guix-science-nonfree packages cuda)   ; cuda-13
   #:export (comfyui-os))
@@ -156,6 +170,7 @@
      ;; Nonfree kernel, needed for the Arc B70's `xe' firmware (header note).
      ;; #:with-nonguix? registers the nonguix substitute server so the kernel
      ;; and the NVIDIA stack are fetched rather than built locally.
+     ;; Channel default `linux' (latest) — its xe driver enumerates the B70.
      #:kernel linux
      #:with-nonguix? #t
      #:with-intel-gpu? #t
@@ -164,6 +179,26 @@
      ;; cutoff that bit dagon's Pascal-based GTX 1060 — see (peteches
      ;; systems vm-base)'s nvidia-packages-for-version.
      #:nvidia-driver-version '595
+     ;; Intel Arc B70 (Battlemage) SYCL/Level Zero stack for the Strata
+     ;; service below.  These are the engine's *system* library deps (the
+     ;; engine package itself is fetched by Strata at first launch, not a
+     ;; guix input) — see (peteches services strata)'s header.  In the
+     ;; profile so `clinfo`/`ze_*` are available for debugging the B70.
+     #:extra-packages
+     (list strata intel-level-zero-gpu intel-igc-core libigdgmm level-zero pocl
+           ;; The Strata SYCL engine's system-library deps that are NOT in
+           ;; %base-packages.  `libOpenCL.so.1' comes from opencl-icd-loader
+           ;; (pocl only provides libpocl.so.2, an OpenCL *implementation*,
+           ;; not the ICD *loader* the engine links).  libstdc++.so.6/
+           ;; libgcc_s.so.1 come from gcc's `lib' OUTPUT — gcc's default `out'
+           ;; is the compiler, not the runtime libs, so the (PACKAGE OUTPUT)
+           ;; cons pair is required (the OS `packages' field supports it).
+           ;; `libzstd.so.1' comes from zstd's `lib' OUTPUT (zstd's default
+           ;; `out' is the command, not the library): the Intel IGC
+           ;; (libigc.so.2, loaded by the NEO runtime via dlopen) NEEDs it,
+           ;; and without it the compiler interface fails to load and the
+           ;; engine aborts.
+           (list zstd "lib") opencl-icd-loader (list gcc "lib"))
      #:extra-services
      (list
       (service tailscale-service-type
@@ -840,6 +875,44 @@
                                  (cons "/var/log/ntpd.log" "ntpd")
                                  (cons "/var/log/alloy.log" "alloy")
                                  (cons "/var/log/tailscaled-*.log" "tailscale")
-                                 (cons "/var/log/comfyui/comfyui/update.log" "comfyui"))))))))))
+                                 (cons "/var/log/comfyui/comfyui/update.log" "comfyui")))))
+      ;; Strata — Qwen3.8-Flash-Next (Q2_0) on the Intel Arc B70 via its
+      ;; SYCL/Level Zero backend.  Auto-starts at boot and listens on the
+      ;; tailnet (--access tailscale), so it is reachable from the fleet via
+      ;; caddy (strata.ts.peteches.co.uk -> this VM:8000).  The model lives in
+      ;; the B70's own VRAM, separate from the 4090 that koboldcpp/ComfyUI
+      ;; use, so there is no GPU contention; the engine and model are already
+      ;; on disk (no first-launch download at boot).  See (peteches services
+      ;; strata) for the PT_INTERP / runtime-lib / daemon-wrapper design.
+      (service strata-service-type
+               (strata-configuration
+                (auto-start? #t)
+                (family "qwen")
+                (model "q2_0")
+                (data-dir "/media/models/strata")
+                (access "tailscale")
+                ;; Open the engine's port in the host firewall: the comfyui
+                ;; VM's base firewall is drop-by-default, so without this
+                ;; Caddy's strata.ts.peteches.co.uk proxy cannot reach the
+                ;; engine over Tailscale.
+                (open-firewall? #t)
+                (port 8000)))
+      ;; /lib64 -> glibc/lib: the Strata bundle's private CPython and the
+      ;; downloaded Intel engine both carry PT_INTERP =
+      ;; /lib64/ld-linux-x86-64.so.2, an FHS path that does not exist on a
+      ;; pure-Guix system.  The symlink makes the dynamic loader path
+      ;; resolvable so the kernel can load either binary.  (Runtime
+      ;; *library* resolution for the non-store engine is handled
+      ;; separately by the wrapper's LD_LIBRARY_PATH — a non-store binary
+      ;; cannot use Guix's per-package ld.so.cache, which is looked up
+      ;; relative to the executable.)
+      (simple-service 'lib64-symlink
+                      activation-service-type
+                      #~(begin
+                          (use-modules (guix build utils))
+                          (if (file-exists? "/lib64")
+                              (delete-file "/lib64")
+                              #f)
+                          (symlink (string-append #$glibc "/lib") "/lib64"))))))))
 
 comfyui-os

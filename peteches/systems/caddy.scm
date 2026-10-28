@@ -113,6 +113,13 @@
                   (caddy-reverse-proxy
                    (domain "koboldcpp.ts.peteches.co.uk")
                    (upstream "comfyui.spaniel-cordylus.ts.net:5001"))
+                  ;; strata-service-type on comfyui.scm — auto-starts at boot
+                  ;; and listens on the tailnet (--access tailscale), so this
+                  ;; proxies to the B70 MoE engine (Qwen3.8-Flash-Next Q2_0)
+                  ;; on the same VM as ComfyUI/koboldcpp (different GPU).
+                  (caddy-reverse-proxy
+                   (domain "strata.ts.peteches.co.uk")
+                   (upstream "comfyui.spaniel-cordylus.ts.net:8000"))
                   (caddy-reverse-proxy
                    (domain "sillytavern.ts.peteches.co.uk")
                    (upstream "agents.spaniel-cordylus.ts.net:8001"))

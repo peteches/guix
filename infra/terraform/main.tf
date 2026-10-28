@@ -745,7 +745,7 @@ module "comfyui" {
   started       = true
 
   cpu    = { cores = 8, type = "host" }
-  memory = 20480
+  memory = 49152
 
   # GPU passthrough on proxmox3: the RTX 4090 (01:00) was already passed
   # through before the legacy import; the Intel Arc B70 (09:00) is the new
