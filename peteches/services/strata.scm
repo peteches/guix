@@ -570,7 +570,21 @@
                        (slug (strata-native-model-slug model))
                        (model-root (string-append data-dir "/" slug)))
                   (list model-root (string-append model-root "/pack")))
-                '()))))
+                '())))
+         ;; The full directory list, computed at build time. It is spliced
+         ;; into the activation as a QUOTED data list: a bare #$ of a list
+         ;; value is written as an unquoted list in the generated script,
+         ;; which Scheme reads as a procedure call ("Wrong type to apply"),
+         ;; not as the list of directories to create.
+         (all-dirs
+          (append (list state-dir
+                        (string-append state-dir "/share")
+                        (string-append state-dir "/state")
+                        (string-append state-dir "/config")
+                        (string-append state-dir "/state/strata/runtime")
+                        log-dir
+                        data-dir)
+                  extra-dirs)))
     #~(begin
         (use-modules (guix build utils))
         (let* ((pw (getpwnam #$user))
@@ -583,14 +597,7 @@
           (for-each (lambda (dir)
                       (mkdir-p dir)
                       (chown dir uid gid))
-                    (append (list #$state-dir
-                                  (string-append #$state-dir "/share")
-                                  (string-append #$state-dir "/state")
-                                  (string-append #$state-dir "/config")
-                                  (string-append #$state-dir "/state/strata/runtime")
-                                  #$log-dir
-                                  #$data-dir)
-                            #$extra-dirs))
+                    (quote #$all-dirs))
           ;; Level Zero ICD manifest: the Intel NEO runtime .deb ships no
           ;; ICD json, so generate the one-line manifest the loader needs
           ;; (same as the oneAPI installer does) and point ZE_ICD_FILE at
