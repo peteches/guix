@@ -141,7 +141,25 @@
   (state-dir strata-configuration-state-dir
              (default "/var/lib/strata"))
   (log-file strata-configuration-log-file
-            (default #f)))
+            (default #f))
+  ;; Native-pack mode: a manually-provisioned model that the catalog's
+  ;; fingerprint and SHA-256 gates refuse (eddoursul/Strata issues #4087 and
+  ;; #4160). A symbol naming a key into %native-models, or #f for the
+  ;; catalog path. When set, `family`/`model` are ignored and the service
+  ;; downloads the model's files, builds a native pack with the bundle's
+  ;; tools/iq_pack.py, writes a run config, and starts the server in the
+  ;; foreground with `strata serve` (see make-native-wrapper).
+  (native-model strata-configuration-native-model
+                (default #f))
+  ;; The server's API key (native mode only). #f runs with no key ("none");
+  ;; a string requires it on /v1/*. The caddy reverse proxy does not add
+  ;; auth, so the client supplies it.
+  (api-key strata-configuration-api-key
+           (default #f))
+  ;; The address the server listens on (native mode only). 0.0.0.0 makes it
+  ;; reachable via the caddy tailnet proxy; 127.0.0.1 keeps it local.
+  (host strata-configuration-host
+        (default "0.0.0.0")))
 
 ;;; ── Resolved defaults ────────────────────────────────────────────────────
 
@@ -149,6 +167,74 @@
   (or (strata-configuration-log-file config)
       (string-append "/var/log/strata/"
                      (strata-configuration-service-name config) ".log")))
+
+;;; ── Native-pack models ───────────────────────────────────────────────────
+;; A manually-provisioned model the catalog refuses: the SC117 abliterated
+;; GGUFs are a modified Qwen3.8-Flash-Next, so the catalog's fingerprint
+;; gate (SUPPORTED_SELECTIONS, strata_control/models.py) and the SHA-256
+;; gate (setup.py's verify_sha256, which runs even for own=True files) both
+;; refuse them — the normal `strata launch --family/--model` path can never
+;; install one (eddoursul/Strata issues #4087 and #4160; the opt-in
+;; `--gguf-dir --unverified` flag requested in #4160 is not implemented as
+;; of v0.2.6). The working path, demonstrated in #4160 at ~89-94 tok/s, is
+;; to bypass setup entirely: download the files, build a native pack with
+;; tools/iq_pack.py, write a run config that passes the files straight to
+;; the engine (--native/--ple-gguf/--pack/--mtp), and start the server with
+;; `strata serve`. Each entry below records exactly what to download (HF
+;; path + published size, verified after fetch) and how to lay it out.
+(define-record-type* <strata-native-model> strata-native-model
+                     make-strata-native-model
+  strata-native-model?
+  (hf-repo strata-native-model-hf-repo (default #f))
+  (model-files strata-native-model-model-files (default '()))
+  (aux-files strata-native-model-aux-files (default '()))
+  (pack-source strata-native-model-pack-source (default #f))
+  (shard2 strata-native-model-shard2 (default #f))
+  (mmproj strata-native-model-mmproj (default #f))
+  (mtp-dir strata-native-model-mtp-dir (default #f))
+  (slug strata-native-model-slug (default #f)))
+
+;; model-files / aux-files are alists of (HF-relative-path . published-size):
+;; every file is fetched from https://huggingface.co/<hf-repo>/resolve/main/
+;; <path> and size-verified after the download (a partial or corrupt fetch
+;; fails the start instead of building a bad pack). pack-source is shard 1
+;; (the file tools/iq_pack.py indexes); shard2 is the --ple-gguf file; the
+;; strata/rt/* files are the pre-built MTP runtime (--mtp points at their
+;; directory); mmproj is the stock vision projector (the abliteration did
+;; not touch the vision or MTP weights).
+(define-public %native-models
+  (list (cons 'sc117-iq2xs
+          (strata-native-model
+           (hf-repo "SC117/Qwen3.8-Flash-Next-GSQ-RCO-abliterated-GGUF")
+           (model-files
+            (list (cons "IQ2_XS/Qwen3.8-Flash-Next-GSQ-RCO-abliterated-IQ2_XS-00001-of-00002.gguf" 39665015072)
+                  (cons "IQ2_XS/Qwen3.8-Flash-Next-GSQ-RCO-abliterated-IQ2_XS-00002-of-00002.gguf" 28800138432)))
+           (aux-files
+            (list (cons "strata/rt/dense.bin" 116099072)
+                  (cons "strata/rt/dense.txt" 1880)
+                  (cons "strata/rt/draft_vocab.bin" 425196)
+                  (cons "strata/rt/experts.bin" 707788800)
+                  (cons "mmproj-Qwen3.8-Flash-Next-BF16.gguf" 907542944)))
+           (pack-source "IQ2_XS/Qwen3.8-Flash-Next-GSQ-RCO-abliterated-IQ2_XS-00001-of-00002.gguf")
+           (shard2 "IQ2_XS/Qwen3.8-Flash-Next-GSQ-RCO-abliterated-IQ2_XS-00002-of-00002.gguf")
+           (mmproj "mmproj-Qwen3.8-Flash-Next-BF16.gguf")
+           (mtp-dir "strata/rt")
+           (slug "sc117-iq2xs")))))
+
+(define-public (strata-native-model-lookup symbol)
+  "The strata-native-model record for SYMBOL (a key into %native-models), or
+  an error naming the unknown key. Used to resolve the configuration's
+  native-model field."
+  (let ((entry (assoc symbol %native-models)))
+    (if entry
+        (cdr entry)
+        (raise (make-error 'unknown-native-model
+                (list symbol
+                      (string-append "unknown native-model '"
+                                     (symbol->string symbol) "' (known: "
+                                     (string-join (map (lambda (e) (symbol->string (car e)))
+                                                       %native-models) ", ")
+                                     ")")))))))
 
 ;;; ── launch arguments ─────────────────────────────────────────────────────
 
@@ -273,6 +359,169 @@
 (define (string-quote s)
   (string-append "\"" s "\""))
 
+;;; ── Native-pack wrapper script ───────────────────────────────────────────
+;; The native-mode counterpart of strata-wrapper-script: provision (download
+;; + pack + config) then start the server in the foreground. The only gexp
+;; interpolation is the bundle root (the strata package's store path); every
+;; other path is a plain string (data-dir and state-dir are plain strings in
+;; the configuration). See the native-models section for the rationale.
+(define-public (strata-native-wrapper-script config model)
+  (let* ((pkg (strata-configuration-package config))
+         (state-dir (strata-configuration-state-dir config))
+         (data-dir (strata-configuration-data-dir config))
+         (port (strata-configuration-port config))
+         (host (strata-configuration-host config))
+         (api-key (strata-configuration-api-key config))
+         (context (or (strata-configuration-context config) 32768))
+         (slug (strata-native-model-slug model))
+         (model-root (string-append data-dir "/" slug))
+         (pack-dir (string-append model-root "/pack"))
+         (hf-repo (strata-native-model-hf-repo model))
+         (shard1 (strata-native-model-pack-source model))
+         (shard2 (strata-native-model-shard2 model))
+         (mmproj (strata-native-model-mmproj model))
+         (mtp-dir (strata-native-model-mtp-dir model))
+         (cfg (string-append state-dir "/" slug ".json"))
+         (log (string-append state-dir "/" slug ".log"))
+         (api-key-json (if api-key (string-quote api-key) "\"none\""))
+         (fetch-calls
+          (string-join
+           (append
+            (map (lambda (ps)
+                   (string-append "fetch " (string-quote (car ps)) " "
+                                  (number->string (cdr ps))))
+                 (strata-native-model-model-files model))
+            (map (lambda (ps)
+                   (string-append "fetch " (string-quote (car ps)) " "
+                                  (number->string (cdr ps))))
+                 (strata-native-model-aux-files model)))
+           "\n")))
+    #~(string-join
+        (list
+         "#!/bin/sh"
+         "set -eu"
+         ""
+         "# Native-pack model wrapper — provision then serve in the foreground."
+         "# Tracked by shepherd; the final `exec` makes the tracked PID the"
+         "# server itself (TERM to it stops the engine cleanly)."
+         "export PATH=/run/current-system/profile/bin:/run/current-system/profile/sbin"
+         (string-append "export HOME=" #$state-dir)
+         (string-append "export XDG_DATA_HOME=" #$state-dir "/share")
+         (string-append "export XDG_STATE_HOME=" #$state-dir "/state")
+         (string-append "export XDG_CONFIG_HOME=" #$state-dir "/config")
+         (string-append "export XDG_CACHE_HOME=" #$state-dir "/cache")
+         "export LD_LIBRARY_PATH=/run/current-system/profile/lib"
+         (string-append "export ZE_ICD_FILE=" #$state-dir "/ze_intel_gpu.icd.json")
+         "export SYCL_CACHE_PERSISTENT=0"
+         "export ZES_ENABLE_SYSMAN=1"
+         ;; Force the Intel/SYCL engine (this VM also passes through the RTX
+         ;; 4090, in active use by koboldcpp) and the Battlemage GuC
+         ;; preemption-surface workaround — same as the catalog wrapper.
+         "export STRATA_ENGINE_BACKEND=sycl"
+         "export NEOReadDebugKeys=1"
+         "export NEO_L0_OverridePreemptionSurfaceSizeInMb=64"
+         "export NEO_OverridePreemptionSurfaceSizeInMb=64"
+         (string-append "BUNDLE=" #$pkg)
+         (string-append "MODEL_ROOT=" model-root)
+         (string-append "HF_REPO=" hf-repo)
+         (string-append "CFG=" cfg)
+         (string-append "LOG=" log)
+         (string-append "PORT=" (number->string port))
+         (string-append "HOST=" host)
+         (string-append "PACK_DIR=" pack-dir)
+         ""
+         "# Idempotent, resume-capable fetch: skip when the file is present at"
+         "# the published size; otherwise download to a .part (curl -C -"
+         "# resumes a partial one) and move it into place only after the"
+         "# size verifies. A partial or corrupt fetch fails the start"
+         "# instead of building a bad pack."
+         "fetch() {"
+         "  path=$1"
+         "  size=$2"
+         "  dest=$MODEL_ROOT/$path"
+         "  url=\"https://huggingface.co/$HF_REPO/resolve/main/$path\""
+         "  if [ -f \"$dest\" ] && [ \"$(stat -c%s \"$dest\" 2>/dev/null)\" = \"$size\" ]; then"
+         "    return 0"
+         "  fi"
+         "  # A complete .part (an interrupted mv) moves into place directly,"
+         "  # avoiding a curl -C - resume that the server would answer 416."
+         "  if [ -f \"$dest.part\" ] && [ \"$(stat -c%s \"$dest.part\" 2>/dev/null)\" = \"$size\" ]; then"
+         "    mv \"$dest.part\" \"$dest\""
+         "    return 0"
+         "  fi"
+         "  mkdir -p \"$(dirname \"$dest\")\""
+         "  [ -f \"$dest\" ] && rm -f \"$dest\""
+         "  echo \"[strata] downloading $path ($size bytes)\""
+         "  curl -fL --retry 5 --retry-delay 5 -C - -o \"$dest.part\" \"$url\""
+         "  actual=$(stat -c%s \"$dest.part\")"
+         "  if [ \"$actual\" != \"$size\" ]; then"
+         "    echo \"[strata] ERROR: $path is $actual bytes, expected $size\" >&2"
+         "    exit 1"
+         "  fi"
+         "  mv \"$dest.part\" \"$dest\""
+         "  echo \"[strata] $path verified\""
+         "}"
+         ""
+         "# Ensure the engine component is installed: the native path reuses it"
+         "# via component:strata-engine, and it is a runtime artifact Strata"
+         "# downloads on first use. If it is missing (a fresh VM), install it"
+         "# now — the install also fetches the catalog model it is invoked"
+         "# with, a one-time cost paid only when the engine is absent."
+         "ENGINE_DIR=\"$XDG_DATA_HOME/strata/components/engine\""
+         "if ! ls \"$ENGINE_DIR\"/*-sycl >/dev/null 2>&1; then"
+         "  echo \"[strata] engine component not found; installing it (one-time)\""
+         "  \"$BUNDLE/bin/strata\" install --family qwen --model q2_0 --yes"
+         "fi"
+         ""
+         fetch-calls
+         ""
+         "# Build the native pack (idempotent — native_experts.txt is written"
+         "# last by iq_pack.py, so its absence means the pack is unfinished)."
+         "if [ ! -f \"$PACK_DIR/native_experts.txt\" ]; then"
+         "  echo \"[strata] building the native pack (a few minutes)\""
+         "  (cd \"$BUNDLE\" && \"$BUNDLE/python/bin/python3\" tools/iq_pack.py \\"
+         "     --gguf \"$MODEL_ROOT/" shard1 "\" \\"
+         "     --out \"$PACK_DIR\")"
+         "fi"
+         ""
+         "# Write the run config the server will load. The engine reads the"
+         "# raw GGUFs in place (--native/--ple-gguf) AND the native pack"
+         "# (--pack); the MTP runtime is the pre-built strata/rt folder."
+         "mkdir -p \"$XDG_STATE_HOME\""
+         "cat > \"$CFG\" <<EOF"
+         "{"
+         "  \"exe\": \"component:strata-engine\","
+         "  \"cwd\": \"$BUNDLE\","
+         "  \"args\": ["
+         "    \"--pack\", \"$PACK_DIR\","
+         "    \"--native\", \"$MODEL_ROOT/" shard1 "\","
+         "    \"--ple-gguf\", \"$MODEL_ROOT/" shard2 "\","
+         "    \"--expert-cache\", \"64\","
+         "    \"--prefill\", \"auto\","
+         "    \"--spec\", \"2\","
+         "    \"--mtp\", \"$MODEL_ROOT/" mtp-dir "\","
+         "    \"--max-context\", \"" (number->string context) "\","
+         "    \"--mmap-experts\","
+         "    \"--vision\""
+         "  ],"
+         "  \"tokenizer\": \"$PACK_DIR/tokenizer\","
+         "  \"vision\": {"
+         "    \"model\": \"$MODEL_ROOT/" shard1 "\","
+         "    \"mmproj\": \"$MODEL_ROOT/" mmproj "\""
+         "  },"
+         "  \"host\": \"$HOST\","
+         "  \"port\": " (number->string port) ","
+         "  \"api_key\": " api-key-json ","
+         "  \"log\": \"$LOG\""
+         "}"
+         "EOF"
+         ""
+         "# Start the server in the foreground. `exec` chains wrapper ->"
+         "# bin/strata (sh) -> the private CPython server, all one PID, so"
+         "# shepherd tracks the server and TERM to it stops the engine."
+         "exec \"$BUNDLE/bin/strata\" serve --profile \"$CFG\" --engine strata --host \"$HOST\" --port \"$PORT\""
+         "\n"))))
+
 ;;; ── Service extension helpers ────────────────────────────────────────────
 
 (define (strata-accounts config)
@@ -301,7 +550,27 @@
          (log-file (strata-resolved-log-file config))
          (log-dir (dirname log-file))
          (icd-lib (file-append intel-level-zero-gpu "/lib/libze_intel_gpu.so.1"))
-         (script (strata-wrapper-script config)))
+         ;; The wrapper script: the native-pack provisioner when a native
+         ;; model is configured, else the catalog daemon wrapper. Both are
+         ;; gexps (store paths substituted at activation time).
+         (script
+          (let ((nm (strata-configuration-native-model config)))
+            (if nm
+                (strata-native-wrapper-script config
+                                              (strata-native-model-lookup nm))
+                (strata-wrapper-script config))))
+         ;; Extra data dirs to create: the native model's root and pack dir
+         ;; when in native mode (the downloads create their own subdirs via
+         ;; mkdir -p; these two are the top-level ones the pack build and the
+         ;; size-verify marker check expect to exist).
+         (extra-dirs
+          (let ((nm (strata-configuration-native-model config)))
+            (if nm
+                (let* ((model (strata-native-model-lookup nm))
+                       (slug (strata-native-model-slug model))
+                       (model-root (string-append data-dir "/" slug)))
+                  (list model-root (string-append model-root "/pack")))
+                '()))))
     #~(begin
         (use-modules (guix build utils))
         (let* ((pw (getpwnam #$user))
@@ -309,17 +578,19 @@
                (gid (passwd:gid pw)))
           ;; State dirs: runtime/ + tuning/ under XDG_STATE_HOME, the
           ;; engine components/ under XDG_DATA_HOME, profiles/ under
-          ;; XDG_CONFIG_HOME, plus the model data dir and the log dir.
+          ;; XDG_CONFIG_HOME, plus the model data dir and the log dir (and,
+          ;; in native mode, the model's root and pack dir).
           (for-each (lambda (dir)
                       (mkdir-p dir)
                       (chown dir uid gid))
-                    (list #$state-dir
-                          (string-append #$state-dir "/share")
-                          (string-append #$state-dir "/state")
-                          (string-append #$state-dir "/config")
-                          (string-append #$state-dir "/state/strata/runtime")
-                          #$log-dir
-                          #$data-dir))
+                    (append (list #$state-dir
+                                  (string-append #$state-dir "/share")
+                                  (string-append #$state-dir "/state")
+                                  (string-append #$state-dir "/config")
+                                  (string-append #$state-dir "/state/strata/runtime")
+                                  #$log-dir
+                                  #$data-dir)
+                            #$extra-dirs))
           ;; Level Zero ICD manifest: the Intel NEO runtime .deb ships no
           ;; ICD json, so generate the one-line manifest the loader needs
           ;; (same as the oneAPI installer does) and point ZE_ICD_FILE at

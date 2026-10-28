@@ -876,21 +876,25 @@
                                  (cons "/var/log/alloy.log" "alloy")
                                  (cons "/var/log/tailscaled-*.log" "tailscale")
                                  (cons "/var/log/comfyui/comfyui/update.log" "comfyui")))))
-      ;; Strata — Qwen3.8-Flash-Next (Q2_0) on the Intel Arc B70 via its
-      ;; SYCL/Level Zero backend.  Auto-starts at boot and listens on the
-      ;; tailnet (--access tailscale), so it is reachable from the fleet via
-      ;; caddy (strata.ts.peteches.co.uk -> this VM:8000).  The model lives in
-      ;; the B70's own VRAM, separate from the 4090 that koboldcpp/ComfyUI
-      ;; use, so there is no GPU contention; the engine and model are already
-      ;; on disk (no first-launch download at boot).  See (peteches services
-      ;; strata) for the PT_INTERP / runtime-lib / daemon-wrapper design.
+      ;; Strata — the SC117 abliterated Qwen3.8-Flash-Next (IQ2_XS) on the
+      ;; Intel Arc B70 via its SYCL/Level Zero backend, run through the
+      ;; native-pack path.  The catalog's fingerprint and SHA-256 gates
+      ;; refuse a modified GGUF (eddoursul/Strata issues #4087/#4160), so the
+      ;; service downloads the model's files, builds a native pack with the
+      ;; bundle's tools/iq_pack.py, and serves them with `strata serve` in
+      ;; the foreground (see (peteches services strata) for the design).
+      ;; Auto-starts at boot and listens on 0.0.0.0, so it is reachable from
+      ;; the fleet via caddy (strata.ts.peteches.co.uk -> this VM:8000). The
+      ;; first start downloads ~70 GB (the IQ2_XS shards + strata/rt +
+      ;; mmproj) and builds the pack (a few minutes); the engine component is
+      ;; fetched on the same first start if it is not already on disk.
       (service strata-service-type
                (strata-configuration
                 (auto-start? #t)
-                (family "qwen")
-                (model "q2_0")
+                (native-model 'sc117-iq2xs)
                 (data-dir "/media/models/strata")
-                (access "tailscale")
+                (host "0.0.0.0")
+                (context 32768)
                 ;; Open the engine's port in the host firewall: the comfyui
                 ;; VM's base firewall is drop-by-default, so without this
                 ;; Caddy's strata.ts.peteches.co.uk proxy cannot reach the
