@@ -67,12 +67,14 @@ resource "proxmox_virtual_environment_vm" "vm" {
     model  = var.network_device.model
   }
 
+  # The guest agent is enabled for Proxmox tooling, but Terraform must NOT
+  # wait for it to publish an IP (no `agent.wait_for_ip`): the Guix VMs
+  # configure their own address from the OS config, and no provisioner here
+  # consumes the IP. Waiting for the agent to report an IPv4 times out on
+  # slow-to-net-up Guix VMs and spews "error waiting for network interfaces
+  # from QEMU agent" warnings on every plan/apply.
   agent {
     enabled = true
-
-    wait_for_ip {
-      ipv4 = true
-    }
   }
 
   dynamic "hostpci" {
