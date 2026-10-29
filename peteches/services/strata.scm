@@ -501,14 +501,9 @@
          "    \"--spec\", \"2\","
          (string-append "    \"--mtp\", \"$MODEL_ROOT/" #$mtp-dir "\",")
          (string-append "    \"--max-context\", \"" (number->string #$context) "\",")
-         "    \"--mmap-experts\","
-         "    \"--vision\""
+         "    \"--mmap-experts\""
          "  ],"
          "  \"tokenizer\": \"$PACK_DIR/tokenizer\","
-         "  \"vision\": {"
-         (string-append "    \"model\": \"$MODEL_ROOT/" #$shard1 "\",")
-         (string-append "    \"mmproj\": \"$MODEL_ROOT/" #$mmproj "\"")
-         "  },"
          "  \"host\": \"$HOST\","
          (string-append "  \"port\": " (number->string #$port) ",")
          (string-append "  \"api_key\": " #$api-key-json ",")
