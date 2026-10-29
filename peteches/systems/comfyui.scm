@@ -894,7 +894,14 @@
                 (native-model 'sc117-iq2xs)
                 (data-dir "/media/models/strata")
                 (host "0.0.0.0")
-                (context 32768)
+                ;; 262144 = the model's full trained context (GGUF
+                ;; context_length / n_ctx_train) -- the hard ceiling; past it
+                ;; is RoPE extrapolation. This is a hybrid Gated-DeltaNet
+                ;; model (only 12 of 48 layers are full attention), so the
+                ;; per-token KV is ~6 KB at --kv q4_0 and the whole window is
+                ;; only ~1.5 GB of VRAM -- it fits, and the --expert-cache
+                ;; auto tier just shrinks by that amount.
+                (context 262144)
                 ;; Open the engine's port in the host firewall: the comfyui
                 ;; VM's base firewall is drop-by-default, so without this
                 ;; Caddy's strata.ts.peteches.co.uk proxy cannot reach the
