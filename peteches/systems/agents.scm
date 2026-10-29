@@ -111,8 +111,17 @@
       ;; sillytavern — LLM roleplay web frontend on :8001, basic-auth
       ;; protected. LLM backend (koboldcpp) is configured through the
       ;; SillyTavern web UI after first start, not via service config.
+      ;; (host "0.0.0.0") rather than the 127.0.0.1 default: caddy's
+      ;; upstream for sillytavern.ts.peteches.co.uk is
+      ;; agents.spaniel-cordylus.ts.net:8001 — it connects over Tailscale,
+      ;; so the bind has to cover the tailscale interface, exactly as
+      ;; guix-build.scm and comfyui.scm do for the same reason. Off-box
+      ;; exposure stays gated: --whitelist false plus
+      ;; SILLYTAVERN_HOSTWHITELIST_HOSTS below rejects any Host header
+      ;; outside the two names, and basic auth is on.
       (service sillytavern-service-type
                (sillytavern-configuration
+                (host "0.0.0.0")
                 (port 8001)
                 (basic-auth? #t)
                 (basic-auth-username "peteches")
