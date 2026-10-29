@@ -900,7 +900,12 @@
                 ;; Caddy's strata.ts.peteches.co.uk proxy cannot reach the
                 ;; engine over Tailscale.
                 (open-firewall? #t)
-                (port 8000)))
+                (port 8000)
+                ;; The web UI's DNS-rebinding protection: without an API key
+                ;; every request passes a Host check, so the name Caddy's
+                ;; tailnet proxy reaches the engine under must be listed here
+                ;; (otherwise the UI is refused with "Host ... is not allowed").
+                (allowed-hosts '("strata.ts.peteches.co.uk"))))
       ;; /lib64 -> glibc/lib: the Strata bundle's private CPython and the
       ;; downloaded Intel engine both carry PT_INTERP =
       ;; /lib64/ld-linux-x86-64.so.2, an FHS path that does not exist on a

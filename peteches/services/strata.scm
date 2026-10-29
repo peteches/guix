@@ -159,7 +159,16 @@
   ;; The address the server listens on (native mode only). 0.0.0.0 makes it
   ;; reachable via the caddy tailnet proxy; 127.0.0.1 keeps it local.
   (host strata-configuration-host
-        (default "0.0.0.0")))
+        (default "0.0.0.0"))
+  ;; The Host names the server answers to (native mode only), for the web UI's
+  ;; DNS-rebinding protection: without an API key every request first passes a
+  ;; Host check, and a name not in this list (or the bind host) is refused with
+  ;; "Host ... is not allowed (DNS rebinding protection)". Caddy's tailnet proxy
+  ;; reaches the engine under strata.ts.peteches.co.uk, so that name must be
+  ;; listed here (or an API key set, which turns the check off). A list of host
+  ;; names; the server also accepts suffixes (".example.org") and "*".
+  (allowed-hosts strata-configuration-allowed-hosts
+                 (default '())))
 
 ;;; ── Resolved defaults ────────────────────────────────────────────────────
 
@@ -179,9 +188,10 @@
 ;; of v0.2.6). The working path, demonstrated in #4160 at ~89-94 tok/s, is
 ;; to bypass setup entirely: download the files, build a native pack with
 ;; tools/iq_pack.py, write a run config that passes the files straight to
-;; the engine (--native/--ple-gguf/--pack/--mtp), and start the server with
-;; `strata serve`. Each entry below records exactly what to download (HF
-;; path + published size, verified after fetch) and how to lay it out.
+;; the engine (--native/--ple-gguf/--pack/--mtp/--expert-profile, with
+;; --expert-cache auto), and start the server with `strata serve`. Each
+;; entry below records exactly what to download (HF path + published size,
+;; verified after fetch) and how to lay it out.
 (define-record-type* <strata-native-model> strata-native-model
                      make-strata-native-model
   strata-native-model?
@@ -372,6 +382,9 @@
          (port (strata-configuration-port config))
          (host (strata-configuration-host config))
          (api-key (strata-configuration-api-key config))
+         (allowed-hosts (strata-configuration-allowed-hosts config))
+         (allowed-hosts-json
+          (string-join (map string-quote allowed-hosts) ", "))
          (context (or (strata-configuration-context config) 32768))
          (slug (strata-native-model-slug model))
          (model-root (string-append data-dir "/" slug))
@@ -496,17 +509,34 @@
          "    \"--pack\", \"$PACK_DIR\","
          (string-append "    \"--native\", \"$MODEL_ROOT/" #$shard1 "\",")
          (string-append "    \"--ple-gguf\", \"$MODEL_ROOT/" #$shard2 "\",")
-         "    \"--expert-cache\", \"64\","
+         ;; --expert-profile + --expert-cache auto are REQUIRED for the engine
+         ;; to build the profile-filled VRAM expert tier. Without the profile
+         ;; the prompt path falls back to "allocates its own buffers (too few
+         ;; cache slots to borrow)" and the server dies at startup with a SYCL
+         ;; UR_RESULT_ERROR_UNINITIALIZED instead of coming up. A fixed
+         ;; --expert-cache 64 is far too small for the prompt path to borrow
+         ;; from, hence "auto" (the engine then sizes the resident expert tier
+         ;; to the free VRAM and streams the rest from the mmap'd GGUFs). The
+         ;; profile ships with the bundle at $BUNDLE/data/expert-profile.bin
+         ;; and is the same file the catalog `strata launch` path passes (the
+         ;; working q2_0 install config passes it too) - it is a bundle-level
+         ;; architecture default, not a per-model artifact, so it is valid for
+         ;; the abliterated weights. Confirmed live 2026-10-29: with these two
+         ;; flags the abliterated IQ2_XS serves (context 32768) on the B70.
+         "    \"--expert-profile\", \"$BUNDLE/data/expert-profile.bin\","
+         "    \"--expert-cache\", \"auto\","
          "    \"--prefill\", \"auto\","
          "    \"--spec\", \"2\","
          (string-append "    \"--mtp\", \"$MODEL_ROOT/" #$mtp-dir "\",")
          (string-append "    \"--max-context\", \"" (number->string #$context) "\",")
+         "    \"--kv\", \"q4_0\","
          "    \"--mmap-experts\""
          "  ],"
          "  \"tokenizer\": \"$PACK_DIR/tokenizer\","
          "  \"host\": \"$HOST\","
          (string-append "  \"port\": " (number->string #$port) ",")
          (string-append "  \"api_key\": " #$api-key-json ",")
+         (string-append "  \"allowed_hosts\": [" #$allowed-hosts-json "],")
          "  \"log\": \"$LOG\""
          "}"
          "EOF"
