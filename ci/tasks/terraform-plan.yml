@@ -22,4 +22,17 @@ run:
   - |
     cd repo/infra/terraform
     terraform init
-    terraform plan
+    terraform plan -out=tfplan
+
+    # SAFETY GATE (runs after the plan). If the plan would delete or replace
+    # anything, FAIL this job. apply-main is gated on plan-main (passed:), so
+    # a failure here means apply-main never runs — the gate's whole purpose.
+    # Terraform's plan JSON names the action "delete" (never "destroy"), in
+    # these forms: ["delete"], ["delete","create"], ["create","delete"].
+    if terraform show -json tfplan | grep -qE '"actions":\["delete"\]|"actions":\["delete","create"\]|"actions":\["create","delete"\]'; then
+      echo "ERROR: plan includes DELETION/replacement of existing resources." >&2
+      echo "       apply-main will NOT run. Review the plan manually before any targeted apply." >&2
+      exit 1
+    fi
+
+    echo "Plan is safe (no deletions/replacements). apply-main may proceed."

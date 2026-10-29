@@ -26,23 +26,18 @@ run:
     chmod 600 /home/peteches/.ssh/id_ed25519
     cd repo/infra/terraform
     terraform init
-    # PLAN-ONLY: never auto-apply the full root module. A full apply cannot
-    # carry per-VM images, so any pending create would produce a blank shell
-    # (the 2026-10-27 claude-workstation incident: node/identity drift planned
-    # destroy+recreate of a live VM and the recreate had no image). Node
-    # placement is now hardcoded per module in main.tf, so a full plan should
-    # only ever show in-place drift. New or re-provisioned VMs go through the
-    # per-VM provision jobs (targeted apply with the image) or a manual
-    # targeted apply.
+
+    # This job only runs because plan-main succeeded (it is gated on plan-main
+    # via passed:). Re-plan and RE-CHECK the safety gate before applying —
+    # defense in depth, since the plan could have drifted since plan-main ran.
+    # If it would delete/replace anything, FAIL WITHOUT applying.
     terraform plan -out=tfplan
-    # Refuse if the plan would delete anything — pure deletes or replaces.
-    # Terraform's plan JSON names the action "delete" (never "destroy"), in
-    # these forms: ["delete"], ["delete","create"], ["create","delete"].
-    # Surface it as a failure so a human reviews before any targeted apply.
     if terraform show -json tfplan | grep -qE '"actions":\["delete"\]|"actions":\["delete","create"\]|"actions":\["create","delete"\]'; then
-      echo "ERROR: plan includes DELETION of existing resources. Review manually before applying." >&2
+      echo "ERROR: plan includes DELETION/replacement of existing resources." >&2
+      echo "       NOT applying. Review the plan manually before any targeted apply." >&2
       exit 1
     fi
-    echo "Plan contains no destruction. If changes are wanted, apply manually:"
-    echo "  terraform apply tfplan            (full, drift only)"
-    echo "  terraform apply -target=module.<vm> tfplan   (per VM; image via TF_VAR_vm_image_files)"
+
+    # Safe: apply the plan.
+    echo "Applying plan (no deletions/replacements)…"
+    terraform apply -auto-approve tfplan
