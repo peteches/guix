@@ -1,8 +1,8 @@
 module "prometheus" {
-  source    = "./modules/proxmox-vm"
-  vmid      = 100
-  name      = "prometheus"
-  node_name = "proxmox1"
+  source     = "./modules/proxmox-vm"
+  vmid       = 100
+  name       = "prometheus"
+  node_name  = "proxmox1"
   image_file = lookup(var.vm_image_files, "prometheus", null)
 
   bios          = "ovmf"
@@ -331,7 +331,7 @@ module "rustdesk" {
   machine       = "q35"
   scsi_hardware = "virtio-scsi-pci"
   on_boot       = false
-  started       = true
+  started       = false
   memory        = 2048
 
   cpu = {
@@ -454,7 +454,7 @@ module "plane" {
   machine       = "q35"
   scsi_hardware = "virtio-scsi-pci"
   on_boot       = true
-  started       = true
+  started       = false
   memory        = 8192
 
   cpu = {
@@ -510,7 +510,7 @@ module "claude-workstation" {
     # baseline; the default "qemu64" model exposes no AVX/SSE4/AES/RDRAND and
     # the binary busy-spins forever at startup. "host" passes the node CPU's
     # full feature set through to the guest. Requires a VM power cycle to apply.
-    type  = "host"
+    type = "host"
   }
 
   efi_disk = {
@@ -569,7 +569,7 @@ module "agents" {
     interface    = "virtio0"
     # Must be >= the 25G qcow2 the image build pipeline produces, plus
     # headroom for the media the harnesses generate locally.
-    size         = 75
+    size = 75
   }
 
   network_device = {
