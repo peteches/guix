@@ -502,7 +502,7 @@ module "claude-workstation" {
   scsi_hardware = "virtio-scsi-pci"
   on_boot       = true
   started       = true
-  memory        = 8192
+  memory        = 2048
 
   cpu = {
     cores = 4
