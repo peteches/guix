@@ -1,4 +1,6 @@
 {
   "httpIdleTimeoutMs": 1800000,
-  "retry": { "maxRetries": 3 }
+  "retry": { "maxRetries": 3 },
+  "defaultProvider": "strata",
+  "defaultModel": "qwen3.8-flash-next"
 }

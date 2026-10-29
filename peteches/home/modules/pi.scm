@@ -22,10 +22,12 @@
 ;;; openrouter/z-ai/glm-5.3, and none of the workstation accounts have an
 ;;; openrouter API key, so pinned spawns died with "No API key found for
 ;;; openrouter". With the pin removed the spawned pi gets no --model flag
-;;; and pi's automatic startup selection picks the first model with
-;;; configured auth — for these accounts that is the local koboldcpp model
-;;; declared in models.json above (the only provider with a key; the static
-;;; apiKey "local" in models.json counts as configured auth). Keep the
+;;; and pi's startup model selection (findInitialModel in pi's
+;;; core/model-resolver.js) falls through to the saved default from
+;;; settings.json -- which for these accounts is the strata model, since
+;;; configs/pi/defaults/settings.json declares defaultProvider/defaultModel
+;;; and the static apiKey "local" in models.json counts as configured auth
+;;; for that provider. Keep the
 ;;; bodies in sync with the fork when the package pin is bumped.
 ;;;
 ;;; configs/pi/defaults/settings.json (if present) is NOT symlinked like
@@ -48,8 +50,14 @@
 ;;; oauth.scopes patch.
 ;;;
 ;;; The default models.json wires up koboldcpp.ts.peteches.co.uk (Caddy's
-;;; reverse proxy onto the comfyui VM's koboldcpp instance) as a custom
-;;; provider. This replaced nug's own koboldcpp instance and its Tailscale
+;;; reverse proxy onto the comfyui VM's koboldcpp instance) and
+;;; strata.ts.peteches.co.uk (Caddy's reverse proxy onto the same VM's
+;;; Strata MoE engine — Qwen3.8-Flash-Next IQ2_XS on the Intel Arc B70,
+;;; see peteches/systems/comfyui.scm) as custom providers. configs/pi/
+;;; defaults/settings.json declares strata as the default model
+;;; (defaultProvider/defaultModel), so pi's startup selection lands there
+;;; on every account that uses this config. The koboldcpp provider
+;;; replaced nug's own koboldcpp instance and its Tailscale
 ;;; IPv6-literal baseUrl following nug's decommission; the `pi-koboldcpp'
 ;;; shell function below (NODE_TLS_REJECT_UNAUTHORIZED=0 wrapper) predates
 ;;; that move and may no longer be necessary now that the baseUrl is a
@@ -73,6 +81,11 @@
 ;;; re-prefilled ~160k tokens, and koboldcpp's log showed a 924-request
 ;;; pile-up at exactly 163840 tokens. Measured over one week that was 31.4
 ;;; GPU-hours of prefill -- 45% of all request time, from 7.4% of requests.
+;;;
+;;; The strata entry's contextWindow must track the strata service's
+;;; `--context' flag on the same VM (peteches/systems/comfyui.scm,
+;;; currently 32768); maxTokens (16384) is a generation budget within that
+;;; window, verified accepted by the server.
 ;;;
 ;;; EXTENSIONS (a list of packages, e.g. pi-mcp-adapter from peteches
 ;;; packages pi-coding-agent) symlinks each package's own

@@ -1,5 +1,25 @@
 {
   "providers": {
+    "strata": {
+      "name": "strata (comfyui)",
+      "api": "openai-completions",
+      "baseUrl": "https://strata.ts.peteches.co.uk/v1",
+      "apiKey": "local",
+      "compat": {
+        "maxTokensField": "max_tokens",
+        "supportsUsageInStreaming": true,
+        "supportsStrictMode": false
+      },
+      "models": [
+        {
+          "id": "qwen3.8-flash-next",
+          "name": "Qwen3.8 Flash Next IQ2_XS (comfyui, strata)",
+          "contextWindow": 32768,
+          "maxTokens": 16384,
+          "input": ["text"]
+        }
+      ]
+    },
     "koboldcpp": {
       "name": "koboldcpp (comfyui)",
       "api": "openai-completions",
