@@ -59,6 +59,41 @@
 ;;;
 ;;; The service requires the 'sops-secrets' provision so it only starts once
 ;;; the token file has been decrypted.
+;;;
+;;; TWO GOTCHAS in the 'start' gexp below, both learned the hard way (the bot
+;;; was silently not running on 'agents' because of them):
+;;;
+;;; 1. 'start' must be a LAMBDA, not a bare #~(make-forkexec-constructor ...).
+;;;    'make-forkexec-constructor' evaluates its keyword arguments eagerly —
+;;;    its '#:environment-variables' is a plain list built right then, not
+;;;    something the returned thunk recomputes.  That moment is when shepherd
+;;;    loads this service's generated file, which for PID 1 is early in boot,
+;;;    long before the 'sops-secrets' one-shot has decrypted anything into
+;;;    /run/secrets — so a token read done there throws ENOENT, the file load
+;;;    fails, and shepherd drops the service.  Wrapping the constructor in a
+;;;    lambda defers it to service start, when the requirement is
+;;;    guaranteed.  (See (peteches services sillytavern) and
+;;;    (peteches services nzbget) for the same shape.)
+;;;
+;;; 2. Identifiers used inside these gexps must be BOUND in the module
+;;;    shepherd compiles/loads the generated file in — a fresh user module
+;;;    using only '(shepherd service)' plus (guix build utils)/(guix build
+;;;    syscalls) (gnu services shepherd scm->go compiles with exactly that
+;;;    '#:env).  'get-string-all' lives in (ice-9 textual-ports), which is not
+;;;    in that set, so a bare reference is an unbound free variable: Guile's
+;;;    verifying linking raises "Unbound variable: get-string-all" at
+;;;    load-compiled, and shepherd — which wraps each service file load in an
+;;;    exception handler — logs one syslog line and carries on without the
+;;;    service, so 'herd status rules-lawyer' just reports "could not be
+;;;    found".  Qualify it as (ice-9 textual-ports) get-string-all; '(@
+;;;    ...)' becomes a runtime module-ref, which is why the repo's
+;;;    '(@ (ice-9 rdelim) read-line)' style services are unaffected.
+;;;
+;;; 3. A spliced *list* must be quoted: #~(f #$xs) with xs a list of strings
+;;;    emits f ("a" "b") — Scheme code for calling the string "a" on "b", so
+;;;    it blows up at service start, not at build time — whereas '#$xs emits
+;;;    f (quote ("a" "b")) which is what a list splice needs. Only atoms
+;;;    (strings, numbers, #f) are safe to splice bare.
 
 ;;; ── Configuration record ─────────────────────────────────────────────────
 
@@ -137,6 +172,12 @@
           (rules-lawyer-configuration-discord-token-file config))
          (llm-api-key-file
           (rules-lawyer-configuration-llm-api-key-file config))
+         ;; Whether an LLM API key file is configured — decided HERE, at
+         ;; configure time.  Branching inside the gexp on #$llm-api-key-file
+         ;; is wrong: the default "" splices as "" and every non-#f value is
+         ;; true in Scheme, so the then-branch would be taken and the service
+         ;; would try to open "" as a file at start.
+         (llm-api-key-set? (not (string-null? llm-api-key-file)))
          (outbox-dir (rules-lawyer-configuration-outbox-dir config))
          (log-file (rules-lawyer-configuration-log-file config))
          ;; Plain (non-secret) environment variables, computed at configure
@@ -174,32 +215,47 @@
             "rules-lawyer Discord bot — answers tabletop rules questions from a bundled rulebook library.")
            (requirement '(networking file-systems sops-secrets))
            (start
-            #~(make-forkexec-constructor
-               (list #$(file-append node "/bin/node") "bot.mjs")
-               #:directory #$(file-append pkg "/discord")
-               #:environment-variables
-               (append
-                ;; DISCORD_TOKEN is read from the SOPS-decrypted file at
-                ;; service start (the file is guaranteed present by the
-                ;; 'sops-secrets' requirement).
-                (list (string-append
-                       "DISCORD_TOKEN="
-                       (string-trim-right
-                        (call-with-input-file #$discord-token-file
-                                              get-string-all))))
-                ;; LLM_API_KEY, only when a secret file is configured.
-                (if #$llm-api-key-file
-                    (list (string-append
-                           "LLM_API_KEY="
-                           (string-trim-right
-                            (call-with-input-file #$llm-api-key-file
-                                                  get-string-all))))
-                    '())
-                ;; Plain configuration values.
-                #$static-env)
-               #:user "rules-lawyer"
-               #:group "rules-lawyer"
-               #:log-file #$log-file))
+            ;; A lambda, not a bare constructor — see commentary gotcha 1.
+            #~(lambda _
+               (let ((secret-env
+                      (append
+                       ;; DISCORD_TOKEN is read here, inside the lambda, so
+                       ;; the read happens at service start (when
+                       ;; 'sops-secrets' is guaranteed done) and not at
+                       ;; boot-time service-file load.
+                       (list (string-append
+                              "DISCORD_TOKEN="
+                              (string-trim-right
+                               (call-with-input-file #$discord-token-file
+                                 (@ (ice-9 textual-ports) get-string-all)))))
+                       ;; LLM_API_KEY, only when a secret file is configured
+                       ;; (decided at configure time, see llm-api-key-set?).
+                       (if #$llm-api-key-set?
+                           (list (string-append
+                                  "LLM_API_KEY="
+                                  (string-trim-right
+                                   (call-with-input-file #$llm-api-key-file
+                                     (@ (ice-9 textual-ports) get-string-all)))))
+                           '()))))
+                 ;; Plain configuration values are configure-time strings, so
+                 ;; they can be spliced straight in — but note the quote:
+                 ;; '#$static-env emits (quote ("LLM_BASE_URL=..." ...)).
+                 ;; A bare #$static-env emits the list *unquoted*, i.e. as
+                 ;; ("LLM_BASE_URL=..." "LLM_MODEL=..." ...), which is not a
+                 ;; list literal in Scheme code position but a call of the
+                 ;; string "LLM_BASE_URL=..." on the following strings, and
+                 ;; fails at service start with "Wrong type to apply".
+                 ;; (Compare '#$(shepherd-service-provision service) in
+                 ;; (gnu services shepherd) shepherd-service-file/regular,
+                 ;; which emits the (quote ...) form this needs.)
+                 ((make-forkexec-constructor
+                   (list #$(file-append node "/bin/node") "bot.mjs")
+                   #:directory #$(file-append pkg "/discord")
+                   #:environment-variables
+                   (append secret-env '#$static-env)
+                   #:user "rules-lawyer"
+                   #:group "rules-lawyer"
+                   #:log-file #$log-file)))))
            (stop #~(make-kill-destructor))))))
 
 ;;; ── Profile ──────────────────────────────────────────────────────────────
