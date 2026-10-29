@@ -162,6 +162,7 @@ creation_rules:
       - age127sr66dp0za797zes24lxlsj4pvc5nn0097mpcdmrckf468ycfdsjrhe6g  # concourse-web01
       - age10kxy6jf4agmzn8sg9v0mje859exfxhr7p0tpfznuvg52tgak4p2qkzadm5  # concourse-worker01
       - age1d77k2we2wz8ha37wzh3j4gf9esuzejt0uqdp7tcynv4rk6ae35jsahwcxv  # guix-build
+      - age1ytrm8ea22xsvzlhqxc7jykuscn8wp4hmj8vg9ul7fcy9ncxutcwqepxjtd  # agents
       - age1mvtdypejfepz4xqpfxx3hxuelm522rgfh8a9k376mfawlm567e9qh5nxa4  # comfyui
 
   # criticalgrind's Plane/Outline MCP keys: decrypted directly on
