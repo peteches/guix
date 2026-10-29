@@ -59,7 +59,7 @@ resource "proxmox_virtual_environment_vm" "vm" {
     # than N GiB (ESP + GPT on top of the root), so an import target of exactly
     # N is ~40 MiB too small — the import then silently yields a blank disk. Give
     # imported disks headroom over the declared size so the image always fits.
-    size         = var.image_file != null ? var.disk.size + 2 : var.disk.size
+    size = var.image_file != null ? var.disk.size + 2 : var.disk.size
   }
 
   network_device {
@@ -67,14 +67,24 @@ resource "proxmox_virtual_environment_vm" "vm" {
     model  = var.network_device.model
   }
 
-  # The guest agent is enabled for Proxmox tooling, but Terraform must NOT
-  # wait for it to publish an IP (no `agent.wait_for_ip`): the Guix VMs
-  # configure their own address from the OS config, and no provisioner here
-  # consumes the IP. Waiting for the agent to report an IPv4 times out on
-  # slow-to-net-up Guix VMs and spews "error waiting for network interfaces
-  # from QEMU agent" warnings on every plan/apply.
+  # The guest agent stays enabled for Proxmox tooling, but the agent IP wait
+  # must be DISABLED (`wait_for_ip.disabled = true` => WaitForIPConfig.Skip).
+  # The provider's Read/refresh path polls the QEMU agent for up to the agent
+  # timeout (15m) whenever the VM is started AND the agent is enabled in the
+  # Proxmox config — independent of any Terraform `agent` block — and times
+  # out with "error waiting for network interfaces from QEMU agent" when the
+  # Guix VM's qemu-ga doesn't answer. The Guix VMs configure their own address
+  # from the OS config, so nothing here needs the agent-reported IP. `disabled
+  # = true` makes WaitForNetworkInterfacesFromVMAgent return immediately (Skip),
+  # which suppresses the wait in BOTH the Read path and the create/update path.
+  # (Removing the block entirely does NOT help: nil means "wait for any IP",
+  # which still times out.)
   agent {
     enabled = true
+
+    wait_for_ip {
+      disabled = true
+    }
   }
 
   dynamic "hostpci" {
