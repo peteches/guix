@@ -83,9 +83,53 @@
 ;;; GPU-hours of prefill -- 45% of all request time, from 7.4% of requests.
 ;;;
 ;;; The strata entry's contextWindow must track the strata service's
-;;; `--context' flag on the same VM (peteches/systems/comfyui.scm,
-;;; currently 32768); maxTokens (16384) is a generation budget within that
-;;; window, verified accepted by the server.
+;;; `--context' flag on the same VM (peteches/systems/comfyui.scm; 262144
+;;; since 2026-10-29, commit 90661b5, when the engine was moved onto the
+;;; model's full trained window, and it receives the same value as
+;;; --max-context). Unlike koboldcpp, strata reserves
+;;; nothing inside that window, so the prompt space a client may use is
+;;; contextWindow minus its own generation budget: 262144 - 16384 =
+;;; 245760. maxTokens (16384) is that budget, verified accepted by the
+;;; server.
+;;;
+;;; compaction.modelOverrides in configs/pi/defaults/settings.json widens
+;;; reserveTokens for both local models, and those two numbers are derived
+;;; rather than tuned. pi's context accounting is provider-accurate only
+;;; while the last assistant usage entry is newer than the newest
+;;; context_edit or compaction entry — `estimateProjectedContextTokens()`
+;;; (dist/bundle/chunks/chunk-OJP47DM6.js) throws the usage figure away as
+;;; soon as one of those is appended after it, and every later turn is
+;;; measured by the chars/4 heuristic that replaces it. Measured on pi
+;;; session 01a188e2 (2026-10-30): that heuristic put the context at
+;;; 161700 tokens when the provider had just reported 198345 — 1.22x low —
+;;; and a koboldcpp request that cleared the pre-prompt threshold check
+;;; carried 163839 real tokens, one token of room at --contextsize 163840,
+;;; and came back as one token of text with `finish_reason: length'. That
+;;; is at least 1.43x low, and the overrides are sized for it:
+;;;
+;;;   strata     reserveTokens  98304 -> compact above 163840 estimated
+;;;                                        (163840 * 1.43 < 245760)
+;;;   koboldcpp  reserveTokens  49152 -> compact above  81920 estimated
+;;;                                        ( 81920 * 1.43 < 131072)
+;;;
+;;; reserveTokens also sets the summarization output budget,
+;;; min(floor(0.8 * reserveTokens), maxTokens), so each override lands on
+;;; the generation budget that server already accepts (16384 / 32768)
+;;; instead of the 13107 the 16384 default yields — not cosmetic, this
+;;; session's two largest checkpoints came back at 15210 and 15156 tokens,
+;;; over the budget pi had asked for. Compacting earlier is also what the
+;;; --genlimit note in peteches/systems/comfyui.scm credits with clearing
+;;; that VM's memory thrashing, so the earlier trigger costs less than it
+;;; looks like: prefill, not tokens saved, is what this box pays for.
+;;;
+;;; keepRecentTokens stays at its 20000 default on purpose. Lowering it
+;;; would guarantee that a truncated-response recovery always finds
+;;; something older than the cut point to summarize — a compact-and-retry
+;;; recovery that finds nothing returns early without retrying, which is
+;;; the "Response was truncated before completion." stall that session hit
+;;; four times — but it buys that guarantee by discarding more of the
+;;; agent's recent verbatim work at every compaction, and leaves the
+;;; checkpoint more content to compress into the same output budget.
 ;;;
 ;;; EXTENSIONS (a list of packages, e.g. pi-mcp-adapter from peteches
 ;;; packages pi-coding-agent) symlinks each package's own
@@ -276,10 +320,18 @@ pi-koboldcpp() {
 ;; overlapping key (jq's `*' operator merges right-biased, recursively for
 ;; nested objects), which is what lets a fleet-wide default like
 ;; httpIdleTimeoutMs stay enforced across reconfigures without clobbering
-;; pi's own runtime keys (defaultProvider, defaultModel, compaction, …) that
-;; aren't present in the defaults file. Creates the file (a plain copy, not
+;; pi's own runtime keys (defaultProvider, defaultModel, …) that aren't
+;; present in the defaults file. Creates the file (a plain copy, not
 ;; a symlink, so pi can keep rewriting it afterwards) if it doesn't exist
 ;; yet, e.g. on a brand new account.
+;;
+;; The defaults file does now declare one branch of pi's runtime state,
+;; compaction.modelOverrides (2026-10-30), so those two per-model
+;; reserveTokens are fleet-enforced: an account-local override of the same
+;; key is rewritten here at activation. Sibling keys pi may write —
+;; compaction.enabled, or an override for a model not listed here — are
+;; different leaf paths and survive, since `*' merges nested objects
+;; recursively and only clobbers keys that actually collide.
 (define %home-pi-settings-merge-script "\
 set -eu
 defaults=\"$1\"; jq_bin=\"$2\"

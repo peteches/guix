@@ -2,5 +2,11 @@
   "httpIdleTimeoutMs": 1800000,
   "retry": { "maxRetries": 3 },
   "defaultProvider": "strata",
-  "defaultModel": "qwen3.8-flash-next"
+  "defaultModel": "qwen3.8-flash-next",
+  "compaction": {
+    "modelOverrides": {
+      "strata/qwen3.8-flash-next": { "reserveTokens": 98304 },
+      "koboldcpp/koboldcpp/Qwen3.8-27B-Q4_K_M": { "reserveTokens": 49152 }
+    }
+  }
 }
