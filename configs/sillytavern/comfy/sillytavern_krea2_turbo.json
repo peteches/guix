@@ -1,0 +1,78 @@
+{
+  "1": {
+    "class_type": "UNETLoader",
+    "inputs": { "unet_name": "krea2_turbo_fp8_scaled.safetensors", "weight_dtype": "default" },
+    "_meta": { "title": "KREA 2 Turbo (12B fp8) - swap to krea2_raw_fp8_scaled if you want more steps / editability" }
+  },
+  "2": {
+    "class_type": "CLIPLoader",
+    "inputs": { "clip_name": "qwen3vl_4b_fp8_scaled.safetensors", "type": "krea2" },
+    "_meta": { "title": "Qwen3-VL 4B encoder - type MUST be krea2" }
+  },
+  "3": {
+    "class_type": "VAELoader",
+    "inputs": { "vae_name": "qwen_image_vae.safetensors" },
+    "_meta": { "title": "Qwen Image VAE" }
+  },
+  "4": {
+    "class_type": "LoraLoaderModelOnly",
+    "inputs": { "model": ["1", 0], "lora_name": "Krea2/krea2_nsfw_v2.safetensors", "strength_model": 1.0 },
+    "_meta": { "title": "NSFW LoRA (trigger KNP pinned in node 6)" }
+  },
+  "5": {
+    "class_type": "LoraLoaderModelOnly",
+    "inputs": { "model": ["4", 0], "lora_name": "krea2_darkbrush.safetensors", "strength_model": 0.6 },
+    "_meta": { "title": "Style / character LoRA slot" }
+  },
+  "6": {
+    "class_type": "CLIPTextEncode",
+    "inputs": { "clip": ["2", 0], "text": "KNP" },
+    "_meta": { "title": "Pinned LoRA trigger tokens - edit freely, do NOT put %prompt% here" }
+  },
+  "7": {
+    "class_type": "CLIPTextEncode",
+    "inputs": { "clip": ["2", 0], "text": "%prompt%" },
+    "_meta": { "title": "Positive text from SillyTavern" }
+  },
+  "8": {
+    "class_type": "ConditioningCombine",
+    "inputs": { "conditioning_1": ["6", 0], "conditioning_2": ["7", 0] },
+    "_meta": { "title": "triggers + SillyTavern prompt" }
+  },
+  "9": {
+    "class_type": "CLIPTextEncode",
+    "inputs": { "clip": ["2", 0], "text": "%negative_prompt%" },
+    "_meta": { "title": "Negative from SillyTavern - near-inert at CFG 1, keep it short" }
+  },
+  "10": {
+    "class_type": "EmptyLatentImage",
+    "inputs": { "width": 1024, "height": 1536, "batch_size": 1 },
+    "_meta": { "title": "Latent 1024x1536 - 1920x1080 also native; use \"%width%\" / \"%height%\" for ST control" }
+  },
+  "11": {
+    "class_type": "KSampler",
+    "inputs": {
+      "model": ["5", 0],
+      "positive": ["8", 0],
+      "negative": ["9", 0],
+      "latent_image": ["10", 0],
+      "seed": "%seed%",
+      "steps": 8,
+      "cfg": 1.0,
+      "sampler_name": "er_sde",
+      "scheduler": "simple",
+      "denoise": 1.0
+    },
+    "_meta": { "title": "Sampler - turbo recipe; more steps or cfg > 1 over-cooks the image" }
+  },
+  "12": {
+    "class_type": "VAEDecode",
+    "inputs": { "samples": ["11", 0], "vae": ["3", 0] },
+    "_meta": { "title": "Decode" }
+  },
+  "13": {
+    "class_type": "SaveImage",
+    "inputs": { "images": ["12", 0], "filename_prefix": "sillytavern_krea2" },
+    "_meta": { "title": "Save" }
+  }
+}

@@ -1,0 +1,188 @@
+* SillyTavern ⇄ ComfyUI workflows (tiers A, C, F)
+
+Verified on the =comfyui= VM (RTX 4090 passthrough) with **ComfyUI 0.43.0** on
+2026-10-30. All three workflows were executed end-to-end on the real GPU and the
+output PNGs have the expected dimensions.
+
+Files are **API-format** workflow JSON (the format SillyTavern's ComfyUI
+integration expects — ComfyUI's "Save (Format) → API"). Identical copies are also
+saved in ComfyUI's own workflow library under the same filenames, so they can be
+opened and tweaked on the canvas.
+
+**Model files live in** =$=/media/models/comfyui/= (extra-model-paths config), so
+the =.safetensors= names below are exactly what SillyTavern/ComfyUI dropdowns show.
+
+**Where SillyTavern puts them** — Settings → *Image Generation* → pick the
+ComfyUI backend, then paste/upload the JSON into the ComfyUI **workflow** box
+(stored as =extension_settings.sd.comfy_workflow=) and set the ComfyUI URL
+(=extension_settings.sd.comfy_url=). Because the request is issued by the
+*browser*, the URL has to match how you reach SillyTavern: if ST is served over
+=https://sillytavern.ts.peteches.co.uk=, use **https://comfyui.ts.peteches.co.uk**
+(Caddy → =comfyui.spaniel-cordylus.ts.net:8188=, WebSocket upgrade included);
+=http://192.168.51.206:8188= gets blocked as mixed content.
+
+**Placeholder rules** (SillyTavern replaces a placeholder only when it is a
+*standalone quoted string value* in the JSON):
+
+- ="%prompt%"=, ="%negative_prompt%"=, ="%seed%"= → SillyTavern's prompt, negative
+  and seed. They are already placed on the prompt / negative / sampler nodes.
+- ="%width%"= / ="%height%"= are available if you want ST to drive the canvas size;
+  they are currently pinned numbers instead, because each model has hard size
+  preferences.
+- Do **not** embed these tokens inside a longer string, and do not put them in
+  the pinned trigger-phrase nodes (nodes labelled "Pinned LoRA trigger tokens").
+- =steps= / =cfg= / =sampler_name= / =scheduler= are deliberately **pinned** in
+  the JSON rather than taken from ST: ST's sampler/scheduler lists do not map
+  cleanly onto ComfyUI's enums, and these turbo models only work with the
+  pinned combination.
+
+* Tier A — =sillytavern_sdxl_lightning4.json= (chat-inline, fastest)
+
+| Item        | Value                                                            |
+|-------------|------------------------------------------------------------------|
+| Checkpoint  | =CyberRealisticXLPlay_V6.0.safetensors=                            |
+| Speed LoRA  | =SDXL-Lightning/sdxl_lightning_4step_lora.safetensors= @1.0        |
+| Content LoRAs | =Detailed_nipples_xl.safetensors=, =Pussy_Lily_v5_XL.safetensors= @0.6 |
+| Latent      | 832×1216 (portrait SDXL)                                          |
+| Sampler     | 4 steps, CFG 2.0, =dpmpp_2m_sde= + =beta=                         |
+| Measured    | **1.1–2.6 s** warm (model resident), **8.9–15.6 s** cold          |
+
+Swap-in checkpoints worth trying: =lustifySDXLNSFWSFW_v20=, =CyberRealisticXL_v22=,
+=ponyDiffusionV6XL_v6StartWithThisOne= (pony needs =steps 8= + Lightning 8-step).
+Pinned trigger tokens for the two content LoRAs:
+=detailed nipples breast, pussy_front= (taken from each file's
+=ss_tag_frequency= metadata). Per-character LoRAs go in node 4 (slot 2).
+
+* Tier C — =sillytavern_krea2_turbo.json= (photoreal NSFW aesthetics)
+
+| Item        | Value                                                            |
+|-------------|------------------------------------------------------------------|
+| DiT         | =krea2_turbo_fp8_scaled.safetensors= (12B, fp8-scaled)             |
+| Encoder     | =qwen3vl_4b_fp8_scaled.safetensors=, =CLIPLoader type=krea2=       |
+| VAE         | =qwen_image_vae.safetensors=                                      |
+| LoRAs       | =Krea2/krea2_nsfw_v2.safetensors= @1.0, =krea2_darkbrush.safetensors= @0.6 |
+| Latent      | 1024×1536 (1920×1080 and 1328×1328 are also native)               |
+| Sampler     | 8 steps, CFG 1.0, =er_sde= + =simple=                             |
+| Measured    | **8.7 s** warm, **15.9–24.9 s** cold                             |
+
+CFG above ~1.2 or steps above ~10 over-cooks Krea-2 Turbo (burnt skin, plastic
+highlighting). Keep the negative short — at CFG 1 it is nearly inert. Trigger
+token for the NSFW LoRA is =KNP= (pinned in node 6).
+
+* Tier F — =sillytavern_moss_sft_4step.json= (MOSS-Image, text/composition specialist)
+
+| Item        | Value                                                            |
+|-------------|------------------------------------------------------------------|
+| DiT         | =moss_image_sft_int8_convrot.safetensors= (~5 GB, int8 convrot)    |
+| Encoder     | =qwen3.5_9b_int8_convrot.safetensors= (~9 GB), =CLIPLoader type=moss_image= |
+| VAE         | =flux2-vae.safetensors=                                           |
+| LoRAs       | =moss_image_sft_4step_v2.0.safetensors= @1.0, =MOSS-Image-NSFW-Uncensored-LoRA-ComfyUI.safetensors= @0.8 |
+| Latent      | 1024×1024 (trained square — portrait ratios are weaker)           |
+| Sampler     | 4 steps, CFG 1.0, =euler= + =simple=                              |
+| Measured    | **1.3 s** warm, **9.3–10.1 s** cold                              |
+
+MOSS-Image needs ComfyUI with native support (merged upstream in commit
+=e087d8f6=, 2026-10-16); this host is now on 0.43.0, so it works. The trigger
+phrase =moss_xvstyle= comes from the NSFW LoRA's own metadata and sits in its
+own conditioning branch merged by =ConditioningCombine=, because SillyTavern
+replaces ="%prompt%"= as a whole value.
+
+For maximum quality instead of speed: delete the 4-step LoRA node (reconnect
+=1 → 5=) and use 50 steps / CFG 3 / =euler= + =sgm_uniform=, optionally with
+=MNSSA2511:1005:5= (SLG noise schedule, layer-skip 22) — the official recipe.
+Or swap the DiT to =moss_image_dmd_distilled_sft_8_steps_int8_convrot= for
+~8-step DMD without a speed LoRA. MOSS's strengths are text rendering, JSON /
+bounding-box layout prompts (=MOSSImageLayoutPrompt= node) and multi-object
+composition; its LoRA ecosystem is far thinner than the 456 SDXL LoRAs already
+on disk, so treat it as an addition, not a replacement.
+
+* SillyTavern-side settings (verified against ST 1.19.0 on =agents=)
+
+ST's ComfyUI workflow library is **its own folder**, not ComfyUI's:
+=$=/var/lib/sillytavern/sillytavern/data/default-user/user/workflows/= (the
+=ComfyUI Workflow= dropdown is a server-side =readdir= of that dir —
+=/srv/sillytavern/src/endpoints/stable-diffusion.js=, =getComfyWorkflows=).
+The three files were installed there directly (owned =sillytavern:sillytavern=,
+mode 664), so no upload is needed — just pick one in the dropdown. The copies in
+**ComfyUI's** library are Web-UI format (canvas-editable); the copies in ST's
+folder are API format, which is what ST sends verbatim to =/prompt=.
+
+Current values in that profile's =settings.json= =extension_settings.sd= (some
+already correct, listed so the diff is obvious):
+
+| Setting                     | Now                                    | Action |
+|-----------------------------|----------------------------------------|--------|
+| =source=                    | ="comfy"=                               | OK |
+| =comfy_url=                 | =https://comfyui.ts.peteches.co.uk=     | OK |
+| =comfy_type=                | ="standard"=                            | OK |
+| =comfy_workflow=            | =Default_Comfy_Workflow.json=           | **switch to one of ours** |
+| =seed=                      | =-1= (random)                           | OK |
+| =prompt_prefix=             | =best quality, absurdres, masterpiece,= | **clear it for tiers C/F** |
+| =minimal_prompt_processing= | =false=                                 | **tick for C/F**, leave off for A |
+| =negative_prompt=           | 152 chars, =styles[Default].negative= merged in | OK for A; near-inert for C/F |
+| =steps= / =scale= / =sampler= / =scheduler= | 6 / 2.5 / =euler= / =simple=  | ignored while the workflow pins them |
+| =model=                     | =qwen_image_2512_fp8_e4m3fn.safetensors= | ignored until you use =%model%= |
+| =enable_hr=, =hr_*=         | =false= / defaults                    | OK (WebUI-only anyway) |
+| =multimodal_captioning=     | =false=                                 | keep off unless a vision LLM is wired |
+| =caption.source=            | ="extras"= (no Extras server running)   | keep captioning off, or point =refine_mode= at Strata vision |
+| =function_tool=             | =true=                                  | fine, but the LLM can fire a 9-25 s generation unprompted |
+
+Concrete levers, in priority order:
+
+1. **Workflow selector** (Settings → Image Generation → =ComfyUI Workflow=) —
+   =sillytavern_sdxl_lightning4.json= is the sane chat default. It is stored in
+   the shared =default-user= profile, so tier choice is per-profile, not
+   per-chat; use separate ST profiles (or the =!-command/QuickReply route) if
+   you want per-chat tiers. The =Connect= button next to the URL must be green:
+   ST populates its Model / Sampler / Scheduler / VAE dropdowns from
+   =/api/sd/comfy/{models,samplers,schedulers,vaes}=.
+2. **Prompt prefix and tag processing** — ST prepends =prompt_prefix= (plus any
+   per-character prefix) to the text it injects into ="%prompt%"=, and style
+   presets overwrite =prompt_prefix= when applied. Booru-ish quality tags help
+   SDXL and hurt natural-language photoreal models, so clear the prefix for C/F
+   and tick =minimal_prompt_processing= there.
+3. **Per-character prompts** — =character_prompts= / =character_negative_prompts=
+   (both currently ={}=) hold per-character text that ST appends to the prompt;
+   fill them with costume/pose/anatomy details instead of editing the workflow.
+4. **Custom placeholders** — the workflow editor's "Add placeholder" rows write
+   =comfy_placeholders= entries =[{find, replace}]=; ST replaces ="%<find>%"=
+   as a whole quoted value and runs =replace= through its macro/!=!-expression
+   engine, so per-character LoRA names, strengths or trigger tokens can live in
+   character cards. Built-in =%model% %vae% %sampler% %scheduler% %steps%
+   %scale% %width% %height%= also work and are fed from ST's Image-Gen parameter
+   fields (ST reads the legal values straight from ComfyUI, so they do map) —
+   but for tiers C/F keep the pinned values, because CFG 1 / 8 steps is the only
+   window where those models look right, and ST's current fields would send
+   steps 6 / CFG 2.5.
+5. **Batch size** — the graphs ship =batch_size: 1= in =EmptyLatentImage=;
+   raising it to 2-4 in tier A costs almost nothing (warm sampling is 1.1 s) and
+   multiplies the chance of a keeper, so it is the cheapest quality lever. Do it
+   in ST's workflow editor (pencil icon) or edit the file in the folder above.
+6. **Cost discipline** — a model swap costs 9-25 s, so alternate tiers only
+   between scenes, and be aware that =function_tool= lets the LLM start a
+   generation on its own.
+
+* Alternating tiers costs a model swap
+
+Keeping two tiers resident does not fit in 24 GB, so switching A → C → F pays
+the cold-load number each time (≈9–25 s). For a chat session it is worth
+picking *one* tier per scene: A for inline instant shots, C for the "make it
+pretty" pass, F when you need on-image text or a specific layout.
+
+* Operational notes / follow-ups
+
+- The 4090 is single-purpose: koboldcpp and ComfyUI cannot both hold it. The LLM
+  now runs on the Intel Arc B70 via Strata, so koboldcpp should stay stopped
+  (=herd stop koboldcpp=) during image work; consider =auto-start? #f= for
+  koboldcpp and =auto-start? #t= for ComfyUI in =peteches/systems/comfyui.scm=.
+- The ComfyUI update bumped =torch= from 2.14.0+cu130 to **2.15.0+cu132**; the
+  =nvidia-cudnn-cu13= / =nvidia-cublas-cu13= runtime pins in
+  =peteches/services/comfyui.scm= may need the matching bump, and
+  =--use-sage-attention= should be avoided for Z-Image-style models (it renders
+  them black/garbled — use =--use-pytorch-cross-attention= or the per-graph
+  KJNodes sage patch).
+- Housekeeping: =/media/models/comfyui/loras/peteches/bas/*-state/= training
+  output dirs pollute the LoRA list, and =Comfy.Execution.PreviewMethod= is best
+  set to =latent2rgb= to avoid VAE-decoding every preview.
+- Nothing in this directory is referenced by the Guix build; the files are
+  assets to upload into SillyTavern (kept in the repo for versioning).

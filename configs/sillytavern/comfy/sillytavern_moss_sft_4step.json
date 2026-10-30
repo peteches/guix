@@ -1,0 +1,78 @@
+{
+  "1": {
+    "class_type": "UNETLoader",
+    "inputs": { "unet_name": "moss_image_sft_int8_convrot.safetensors", "weight_dtype": "default" },
+    "_meta": { "title": "MOSS-Image SFT (int8 convrot, ~5 GB) - swap to moss_image_dmd_distilled_sft_8_steps_int8_convrot for 8-step DMD" }
+  },
+  "2": {
+    "class_type": "CLIPLoader",
+    "inputs": { "clip_name": "qwen3.5_9b_int8_convrot.safetensors", "type": "moss_image" },
+    "_meta": { "title": "Qwen3.5-9B encoder (~9 GB) - type MUST be moss_image" }
+  },
+  "3": {
+    "class_type": "VAELoader",
+    "inputs": { "vae_name": "flux2-vae.safetensors" },
+    "_meta": { "title": "FLUX.2 VAE" }
+  },
+  "4": {
+    "class_type": "LoraLoaderModelOnly",
+    "inputs": { "model": ["1", 0], "lora_name": "moss_image_sft_4step_v2.0.safetensors", "strength_model": 1.0 },
+    "_meta": { "title": "4-step speed LoRA (delete this node and reconnect 1->5 for the 50-step official recipe)" }
+  },
+  "5": {
+    "class_type": "LoraLoaderModelOnly",
+    "inputs": { "model": ["4", 0], "lora_name": "MOSS-Image-NSFW-Uncensored-LoRA-ComfyUI.safetensors", "strength_model": 0.8 },
+    "_meta": { "title": "NSFW LoRA (0.6-0.9) + character / layout LoRAs here" }
+  },
+  "6": {
+    "class_type": "CLIPTextEncode",
+    "inputs": { "clip": ["2", 0], "text": "moss_xvstyle" },
+    "_meta": { "title": "Trigger phrase branch (must stay a standalone value; do NOT put %prompt% here)" }
+  },
+  "7": {
+    "class_type": "CLIPTextEncode",
+    "inputs": { "clip": ["2", 0], "text": "%prompt%" },
+    "_meta": { "title": "Positive (SillyTavern injects here)" }
+  },
+  "8": {
+    "class_type": "ConditioningCombine",
+    "inputs": { "conditioning_1": ["6", 0], "conditioning_2": ["7", 0] },
+    "_meta": { "title": "trigger + prompt" }
+  },
+  "9": {
+    "class_type": "CLIPTextEncode",
+    "inputs": { "clip": ["2", 0], "text": "%negative_prompt%" },
+    "_meta": { "title": "Negative (empty string is fine)" }
+  },
+  "10": {
+    "class_type": "EmptyLatentImage",
+    "inputs": { "width": 1024, "height": 1024, "batch_size": 1 },
+    "_meta": { "title": "Latent 1024x1024 (trained square; portrait ratios are weaker)" }
+  },
+  "11": {
+    "class_type": "KSampler",
+    "inputs": {
+      "model": ["5", 0],
+      "positive": ["8", 0],
+      "negative": ["9", 0],
+      "latent_image": ["10", 0],
+      "seed": "%seed%",
+      "steps": 4,
+      "cfg": 1.0,
+      "sampler_name": "euler",
+      "scheduler": "simple",
+      "denoise": 1.0
+    },
+    "_meta": { "title": "Sampler (4-step recipe; official SFT recipe = 50 steps / CFG 3 / sgm_uniform)" }
+  },
+  "12": {
+    "class_type": "VAEDecode",
+    "inputs": { "samples": ["11", 0], "vae": ["3", 0] },
+    "_meta": { "title": "Decode" }
+  },
+  "13": {
+    "class_type": "SaveImage",
+    "inputs": { "images": ["12", 0], "filename_prefix": "sillytavern_moss" },
+    "_meta": { "title": "Save" }
+  }
+}

@@ -1,0 +1,73 @@
+{
+  "1": {
+    "class_type": "CheckpointLoaderSimple",
+    "inputs": { "ckpt_name": "CyberRealisticXLPlay_V6.0.safetensors" },
+    "_meta": { "title": "Checkpoint (SDXL) - swap to lustifySDXLNSFWSFW_v20 / CyberRealisticXL_v22 / ponyDiffusionV6XL_v6StartWithThisOne" }
+  },
+  "2": {
+    "class_type": "LoraLoaderModelOnly",
+    "inputs": { "model": ["1", 0], "lora_name": "SDXL-Lightning/sdxl_lightning_4step_lora.safetensors", "strength_model": 1.0 },
+    "_meta": { "title": "Speed LoRA - 4-step; use sdxl_lightning_8step_lora + steps 8 for harder prompts" }
+  },
+  "3": {
+    "class_type": "LoraLoader",
+    "inputs": { "model": ["2", 0], "clip": ["1", 1], "lora_name": "Detailed_nipples_xl.safetensors", "strength_model": 0.6, "strength_clip": 0.6 },
+    "_meta": { "title": "Content LoRA slot 1 (trigger pinned in node 6)" }
+  },
+  "4": {
+    "class_type": "LoraLoader",
+    "inputs": { "model": ["3", 0], "clip": ["1", 1], "lora_name": "Pussy_Lily_v5_XL.safetensors", "strength_model": 0.6, "strength_clip": 0.6 },
+    "_meta": { "title": "Content LoRA slot 2 - put per-character LoRAs here" }
+  },
+  "5": {
+    "class_type": "CLIPTextEncode",
+    "inputs": { "clip": ["1", 1], "text": "%prompt%" },
+    "_meta": { "title": "Positive text from SillyTavern" }
+  },
+  "6": {
+    "class_type": "CLIPTextEncode",
+    "inputs": { "clip": ["1", 1], "text": "detailed nipples breast, pussy_front" },
+    "_meta": { "title": "Pinned LoRA trigger tokens - edit freely, do NOT put %prompt% here" }
+  },
+  "7": {
+    "class_type": "ConditioningCombine",
+    "inputs": { "conditioning_1": ["6", 0], "conditioning_2": ["5", 0] },
+    "_meta": { "title": "triggers + SillyTavern prompt" }
+  },
+  "8": {
+    "class_type": "CLIPTextEncode",
+    "inputs": { "clip": ["1", 1], "text": "%negative_prompt%" },
+    "_meta": { "title": "Negative from SillyTavern" }
+  },
+  "9": {
+    "class_type": "EmptyLatentImage",
+    "inputs": { "width": 832, "height": 1216, "batch_size": 1 },
+    "_meta": { "title": "Latent 832x1216 - use \"%width%\" / \"%height%\" to let SillyTavern drive the size" }
+  },
+  "10": {
+    "class_type": "KSampler",
+    "inputs": {
+      "model": ["4", 0],
+      "positive": ["7", 0],
+      "negative": ["8", 0],
+      "latent_image": ["9", 0],
+      "seed": "%seed%",
+      "steps": 4,
+      "cfg": 2.0,
+      "sampler_name": "dpmpp_2m_sde",
+      "scheduler": "beta",
+      "denoise": 1.0
+    },
+    "_meta": { "title": "Sampler - steps/cfg/sampler pinned for the Lightning LoRA" }
+  },
+  "11": {
+    "class_type": "VAEDecode",
+    "inputs": { "samples": ["10", 0], "vae": ["1", 2] },
+    "_meta": { "title": "Decode" }
+  },
+  "12": {
+    "class_type": "SaveImage",
+    "inputs": { "images": ["11", 0], "filename_prefix": "sillytavern_sdxl" },
+    "_meta": { "title": "Save" }
+  }
+}
