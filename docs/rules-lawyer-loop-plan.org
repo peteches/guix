@@ -1,0 +1,227 @@
+#+title: rules-lawyer — Fix the "Stopped after N tool iterations" Failure
+#+author: Pete 'Peteches' McCabe
+#+startup: showall
+
+* Status
+
+*PLAN ONLY — nothing below has been implemented.* Diagnosed 2026-10-29 after
+the first real Discord question produced no answer. Sources of truth for the
+investigation: =/var/log/rules-lawyer.log= on =agents=, and the strata engine
+log =/var/log/strata/strata.log= on =comfyui=.
+
+* Symptom
+
+=peteches= asked =@PetechesRulesLawyer= "Explain how a unit can be hidden
+please." in Discord; the bot replied only:
+
+#+begin_example
+⚠️ Stopped after 16 tool iterations without a final answer.
+#+end_example
+
+Timeline from =/var/log/rules-lawyer.log= (=agents=):
+
+#+begin_example
+17:39:10 [session] conversation created for channel 930505523940425753
+17:39:28 [tool] read_file {"path":"systems/wh40k/AGENTS.md"}        ← first call
+…26 [tool] lines total…
+17:42:35 [tool] grep {"pattern":"visib|VISIB|charge move|declare a charge", …}
+#+end_example
+
+No =error=, =[llm]= or =[prompt]= lines — the bot ran cleanly for 205 s and
+then printed the harness's *iteration-exhaustion* branch, with =lastText=
+empty. The companion strata log on =comfyui= shows *all sixteen* LLM turns as
+=thinking → writing a tool call= (=finish_reason=tool_calls=, 64–384 tokens
+each), prompt growing 1,792 → 20,235 tokens. So the model never emitted any
+prose: there was no answer text for the harness to fall back on.
+
+* Root Causes
+
+** RC1 — the packaged library is missing =systems/wh40k/AGENTS.md= (this repo's bug)
+
+=peteches/packages/rules-lawyer.scm= installs only the root =AGENTS.md= plus
+=find-files "systems" "\\.txt$"+. Verified on =agents=:
+
+#+begin_example
+find $PKG -name AGENTS.md → …/rules-lawyer-0.2.0/AGENTS.md   # the root one only
+#+end_example
+
+But =harness.mjs= DISCORD_MODE makes step 2 of the workflow *"read_file that
+system's AGENTS.md and follow its rules-query instructions"*. That file is not
+in the store, so the bot's *first* tool call returned =Error: not found= — and
+the model reads that as "my homework failed". Forced-answer probes produced
+this verbatim:
+
+#+begin_quote
+I can't give a sourced ruling for "hidden" from this library as currently
+exposed. - I tried to read the Warhammer 40,000 system instructions at
+=systems/wh40k/AGENTS.md=, but the tool returned *not found*.
+#+end_quote
+
+Aggravating detail: the same install phase copies
+=systems/wh40k/armies/_reference/import-test/node_modules/playwright*/ThirdPartyNotices.txt=
+(2 files) into the library, which pollutes =grep= results across the whole
+library. =tools.mjs= skips =node_modules= in =list_dir= only, not in =grep=.
+
+** RC2 — the harness never forces termination
+
+=harness.mjs=: =MAX_TOOL_ITERATIONS = 16=, =tool_choice= hard-wired ="auto"=,
+no wrap-up nudge, and on exhaustion it returns =lastText= (empty here) + the
+warning. The answer was already in hand at *iteration 2*: =grep [Hh]idden= hit
+=core_rules_11th_edition.txt:2325  HIDDEN 13.09= and the following read covered
+lines 2280–2399. The remaining 14 turns went into target-selection / terrain /
+faction-pack digressions, and =rules/core/universal_rules_updates.txt= — the
+file =systems/wh40k/AGENTS.md= declares takes precedence — was only read on
+iteration 15.
+
+** RC3 — model/endpoint traits (measured, not assumed)
+
+=LLM_BASE_URL=http://strata.ts.peteches.co.uk/v1=,
+=LLM_MODEL=qwen3.8-flash-next= (SC117 Qwen3.8-Flash-Next, IQ2_MoS), on
+=comfyui= with =--context 262144 --parser hermes= and no API key.
+
+| Observation                                                                     | Evidence                                                                   |
+|-------------------------------------------------------------------------------+----------------------------------------------------------------------------|
+| Deep-research loop: every turn thinks (~200–350 tokens) then issues 1–3 tool calls; does not stop voluntarily | strata log, 16 turns 17:39:21→17:42:35                     |
+| =tool_choice: "none"= IS honoured (=finish_reason=stop=, no =tool_calls=)      | probe 1                                                                    |
+| …but with tools off/none the model writes raw =<tool_call>…</tool_call>= XML *into* =content= — so "last turn = no tools" would have shipped XML garbage | probe 1/2, =content_len=88=/=277= of markup |
+| =max_tokens= IS honoured; thinking counts inside it                            | =max_tokens=200= → =finish=length=, =content_len=0= (thinking ate the budget) |
+| =reasoning_content= is returned alongside =content= (unused by the harness)    | probe response keys =role/content/reasoning_content/tool_calls=            |
+| Prefill ~180 tok/s with no cross-request KV reuse ("expert cache" ≠ KV cache)  | 20,235-token prompt re-read in ~10 s; 13–21 s per turn                    |
+| Working escape route: a *fresh, no-tools "synthesise from the results you already have"* call | probe 2 (strategy A) → =finish=stop=, 960 chars, correct + cited         |
+
+Probe 2 strategy A answer (the shape we want the fallback to produce):
+
+#+begin_quote
+A unit can be hidden through the *Hidden* rule in
+=systems/wh40k/rules/core/core_rules_11th_edition.txt= (lines 2325–2334).
+The rule is written for a *model*, so for a whole unit to be hidden, every
+model in that unit would need to meet the Hidden conditions…
+#+end_quote
+
+* Implementation Plan
+
+** Phase 1 — package fix (this repo, =peteches/packages/rules-lawyer.scm=)
+
+- [ ] Install =systems/**/AGENTS.md= in addition to the root =AGENTS.md= so the
+      router read succeeds. Suggested shape in the =install= phase: copy every
+      =*.txt= and =*.md= under =systems= plus =MANIFEST.tsv=, then
+      =delete-file(s)= / filter out anything under a =node_modules= path and
+      drop =README.md= files that only make sense for the source tree.
+- [ ] Confirm the store tree afterwards: =find <pkg> -name AGENTS.md= should
+      list =…/systems/wh40k/AGENTS.md= too, and no =ThirdPartyNotices.txt=.
+- [ ] Bump =version= to ="0.2.1"= once the bot-side patch lands (single pin
+      bump together with the new commit + =sha256= below).
+
+** Phase 2 — bot fix (=scratch/rules-lawyer=, branch =main=, =HEAD == pinned
+=c8ed2b56f1b9c649de56beb5c307084322ed8d31=, remote =git@git.peteches.co.uk:rules-lawyer=)
+
+- [ ] =harness.mjs= — read =MAX_TOOL_ITERATIONS= from the environment
+      (=Conversation{maxIterations}= already accepts an override; wire env into
+      =bot.mjs= and =smoke.mjs=).
+- [ ] =harness.mjs= — wrap-up nudge: on the last two iterations append an
+      instruction message telling the model it has N tool calls left and must
+      answer from what it has read.
+- [ ] =harness.mjs= — replace the exhaustion branch with the *validated*
+      fallback: one fresh, tools-free call whose messages are
+      =(synthesis-system-prompt, user "Question + tool results collected so far")=
+      — digest built from the recorded tool name/args/output pairs, capped
+      (≈4 KB per result, ≈24 KB total; probe A used 3×4 KB and worked). Keep
+      the ⚠️ line as a header on the synthesised answer.
+- [ ] =harness.mjs= — sanitise =content=: if it contains =<tool_call>=,
+      truncate at the first marker (the model emits that markup whenever tools
+      are unavailable).
+- [ ] =harness.mjs= DISCORD_MODE — add an explicit budget/stopping rule:
+      "Answer as soon as you can cite the governing rule; ≤6 tool calls; if the
+      library does not cover it, say so plainly." (Cuts the loop before it
+      starts, given RC3.)
+- [ ] =llm.mjs= — accept per-call =toolChoice= and =maxTokens= overrides
+      (needed for the nudge/fallback turns; currently hard-wired =tool_choice="auto"=).
+- [ ] Consider using =reasoning_content= for the log line / a "thinking…" hint
+      (nice-to-have, not required).
+- [ ] Optional: =read_file= tool description claims "Returns numbered lines"
+      but =tools.mjs= emits none — either number them or fix the description.
+
+** Phase 3 — service config (this repo, =peteches/systems/agents.scm=)
+
+- [ ] Set =(llm-max-tokens 4096)= (must stay comfortably *above* the model's
+      ~200–350-token thinking: =4096= gives thinking + answer headroom; a value
+      near 200 returns =content=""= — see RC3 table). Optional follow-up:
+      =(llm-temperature 0.2)= is already the bot default.
+- [ ] If Phase 2 exposes =MAX_TOOL_ITERATIONS=, surface it as a
+      =rules-lawyer-configuration= field so the cap is tunable without
+      re-editing =harness.mjs=. (Additive env-var pattern already used for
+      =LISTEN_CHANNEL_IDS= / =IDLE_TIMEOUT_MINUTES= in
+      =peteches/services/rules-lawyer.scm= — note that file's three
+      start-gexp gotchas before touching it.)
+
+** Phase 4 — validation (no push required)
+
+Run the real endpoint + real library before committing anything:
+
+1. Assemble a LIBRARY_ROOT that mimics the *fixed* package: root =AGENTS.md=,
+   =systems/wh40k/AGENTS.md=, =MANIFEST.tsv=, and all 43 =*.txt= extractions
+   (~43 MB; leave the PDFs behind), on =agents=.
+2. scp the patched =harness.mjs= / =llm.mjs= / =tools.mjs= / =smoke.mjs= there,
+   with =node_modules= symlinked from the store package dir.
+3. #+begin_example
+   ssh agents
+   LLM_BASE_URL=http://strata.ts.peteches.co.uk/v1 LLM_MODEL=qwen3.8-flash-next \
+   LIBRARY_ROOT=<assembled-root> OUTBOX_ROOT=/tmp/rl-outbox \
+   node <dir>/smoke.mjs "Explain how a unit can be hidden please."
+   #+end_example
+   Expect: a cited prose answer (HIDDEN 13.09, =core_rules_11th_edition.txt=
+   lines 2325–2334), iteration count well under the cap, wall clock ≲ 60 s.
+4. Re-run once with =MAX_TOOL_ITERATIONS=2= to exercise the fallback path
+   specifically (expect the ⚠️ header + the digest-synthesised ruling).
+
+** Phase 5 — land it
+
+- [ ] Commit + push =scratch/rules-lawyer= to =origin/main= (package fetches
+      that commit over HTTPS from gitolite).
+- [ ] =peteches/packages/rules-lawyer.scm=: bump =(commit …)= + =(sha256 …)=
+      (new hash, no swh-id), keep the =local-file= / =file= pin discipline in
+      mind — =guix build -L . --no-graft rules-lawyer --dry-run= first.
+- [ ] Verify the store tree (Phase 1 checklist) with
+      =guix build -L . rules-lawyer= then =find $(guix build rules-lawyer) -name AGENTS.md=.
+- [ ] Deploy =agents= only (single host = agents.scm, per
+      =docs/fleet-deployment.org=: one =peteches/systems/<name>.scm= change →
+      just that host; but a =peteches/packages/= change deploys to *every host
+      that installs that package*, which today is only =agents=).
+      Verify: =herd status rules-lawyer= + generation bump + =guix system
+      describe=, then a fresh Discord question (or =smoke.mjs=).
+- [ ] Rollback plan: =guix deploy --rollback= / =herd start rules-lawyer= from
+      the prior generation; =reboot -o= + =shutdown -r now= as last resort.
+
+* Reproduction Notes
+
+The probe scripts used for the measurements above were throwaway
+(=/tmp/probe.mjs=, =/tmp/probe2.mjs= on =agents=, node ESM importing the store
+package by =file://= URL). Minimal shape, for re-running later:
+
+#+begin_example
+const PKG = "/gnu/store/<hash>-rules-lawyer-0.2.0";   # ← re-derive, do not hard-code
+const BASE = "http://strata.ts.peteches.co.uk/v1";
+import(`file://${PKG}/discord/harness.mjs`) → buildSystemPrompt(PKG)
+import(`file://${PKG}/discord/tools.mjs`)    → createToolbox({libraryRoot: PKG, outboxRoot: "/tmp/rl-outbox"})
+POST ${BASE}/chat/completions with {model:"qwen3.8-flash-next", messages, tools:schemas,
+                                    tool_choice:"none"|"auto", max_tokens, stop:[…]}
+#+end_example
+
+Three behaviours worth re-measuring after any strata/model change: whether
+=tool_choice= is still honoured, whether tools-off leaks =<tool_call>= markup
+into =content=, and whether thinking is charged against =max_tokens=.
+
+* Non-Issues Ruled Out
+
+- The service itself is healthy: generation from commit =25272dc= deployed
+  16:58, =/run/current-system/sw/bin/herd status rules-lawyer= runs, and the
+  16:58:58 log banner shows =qwen3.8-flash-next @
+  http://strata.ts.peteches.co.uk/v1/chat/completions= (the earlier
+  =local-model @ koboldcpp= banner is the pre-switch generation).
+- Not a context-window problem: 20k prompt tokens against =--context 262144=.
+- Not a trim problem: =harness.mjs= =MAX_MESSAGES=80= and the transcript peaked
+  at ~34 messages.
+- Not a strata crash/timeout: every turn =done … (stop, cancel=False)=,
+  ~50 tok/s generation, no =502=/=404= from caddy.
+- Not a Discord-side send failure: =message.reply= path was reached (the
+  warning text arrived), and 26 =[tool]= lines logged.

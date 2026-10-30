@@ -480,6 +480,7 @@ Home service *types*, folded in from the retired `peteches` channel.
 | `docs/secrets-management.org` | SOPS + age keys workflow |
 | `docs/infrastructure.org` | Terraform + Concourse CI overview |
 | `docs/fleet-deployment.org` | Fleet deploy rules: when to deploy, `deploy-vms` skill usage, per-host success verification, rollback, consistency audit |
+| `docs/rules-lawyer-loop-plan.org` | **Unimplemented plan** — fix for the rules-lawyer bot's "Stopped after N tool iterations" failure (missing `systems/**/AGENTS.md` in the package + no forced final answer in the bot harness) |
 | `.claude/skills/update-channels/` | Claude Code skill for updating pinned channel commits across all `peteches/channels/*.scm` files |
 
 ### System Configurations (`peteches/systems/`)
