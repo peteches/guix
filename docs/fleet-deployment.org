@@ -194,6 +194,58 @@ ssh -i /run/secrets/peteches-automation-ssh-key peteches@<lan-ip> \
 
 Note in the deploy report which hosts needed this manual step.
 
+** 5. Files activation writes — stale after a deploy that never rebooted
+
+=guix deploy= switches the generation, sends the closure and reloads the
+shepherd services it thinks changed, but **it does not run the activation
+snippets** — those hang off =activation-service-type=, which extends
+=boot-service-type= (=gnu/services.scm=: =gexp->activation-gexp=,
+=(activate-current-system)= then =for-each primitive-load= over the
+per-service =activate-service.scm= items, each failure tolerated with a
+="failed to activate"= warning), so they run at **boot** and at
+=sudo guix system reconfigure=, not at =switch-system= without a reboot.
+Any file a service's activation generates — =/var/lib/strata/run-strata.sh=
+and =ze_intel_gpu.icd.json= under that service, and the same class of
+state for anything else that writes files rather than =/etc= — keeps its
+**old content** with a green deploy report, and neither §2 nor §3 catches
+it: the service can have restarted cleanly *into the current generation*
+and still be running the config the old generated file encodes.
+
+The tell is the file's mtime against the generation-switch time:
+
+#+begin_src bash
+stat -c '%y' /var/guix/profiles/system   # generation switch
+sudo stat -c '%y %s %n' <the generated file>
+#+end_src
+
+If the file predates the switch, activation never ran. Two ways to finish
+it, in preference order:
+
+#+begin_src bash
+sudo /run/current-system/activate        # re-runs every snippet; idempotent
+                                         # expect a few hundred bytes of output
+                                         # and no "failed to activate" lines
+sudo herd restart <service>              # now it picks up the regenerated file
+sudo reboot                              # or just reboot, if one was due anyway
+#+end_src
+
+To find which snippet a service's activation is, take the list of store
+paths embedded in the current activation script and grep them:
+
+#+begin_src bash
+sudo grep -o "/gnu/store/[a-z0-9]\{32\}-activate-service\.scm" \
+     "$(sudo readlink -f /run/current-system/activate)" | sort -u
+sudo grep -l -- "<a string only the new config emits>" <those paths>
+#+end_src
+
+That last grep is also the positive check: it says whether the deployed
+generation really contains the change *before* blaming the file. Worked
+example, comfyui 2026-10-30: generation 61 went in at 18:27 with shepherd
+reloads and =/run/current-system= updated, yet =run-strata.sh= still
+carried a 15:59 mtime and no =--vision= — its activation snippet
+*did* contain =--vision= (found by the recipe above), proving the deploy
+was fine and that only the boot-time activation was missing.
+
 * Rollback
 
 =guix deploy= has no built-in "undo" — rollback happens on the target VM
