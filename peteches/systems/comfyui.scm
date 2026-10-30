@@ -902,6 +902,19 @@
                 ;; only ~1.5 GB of VRAM -- it fits, and the --expert-cache
                 ;; auto tier just shrinks by that amount.
                 (context 262144)
+                ;; Images, read on the CPU: `Vision` spawns the reader this
+                ;; repo builds (strata-vision in (peteches packages strata) —
+                ;; upstream's own tools/vision over llama.cpp mtmd at the
+                ;; commit setup.py pins) and the run-config sub-config sets
+                ;; "gpu": false, so the reader never opens the 4090: the B70's
+                ;; profile-filled expert cache keeps every slot it has, which
+                ;; is also what upstream chooses for an Arc of 24 GB or more
+                ;; (vision_reader.py, INTEL_GPU_READER_BY_DEFAULT = False).
+                ;; Upstream packages a Linux picture reader only inside its
+                ;; CUDA engine builds, so until now this SYCL engine had none
+                ;; and every image-bearing request came back 400 "this server
+                ;; was started without the vision encoder".
+                (vision "cpu")
                 ;; Open the engine's port in the host firewall: the comfyui
                 ;; VM's base firewall is drop-by-default, so without this
                 ;; Caddy's strata.ts.peteches.co.uk proxy cannot reach the

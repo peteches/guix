@@ -375,7 +375,7 @@
 ;; interpolation is the bundle root (the strata package's store path); every
 ;; other path is a plain string (data-dir and state-dir are plain strings in
 ;; the configuration). See the native-models section for the rationale.
-(define-public (strata-native-wrapper-script config model)
+(define-public (strata-native-wrapper-script config model vision-reader)
   (let* ((pkg (strata-configuration-package config))
          (state-dir (strata-configuration-state-dir config))
          (data-dir (strata-configuration-data-dir config))
@@ -393,6 +393,12 @@
          (shard1 (strata-native-model-pack-source model))
          (shard2 (strata-native-model-shard2 model))
          (mmproj (strata-native-model-mmproj model))
+         ;; Vision is on only when BOTH a reader package and the model's
+         ;; mmproj are present: a reader alone leaves the server looking for
+         ;; an mmproj it cannot open, and mmproj alone (the state fcc2a88
+         ;; removed this block from) is the same failure the other way round
+         ;; — a vision sub-config with no "exe".
+         (vision-on? (and vision-reader mmproj))
          (mtp-dir (strata-native-model-mtp-dir model))
          (cfg (string-append state-dir "/" slug ".json"))
          (log (string-append state-dir "/" slug ".log"))
@@ -530,9 +536,31 @@
          (string-append "    \"--mtp\", \"$MODEL_ROOT/" #$mtp-dir "\",")
          (string-append "    \"--max-context\", \"" (number->string #$context) "\",")
          "    \"--kv\", \"q4_0\","
-         "    \"--mmap-experts\""
+         (if #$vision-on?
+             "    \"--mmap-experts\",\n    \"--vision\""
+             "    \"--mmap-experts\"")
          "  ],"
-         "  \"tokenizer\": \"$PACK_DIR/tokenizer\","
+         "  \"tokenizer\": \"$PACK_DIR/tokenizer\",\n"
+         ;; The reader sub-config.  serve/server.py's Vision.__init__ reads
+         ;; cfg["exe"] from it (that KeyError: 'exe' is what took the service down);
+         ;; Vision.reader_args appends --gpu only when cfg["gpu"] is truthy, so
+         ;; "gpu": false is the CPU reader - what upstream prescribes for an Intel
+         ;; Arc of 24 GB or more (vision_reader.py, INTEL_GPU_READER_BY_DEFAULT =
+         ;; False) and the one that takes nothing from the B70's expert cache.
+         ;; max_tokens overrides DEFAULT_MAX_TOKENS' cpu default of 300, which
+         ;; coarsens a 1024x1024 picture past the point body paint can be told
+         ;; from skin.
+         (if #$vision-on?
+             (string-append
+              "  \"vision\": {\n"
+              (string-append "    \"exe\": \"" #$vision-reader
+                             "/bin/strata-vision\",\n")
+              "    \"gpu\": false,\n"
+              "    \"max_tokens\": 1024,\n"
+              (string-append "    \"model\": \"$MODEL_ROOT/" #$shard1 "\",\n")
+              (string-append "    \"mmproj\": \"$MODEL_ROOT/" #$mmproj "\"\n")
+              "  },")
+             "")
          "  \"host\": \"$HOST\","
          (string-append "  \"port\": " (number->string #$port) ",")
          (string-append "  \"api_key\": " #$api-key-json ",")
@@ -582,8 +610,18 @@
          (script
           (let ((nm (strata-configuration-native-model config)))
             (if nm
-                (strata-native-wrapper-script config
-                                              (strata-native-model-lookup nm))
+                (strata-native-wrapper-script
+                 config (strata-native-model-lookup nm)
+                 ;; The CPU picture reader, built by (peteches packages
+                 ;; strata) because upstream packages one only inside its
+                 ;; CUDA engine builds.  (vision "cpu") turns it on; the #f
+                 ;; default passes #f through and the wrapper stays exactly
+                 ;; as it was — text only, no reader reference, so a missing
+                 ;; reader cannot take the service down again.
+                 (if (string=? "cpu" (or (strata-configuration-vision config)
+                                         ""))
+                     strata-vision
+                     #f))
                 (strata-wrapper-script config))))
          ;; Extra data dirs to create: the native model's root and pack dir
          ;; when in native mode (the downloads create their own subdirs via
@@ -675,6 +713,25 @@
 ;; set.  Mirrors koboldcpp-firewall-rules (peteches/services/koboldcpp.scm):
 ;; the comfyui VM's base firewall is drop-by-default, so without this the
 ;; tailnet-bound engine is unreachable from Caddy's reverse proxy.
+;;; The picture reader must be in the *system closure*, not just named in the
+;;; wrapper.  `display #$script` writes a store path that was substituted at
+;;; elaboration of a NESTED gexp, and a nested gexp's localized inputs are not
+;;; propagated into the derivation that embeds it (the activate.scm drv of a
+;;; deployed vision build listed only 4 derivations, none of them
+;;; strata-vision, while the same gexp passed straight to `gexp->file` did
+;;; carry the reader's drv).  A path that nothing references is not a GC root,
+;;; so `guix gc` on the VM could free the reader out from under the wrapper.
+;;; This extension puts it in the system profile, which makes it a root and
+;;; guarantees the deploy sends it.
+(define (strata-vision-packages config)
+  ;; Mirror the wrapper's gate exactly: "cpu" is the only mode with a reader
+  ;; package today (a CUDA reader for "gpu" would be a separate build), and
+  ;; anything else — #f, "off", a typo — keeps the system package-free so a
+  ;; text-only service cannot be taken down by a missing reader.
+  (if (string=? "cpu" (or (strata-configuration-vision config) ""))
+      (list strata-vision)
+      '()))
+
 (define (strata-firewall-rules config)
   (if (strata-configuration-open-firewall? config)
       (nftables-rules
@@ -700,4 +757,6 @@ system service.")
                                    shepherd-root-service-type
                                    strata-shepherd-service)
                                   (service-extension firewall-service-type
-                                                     strata-firewall-rules)))))
+                                                     strata-firewall-rules)
+                                  (service-extension profile-service-type
+                                                     strata-vision-packages)))))

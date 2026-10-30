@@ -17,6 +17,16 @@
 ;;     to the runtime on purpose: the engine is a runtime artifact of the
 ;;     project's own update mechanism, not a system package.
 ;;
+;;   * Vision (images) is NOT available from the engine package this service
+;;     runs: upstream builds the picture reader (`tools/vision`, llama.cpp's
+;;     mtmd + the model's mmproj) for CUDA, HIP and Apple only —
+;;     `packaging/build_sycl_linux.sh` has no vision target, and
+;;     `packaging/ENGINE-COMPONENT.md` packages the reader only "when the
+;;     build has one" — so the linux-x86_64/sycl engine folder holds a single
+;;     program (`strata`) and `serve/server.py`'s Vision has no reader to
+;;     spawn.  `strata-vision` below rebuilds that CPU reader from the same
+;;     pin `setup.py` uses; see that definition.
+;;
 ;;   * The engine binary (and the private CPython) carry
 ;;     /lib64/ld-linux-x86-64.so.2 as their program interpreter — an FHS
 ;;     path that does not exist on a pure Guix system.  The service that
@@ -49,13 +59,20 @@
   #:use-module (guix licenses)
   #:use-module (gnu packages base)
   #:use-module (gnu packages bash)
+  #:use-module (gnu packages build-tools)
+  #:use-module (gnu packages cmake)
+  #:use-module (gnu packages gcc)
   #:use-module (gnu packages compression)
   #:use-module (gnu packages autotools)
+  #:use-module (gnu packages pkg-config)
+  #:use-module (gnu packages python)
+  #:use-module (guix build-system cmake)
   #:use-module (guix build-system trivial)
   #:use-module (guix download)
   #:use-module (guix gexp)
   #:use-module (guix packages)
-  #:export (intel-igc-core libigdgmm intel-level-zero-gpu strata))
+  #:export (intel-igc-core libigdgmm intel-level-zero-gpu strata
+            strata-llama-cpp-src strata-vision))
 
 ;;; ── .deb library wrapper ────────────────────────────────────────────────
 ;;;
@@ -251,4 +268,139 @@ the matching prebuilt engine package from the project's signed release
 feed on first use (e.g. @code{strata-engine-...-sycl} for the Intel Arc
 SYCL port) and downloads model files into @option{--data-dir}.  See
 (peteches services strata) for the system service that runs it.")
+    (license expat)))
+
+;;; ── picture reader (strata-vision) ────────────────────────────────────────
+;;
+;; Strata's multimodal path needs a second program beside the engine:
+;; `serve/server.py`'s `Vision` spawns the reader (`ENC <image> <out>` lines
+;; in, embedding files out, results cached by image hash) and the engine reads
+;; those files (`GENI` lines) — so the reader's backend need not match the
+;; engine's, and `"gpu": true` in the `vision` sub-config is what adds
+;; `--gpu` to its arguments (`Vision.reader_args`).
+;;
+;; Upstream never builds a Linux CPU reader: `packaging/` has
+;; `build_vision_mac.sh` and `build_vision_windows.bat`, the CUDA build
+;; script builds one (its release notes say "engine with the CUDA picture
+;; reader"), and `packaging/build_sycl_linux.sh` has no vision target at all.
+;; `packaging/ENGINE-COMPONENT.md` then packages the reader only "when the
+;; build has one", so the engine folder this service runs
+;; (0.1.52-linux-x86_64-sycl) holds one program and vision cannot start.
+;; Rebuild the reader here from `tools/vision`, CPU-only (`STRATA_PORTABLE=ON`
+;; is upstream's default: AVX2 baseline, OpenMP off, so it is not tuned to the
+;; building PC and needs no GPU runtime).  `tools/vision` links
+;; llama.cpp's `mtmd`/`llama` targets, which must be the same pinned checkout
+;; the engine's ggml came from: `setup.py`'s `get_llama_cpp()` names
+;; @code{LLAMA_CPP_COMMIT}, downloaded as a zip "as a zip: no git", with
+;; @code{tools/ui} skipped — mirrored below.
+
+(define %strata-vision-release-tag "v0.2.7")     ; app tag; the Terminal inside it is 0.1.52
+(define %strata-vision-llama-commit
+  "3cf03257f219afbe7334045ff7c6a06ac68c627d")   ; setup.py LLAMA_CPP_COMMIT at that tag
+
+(define-public strata-llama-cpp-src
+  (package
+    (name "strata-llama-cpp-src")
+    (version %strata-vision-llama-commit)
+    (source
+     (origin
+       (method url-fetch)
+       (uri (string-append "https://github.com/ggml-org/llama.cpp/archive/"
+                           version ".zip"))
+       (file-name (string-append "llama.cpp-" version ".zip"))
+       (sha256
+        (base32
+         "0yx43v1c2z1cykzm4ri5v44ldv7wa6700gxvga9x5sl289ckrqnb"))))
+    (build-system trivial-build-system)
+    (arguments
+     (list
+      #:modules '((guix build utils))
+      #:builder
+      #~(begin
+          (use-modules (guix build utils))
+          (let* ((zip (assoc-ref %build-inputs "source"))
+                 (out (assoc-ref %outputs "out"))
+                 (unzip (string-append (assoc-ref %build-inputs "unzip")
+                                       "/bin/unzip"))
+                 (cp (string-append (assoc-ref %build-inputs "coreutils")
+                                    "/bin/cp"))
+                 (top (string-append "llama.cpp-" #$version)))
+            ;; Skip llama.cpp's web UI: setup.py skips it for the same
+            ;; reason (its deep paths broke Windows MAX_PATH, #206) and
+            ;; nothing here uses it.  -x must follow the archive name, and
+            ;; the build environment has no PATH, so copy the tree with
+            ;; coreutils' cp by store path (same as the .deb builders).
+            (invoke unzip "-q" zip "-x" "*/tools/ui/*")
+            (mkdir-p out)
+            (invoke cp "-a" (string-append top "/.") out)
+            #t))))
+    (native-inputs (list coreutils unzip))
+    (home-page "https://github.com/ggml-org/llama.cpp")
+    (synopsis "Pinned llama.cpp source for Strata's picture reader")
+    (description
+     "llama.cpp at the commit Strata pins in @code{setup.py}
+(@code{get_llama_cpp}: @code{ggml} for the build, @code{gguf-py} for the
+tools, @code{mtmd} for images), unpacked without its web UI.  Consumed
+only as @code{-DLLAMA_DIR} by @code{strata-vision}; it installs no
+program.")
+    (license expat)))
+
+(define-public strata-vision
+  (package
+    (name "strata-vision")
+    (version "0.1.52")
+    (source
+     (origin
+       (method url-fetch)
+       (uri (string-append
+             "https://github.com/Niko1221/Strata/archive/refs/tags/"
+             %strata-vision-release-tag ".tar.gz"))
+       (file-name (string-append "strata-" version "-source.tar.gz"))
+       (sha256
+        (base32
+         "1y9s1qwc012g1lmhwc4k66wfdkypbpxpvyb4d18dkrgmg0a8dbj1"))))
+    (build-system cmake-build-system)
+    (arguments
+     (list
+      #:generator "Ninja"
+      #:build-type "Release"
+      #:configure-flags
+      #~(list (string-append "-DLLAMA_DIR=" #$strata-llama-cpp-src)
+              ;; upstream default: AVX2 baseline, GGML_OPENMP off, no
+              ;; AVX-512/AMX — a reader built on one PC runs on another
+              ;; (#411 #412 #419: a native build on an AVX-512 machine died
+              ;; with an illegal instruction elsewhere)
+              "-DSTRATA_PORTABLE=ON")
+      #:tests? #f                              ; no ctest suite for this target
+      #:phases
+      #~(modify-phases %standard-phases
+          (add-after 'unpack 'chdir-to-reader
+            ;; This Guix has no #:source-dir keyword, and the cmake phase
+            ;; takes its source directory from the current directory
+            ;; (guix/build/cmake-build-system.scm: abs-srcdir = getcwd), so
+            ;; cd into the reader's project folder.
+            (lambda _ (chdir "tools/vision")))
+          (add-after 'build 'install-reader
+            (lambda _
+              ;; tools/vision/CMakeLists.txt has no install() rules; the
+              ;; target lands in <build>/bin because of
+              ;; RUNTIME_OUTPUT_DIRECTORY.
+              (let ((hits (find-files "." "^strata-vision$")))
+                (mkdir-p (string-append #$output "/bin"))
+                (install-file (car hits)
+                              (string-append #$output "/bin"))))))))
+    (native-inputs (list cmake gcc ninja pkg-config python))
+    (home-page "https://github.com/Niko1221/Strata")
+    (synopsis "Strata image encoder (llama.cpp mtmd) — CPU picture reader")
+    (description
+     "The picture reader Strata's server starts for multimodal requests:
+its own @code{tools/vision} front end over llama.cpp's @code{mtmd}
+library, reading the @code{ENC <image> <out>} line protocol and writing
+image embeddings the engine ingests through @code{GENI} lines.  Built
+for the CPU: without @code{--gpu} the program puts
+@code{CUDA_VISIBLE_DEVICES=-1} before anything reaches a GPU runtime, so
+it takes nothing from the card that runs the engine.  Upstream ships a
+Linux reader only inside its CUDA engine packages, which is why
+@code{(peteches services strata)} could not run vision on the SYCL
+engine.")
     (license expat)))
