@@ -1,234 +1,243 @@
 {
- "1": {
-  "class_type": "UNETLoader",
-  "inputs": {
-   "unet_name": "moss_image_sft_int8_convrot.safetensors",
-   "weight_dtype": "default"
+  "1": {
+    "class_type": "UNETLoader",
+    "inputs": {
+      "unet_name": "moss_image_sft_int8_convrot.safetensors",
+      "weight_dtype": "default"
+    },
+    "_meta": {
+      "title": "MOSS-Image SFT (int8 convrot, ~5 GB) - swap to moss_image_dmd_distilled_sft_8_steps_int8_convrot for 8-step DMD"
+    }
   },
-  "_meta": {
-   "title": "MOSS-Image SFT (int8 convrot, ~5 GB) - swap to moss_image_dmd_distilled_sft_8_steps_int8_convrot for 8-step DMD"
-  }
- },
- "2": {
-  "class_type": "CLIPLoader",
-  "inputs": {
-   "clip_name": "qwen3.5_9b_int8_convrot.safetensors",
-   "type": "moss_image"
+  "2": {
+    "class_type": "CLIPLoader",
+    "inputs": {
+      "clip_name": "qwen3.5_9b_int8_convrot.safetensors",
+      "type": "moss_image"
+    },
+    "_meta": {
+      "title": "Qwen3.5-9B encoder (~9 GB) - type MUST be moss_image"
+    }
   },
-  "_meta": {
-   "title": "Qwen3.5-9B encoder (~9 GB) - type MUST be moss_image"
-  }
- },
- "3": {
-  "class_type": "VAELoader",
-  "inputs": {
-   "vae_name": "flux2-vae.safetensors"
+  "3": {
+    "class_type": "VAELoader",
+    "inputs": {
+      "vae_name": "flux2-vae.safetensors"
+    },
+    "_meta": {
+      "title": "FLUX.2 VAE (also encodes the character reference)"
+    }
   },
-  "_meta": {
-   "title": "FLUX.2 VAE (also encodes the character reference)"
-  }
- },
- "4": {
-  "class_type": "LoraLoaderModelOnly",
-  "inputs": {
-   "model": [
-    "1",
-    0
-   ],
-   "lora_name": "moss_image_sft_4step_v2.0.safetensors",
-   "strength_model": 1.0
+  "21": {
+    "class_type": "LoraLoaderModelOnly",
+    "is_checkpoint": false,
+    "widgets_values": [
+      "moss_image_edit_lora_bf16.safetensors",
+      1.0
+    ],
+    "_meta": {
+      "title": "MOSS-Image Edit LoRA (character reference)"
+    },
+    "inputs": {
+      "model": [
+        "1",
+        0
+      ],
+      "lora_name": "moss_image_edit_lora_bf16.safetensors",
+      "strength_model": 1.0
+    }
   },
-  "_meta": {
-   "title": "4-step speed LoRA - a MOSS-Image EDIT LoRA goes here for real identity transfer; without one the reference latents are ignored and only text conditioning applies"
-  }
- },
- "6": {
-  "class_type": "CLIPTextEncode",
-  "inputs": {
-   "clip": [
-    "2",
-    0
-   ],
-   "text": "moss_xvstyle"
+  "6": {
+    "class_type": "CLIPTextEncode",
+    "inputs": {
+      "clip": [
+        "2",
+        0
+      ],
+      "text": "moss_xvstyle"
+    },
+    "_meta": {
+      "title": "Trigger phrase branch (must stay a standalone value; do NOT put %prompt% here)"
+    }
   },
-  "_meta": {
-   "title": "Trigger phrase branch (must stay a standalone value; do NOT put %prompt% here)"
-  }
- },
- "7": {
-  "class_type": "CLIPTextEncode",
-  "inputs": {
-   "clip": [
-    "2",
-    0
-   ],
-   "text": "%prompt%"
+  "7": {
+    "class_type": "CLIPTextEncode",
+    "inputs": {
+      "clip": [
+        "2",
+        0
+      ],
+      "text": "moss_xvstyle %prompt%"
+    },
+    "_meta": {
+      "title": "Positive (SillyTavern injects here)"
+    }
   },
-  "_meta": {
-   "title": "Positive (SillyTavern injects here)"
-  }
- },
- "8": {
-  "class_type": "ConditioningCombine",
-  "inputs": {
-   "conditioning_1": [
-    "6",
-    0
-   ],
-   "conditioning_2": [
-    "7",
-    0
-   ]
+  "8": {
+    "class_type": "ConditioningCombine",
+    "inputs": {
+      "conditioning_1": [
+        "6",
+        0
+      ],
+      "conditioning_2": [
+        "7",
+        0
+      ]
+    },
+    "_meta": {
+      "title": "trigger + prompt"
+    }
   },
-  "_meta": {
-   "title": "trigger + prompt"
-  }
- },
- "9": {
-  "class_type": "CLIPTextEncode",
-  "inputs": {
-   "clip": [
-    "2",
-    0
-   ],
-   "text": "%negative_prompt%"
+  "9": {
+    "class_type": "CLIPTextEncode",
+    "inputs": {
+      "clip": [
+        "2",
+        0
+      ],
+      "text": "%negative_prompt%"
+    },
+    "_meta": {
+      "title": "Negative (empty string is fine; inert at CFG 1.0 anyway)"
+    }
   },
-  "_meta": {
-   "title": "Negative (empty string is fine; inert at CFG 1.0 anyway)"
-  }
- },
- "10": {
-  "class_type": "EmptyLatentImage",
-  "inputs": {
-   "width": 1024,
-   "height": 1024,
-   "batch_size": 1
+  "10": {
+    "class_type": "EmptyLatentImage",
+    "inputs": {
+      "width": 512,
+      "height": 512,
+      "batch_size": 1
+    },
+    "_meta": {
+      "title": "Latent 1024x1024 (trained square; portrait ratios are weaker)"
+    }
   },
-  "_meta": {
-   "title": "Latent 1024x1024 (trained square; portrait ratios are weaker)"
-  }
- },
- "11": {
-  "class_type": "KSampler",
-  "inputs": {
-   "model": [
-    "4",
-    0
-   ],
-   "positive": [
-    "19",
-    0
-   ],
-   "negative": [
-    "9",
-    0
-   ],
-   "latent_image": [
-    "10",
-    0
-   ],
-   "seed": "%seed%",
-   "steps": 4,
-   "cfg": 1.0,
-   "sampler_name": "euler",
-   "scheduler": "simple",
-   "denoise": 1.0
+  "14": {
+    "class_type": "LoadImageFromBase64OrUrl",
+    "inputs": {
+      "image": "char_avatar"
+    },
+    "_meta": {
+      "title": "Character avatar via SillyTavern char_avatar token (ST injects bare base64; custom node decodes it)"
+    }
   },
-  "_meta": {
-   "title": "Sampler (4-step recipe; official SFT recipe = 50 steps / CFG 3 / sgm_uniform)"
-  }
- },
- "12": {
-  "class_type": "VAEDecode",
-  "inputs": {
-   "samples": [
-    "11",
-    0
-   ],
-   "vae": [
-    "3",
-    0
-   ]
+  "20": {
+    "class_type": "ImageScale",
+    "inputs": {
+      "image": [
+        "14",
+        0
+      ],
+      "upscale_method": "lanczos",
+      "width": 512,
+      "height": 512,
+      "crop": "center"
+    },
+    "_meta": {
+      "title": "Scale avatar reference to model size (VAE needs >=~8px; ST avatars are tiny squares)"
+    }
   },
-  "_meta": {
-   "title": "Decode"
-  }
- },
- "13": {
-  "class_type": "SaveImage",
-  "inputs": {
-   "images": [
-    "12",
-    0
-   ],
-   "filename_prefix": "sillytavern_moss"
+  "17": {
+    "class_type": "TextEncodeMOSSImageEdit",
+    "inputs": {
+      "clip": [
+        "2",
+        0
+      ],
+      "prompt": "%prompt%",
+      "edit_format": "Moss-Image-Edit",
+      "image_strength": 1.0,
+      "vae": [
+        "3",
+        0
+      ],
+      "images.image_0": [
+        "20",
+        0
+      ]
+    },
+    "_meta": {
+      "title": "Reference-conditioned positive (edit path: prompt = edit instruction + %prompt%; trigger emphasis via ST prefix or a character LoRA)"
+    }
   },
-  "_meta": {
-   "title": "Save"
-  }
- },
- "14": {
-  "class_type": "LoadImageFromBase64OrUrl",
-  "inputs": {
-   "image": "char_avatar"
+  "19": {
+    "class_type": "ConditioningCombine",
+    "is_checkpoint": false,
+    "widgets_values": [
+      []
+    ],
+    "_meta": {
+      "title": "Combine Edit-Conditioning + Style Trigger"
+    },
+    "inputs": {
+      "conditioning_1": [
+        "8",
+        0
+      ],
+      "conditioning_2": [
+        "17",
+        0
+      ]
+    }
   },
-  "_meta": {
-   "title": "Character avatar via SillyTavern char_avatar token (ST injects bare base64; custom node decodes it)"
-  }
- },
- "17": {
-  "class_type": "TextEncodeMOSSImageEdit",
-  "inputs": {
-   "clip": [
-    "2",
-    0
-   ],
-   "prompt": "a photo of the person, %prompt%",
-   "edit_format": "ai-toolkit",
-   "image_strength": 1.0,
-   "vae": [
-    "3",
-    0
-   ],
-   "images.image_0": [
-    "20",
-    0
-   ]
+  "11": {
+    "class_type": "KSampler",
+    "inputs": {
+      "model": [
+        "21",
+        0
+      ],
+      "positive": [
+        "19",
+        0
+      ],
+      "negative": [
+        "9",
+        0
+      ],
+      "latent_image": [
+        "10",
+        0
+      ],
+      "seed": "%seed%",
+      "steps": 4,
+      "cfg": 5.0,
+      "sampler_name": "euler",
+      "scheduler": "simple",
+      "denoise": 1.0
+    },
+    "_meta": {
+      "title": "Sampler (4-step recipe; official SFT recipe = 50 steps / CFG 3 / sgm_uniform)"
+    }
   },
-  "_meta": {
-   "title": "Reference-conditioned positive (edit path: prompt = edit instruction + %prompt%; trigger emphasis via ST prefix or a character LoRA)"
-  }
- },
- "19": {
-  "class_type": "ConditioningCombine",
-  "inputs": {
-   "conditioning_1": [
-    "17",
-    0
-   ],
-   "conditioning_2": [
-    "8",
-    0
-   ]
+  "12": {
+    "class_type": "VAEDecode",
+    "inputs": {
+      "samples": [
+        "11",
+        0
+      ],
+      "vae": [
+        "3",
+        0
+      ]
+    },
+    "_meta": {
+      "title": "Decode"
+    }
   },
-  "_meta": {
-   "title": "reference-cond + trigger/prompt"
+  "13": {
+    "class_type": "SaveImage",
+    "inputs": {
+      "images": [
+        "12",
+        0
+      ],
+      "filename_prefix": "sillytavern_moss"
+    },
+    "_meta": {
+      "title": "Save"
+    }
   }
- },
- "20": {
-  "class_type": "ImageScale",
-  "inputs": {
-   "image": [
-    "14",
-    0
-   ],
-   "upscale_method": "lanczos",
-   "width": 1024,
-   "height": 1024,
-   "crop": "center"
-  },
-  "_meta": {
-   "title": "Scale avatar reference to model size (VAE needs >=~8px; ST avatars are tiny squares)"
-  }
- }
 }
