@@ -168,14 +168,12 @@
   }
  },
  "14": {
-  "class_type": "LoadImageFromUrl",
+  "class_type": "LoadImageFromBase64OrUrl",
   "inputs": {
-   "image": "data:image/png;base64,\"%char_avatar%\"",
-   "keep_alpha_channel": false,
-   "output_mode": false
+   "image": "char_avatar"
   },
   "_meta": {
-   "title": "Character reference / avatar (ST injects %char_avatar% as base64; empty avatar -> 64x64 black)"
+   "title": "Character avatar via SillyTavern char_avatar token (ST injects bare base64; custom node decodes it)"
   }
  },
  "17": {

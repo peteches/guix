@@ -108,8 +108,8 @@ equivalent that does exist is the **edit-model reference-latent** route:
 
 | Node | Role |
 |------|------|
-| =14 LoadImageFromUrl= (ArtVenture) | character avatar — ST injects =%char_avatar%= as base64 inline, see "How the avatar arrives" below |
-| =14 LoadImageFromUrl= (ArtVenture) | character avatar — ST injects =%char_avatar%= as base64 inline, see "How the avatar arrives" below |
+| =14 LoadImageFromBase64OrUrl= (=custom_nodes/peteches_sillytavern_nodes=) | character avatar — ST injects its raw base64 over the =char_avatar= token; widget value is exactly =char_avatar=, see "How the avatar arrives" below |
+| =14 LoadImageFromBase64OrUrl= (=custom_nodes/peteches_sillytavern_nodes=) | character avatar — ST injects its raw base64 over the =char_avatar= token; widget value is exactly =char_avatar=, see "How the avatar arrives" below |
 | =20 ImageScale= (lanczos, 1024×1024 center) | **mandatory** — upscales the tiny avatar before VAE-encode; a raw ST avatar (small square, or 1×1 when the character has none) crashes =TextEncodeMOSSImageEdit= with "Kernel size can't be greater than actual input size" |
 | =17 TextEncodeMOSSImageEdit= | positive conditioning from the edit instruction + =%prompt%= + the reference (=edit_format=ai-toolkit=, =vae=3=). Its =images= slot is a ComfyUI-v3 *Autogrow* input: in API format (what ST sends) it must be spelled as the flat dotted key ="images.image_0": ["20", 0]= — neither ="images": [link]= nor ="images": {"image_0": [link]}= validates |
 | =19 ConditioningCombine= | merges =17= with the existing trigger-phrase + prompt branch (=8=), so =moss_xvstyle= keeps working |
@@ -145,23 +145,35 @@ How the avatar arrives — verified against ST 1.19.0 source on =agents=:
   =public/scripts/extensions/stable-diffusion/index.js=. An upload therefore has
   to happen out of band — unless the workflow takes the avatar as data, which
   this one now does.
-- **Built-in avatar placeholders (the route this workflow uses):** ST's ComfyUI
-  path detects =%char_avatar%= and =%user_avatar%= anywhere in the workflow,
-  fetches the *character card* avatar / user persona avatar respectively, base64-
-  encodes it and substitutes the raw string inline —
-  =workflow.replaceAll('"%char_avatar%"', JSON.stringify(avatarBase64))=. So
-  node 14 holds =data:image/png;base64,"%char_avatar%"= and ArtVenture's
-  =LoadImageFromUrl= decodes it locally: no upload, no placeholder config, no
-  HTTP server in front of agents' files. If the character has no avatar ST
-  injects a 1×1 PNG (=PNG_PIXEL=); =LoadImageFromUrl= additionally falls back to
-  a 64×64 black image on an empty string — generation always runs, the reference
-  is just inert.
-- **Gotcha:** the =%char_avatar%= substitution happens in the *browser* only on
+- **Built-in avatar token (the route this workflow uses):** ST's ComfyUI path
+  detects =char_avatar= anywhere in the serialized workflow and substitutes it
+  inline: =workflow.replaceAll('"char_avatar"', JSON.stringify(avatarBase64))=
+  where =avatarBase64= is the *character card* avatar, base64-encoded **without**
+  any =data:image/png;base64,= prefix (the =,split(',')[1]= of a data URL). It is
+  a purely textual swap on the JSON text, so:
+  - the token must appear as its **own quoted string value** in the workflow
+    file — =char_avatar= alone works; ="data:image/png;base64," + char_avatar=
+    or an embedded =\"char_avatar\"= do **not** match the pattern and would be
+    sent literally (this is what caused the earlier binascii "Incorrect padding"
+    failure);
+  - no client can concatenate the data-URI prefix onto it, so a loader that
+    wants the prefix (ArtVenture =LoadImageFromUrl=) cannot accept ST's output.
+- **The custom node fixes exactly that gap.**
+  =custom_nodes/peteches_sillytavern_nodes/moss_avatar_loader.py= registers
+  =LoadImageFromBase64OrUrl=, which accepts bare base64 (the ST case), a full
+  data: URI, an http(s) URL, or an input-directory filename, and treats the
+  unsubstituted token as "no avatar" by decoding ST's own 1×1 =PNG_PIXEL=
+  constant — so Web-UI testing and characters without avatars degrade
+  gracefully instead of crashing. Deployed on the comfyui host at
+  =/srv/comfyui/custom_nodes/peteches_sillytavern_nodes/= (restart the ComfyUI
+  service to pick up changes; it is a shepherd-managed =guix shell --container=
+  process, =pkill -f "python3 main.py --listen"= triggers its auto-restart).
+- **Gotcha:** the =char_avatar= substitution happens in the *browser* only on
   the ST generation path. Testing this workflow directly in ComfyUI's Web UI
-  leaves ="%char_avatar%"= literal → base64-decode fails; put a real URL or a
-  data: URI there for manual tests.
+  leaves =char_avatar= literal; the custom node then substitutes an inert 1×1
+  reference (or put a real URL / data: URI there for manual tests).
 - **Custom placeholder route (fallback):** =comfy_placeholders=
-  =[{find, replace}]= entries replace ="%<find>%"= with =replace= run through
+  =[{find, replace}]= entries replace ="<find>"= with =replace= run through
   ST's macro engine — still useful for per-character LoRA names etc., but not
   needed for the avatar any more.
 - =LoadImageFromUrl= also accepts plain =https://= URLs and =/view?= ComfyUI
