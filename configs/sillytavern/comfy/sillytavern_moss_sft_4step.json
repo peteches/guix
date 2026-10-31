@@ -17,12 +17,7 @@
   "4": {
     "class_type": "LoraLoaderModelOnly",
     "inputs": { "model": ["1", 0], "lora_name": "moss_image_sft_4step_v2.0.safetensors", "strength_model": 1.0 },
-    "_meta": { "title": "4-step speed LoRA (delete this node and reconnect 1->5 for the 50-step official recipe)" }
-  },
-  "5": {
-    "class_type": "LoraLoaderModelOnly",
-    "inputs": { "model": ["4", 0], "lora_name": "MOSS-Image-NSFW-Uncensored-LoRA-ComfyUI.safetensors", "strength_model": 0.8 },
-    "_meta": { "title": "NSFW LoRA (0.6-0.9) + character / layout LoRAs here" }
+    "_meta": { "title": "4-step speed LoRA (delete this node and reconnect 1->11 for the 50-step official recipe; add character / layout LoRAs here)" }
   },
   "6": {
     "class_type": "CLIPTextEncode",
@@ -52,7 +47,7 @@
   "11": {
     "class_type": "KSampler",
     "inputs": {
-      "model": ["5", 0],
+      "model": ["4", 0],
       "positive": ["8", 0],
       "negative": ["9", 0],
       "latent_image": ["10", 0],

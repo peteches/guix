@@ -76,19 +76,20 @@ token for the NSFW LoRA is =KNP= (pinned in node 6).
 | DiT         | =moss_image_sft_int8_convrot.safetensors= (~5 GB, int8 convrot)    |
 | Encoder     | =qwen3.5_9b_int8_convrot.safetensors= (~9 GB), =CLIPLoader type=moss_image= |
 | VAE         | =flux2-vae.safetensors=                                           |
-| LoRAs       | =moss_image_sft_4step_v2.0.safetensors= @1.0, =MOSS-Image-NSFW-Uncensored-LoRA-ComfyUI.safetensors= @0.8 |
+| LoRAs       | =moss_image_sft_4step_v2.0.safetensors= @1.0 (NSFW LoRA removed — add character / layout LoRAs in node 4) |
 | Latent      | 1024×1024 (trained square — portrait ratios are weaker)           |
 | Sampler     | 4 steps, CFG 1.0, =euler= + =simple=                              |
 | Measured    | **1.3 s** warm, **9.3–10.1 s** cold                              |
 
 MOSS-Image needs ComfyUI with native support (merged upstream in commit
 =e087d8f6=, 2026-10-16); this host is now on 0.43.0, so it works. The trigger
-phrase =moss_xvstyle= comes from the NSFW LoRA's own metadata and sits in its
-own conditioning branch merged by =ConditioningCombine=, because SillyTavern
-replaces ="%prompt%"= as a whole value.
+phrase =moss_xvstyle= comes from that NSFW LoRA's metadata; it is kept in its
+own conditioning branch merged by =ConditioningCombine= (because SillyTavern
+replaces ="%prompt%"= as a whole value) even though the LoRA itself was
+removed — harmless when unused, and ready if the LoRA is re-added.
 
 For maximum quality instead of speed: delete the 4-step LoRA node (reconnect
-=1 → 5=) and use 50 steps / CFG 3 / =euler= + =sgm_uniform=, optionally with
+=1 → 11=) and use 50 steps / CFG 3 / =euler= + =sgm_uniform=, optionally with
 =MNSSA2511:1005:5= (SLG noise schedule, layer-skip 22) — the official recipe.
 Or swap the DiT to =moss_image_dmd_distilled_sft_8_steps_int8_convrot= for
 ~8-step DMD without a speed LoRA. MOSS's strengths are text rendering, JSON /
