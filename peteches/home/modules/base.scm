@@ -3,7 +3,7 @@
 ;;; Exports `base-packages' and `base-services', which the two host configs
 ;;; in peteches/home/configs/ append their own extras onto.  Everything
 ;;; shared between dagon and nyarlothotep belongs here or in one of the
-;;; focused sibling modules (ssh, gpg, theming, ai, claude, …), which
+;;; focused sibling modules (ssh, gpg, theming, ai, pi, …), which
 ;;; this module composes.
 ;;;
 ;;; Three distinct sources of code, easy to confuse:
@@ -82,12 +82,17 @@
   #:use-module (peteches home modules syncthing)
   #:use-module (peteches home modules theming)
   #:use-module (peteches home modules ai)
-  #:use-module (peteches home modules claude)
+  ;; Claude Code is gone from the desktops too -- this import now exists
+  ;; only for the <home-claude-mcp-server> record that
+  ;; %desktop-mcp-servers below builds and (peteches home modules pi)
+  ;; consumes for pi's mcp.json.  Narrowed with #:select for exactly that
+  ;; reason: home-claude-service-type / home-claude-configuration are no
+  ;; longer referenced anywhere in this file.
+  #:use-module ((peteches home modules claude)
+               #:select (home-claude-mcp-server))
   #:use-module (peteches home modules pi)
   ;; Your config fragments
   #:use-module (peteches packages gurps)
-  #:use-module (peteches packages claude-code)
-  #:use-module (peteches packages claude-completion)
   #:use-module ((peteches packages pi-coding-agent) #:select (pi-coding-agent pi-mcp-adapter))
   #:use-module (peteches packages emacs-anvil)
   #:use-module (peteches packages graphify)
@@ -167,8 +172,6 @@
   (list
    peteches-desktop-scripts
    alacritty
-   claude-code
-   claude-completion
    pi-coding-agent
    emacs-anvil
    graphify
@@ -233,9 +236,12 @@
    (specification->package "imagemagick")))
 
 ;; MCP server set for the pi coding-agent config: the same anvil (Emacs) /
-;; comfyui / graphify stdio servers the Claude Code config below uses, so pi
-;; has the same tool access.  Declared once here and passed to the
-;; home-pi-service-type rather than inlined.
+;; comfyui / graphify stdio servers -- declared once here and passed to
+;; home-pi-service-type, because pi is the only harness left on these boxes.
+;; They used to be handed to Claude Code as well, from a second inline copy of
+;; this same list; that copy is gone (see the note at the end of base-services).
+;; The <home-claude-mcp-server> record name survives because pi.scm reads the
+;; same record type -- it is a shared shape, not a Claude-only one.
 (define %desktop-mcp-servers
   (let* ((bash-path (file-append bash "/bin/bash"))
          ;; Point at the packaged emacs-anvil launcher.  Old setup used a
@@ -481,20 +487,6 @@
 	     (aliases `(("grhome" . "guix home -L ~/area_51/guix reconfigure ~/area_51/guix/peteches/home/configs/$(hostname).scm")
 			("grsys" . "sudo guix system -L ~/area_51/guix reconfigure ~/area_51/guix/peteches/systems/$(hostname).scm")))
 	     (guix-defaults? #t)
-	     ;; bash-completion's lazy loader is not installed, so source
-	     ;; the claude-completion package's file directly.  The path is
-	     ;; stable across generations; the guard keeps the shell quiet
-	     ;; if the package is ever dropped from the profile.
-	     (bashrc
-	      (list (plain-file
-		     "claude-completion.bash"
-		     "\
-_claude_completion=\"$HOME/.guix-home/profile/share/bash-completion/completions/claude\"
-if [ -r \"$_claude_completion\" ]; then
-  . \"$_claude_completion\"
-fi
-unset _claude_completion
-")))
 	     (environment-variables '(("CGO_ENABLED" . "1")))))
 
    ;; Desktop conveniences (terminals/aliases/env, etc.).
@@ -505,49 +497,25 @@ unset _claude_completion
 
    ;; pi coding-agent (https://pi.dev) -- the `pi' binary
    ;; (pi-coding-agent, in base-packages) plus its ~/.pi config:
-   ;; models.json (the remote koboldcpp model) and the same MCP
-   ;; servers as the Claude Code config below.
+   ;; models.json (the remote koboldcpp model) and the MCP servers from
+   ;; %desktop-mcp-servers above.
    (service home-pi-service-type
 	    (home-pi-configuration
 	     (config-directory (repo-directory "configs/pi/defaults"))
 	     (extensions (list pi-mcp-adapter))
 	     (mcp-servers %desktop-mcp-servers)))
-   (service home-claude-service-type
-	    (home-claude-configuration
-	     (config-directory (repo-directory "configs/claude/defaults"))
-	     (mcp-servers
-	      (let* ((bash-path  (file-append bash "/bin/bash"))
-		     ;; Point at the packaged emacs-anvil launcher.  Old
-		     ;; setup used a straight.el checkout under
-		     ;; ~/.config/emacs which no longer exists.
-		     (script     (file-append emacs-anvil "/bin/anvil-stdio.sh")))
-		(list
-		 (home-claude-mcp-server
-		  (name "anvil")
-		  (command bash-path)
-		  (args (list script
-			      "--server-id=anvil"
-			      "--init-function=anvil-enable"
-			      "--stop-function=anvil-disable")))
-		 (home-claude-mcp-server
-		  (name "anvil-emacs-eval")
-		  (command bash-path)
-		  (args (list script "--server-id=emacs-eval")))
-		 ;; The packaged server, not `npx -y comfyui-mcp': comfyui-mcp
-		 ;; depends on two native addons (better-sqlite3 and sharp),
-		 ;; which npx builds from source on first use.  That needs a C
-		 ;; toolchain that isn't on PATH here, and npx swallowed the
-		 ;; failure, so the server only ever showed as "failed to
-		 ;; connect".
-		 (home-claude-mcp-server
-		  (name "comfyui")
-		  (command (file-append node-comfyui-mcp "/bin/comfyui-mcp")))
-		 ;; Stdio only (see graphify.scm on why the HTTP transport isn't
-		 ;; available). No args: it defaults to reading
-		 ;; graphify-out/graph.json relative to the launch cwd, which
-		 ;; Claude Code sets to the current project directory.
-		 (home-claude-mcp-server
-		  (name "graphify")
-		  (command (file-append graphify "/bin/graphify-mcp")))))))))
+   ;; What used to sit between the pi service above and this line was
+   ;; `(service home-claude-service-type ...)
+   ;; plus its own inline copy of the %desktop-mcp-servers list above.
+   ;; Claude Code came off every machine -- the harness is `pi' now,
+   ;; with strata on comfyui and koboldcpp on the desktop as its local
+   ;; backends -- so this box gets no ~/.claude and no claude binary.
+   ;; The service type itself is unwired rather than deleted:
+   ;; (peteches home modules claude) and configs/claude/ still exist,
+   ;; and this module still imports that one for the
+   ;; <home-claude-mcp-server> record pi needs.  Deleting the record
+   ;; would be the next step once nothing builds it any more --
+   ;; (peteches home modules pi) imports it the same way.
 
+   )
    base-theming-services))
