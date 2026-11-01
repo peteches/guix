@@ -30,7 +30,7 @@ you happened to be editing when you made it.
 | A service *type* in =peteches/services/= or =peteches/home/services/=      | Every host whose system/home config extends that service |
 | A package in =peteches/packages/=                                          | Every host whose config installs that package          |
 | A channel pin bump (=peteches/channels/*.scm=)                              | The *entire fleet* — a channel bump changes what every subsequent build resolves to, even for hosts whose own =.scm= file didn't change |
-| =peteches/home/modules/= (home-environment fragments)                      | The desktops (dagon, nyarlothotep) reconfigured locally, plus any headless account with a home-environment (claude-workstation, criticalgrind) |
+| =peteches/home/modules/= (home-environment fragments)                      | The desktops (dagon, nyarlothotep) reconfigured locally, plus every headless VM that has a home-environment — currently claude-workstation and agents (both built by =(peteches home modules vm-jumpbox)=) |
 
 Rules:
 
@@ -163,7 +163,8 @@ the port it actually listens on:
 | plane                    | =curl -sf http://<ip>/=                            |
 | comfyui                  | =curl -sf http://<ip>:8188/system_stats=           |
 | guix-build               | =curl -sf http://<ip>:3000/nix-cache-info= (substitute server) |
-| claude-workstation       | No network service to probe — it's this session's own VM (or a peer Claude Code account on it). Check via SSH: =claude --version= runs, and =emacsclient -e t= / the anvil daemon responds (see AGENTS.md's Anvil section) |
+| claude-workstation       | Its only job is the tunnel: =sudo herd status wireguard-wg0= AND =sudo herd status socks5-proxy= must both report running (a =socks5-proxy= left "stopped (failing)" with =no code for module (ice-9 readline)= is the wireguard-socks5 start thunk regressing — see the comment in =peteches/services/wireguard-socks5.scm=). =sudo ssh-keygen -F= nothing; probe the proxy indirectly: =ssh claude-workstation -- proxychains4 -q -f ~/.config/proxychains.conf nc <ygo-server-ip> 22= from a desktop |
+| agents                   | =curl -sf http://<ip>:8001/= (SillyTavern — a 401 basic-auth challenge still proves the listener; also proves the firewall rule), plus =sudo herd status rules-lawyer= and, since it now has a home-environment, =sudo herd status guix-home-peteches= + =su - peteches -c "command -v pi"= |
 
 If a health endpoint isn't known/doesn't exist for a service, a bare TCP
 connect to its port is the floor: =timeout 3 bash -c "echo > /dev/tcp/<ip>/<port>"=.
@@ -308,7 +309,7 @@ declare -A ips=(
   [concourse-web01]=192.168.51.199 [concourse-worker01]=192.168.51.200
   [vault]=192.168.51.201      [critical-grind-campaign]=192.168.51.202
   [critical-grind-outline]=192.168.51.203 [plane]=192.168.51.204
-  [claude-workstation]=192.168.51.205
+  [claude-workstation]=192.168.51.205  [agents]=192.168.51.208
   [comfyui]=192.168.51.206    [guix-build]=192.168.51.207
 )
 for h in "${!ips[@]}"; do

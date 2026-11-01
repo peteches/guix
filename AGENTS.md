@@ -261,7 +261,7 @@ Each module's header comment documents its keyword arguments — read
 | `scripts/deploy.scm` | `guix deploy` wrapper with `--hosts` filtering — **the supported deploy entry point** |
 | `proxmox-vms.org` | VM inventory and IP reference table — **authoritative** for IPs |
 | `docs/` | Architecture documentation |
-| `.claude/skills/` | Claude Code automation skills (`update-channels`) |
+| `.claude/skills/` | Claude Code automation skills: `update-channels`, `deploy-vms` (fleet deploys per docs/fleet-deployment.org), `wireguard-socks5` (claude-workstation's split tunnel — moved here out of `configs/claude/ygo-only/skills/` when Claude Code left the box, since the tunnel it documents outlived the CLI) |
 
 ### Complete File Map
 
@@ -295,9 +295,10 @@ Each module's header comment documents its keyword arguments — read
 | `critical-grind-campaign.scm` | Critical Grind campaign system VM — Go/Gin app on :8080 + local PostgreSQL (192.168.51.202). Package and service come from the `critical-grind` channel |
 | `critical-grind-outline.scm` | Outline wiki VM — Podman container + local PostgreSQL/Redis (192.168.51.203, :3000) |
 | `plane.scm` | Plane project management VM — Podman containers + PostgreSQL/Redis/RabbitMQ (192.168.51.204, :80) |
-| `claude-workstation.scm` | Claude Code workstation VM — headless, three OS accounts (peteches, criticalgrind, ygo) each running claude-code with their own home config and MCP servers (192.168.51.205) |
+| `claude-workstation.scm` | Jump-box VM — split-tunnel WireGuard + microsocks SOCKS5 (the desktops relay `ygo-server`/`ygoswiss1`/`ygoswiss2` ssh through it), tailscale, alloy; ONE home environment (`peteches`) + a plain `ygo` login account. Claude Code, the `criticalgrind` account and the Postgres/Podman dev-DB stack are gone (192.168.51.205) |
 | `comfyui.scm` | ComfyUI VM — RTX 4090 GPU passthrough with nonguix driver/CUDA; successor to nug's desktop-hosted comfyui (192.168.51.206) |
 | `guix-build.scm` | Guix substitute server + build-offload target VM — successor to nug's guix-publish/offload role; signs with `guix-build-substitute-key.pub` (192.168.51.207) |
+| `agents.scm` | "agents" VM — rules-lawyer Discord bot + SillyTavern + `pi` for the peteches account (home-environment from `peteches/home/configs/agents-peteches.scm`); LLM/stable-diffusion offloaded to other VMs (192.168.51.208) |
 | `guix-build-substitute-key.pub` | Guix-publish signing public key for guix-build's substitute server (nug's substitute-server successor) |
 
 #### `peteches/home/configs/`
@@ -308,6 +309,8 @@ Host-specific files only — each exports a complete `home-environment` record.
 |---|---|
 | `dagon.scm` | dagon home environment — `(peteches home configs dagon)` |
 | `nyarlothotep.scm` | nyarlothotep home environment — `(peteches home configs nyarlothotep)` |
+| `claude-workstation-peteches.scm` | `(peteches home configs claude-workstation-peteches)` — jump-box account config built by `make-vm-jumpbox-home`; netcat + `known-hosts2` + the `Host *` automation identity |
+| `agents-peteches.scm` | `(peteches home configs agents-peteches)` — `make-vm-jumpbox-home` + `pi-coding-agent` + `home-pi-service-type` (the shared `configs/pi/defaults`); no Claude, no anvil/herdr/MCP |
 
 #### `peteches/home/modules/`
 
@@ -320,8 +323,9 @@ Shared fragments — imported by host configs and composed into `base-packages` 
 | `gpg.scm` | `(peteches home modules gpg)` — `base-gpg-service` with pinentry dispatch script |
 | `syncthing.scm` | `(peteches home modules syncthing)` — `base-syncthing-service` (org folder + devices) |
 | `theming.scm` | `(peteches home modules theming)` — `base-theming-services` list (cursor, wallpaper, matugen, DMS plugin) |
-| `ai.scm` | `(peteches home modules ai)` — `base-ai-service`: ECA config **only**. Claude Code's MCP servers live in `claude.scm`. Its anvil path is stale/broken |
-| `claude.scm` | `(peteches home modules claude)` — defines `home-claude-service-type`: symlinks `configs/claude/defaults` into `~/.claude/` and registers MCP servers via `claude mcp add` |
+| `ai.scm` | `(peteches home modules ai)` — `base-ai-service`: ECA config **only**. pi's MCP servers come from `base.scm`'s `%desktop-mcp-servers`. Its anvil path is stale/broken |
+| `claude.scm` | `(peteches home modules claude)` — defines `home-claude-service-type`: symlinks `configs/claude/defaults` into `~/.claude/` and registers MCP servers. **Unwired** since Claude Code left every machine (`base-services` no longer instantiates it, `configs/claude/` is defined-but-unused); kept only for the `<home-claude-mcp-server>` record, which `base.scm`/`pi.scm` still build for pi's mcp.json |
+| `vm-jumpbox.scm` | `(peteches home modules vm-jumpbox)` — `make-vm-jumpbox-home`, the shared headless home-environment constructor for VM accounts (git, ssh, proxychains-ng, pinned `channels.scm`, canonical git identity; `#:extra-packages`/`#:ssh-hosts`/`#:known-hosts2`/`#:extra-services` hooks). Used by `claude-workstation-peteches.scm` and `agents-peteches.scm` |
 | `mako.scm` | `(peteches home modules mako)` — `base-mako-config` and `base-mako-service`. **Unused**: `base.scm` no longer composes it (dropped 2026-09-27 so DankMaterialShell is the sole owner of `org.freedesktop.Notifications`); `theming.scm` still emits matugen mako colours that nothing now consumes |
 | `firefox.scm` | `(peteches home modules firefox)` — Firefox profiles. `base-firefox-global-prefs`/`-extensions` are **unused**, so uBlock/DarkReader/PassFF are not installed |
 | `git.scm` | `(peteches home modules git)` — `peteches-gpg-for-git` package and `git-config` |
@@ -402,8 +406,8 @@ culminating package(s) — most of their content is transitive deps.
 | `terraform.scm` | `terragrunt` |
 | `vault.scm` | `vault` |
 | `desktop-scripts.scm` | `peteches-desktop-scripts` — packages `configs/bin/`. Scripts must be listed explicitly in `#:install-plan`. Already local (source lives in this repo) |
-| `claude-completion.scm` | `claude-completion` — packages `configs/claude/claude-completion.bash` as `share/bash-completion/completions/claude`. Already local |
-| `emacs-anvil.scm` | `emacs-anvil` — packages anvil.el + `anvil-stdio.sh`; consumed by `(peteches home modules claude-workstation)` and `(peteches home modules base)`. Already local |
+| `claude-completion.scm` | `claude-completion` — packages `configs/claude/claude-completion.bash` as `share/bash-completion/completions/claude`. **Unconsumed** — `base-packages` dropped it when Claude Code came off the desktops. Already local |
+| `emacs-anvil.scm` | `emacs-anvil` — packages anvil.el + `anvil-stdio.sh`; consumed only by `(peteches home modules base)` now (its other consumer, `(peteches home modules claude-workstation)`, was deleted). Already local |
 | `docker-compose.scm` | `docker-compose` plugin packaging. Already local |
 
 #### `peteches/services/`
@@ -482,6 +486,8 @@ Home service *types*, folded in from the retired `peteches` channel.
 | `docs/fleet-deployment.org` | Fleet deploy rules: when to deploy, `deploy-vms` skill usage, per-host success verification, rollback, consistency audit |
 | `docs/rules-lawyer-loop-plan.org` | **Unimplemented plan** — fix for the rules-lawyer bot's "Stopped after N tool iterations" failure (missing `systems/**/AGENTS.md` in the package + no forced final answer in the bot harness) |
 | `.claude/skills/update-channels/` | Claude Code skill for updating pinned channel commits across all `peteches/channels/*.scm` files |
+| `.claude/skills/deploy-vms/` | The fleet-deploy skill `docs/fleet-deployment.org` mandates for anything touching more than one host |
+| `.claude/skills/wireguard-socks5/` | claude-workstation's split-tunnel + SOCKS5 runbook; account-agnostic since Claude left that box |
 
 ### System Configurations (`peteches/systems/`)
 
