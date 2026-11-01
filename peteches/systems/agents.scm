@@ -13,6 +13,15 @@
 ;;   rules-lawyer — Discord bot, uses strata.ts.peteches.co.uk as its LLM
 ;;   sillytavern  — LLM roleplay web frontend on :8001, basic-auth protected
 ;;   tailscale    — MagicDNS mesh connectivity
+;;   guix-home    — ONE home environment, `peteches', from
+;;                  peteches/home/configs/agents-peteches.scm: the box's agent
+;;                  account (`pi' + the shared configs/pi/defaults, git, ssh,
+;;                  proxychains, pinned channels).  It exists so
+;;                  `ssh agents "pi …"' has a real pi to run under a real
+;;                  account; headless VMs have no login shell that would
+;;                  otherwise give an agent CLI anywhere to live.  No Claude
+;;                  Code anywhere on this box — that is the whole point of
+;;                  the agents/vm-jumpbox split (see that config's header).
 ;;
 ;; Secrets (SOPS-decrypted at boot):
 ;;   /run/secrets/rules-lawyer-discord-token  — Discord bot token
@@ -37,7 +46,9 @@
   #:use-module (gnu system file-systems)
   #:use-module (gnu system keyboard)
   #:use-module (gnu services)
+  #:use-module (gnu services guix)           ;; guix-home-service-type
   #:use-module (peteches systems vm-base)
+  #:use-module (peteches home configs agents-peteches)
   #:use-module (peteches services alloy)
   #:use-module (peteches services firewall)
   #:use-module (peteches services restic)
@@ -104,6 +115,18 @@
        (permissions #o400)))
      #:extra-services
      (list
+      ;; One home environment for this box's agent account -- see
+      ;; peteches/home/configs/agents-peteches.scm for what it contains and
+      ;; what it deliberately leaves out (no Claude Code, no anvil/herdr, no
+      ;; MCP servers).  `guix-home-peteches' owns ~/.gitconfig, ~/.ssh/config,
+      ;; ~/.profile and ~/.config/guix/channels.scm as managed symlinks, so a
+      ;; hand-edited dotfile in this account gets replaced on the next
+      ;; activation -- that is the trade this box makes for having an
+      ;; agent-capable account at all.  Nothing here needs XDG_RUNTIME_DIR:
+      ;; (peteches home modules vm-jumpbox) sets no runtime directory, and
+      ;; home-pi-service-type only writes files under ~/.pi.
+      (service guix-home-service-type
+               `(("peteches" ,agents-peteches-home)))
       ;; rules-lawyer — Discord bot, uses the strata engine on the comfyui
       ;; box (Intel Arc B70, SC117 Qwen3.8-Flash-Next IQ2_XS, proxied via
       ;; caddy as strata.ts.peteches.co.uk -> comfyui:8000) as its LLM
