@@ -8,7 +8,8 @@
       "compat": {
         "maxTokensField": "max_tokens",
         "supportsUsageInStreaming": true,
-        "supportsStrictMode": false
+        "supportsStrictMode": false,
+        "thinkingFormat": "qwen-chat-template"
       },
       "models": [
         {
@@ -16,7 +17,19 @@
           "name": "Qwen3.8 Flash Next IQ2_XS (comfyui, strata)",
           "contextWindow": 262144,
           "maxTokens": 16384,
-          "input": ["text"]
+          "input": ["text"],
+          "reasoning": true,
+          "thinkingLevelMap": {
+            "off": "off",
+            "minimal": "low",
+            "low": "low",
+            "medium": "medium",
+            "high": "high",
+            "xhigh": "high"
+          },
+          "compat": {
+            "reasoning_budget_tokens": 8192
+          }
         }
       ]
     },
@@ -36,7 +49,19 @@
           "name": "Qwen3.8 27B abliterated Q4_K_M (comfyui, koboldcpp)",
           "contextWindow": 131072,
           "maxTokens": 32768,
-          "input": ["text"]
+          "input": ["text"],
+          "reasoning": true,
+          "thinkingLevelMap": {
+            "off": "off",
+            "minimal": "low",
+            "low": "low",
+            "medium": "medium",
+            "high": "high",
+            "xhigh": "high"
+          },
+          "compat": {
+            "reasoning_budget_tokens": 12288
+          }
         }
       ]
     }
