@@ -10,15 +10,16 @@ hl.on("hyprland.start", function()
   hl.exec_cmd("sh -lc 'state_dir=\"${XDG_STATE_HOME:-$HOME/.local/state}/peteches\"; mkdir -p \"$state_dir\"; sleep 5; \"$HOME/.guix-home/profile/bin/dms-random-wallpaper\" --no-save >> \"$state_dir/dms-random-wallpaper-startup.log\" 2>&1 || true'")
   hl.exec_cmd("emacs --fg-daemon >> ${XDG_LOG_HOME:-$HOME/.local/var/log}/emacs-daemon.log 2>&1")
   hl.exec_cmd("canberra-gtk-play -i desktop-login")
-  -- Expose this desktop's per-user PulseAudio session over TCP to
-  -- claude-workstation (100.94.152.119) so the VM's `rec` wrapper can
-  -- capture this machine's mic for pi-dictate (voice dictation in pi --
-  -- see peteches/home/configs/claude-workstation-peteches.scm for the
-  -- wrapper and PULSE_SERVER).  The TCP listener is restricted to the
-  -- VM's Tailscale IP via auth-ip-acl; the retry loop waits for the
-  -- session server to come up (the canberra-gtk-play login sound above
-  -- starts it).  Only the session server is affected, not the system
-  -- one; the module is loaded once per session.
-  hl.exec_cmd("sh -lc 'for i in 1 2 3 4 5 6 7 8 9 10; do pactl load-module module-native-protocol-tcp auth-ip-acl=100.94.152.119 2>/dev/null && break; sleep 3; done'")
+  -- INERT, deliberately: this used to expose this desktop's per-user
+  -- PulseAudio session over TCP to claude-workstation so the VM's `rec'
+  -- wrapper could capture this machine's mic for dictation on that box.
+  -- Claude Code -- and with it the rec wrapper, its PULSE_SERVER override
+  -- and the VM-side firewall rule that let this desktop in -- is gone.
+  -- Dictation happens on this desktop through configs/dms/plugins/dictate,
+  -- which uses the local PulseAudio session directly.  The auth-ip-acl
+  -- address is stale as well (that tailnet node is 100.75.14.28 now), so
+  -- this listener would serve nobody.  Commented out rather than deleted
+  -- so the mechanism stays findable if another VM needs a network mic.
+  -- hl.exec_cmd("sh -lc 'for i in 1 2 3 4 5 6 7 8 9 10; do pactl load-module module-native-protocol-tcp auth-ip-acl=100.94.152.119 2>/dev/null && break; sleep 3; done'")
   end
 )

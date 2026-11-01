@@ -233,8 +233,11 @@
 		     (user "peteches")
 		     (identity-file "~/.ssh/id_ed25519"))
 		    (openssh-host
+		     ;; The tailnet currently answers to the -1 form only; the
+		     ;; suffixless name is a stale node registration (see the note
+		     ;; on claude-workstation-machine in peteches/machines.scm).
 		     (name "claude-workstation.ts")
-		     (host-name "claude-workstation.spaniel-cordylus.ts.net"))
+		     (host-name "claude-workstation-1.spaniel-cordylus.ts.net"))
 		    (openssh-host
 		     (name "claude-workstation")
 		     (host-name "192.168.51.205")
@@ -252,7 +255,7 @@
 		     (identity-file "~/.ssh/id_ed25519"))
 		    (openssh-host
 		     (name "claude-workstation-ygo.ts")
-		     (host-name "claude-workstation.spaniel-cordylus.ts.net")
+		     (host-name "claude-workstation-1.spaniel-cordylus.ts.net")
 		     (user "ygo")
 		     (identity-file "~/.ssh/id_ed25519"))
 		    ;; Reachable only via claude-workstation's split-tunnel
