@@ -424,6 +424,25 @@
                    ;; only refuse to launch, loudly, if it never shows up --
                    ;; that's a real problem (netns-wg0ns/wireguard-wg0 not
                    ;; actually up), not just a slow PostUp.
+                   ;;
+                   ;; 'read-line' has to be fetched explicitly here: it is
+                   ;; not bound in the module shepherd compiles this thunk
+                   ;; into -- that environment holds only '(shepherd
+                   ;; service)' plus (guix build utils) / (guix build
+                   ;; syscalls), see the commentary at the top of
+                   ;; (peteches services rules-lawyer) on free variables in
+                   ;; start gexps.  A bare 'read-line' used to work only by
+                   ;; accident: Guile's verifying linker autoloaded it, and
+                   ;; the module it autoloaded FROM -- (ice-9 readline) --
+                   ;; does not exist in Guile 3.0.11, so the whole start
+                   ;; action now dies with "no code for module (ice-9
+                   ;; readline)" before microsocks is ever exec'd; that is
+                   ;; precisely how 'socks5-proxy' was left "stopped
+                   ;; (failing)" on claude-workstation after the channel
+                   ;; bump.  '(@ ...)' is a runtime module-ref, which is
+                   ;; why the (peteches services colibri) style below is
+                   ;; immune.
+                   (define read-line (@ (ice-9 rdelim) read-line))
                    (define (nameserver-ready?)
                      (and (file-exists? #$resolv-conf)
                           (call-with-input-file #$resolv-conf
