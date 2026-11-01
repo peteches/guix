@@ -7,13 +7,23 @@
 ;;; anvil daemon nor a herdr server — just git/ssh plus the proxychains-ng
 ;;; config those two need in order to *use* the tunnel this VM provides. It is
 ;;; also what `agents' uses: agents has no agent tooling of its own (its LLMs
-;;; live on comfyui) and needs only `pi', so it passes pi via #:extra-packages
-;;; here rather than growing a second, near-identical constructor.
+;;; live on the comfyui box) and needs only the `pi' CLI, so its own config
+;;; adds the ~/.pi service as an #:extra-service here rather than growing a
+;;; second, near-identical constructor — see the two notes below for what that
+;;; means in practice: the `pi' BINARY arrives on agents' *system* profile
+;;; (make-vm-os' #:extra-packages in peteches/systems/agents.scm), not as
+;;; EXTRA-PACKAGES here, because a headless VM has no elogind and no login
+;;; shell for most ssh commands, so anything a non-interactive
+;;; `ssh agents "pi …"' needs has to be in the system profile.
 ;;;
 ;;; Deliberately NOT provided — the things (peteches home modules
-;;; claude-workstation) does provide, all of which exist to serve Claude Code:
+;;; claude-workstation) used to provide, all of which existed to serve Claude
+;;; Code:
 ;;;   * claude-code / claude-completion, and ~/.claude from configs/claude/
-;;;   * pi, ~/.pi, and the anvil/herdr MCP-server plumbing shared by both
+;;;   * the anvil daemon, the herdr server, and the MCP-server plumbing both
+;;;     of them served (an account that wants agent tooling back adds its own
+;;;     home-pi-service-type / MCP services through EXTRA-SERVICES; agents
+;;;     does exactly that for ~/.pi alone)
 ;;;   * home-claude-service-type's activation-time `claude mcp add' step
 ;;;   * graphify (a Claude/pi skill) and github-cli/onepassword-cli/fly
 ;;;   * proxychains-ng's companion `netcat', which only ssh's ProxyCommand
@@ -33,16 +43,21 @@
 ;;; key set via home-environment-variables would leak. Anything secret arrives
 ;;; through the VM's own #:sops-secrets (decrypting to /run/secrets/… at boot)
 ;;; and is exported into the shell by #:secret-env-vars below — see
-;;; claude-workstation.scm for an instance of that path.
+;;; claude-workstation.scm for an instance of that path. The one exception is
+;;; a *key file* rather than a value: #:ssh-hosts can point an IdentityFile at
+;;; a /run/secrets path (see that same file's automation-key entry), which is
+;;; safe because ssh reads it at connect time from tmpfs, it is never copied
+;;; into the store, and IdentityFile itself names only the path.
 
 (define-module (peteches home modules vm-jumpbox)
   #:use-module (gnu home)
   #:use-module (gnu home services)
   #:use-module (gnu home services shells)
-  ;; home-openssh-service-type / home-openssh-configuration live in
-  ;; (gnu home services ssh), not (gnu home services shells). Without this the
-  ;; file loads fine and the known-hosts2 branch below is "Unbound variable"
-  ;; only when a home config actually evaluates it.
+  ;; home-openssh-service-type, home-openssh-configuration AND openssh-host (the
+  ;; record #:ssh-hosts below takes a list of) all live in (gnu home services
+  ;; ssh), not (gnu home services shells). Without this the file loads fine and
+  ;; the known-hosts2 / ssh-hosts branches below are "Unbound variable" only
+  ;; when a home config actually evaluates them.
   #:use-module (gnu home services ssh)
   #:use-module (gnu services)
   #:use-module (guix gexp)
@@ -56,6 +71,9 @@
   ;; avoid the scan entirely. Same reason the three claude-workstation-*-*.scm
   ;; configs used to carry the identical comment.
   #:use-module ((gnu packages version-control) #:select (git))
+  ;; openssh-host lives in (gnu home services ssh) too — ssh-hosts below needs
+  ;; it, and importing it from (gnu services ssh) would pull the *system*
+  ;; openssh record of the same name into scope.
   #:use-module ((gnu packages ssh) #:select (openssh))
   #:use-module ((gnu packages networking) #:select (proxychains-ng))
   #:use-module ((gnu packages base) #:select (coreutils))
@@ -122,18 +140,30 @@
                      "=\"$(cat \"" path "\")\"; fi\n")))
                 secret-env-vars)))))
 
+;; Canonical git identity for every account this constructor builds: the same
+;; name/email (peteches/home/services/git.scm) the desktop profiles use, so a
+;; commit authored on a VM and a commit authored on a desktop have the same
+;; author. It is the DEFAULT here rather than a required argument because no
+;; caller overrides it today; the claude-workstation accounts used to pass
+;; `claude@peteches.co.uk', which stopped being true to anything once Claude
+;; Code left the box.
 (define* (make-vm-jumpbox-home
           #:key
           (git-name "Pete 'Peteches' McCabe")
-          (git-email "peteches@peteches.co.uk")
+          (git-email "pete@peteches.co.uk")
           (extra-packages '())
           (env-vars '())
           (secret-env-vars '())
           (extra-services '())
-          (known-hosts2 '()))
+          (known-hosts2 '())
+          (ssh-hosts '()))
   "Return a headless home-environment for one VM's `peteches' account.
 EXTRA-PACKAGES are added to the base tool set — this is how an agent host gets
-its agent CLI, e.g. pi-coding-agent on `agents'. ENV-VARS is a plain
+its agent CLI, e.g. pi-coding-agent on `agents'. SSH-HOSTS is a list of
+<openssh-host> records merged into this account's ~/.ssh/config — the way to
+add an IdentityFile or a Host block without growing another service. Pass
+`(name "*")' to make an identity apply to every host, as claude-workstation
+does for the peteches automation key. ENV-VARS is a plain
 (non-secret) alist of (ENV-VAR . VALUE) exported via
 home-environment-variables-service-type (i.e. into
 ~/.guix-home/setup-environment, sourced by ~/.profile); $HOME in a value is
@@ -154,14 +184,35 @@ home services for this account."
   ;; into append's argument list on the empty branch -- a type error at compile
   ;; time, not a paren error -- and an otherwise-correct
   ;; home-openssh-configuration with #:known-hosts2 '() still writes an empty
-  ;; ~/.ssh/known_hosts2. KNOWN-HOSTS-SERVICES is bound once here and spliced
-  ;; in as append's second argument.
-  (let ((known-hosts-services
-         (if (null? known-hosts2)
-             '()
+  ;; ~/.ssh/known_hosts2. The same reasoning, and the same single-instance
+  ;; requirement, apply to SSH-HOSTS: TWO home-openssh-service-type instances
+  ;; would both emit ~/.ssh/config, and Guix Home reports that as a file
+  ;; conflict, so the one instance below is built from whichever of the two
+  ;; hooks is non-empty — hence three explicit branches rather than assembling
+  ;; the record dynamically: `home-openssh-configuration' is a
+  ;; define-record-type* MACRO, so `(apply home-openssh-configuration …)'
+  ;; doesn't even parse, and passing an explicit '() for #:known-hosts2 still
+  ;; writes an empty ~/.ssh/known_hosts2, which is why each field is only
+  ;; written when it has something to say. OPENSSH-SERVICES is bound once here
+  ;; and spliced in as append's second argument.
+  (let ((openssh-services
+         (if (null? ssh-hosts)
+             ;; No SSH-HOSTS: either one instance for KNOWN-HOSTS2 alone, or
+             ;; nothing at all (agents takes this '() branch).
+             (if (null? known-hosts2)
+                 '()
+                 (list (service home-openssh-service-type
+                                (home-openssh-configuration
+                                 (known-hosts2 known-hosts2)))))
+             ;; SSH-HOSTS present: one instance, plus KNOWN-HOSTS2 only when
+             ;; there is something to put in it.
              (list (service home-openssh-service-type
-                            (home-openssh-configuration
-                             (known-hosts2 known-hosts2)))))))
+                            (if (null? known-hosts2)
+                                (home-openssh-configuration
+                                 (hosts ssh-hosts))
+                                (home-openssh-configuration
+                                 (known-hosts2 known-hosts2)
+                                 (hosts ssh-hosts))))))))
     (home-environment
    (packages (append %vm-jumpbox-base-packages extra-packages))
    (services
@@ -217,9 +268,11 @@ home services for this account."
       ;; interactively still live in ~/.ssh/known_hosts and survive `guix home
       ;; reconfigure'. The service itself is built in the `let' above -- this
       ;; comment only marks where it lands: spliced in as append's second
-      ;; argument, right after the `(list ...)' block.
+      ;; argument, right after the `(list ...)' block. When only SSH-HOSTS is
+      ;; non-empty (no KNOWN-HOSTS2) this is still the same single instance,
+      ;; now emitting ~/.ssh/config without a known_hosts2.
       )
-     known-hosts-services
+     openssh-services
      ;; `(list ...)' closes above: its list is `append''s first argument and
      ;; known-hosts-services / extra-services are `append''s remaining
      ;; arguments -- so this line needs five closes (append, services,

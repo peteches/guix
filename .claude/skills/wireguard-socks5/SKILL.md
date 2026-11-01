@@ -1,29 +1,35 @@
 ---
 name: wireguard-socks5
-description: "Use when the user on claude-workstation's ygo account wants to reach something over the WireGuard tunnel, mentions the VPN/tunnel/SOCKS5 proxy, or asks to route a specific request/tool through it. This host has a split-tunnel WireGuard interface (wg0) that never becomes the default route -- only traffic explicitly sent through the local SOCKS5 proxy at 10.200.0.2:1080 goes over it."
+description: "Use when working on or with the claude-workstation VM, when the user mentions the VPN/tunnel/SOCKS5 proxy, or asks to route a specific request/tool through it. That host is a pure jump box: its split-tunnel WireGuard interface (wg0) never becomes the default route -- only traffic explicitly sent through the SOCKS5 proxy at 10.200.0.2:1080 goes over it."
 ---
 
-# WireGuard split-tunnel + SOCKS5 proxy (claude-workstation, ygo only)
+# WireGuard split-tunnel + SOCKS5 proxy (claude-workstation)
 
 This VM (`claude-workstation`) has a WireGuard tunnel (`wg0`) whose only
 purpose is to feed a SOCKS5 proxy (microsocks) reachable at
 `10.200.0.2:1080`. It is a **split tunnel**: the system's default route is
-never touched. General internet traffic — including your own calls back to
-Anthropic — is completely unaffected whether the tunnel is up or not.
+never touched. General internet traffic — ordinary outbound traffic from
+this VM, including this agent's own API calls — is completely unaffected
+whether the tunnel is up or not.
 
 microsocks runs inside the `wg0ns` network namespace and binds to the
 netns side of the host↔netns veth pair (`veth-wg0h` 10.200.0.1 ↔
 `veth-wg0n` 10.200.0.2), not to loopback — connect to `10.200.0.2:1080`
 from the host, not `127.0.0.1:1080`.
 
-The netns, tunnel and proxy now auto-start on boot (`auto-start? #t` in
+The netns, tunnel and proxy auto-start on boot (`auto-start? #t` in
 `peteches/systems/claude-workstation.scm`'s `wireguard-socks5-service-type`
 instance), so normally nothing needs starting by hand — check status with
 `sudo herd status wireguard-wg0` / `socks5-proxy` first. Only use the
 commands below after a manual stop, or if status shows either service down.
 
-Only the `ygo` account's Claude Code knows about this skill; it is not
-shipped to the `peteches` or `criticalgrind` accounts on the same VM.
+This tunnel is the whole reason the VM exists. The desktops' `ygo-server`,
+`ygoswiss1` and `ygoswiss2` ssh hosts have no kernel route from either
+desktop, so `peteches/home/modules/ssh.scm` relays them through this box's
+proxy —
+`ssh claude-workstation -- proxychains4 -q -f ~/.config/proxychains.conf nc %h %p`
+— which is why `netcat` and `proxychains-ng` stay installed on this VM's
+`peteches` account (see `peteches/home/configs/claude-workstation-peteches.scm`).
 
 ## Bringing the tunnel up (if it isn't already)
 

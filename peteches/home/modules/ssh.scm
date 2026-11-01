@@ -240,16 +240,11 @@
 		     (host-name "192.168.51.205")
 		     (user "peteches")
 		     (identity-file "~/.ssh/id_ed25519"))
-		    (openssh-host
-		     (name "claude-workstation-cg")
-		     (host-name "192.168.51.205")
-		     (user "criticalgrind")
-		     (identity-file "~/.ssh/id_ed25519"))
-		    (openssh-host
-		     (name "claude-workstation-cg.ts")
-		     (host-name "claude-workstation.spaniel-cordylus.ts.net")
-		     (user "criticalgrind")
-		     (identity-file "~/.ssh/id_ed25519"))
+		    ;; There is no `claude-workstation-cg' / -cg.ts entry any more:
+		    ;; the criticalgrind account left with Claude Code and the box is
+		    ;; now a jump box (see peteches/systems/claude-workstation.scm).
+		    ;; The two -ygo entries below stay because Peter McCabe still
+		    ;; logs into that account on the same VM.
 		    (openssh-host
 		     (name "claude-workstation-ygo")
 		     (host-name "192.168.51.205")

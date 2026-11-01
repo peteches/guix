@@ -1,43 +1,66 @@
-;; claude-workstation.scm — headless VM hosting Claude Code for three accounts.
+;; claude-workstation.scm -- a headless VM that is now a pure jump box.
 ;;
-;; One VM, three login users, one per identity:
-;;   peteches      — the personal account (the baseline %vm-peteches-user
-;;                   that every VM already gets from vm-base.scm)
-;;   criticalgrind — the Critical Grind work account (added here)
-;;   ygo           — Peter McCabe's ygo.ai identity (added here)
+;; HISTORY -> PRESENT.  This VM used to be Claude Code's dedicated
+;; workstation: one VM, three login users (peteches, criticalgrind, ygo), each
+;; with its own home-environment config in peteches/home/configs/ built by the
+;; shared constructor in (peteches home modules claude-workstation); a native
+;; Postgres 17 + postgis + pg_cron instance and two Podman dev-DB containers
+;; that the Claude MCP servers talked to; `pi-coding-agent' in the system
+;; profile.  Claude Code is not needed anywhere any more -- the harness is
+;; `pi', on the desktops for interactive work and on `agents' for the headless
+;; account (see peteches/systems/agents.scm) -- so all of that is gone.  What
+;; is left is the one job this box was always good at, plus what keeps it
+;; reachable:
 ;;
-;; Each account has its own home-environment config in
-;; peteches/home/configs/:
-;;   claude-workstation-peteches.scm
-;;   claude-workstation-criticalgrind.scm
-;;   claude-workstation-ygo.scm
-;; All three instantiate the shared constructor in
-;; (peteches home modules claude-workstation): it installs claude-code,
-;; symlinks ~/.claude from configs/claude/defaults, registers that account's
-;; MCP servers, and pre-clones repos into ~/area_51/<repo>.
+;;   * wireguard-socks5-service-type -- split-tunnel WireGuard (wg0, inside
+;;     its own netns) feeding microsocks on 10.200.0.2:1080.  THE REASON THIS
+;;     VM EXISTS.  The desktops have no kernel route to `ygo-server',
+;;     `ygoswiss1' or `ygoswiss2', so their ssh ProxyCommands relay through
+;;     here: `ssh claude-workstation -- proxychains4 -q -f
+;;     ~/.config/proxychains.conf nc %h %p' ((peteches home modules ssh)).
+;;     That is also why proxychains-ng + netcat stay installed -- see the
+;;     #:extra-packages comment below for where they live and why sshd's
+;;     non-interactive shell can still find them.  auto-start? #t brings the
+;;     netns, tunnel and proxy up on boot; see the `read-line' gotcha comment
+;;     inside the proxy's start thunk in peteches/services/wireguard-socks5.scm
+;;     for why it was being left "stopped (failing)" after the channel bump.
+;;   * tailscale-service-type -- this box's own tailnet presence, so the
+;;     operator's `Host *.ts' aliases keep resolving.
+;;   * alloy-service-type -- pushes messages.log, node-exporter.log, ntpd.log
+;;     and alloy.log to loki (192.168.51.190:3100).  Its metrics port 12345 is
+;;     what prometheus scrapes -- the hand-written `alloy' job in
+;;     peteches/systems/prometheus.scm lists 192.168.51.205:12345 -- and
+;;     alloy-service-type opens that port in the firewall itself, so there is
+;;     no `simple-service ... firewall-service-type' extension here.
+;;   * ONE home environment: `peteches', from
+;;     peteches/home/configs/claude-workstation-peteches.scm (built by
+;;     (peteches home modules vm-jumpbox)) -- git, ssh, proxychains, a pinned
+;;     ~/.config/guix/channels.scm, nothing else.  It needs no separate
+;;     `guix home reconfigure': this #:extra-services wires the
+;;     home-environment value straight into the system, so `guix system
+;;     reconfigure'/`guix deploy' activates it as the guix-home-peteches
+;;     shepherd service in the same run -- editing a home config for this VM
+;;     just needs a redeploy (scripts/deploy.scm; see AGENTS.md).  Its
+;;     ~/.ssh/config ends up with `Host * -> IdentityFile
+;;     /run/secrets/peteches-automation-ssh-key', so this box can still ssh
+;;     into every other VM as peteches: it remains a listed deploy coordinator
+;;     (%authorize-coordinator-key in peteches/systems/common.scm).
+;;   * TWO OS accounts: `peteches' (that environment) and `ygo', now only a
+;;     login account -- key + console password, no home environment, nothing
+;;     running as it.
 ;;
-;; None of the three need a separate `guix home reconfigure' -- the
-;; `guix-home-service-type' instance down in claude-workstation-os's
-;; #:extra-services wires all three home-environment values directly into
-;; this system, so `guix system reconfigure'/`guix deploy' activates all of
-;; them (as guix-home-<account> shepherd services) in the same run as the
-;; system itself. Editing a home config here only needs a system-level
-;; redeploy, via scripts/deploy.scm -- see AGENTS.md.
+;; WHY separate OS users: each user gets its own ~/.claude.json (auth +
+;; per-project state), so the accounts never race on that file and run in
+;; parallel for free -- the exact thing the container-session wrapper used to
+;; work hard to fake on a single identity.  That argument no longer applies on
+;; this box (there is no Claude Code left on it), `criticalgrind' is gone with
+;; Critical Grind's own VM, and `ygo' stays only because Peter McCabe still
+;; logs into it.
 ;;
-;; WHY separate OS users rather than the container-session wrapper: each user
-;; gets its own ~/.claude.json (auth + per-project state), so the two accounts
-;; never race on that file and run in parallel for free — the exact thing the
-;; container wrapper worked hard to fake on one identity.
-;;
-;; FIRST-BOOT TODO (none of these can be done before the VM exists):
-;;   * age-keys/claude-workstation.pub + a .sops.yaml creation rule, then wire
-;;     any sops-secrets (e.g. the Plane/Outline API keys for criticalgrind).
-;;   * create + encrypt secrets/hosts/claude-workstation/slack.yaml (ygo's
-;;     Slack MCP xoxp- token) -- see the #:sops-secrets entry below for the
-;;     exact `sops -e -i' invocation.
-;; See AGENTS.md "Adding a New VM" for the remaining fleet-integration files
-;; (ssh.scm, machines.scm, scripts/deploy.scm, pihole.scm, monitored-hosts,
-;; prometheus.scm, proxmox-vms.org, infra/terraform).
+;; Fleet-integration files for this VM (ssh.scm, machines.scm,
+;; scripts/deploy.scm, pihole.scm, monitored-hosts.scm, prometheus.scm,
+;; proxmox-vms.org, infra/terraform, age-keys/) are already wired -- see
+;; AGENTS.md "Adding a New VM" for what those mean for a NEW host.
 
 (define-module (peteches systems claude-workstation)
   #:use-module (guix gexp)
@@ -45,71 +68,24 @@
   #:use-module (gnu bootloader grub)
   #:use-module (gnu services)
   #:use-module (gnu services ssh)
-  #:use-module (gnu services base)
-  #:use-module (gnu services containers)
-  #:use-module (gnu services databases)
-  #:use-module (gnu services shepherd)
   #:use-module (gnu system)
-  #:use-module (gnu system accounts)
   #:use-module (gnu system shadow)
   #:use-module (gnu system file-systems)
   #:use-module (gnu system keyboard)
-  #:use-module ((gnu packages databases) #:select (postgresql-17))
-  #:use-module (peteches packages postgres-extensions)
-  #:use-module (peteches packages pi-coding-agent)
   #:use-module (peteches systems vm-base)
   #:use-module (peteches services alloy)
-  #:use-module (peteches services firewall)
   #:use-module (peteches services tailscale)
   #:use-module (peteches services wireguard-socks5)
   #:use-module (sops secrets)
   #:use-module (gnu services guix)
   #:use-module (peteches home configs claude-workstation-peteches)
-  #:use-module (peteches home configs claude-workstation-criticalgrind)
-  #:use-module (peteches home configs claude-workstation-ygo)
   #:export (claude-workstation-os))
 
-;; This VM has no elogind/PAM session management (vm-base.scm starts from
-;; bare %base-services, not %desktop-services), so nothing ever creates
-;; /run/user/<uid> -- and /run itself isn't even tmpfs here, only /dev/shm
-;; is. (peteches home modules claude-workstation) points each account's
-;; XDG_RUNTIME_DIR at ~/.cache/xdg-runtime instead, since that's always
-;; writable, but that directory lives on the root ext4 filesystem and
-;; therefore survives reboots -- which silently breaks Guix Home's
-;; on-first-login bootstrap (the script that starts shepherd-for-home,
-;; supervising anvil and herdr): it's guarded by a flag file inside that
-;; same directory, meant to fire once per boot, that without a real tmpfs
-;; there only ever fires once for the account's entire lifetime. A small
-;; per-account tmpfs mounted at that exact path restores real "cleared
-;; every boot" semantics without pulling in elogind's full PAM/D-Bus
-;; session stack. UIDs are static for these three accounts (verified via
-;; `id`): peteches=1000, criticalgrind=1001, ygo=1002.
-(define (xdg-runtime-tmpfs user uid)
-  (file-system
-   (mount-point (string-append "/home/" user "/.cache/xdg-runtime"))
-   (device "none")
-   (type "tmpfs")
-   (options (string-append "size=64M,mode=0700,uid=" (number->string uid)
-                            ",gid=998"))
-   (check? #f)))
-
-;; Console-recovery user for the criticalgrind account.  Same shape as
-;; %vm-peteches-user (vm-base.scm): day-to-day access is SSH key-only, so this
-;; pre-hashed password exists only for the Proxmox console.  It reuses the
-;; already-committed peteches hash so there is a known console login; give it
-;; its own hash later if the accounts should differ.
-(define %criticalgrind-user
-  (user-account
-   (name "criticalgrind")
-   (comment "Critical Grind (Claude account)")
-   (group "users")
-   (home-directory "/home/criticalgrind")
-   (supplementary-groups '("wheel" "netdev"))
-   (password "$6$yk5pnJr/ECPPOvGv$/HoWZNE7fWDslHHIVHAcaxk0AyhnthoHGhs3RrXaXqvVL8W5UI9OUVHndx4RfSqnWnnPw/.q2KhkfrPRKkw.11")))
-
-;; Console-recovery user for the ygo account.  Same shape as %criticalgrind-user
-;; and reuses the same pre-hashed console password -- day-to-day access is
-;; SSH key-only.
+;; Login account for Peter McCabe's ygo.ai identity.  It keeps the same
+;; pre-hashed console password as %vm-peteches-user (vm-base.scm) -- a
+;; known console login for recovery -- but has no guix-home environment,
+;; no toolchain and nothing running as it; day-to-day access is SSH
+;; key-only (`ssh claude-workstation-ygo' from a desktop).
 (define %ygo-user
   (user-account
    (name "ygo")
@@ -119,15 +95,6 @@
    (supplementary-groups '("wheel" "netdev"))
    (password "$6$yk5pnJr/ECPPOvGv$/HoWZNE7fWDslHHIVHAcaxk0AyhnthoHGhs3RrXaXqvVL8W5UI9OUVHndx4RfSqnWnnPw/.q2KhkfrPRKkw.11")))
 
-;; Matches the old ygo-dev-postgres container's POSTGRES_HOST_AUTH_METHOD=
-;; trust: loopback-only dev database, so no password required either via
-;; the unix socket or over 127.0.0.1/::1 TCP.
-(define %ygo-dev-pg-hba
-  (plain-file "pg_hba.conf"
-              "local   all     all                     trust\n\
-host    all     all     127.0.0.1/32            trust\n\
-host    all     all     ::1/128                 trust\n"))
-
 (define-public claude-workstation-os
   (operating-system
    (inherit
@@ -136,9 +103,23 @@ host    all     all     ::1/128                 trust\n"))
      #:ipv4-address "192.168.51.205/23"
      #:ipv6-address "2a10:d582:ef59::111/64"
      #:with-nug-offload? #t
-     #:extra-packages (list pi-coding-agent)
-     #:automation-key-extra-users '("criticalgrind" "ygo")
-     #:users-extra (list %criticalgrind-user %ygo-user)
+     ;; No #:extra-packages.  `pi-coding-agent' used to sit here, which put
+     ;; `pi' on this box's SYSTEM PATH -- the harness runs where the user is
+     ;; (the desktops, and `agents' for the headless account), so a box whose
+     ;; only job is relaying other people's proxied ssh does not need it.
+     ;; proxychains-ng + netcat, which that job does need, come in through
+     ;; peteches' HOME profile instead: Guix System's /etc/profile puts
+     ;; ~/.guix-home/profile on PATH even for the non-interactive shell sshd
+     ;; execs, so the desktops' ProxyCommands still resolve (verified on the
+     ;; live box).
+     ;;
+     ;; No #:automation-key-extra-users either (default '()): the automation
+     ;; key only has to be readable by `peteches' now, and vm-base already
+     ;; chowns it to peteches:peteches 0600 as part of this box's
+     ;; #:sops-secrets -- see %automation-authorized-key-secret in
+     ;; peteches/systems/vm-base.scm.  The criticalgrind/ygo entries this
+     ;; used to pass went with those accounts.
+     #:users-extra (list %ygo-user)
      ;; Tailscale unattended join.  The auth-key is a SHARED sops secret
      ;; (secrets/shared/tailscale.yaml), decrypted at boot with the VM's own
      ;; age key.  The VM pipeline must add this host's age key as a recipient
@@ -166,71 +147,26 @@ host    all     all     ::1/128                 trust\n"))
        (file (local-file "../../secrets/hosts/claude-workstation/wireguard.yaml"))
        (path "/run/secrets/wg0.conf")
        (permissions #o400))
-      ;; criticalgrind's Plane/Outline MCP keys, decrypted here with this
-      ;; VM's own age key. secrets/hosts/claude-workstation/critical-grind.env
-      ;; also carries the operator's PGP key as a recipient, purely so it
-      ;; can be edited from a desktop with gpg-agent -- see
-      ;; docs/secrets-management.org.
-      (sops-secret
-       (key '("PLANE_API_KEY"))
-       (file (local-file "../../secrets/hosts/claude-workstation/critical-grind.env"))
-       (user "criticalgrind")
-       (group "users")
-       (permissions #o400)
-       (path "/run/secrets/plane-api-key"))
-      (sops-secret
-       (key '("OUTLINE_API_KEY"))
-       (file (local-file "../../secrets/hosts/claude-workstation/critical-grind.env"))
-       (user "criticalgrind")
-       (group "users")
-       (permissions #o400)
-       (path "/run/secrets/outline-api-key"))
-      ;; ygo's Slack MCP token. secrets/hosts/claude-workstation/slack.yaml
-      ;; does NOT exist yet -- create it before the next `guix system
-      ;; reconfigure`/redeploy of this VM:
-      ;;   printf 'xoxp-token: xoxp-...\n' > secrets/hosts/claude-workstation/slack.yaml
-      ;;   sops -e -i secrets/hosts/claude-workstation/slack.yaml
-      ;; It is picked up automatically by the existing
-      ;; `secrets/hosts/claude-workstation/.*\.yaml$` creation_rule in
-      ;; .sops.yaml (both this VM's age key and the operator's PGP key as
-      ;; recipients) -- no .sops.yaml change needed. See
-      ;; docs/secrets-management.org.
-      (sops-secret
-       (key '("xoxp-token"))
-       (file (local-file "../../secrets/hosts/claude-workstation/slack.yaml"))
-       (user "ygo")
-       (group "users")
-       (permissions #o400)
-       (path "/run/secrets/slack-mcp-xoxp-token"))
-      ;; ygo's 1Password CLI (op) auth: a service-account token, not an
-      ;; interactive session -- no expiry, no master-password prompt, just
-      ;; an env var op reads per invocation (see (peteches packages
-      ;; onepassword-cli)). secrets/hosts/claude-workstation/onepassword.yaml
-      ;; does NOT exist yet -- create it before the next `guix system
-      ;; reconfigure`/redeploy of this VM (generate the token itself from
-      ;; the 1Password web console: Settings -> Developer -> Service
-      ;; Accounts):
-      ;;   printf 'token: ops_...\n' > secrets/hosts/claude-workstation/onepassword.yaml
-      ;;   sops -e -i secrets/hosts/claude-workstation/onepassword.yaml
-      ;; Picked up automatically by the existing
-      ;; `secrets/hosts/claude-workstation/.*\.yaml$` creation_rule in
-      ;; .sops.yaml -- no .sops.yaml change needed. See
-      ;; docs/secrets-management.org.
-      (sops-secret
-       (key '("token"))
-       (file (local-file "../../secrets/hosts/claude-workstation/onepassword.yaml"))
-       (user "ygo")
-       (group "users")
-       (permissions #o400)
-       (path "/run/secrets/op-service-account-token"))
+      ;; Four sops secrets that used to be listed here are gone: the two
+      ;; Plane/Outline keys (critical-grind.env -- Critical Grind now runs on
+      ;; its own VM, critical-grind-campaign, 192.168.51.202), slack.yaml and
+      ;; onepassword.yaml (ygo's Slack / 1Password MCP tokens) and deepgram.yaml
+      ;; (the pi-dictate `rec' wrapper that consumed it is retired; voice
+      ;; dictation stays on the desktops, where the DMS dictate plugin uses
+      ;; secrets/shared/deepgram.yaml -- see configs/dms/plugins/dictate/).
+      ;; The four files are still in secrets/hosts/claude-workstation/ and
+      ;; still decryptable with this box's age key; they are simply no longer
+      ;; decrypted at boot because nothing reads them any more.
       ;; Private half of the peteches automation SSH keypair -- see
       ;; %automation-authorized-key-secret in vm-base.scm for the public
-      ;; half, decrypted on every VM. Only claude-workstation ever
-      ;; decrypts the private half: peteches uses it (via
-      ;; %peteches-automation-ssh-key in (peteches home modules
-      ;; claude-workstation)) to reach the criticalgrind/ygo accounts
-      ;; locally, and any other VM's peteches account, without borrowing a
-      ;; desktop's admin key.
+      ;; half, decrypted on every VM.  Only claude-workstation ever decrypts
+      ;; the private half, and now only for one purpose: `Host *' in
+      ;; peteches' ~/.ssh/config points at this path (the #:ssh-hosts
+      ;; argument in peteches/home/configs/claude-workstation-peteches.scm),
+      ;; which is what lets this box ssh into any other VM's peteches account
+      ;; -- and so keep working as a deploy coordinator -- without borrowing a
+      ;; desktop's admin key.  It used to double as the key peteches used to
+      ;; ssh into the criticalgrind/ygo accounts here; those are gone.
       (sops-secret
        (key '("private-key"))
        (file (local-file "../../secrets/hosts/claude-workstation/peteches-automation-ssh.yaml"))
@@ -238,26 +174,6 @@ host    all     all     ::1/128                 trust\n"))
        (group "users")
        (permissions #o400)
        (path "/run/secrets/peteches-automation-ssh-key"))
-      ;; peteches's Deepgram API key for the pi-dictate extension (voice
-      ;; dictation in pi -- see (peteches packages pi-dictate) and the
-      ;; #:pi-extensions/#:secret-env-vars entries in
-      ;; claude-workstation-peteches.scm, which exports DEEPGRAM_API_KEY
-      ;; into the shell from the path below at startup).  Mode 0400
-      ;; peteches-only: the key is read by peteches's shell, and the
-      ;; other two accounts neither run pi-dictate nor need to see it.
-      ;; secrets/hosts/claude-workstation/deepgram.yaml exists (added
-      ;; 2026-09-20, sourced from the Deepgram console at
-      ;; https://console.deepgram.com).  It is picked up automatically by
-      ;; the existing `secrets/hosts/claude-workstation/.*\.yaml$'
-      ;; creation_rule in .sops.yaml (both this VM's age key and the
-      ;; operator's PGP key as recipients).  See
-      ;; docs/secrets-management.org.
-      (sops-secret
-       (key '("deepgram-api-key"))
-       (file (local-file "../../secrets/hosts/claude-workstation/deepgram.yaml"))
-       (user "peteches")
-       (group "users")
-       (permissions #o400))
       ;; Private half of the guix-offload keypair, encrypted for this VM's
       ;; own age key -- see the matching public half added to
       ;; guix-offload-authorized-keys in peteches/systems/guix-build.scm. Same
@@ -284,39 +200,39 @@ host    all     all     ::1/128                 trust\n"))
         (mount-point "/")
         (device "/dev/vda2")
         (type "ext4"))
-      ;; cgroup2 mount required by Podman/crun for the dev database
-      ;; containers below (see plane.scm / critical-grind-outline.scm for
-      ;; the same requirement).
-      (file-system
-        (mount-point "/sys/fs/cgroup")
-        (device "cgroup2")
-        (type "cgroup2")
-        (flags '(no-exec no-suid no-dev))
-        (check? #f)
-        (create-mount-point? #t))
-      (xdg-runtime-tmpfs "peteches" 1000)
-      (xdg-runtime-tmpfs "criticalgrind" 1001)
-      (xdg-runtime-tmpfs "ygo" 1002))
+      ;; No cgroup2 mount any more (it only existed for the Podman dev-DB
+      ;; containers, gone below) and no per-account XDG_RUNTIME_DIR tmpfs:
+      ;; (peteches home modules vm-jumpbox) sets no XDG_RUNTIME_DIR at all,
+      ;; so nothing here wants a runtime directory cleared on every boot.
+      )
      #:extra-services
      (list
       (service guix-home-service-type
-       `(("peteches" ,claude-workstation-peteches-home)
-         ("criticalgrind" ,claude-workstation-criticalgrind-home)
-         ("ygo" ,claude-workstation-ygo-home)))
-      ;; Authorize the same admin keys (dagon + nyarlothotep) for the
-      ;; criticalgrind and ygo users, so `ssh criticalgrind@…' / `ssh ygo@…'
-      ;; work key-only just like the peteches account.  openssh-service-type
-      ;; coalesces this with the peteches entry vm-base already sets.
-      (simple-service 'criticalgrind-authorized-keys
-                      openssh-service-type
-                      `(("criticalgrind" ,@%vm-peteches-authorized-keys)))
+       ;; One home environment only -- the retired
+       ;; claude-workstation-criticalgrind / claude-workstation-ygo configs
+       ;; used to be the other two entries.
+       `(("peteches" ,claude-workstation-peteches-home)))
+      ;; `ygo' has no guix-home environment any more, and sshd's
+      ;; AuthorizedKeysFile is ~/.ssh/authorized_keys
+      ;; (%vm-authorized-keys-file in vm-base.scm) -- a ~/.ssh that
+      ;; guix-home owns makes sshd skip that path outright, so key auth
+      ;; for an account WITHOUT a home environment has to come through
+      ;; openssh-service-type's authorized-keys field, which writes
+      ;; /run/current-system/profile/etc/ssh/<user>/authorized_keys and
+      ;; passes it in with -f.  Without this entry `ssh
+      ;; claude-workstation-ygo' from the desktops -- the only way the
+      ;; operator reaches that account -- dies with Permission denied
+      ;; (publickey).  Same pattern as %agents-peteches-authorized-keys
+      ;; in peteches/systems/agents.scm.
       (simple-service 'ygo-authorized-keys
                       openssh-service-type
                       `(("ygo" ,@%vm-peteches-authorized-keys)))
-      ;; Claude reaches Anthropic outbound; the base firewall permits
-      ;; established/related + output and opens ssh inbound.  Tailscale needs
-      ;; no inbound rule here: ssh over the tailnet still lands on tcp/22
-      ;; (already open) and tailscaled's own traffic is outbound.
+      ;; Nothing here needs a new inbound firewall rule: ssh over the
+      ;; tailnet still lands on tcp/22 (already open by %vm-base-firewall),
+      ;; tailscaled's own traffic is outbound, alloy's scrape port is
+      ;; opened by alloy-service-type itself, and the SOCKS5 proxy is only
+      ;; ever dialled from processes already running on this box -- it
+      ;; lives inside netns-wg0ns and is reachable solely over the veth.
       (service tailscale-service-type
                (list (tailscale-instance-configuration
                       (name "peteches")
@@ -326,202 +242,43 @@ host    all     all     ::1/128                 trust\n"))
       ;; the SOCKS5 proxy get routed over the tunnel. See
       ;; (peteches services wireguard-socks5). auto-start? #t brings up all
       ;; three shepherd services (netns, wg0, microsocks) on boot, in the
-      ;; innermost-last order wsc-shepherd-services already lists them in,
-      ;; so proxychains-ng (see (peteches home modules claude-workstation))
-      ;; has a live proxy to dial without a manual `herd start' first.
+      ;; innermost-last order wsc-shepherd-services already lists them in, so
+      ;; proxychains-ng -- on this box, in peteches' home profile -- has a
+      ;; live proxy to dial without a manual `herd start' first.  The dialers
+      ;; are the desktops' ProxyCommands for the tunnel-only hosts (see
+      ;; (peteches home modules ssh)), and the .claude/skills/
+      ;; wireguard-socks5 skill documents the same three-service order for
+      ;; anyone reaching this box by hand.
       (service wireguard-socks5-service-type
                (wireguard-socks5-configuration
                 (config-file "/run/secrets/wg0.conf")
                 (auto-start? #t)))
 
-      ;; Dev databases for the ygo account: rootful Podman OCI containers
-      ;; (same shape as plane.scm / critical-grind-outline.scm), bound to
-      ;; loopback only since this is local dev tooling, not a network
-      ;; service. POSTGRES_HOST_AUTH_METHOD=trust / no Redis password: safe
-      ;; only because nothing but 127.0.0.1 can reach these ports (see the
-      ;; firewall rules below), so no SOPS secret is warranted here.
-      ;;
-      ;; Required by oci-service-type with Podman running as root.
-      (simple-service 'cgroup-group
-                      account-service-type
-                      (list (user-group
-                             (name "cgroup")
-                             (system? #t))))
-
-      (service oci-service-type
-               (oci-configuration
-                (runtime 'podman)
-                (user "root")))
-
-      ;; Stub shepherd services required by oci-service-type that would
-      ;; otherwise depend on elogind (which conflicts with Shepherd-managed
-      ;; PAM during deploy) -- see plane.scm / critical-grind-outline.scm.
-      (simple-service 'cgroup-stubs
-                      shepherd-root-service-type
-                      (list
-                       (shepherd-service
-                        (provision '(cgroups2-fs-owner))
-                        (one-shot? #t)
-                        (start #~(lambda _ #t))
-                        (documentation "Stub."))
-                       (shepherd-service
-                        (provision '(cgroups2-limits))
-                        (one-shot? #t)
-                        (start #~(lambda _ #t))
-                        (documentation "Stub."))
-                       (shepherd-service
-                        (provision '(rootless-podman-shared-root-fs))
-                        (one-shot? #t)
-                        (start #~(lambda _ #t))
-                        (documentation "Stub."))
-                       (shepherd-service
-                        (provision '(dbus-system))
-                        (one-shot? #t)
-                        (start #~(lambda _ #t))
-                        (documentation "Stub."))))
-
-      ;; Podman requires a trust policy for image pulls.
-      (simple-service 'containers-policy
-                      etc-service-type
-                      (list (list "containers/policy.json"
-                                  (plain-file "containers-policy.json"
-                                              "{\"default\":[{\"type\":\"insecureAcceptAnything\"}]}"))
-                            ;; linux-libre has no overlayfs or FUSE support on
-                            ;; this VM; vfs is the only working storage driver
-                            ;; (see plane.scm).
-                            (list "containers/storage.conf"
-                                  (plain-file "containers-storage.conf"
-                                              "[storage]\ndriver = \"vfs\"\n"))))
-
-      ;; Host directories backing each remaining container's data volume,
-      ;; created and owned by the uid/gid each official image actually runs
-      ;; its daemon as. redis:7 runs as uid/gid 999, but
-      ;; timescale/timescaledb:latest-pg16 is Alpine-based Postgres, which
-      ;; uses the standard Alpine postgres uid/gid of 70 -- NOT 999. Chowning
-      ;; both to 999 (as this used to do) locks the timescaledb top-level
-      ;; directory to uid 999 while every file initdb creates underneath it
-      ;; is owned by uid 70, so postgres (running as uid 70) can't traverse
-      ;; its own data directory and fails to start with "Permission denied"
-      ;; on every file under it. Postgres itself moved to a native
-      ;; postgresql-service-type instance below (needs postgis + pg_cron,
-      ;; neither of which come as a ready-made Docker image combo) -- it
-      ;; manages its own /var/lib/postgresql/data.
-      (simple-service 'ygo-dev-db-dirs
-                      activation-service-type
-                      #~(begin
-                          (use-modules (guix build utils))
-                          (for-each
-                           (lambda (dir+owner)
-                             (let ((dir (car dir+owner))
-                                   (uid (cadr dir+owner))
-                                   (gid (caddr dir+owner)))
-                               (mkdir-p dir)
-                               (chown dir uid gid)))
-                           '(("/var/lib/ygo-dev-db/timescaledb" 70 70)
-                             ("/var/lib/ygo-dev-db/redis" 999 999)))))
-
-      ;; Loopback-only DNAT still traverses the FORWARD chain once Podman
-      ;; rewrites the destination onto the podman0 bridge, so this is needed
-      ;; even though nothing off-VM can reach these ports (see
-      ;; critical-grind-outline.scm for the identical rule).
-      (simple-service 'ygo-dev-db-firewall
-                      firewall-service-type
-                      (nftables-rules
-                       (forward (list "ct state { established, related } accept"
-                                      "iifname \"podman0\" accept"
-                                      "oifname \"podman0\" accept"))))
-
-      ;; Native PostgreSQL 17 instance for ygo's schema.sql/content-schema.sql
-      ;; (port 5432) -- needs postgis and pg_cron as loadable extensions,
-      ;; which no upstream Docker image bundles together, so this replaces
-      ;; the old docker.io/library/postgres:16 container. Pinned to
-      ;; postgresql-17 (not Guix's default postgresql-14) -- postgis-17 and
-      ;; pg-cron (peteches packages postgres-extensions) are both built
-      ;; against postgresql-17 specifically for this reason: Postgres
-      ;; extensions are ABI-locked to the major version they're compiled
-      ;; against. The still-Docker-based ygo-dev-timescaledb sibling below
-      ;; remains on timescale/timescaledb:latest-pg16 -- it's a separate
-      ;; instance on its own port (5433/its own data volume), not part of
-      ;; this native server, so it isn't affected by this pin.
-      ;; fuzzystrmatch, ltree and pg_trgm are contrib modules Guix's
-      ;; postgresql package already builds and installs, so they need no
-      ;; extension-packages entry of their own.
-      ;;
-      ;; data-directory is namespaced by major version
-      ;; (/var/lib/postgresql/17/data, not the default /var/lib/postgresql/
-      ;; data) so that bumping the major version again later -- e.g. once
-      ;; Guix packages postgresql-18 (not yet available in this repo's
-      ;; pinned channel as of this writing) -- is just: bump the version
-      ;; symbol here and in postgres-extensions.scm, and add a new
-      ;; .../<N>/data path. Guix's postgresql-service-type only runs initdb
-      ;; when data-directory doesn't already exist, so the new version
-      ;; always comes up as a fresh, empty cluster at its own path rather
-      ;; than refusing to start against a previous major version's on-disk
-      ;; format; the previous version's directory is simply left behind,
-      ;; unmanaged. ygo's dev databases are disposable (schema.sql/
-      ;; content-schema.sql re-seed them), so no dump/restore migration is
-      ;; carried out here -- they're just recreated fresh after each bump.
-      ;;
-      ;; pg_cron needs shared_preload_libraries set (it registers a
-      ;; background worker at server start, not just a loadable .so) --
-      ;; cron.database_name defaults to "postgres"; add it to extra-config
-      ;; below if the app's cron jobs live in a different database.
-      ;;
-      ;; %ygo-dev-pg-hba mirrors the old container's
-      ;; POSTGRES_HOST_AUTH_METHOD=trust; listen_addresses defaults to
-      ;; localhost, matching the container's 127.0.0.1-only port mapping,
-      ;; so no firewall rule is needed here (unlike the podman0 DNAT rule
-      ;; the two remaining containers still need).
-      (service postgresql-service-type
-               (postgresql-configuration
-                (postgresql postgresql-17)
-                (data-directory "/var/lib/postgresql/17/data")
-                (extension-packages (list postgis-17 pg-cron))
-                (config-file
-                 (postgresql-config-file
-                  (hba-file %ygo-dev-pg-hba)
-                  (extra-config
-                   '(("shared_preload_libraries" "pg_cron")))))))
-
-      (simple-service 'ygo-dev-timescaledb
-                      oci-service-type
-                      (oci-extension
-                       (containers
-                        (list (oci-container-configuration
-                               (image "docker.io/timescale/timescaledb:latest-pg16")
-                               (provision "ygo-dev-timescaledb")
-                               (requirement '(networking file-systems))
-                               (log-file "/var/log/ygo-dev-timescaledb.log")
-                               (environment '(("POSTGRES_HOST_AUTH_METHOD" . "trust")))
-                               ;; Host 5433 -> container 5432: TimescaleDB is a
-                               ;; Postgres image and listens on 5432 internally.
-                               (ports (list "127.0.0.1:5433:5432"))
-                               (volumes (list "/var/lib/ygo-dev-db/timescaledb:/var/lib/postgresql/data")))))))
-
-      (simple-service 'ygo-dev-redis
-                      oci-service-type
-                      (oci-extension
-                       (containers
-                        (list (oci-container-configuration
-                               (image "docker.io/library/redis:7")
-                               (provision "ygo-dev-redis")
-                               (requirement '(networking file-systems))
-                               (log-file "/var/log/ygo-dev-redis.log")
-                               (ports (list "127.0.0.1:6379:6379"))
-                               (volumes (list "/var/lib/ygo-dev-db/redis:/data")))))))
-
+      ;; What used to live from here down was ygo's Claude MCP backend set:
+      ;; a rootful-Podman OCI stack (the cgroup group and stub services,
+      ;; policy.json + storage.conf, the timescaledb and redis containers,
+      ;; their host directories and their podman0 forward rule) plus a
+      ;; native postgresql-17 instance with postgis + pg_cron.  Nothing
+      ;; talks to those databases any more -- they existed for Claude's
+      ;; MCP servers on this box -- so the whole block is gone, and with
+      ;; it the cgroup2 mount above.  Dropping the Postgres data service
+      ;; here is also what keeps this system deployable at all:
+      ;; `guix deploy' refuses to switch Postgres majors while the old
+      ;; data service is still running, and nothing on this box needs a
+      ;; database.
       (service alloy-service-type
                (alloy-configuration
                 (hostname "claude-workstation.peteches.co.uk")
-                ;; The native ygo-dev-postgres instance has no log-files
-                ;; entry of its own -- postgresql-config-file's
-                ;; log_destination defaults to "syslog", so its output
-                ;; already lands in /var/log/messages above.
+                ;; Every per-service log entry beyond these four went with
+                ;; the service it belonged to -- the two dev-DB containers
+                ;; that used to sit below, and the native Postgres that used
+                ;; to sit above them (postgresql-config-file's
+                ;; log_destination defaulted to "syslog", so Postgres output
+                ;; still lands in /var/log/messages if anything ever needs
+                ;; it again).
                 (log-files (list (cons "/var/log/messages" "syslog")
                                  (cons "/var/log/prometheus-node-exporter.log" "node-exporter")
                                  (cons "/var/log/ntpd.log" "ntpd")
-                                 (cons "/var/log/alloy.log" "alloy")
-                                 (cons "/var/log/ygo-dev-timescaledb.log" "ygo-dev-timescaledb")
-                                 (cons "/var/log/ygo-dev-redis.log" "ygo-dev-redis"))))))))))
+                                 (cons "/var/log/alloy.log" "alloy"))))))))))
 
 claude-workstation-os
