@@ -59,7 +59,17 @@
   #:use-module (gnu packages compression)
   #:use-module (peteches packages strata)
   #:use-module (peteches services firewall)
+  ;; The record constructor is a macro, so naming it in #:export does not make
+  ;; the field accessors visible to a consumer that merely
+  ;; (resolve-interface '(peteches services strata)) — they are only exported by
+  ;; the define-record-type* form itself, which puts them on the module's export
+  ;; list.  Listing them explicitly here is what lets `guix build -e` and any
+  ;; other consumer read the reasoning defaults; without it they come back
+  ;; "Unbound variable".
   #:export (strata-configuration strata-configuration?
+            strata-configuration-reasoning-budget-tokens
+            strata-configuration-reasoning-effort
+            strata-configuration-answer-room?
             strata-service-type))
 
 ;;; ── Utilities ────────────────────────────────────────────────────────────
@@ -168,7 +178,48 @@
   ;; listed here (or an API key set, which turns the check off). A list of host
   ;; names; the server also accepts suffixes (".example.org") and "*".
   (allowed-hosts strata-configuration-allowed-hosts
-                 (default '())))
+                 (default '()))
+
+  ;; ── Reasoning / thinking budgets ───────────────────────────────────────
+  ;; These three are *server-wide defaults*: every caller (SillyTavern, pi,
+  ;; any OpenAI-compatible client) inherits them, and each can still override
+  ;; per request.  Verified against strata 0.1.52's serve/server.py:
+  ;;
+  ;;   reasoning_budget_tokens — read as request > POST /settings > config
+  ;;   (server.py:4279 `reasoning_budget`), so a request that names
+  ;;   `reasoning_budget_tokens`/`thinking_budget_tokens` wins over this; 0 in
+  ;;   a request means "no budget", which is how a client turns it off.
+  ;;   reasoning_effort — the level for requests that name none (server.py:9031,
+  ;;   `effort_default()` at 4620): POST /settings beats the config, and any
+  ;;   request naming an effort/`enable_thinking` beats both.  The Qwen family
+  ;;   table (serve/frontend.py EFFORT) accepts only none/low/medium/high —
+  ;;   `high` renders the template's xhigh sentence — and anything else is a
+  ;;   400, so pi's level map must land on one of those four words.
+  ;;   answer_room — true (the upstream default) makes strata close thinking
+  ;;   early enough to leave the answer a quarter of max_tokens, but ONLY when
+  ;;   the request named no budget and max_tokens >= ANSWER_ROOM_MIN_CAP (1024,
+  ;;   server.py:205/5253).  That is why requests arriving with max_tokens 1024
+  ;;   got a 512-token thinking budget; false makes the configured budget apply
+  ;;   as-is, so behaviour stops depending on what cap a client happened to send.
+  (reasoning-budget-tokens strata-configuration-reasoning-budget-tokens
+                           ;; #123: measured against this deployment's own log —
+                           ;; 15402 thinking runs at budget 12288 never once
+                           ;; saturated it (max observed usage 11566) and 75% of
+                           ;; requests finished thinking in under 1k tokens, while
+                           ;; 934 requests arrived with max_tokens >= 8192 against
+                           ;; only 58 below it.  8192 is also the tier boundary in
+                           ;; frontend.py's `budget_effort` (under 2K low, under 8K
+                           ;; medium, else high) and sits inside strata's own
+                           ;; reserve rule for pi's 16384-token cap.  Set it to #f
+                           ;; to omit the key entirely and let strata guess.
+                           (default 8192))
+  (reasoning-effort strata-configuration-reasoning-effort
+                    ;; #1641: "" is accepted and maps to no level, i.e. "inject
+                    ;; no effort sentence" — the sentinel for a caller that wants
+                    ;; budgets without prompt text.
+                    (default "medium"))
+  (answer-room? strata-configuration-answer-room?
+                (default #f)))
 
 ;;; ── Resolved defaults ────────────────────────────────────────────────────
 
@@ -386,6 +437,43 @@
          (allowed-hosts-json
           (string-join (map string-quote allowed-hosts) ", "))
          (context (or (strata-configuration-context config) 32768))
+         ;; The three reasoning config lines, precomputed HERE (at gexp
+         ;; elaboration) into a single string and spliced into the gexp below
+         ;; with #$reasoning-json.  They MUST NOT appear as free variables
+         ;; inside the gexp: a gexp does not capture let-bound locals — the
+         ;; gexp macro (guix/gexp.scm) only substitutes #$ (ungexp) references
+         ;; and leaves every other identifier to be resolved where the gexp is
+         ;; EVALUATED, i.e. at activation time in a nearly empty module
+         ;; environment.  Bare `reasoning-budget` there is "Unbound variable",
+         ;; the activation's guard swallows the error ("failed to activate"),
+         ;; and with-output-to-file has already truncated run-strata.sh — so
+         ;; the wrapper is left 0 bytes and shepherd respawns an empty script
+         ;; that "exits successfully".  #f means "omit the key" (strata
+         ;; guesses); answer-room? renders true/false and is never omitted.
+         (reasoning-json
+          (string-join
+           (append
+            (if (strata-configuration-reasoning-budget-tokens config)
+                (list (string-append
+                       "  \"reasoning_budget_tokens\": "
+                       (number->string
+                        (strata-configuration-reasoning-budget-tokens
+                         config))
+                       ",\n"))
+                '())
+            (if (strata-configuration-reasoning-effort config)
+                (list (string-append
+                       "  \"reasoning_effort\": "
+                       (string-quote
+                        (strata-configuration-reasoning-effort config))
+                       ",\n"))
+                '())
+            (list (string-append
+                  "  \"answer_room\": "
+                  (if (strata-configuration-answer-room? config)
+                      "true" "false")
+                  ",\n")))
+           ""))
          (slug (strata-native-model-slug model))
          (model-root (string-append data-dir "/" slug))
          (pack-dir (string-append model-root "/pack"))
@@ -565,6 +653,13 @@
          (string-append "  \"port\": " (number->string #$port) ",")
          (string-append "  \"api_key\": " #$api-key-json ",")
          (string-append "  \"allowed_hosts\": [" #$allowed-hosts-json "],")
+         ;; The three reasoning keys, spliced in as a precomputed string (see
+         ;; reasoning-json above for why it cannot be free variables in this
+         ;; gexp).  They are OUTSIDE "args": --reasoning-effort inside args is
+         ;; not an engine option (server.py:8316 strips it out and promotes it
+         ;; to this config key), and reasoning_budget_tokens / reasoning_effort /
+         ;; answer_room are only ever read from the config's top level.
+         #$reasoning-json
          "  \"log\": \"$LOG\""
          "}"
          "EOF"

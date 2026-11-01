@@ -925,7 +925,27 @@
                 ;; every request passes a Host check, so the name Caddy's
                 ;; tailnet proxy reaches the engine under must be listed here
                 ;; (otherwise the UI is refused with "Host ... is not allowed").
-                (allowed-hosts '("strata.ts.peteches.co.uk"))))
+                (allowed-hosts '("strata.ts.peteches.co.uk"))
+                ;; Reasoning defaults for every client of this engine —
+                ;; SillyTavern and pi both inherit them and can still override
+                ;; per request.  These were absent from the run config, which is
+                ;; why thinking went silent: with no configured budget strata
+                ;; guesses one from max_tokens ("answer_room", server.py:5253),
+                ;; and requests arriving capped at max_tokens 1024 got a 512-token
+                ;; thinking budget instead of the 12288/24522 that worked on
+                ;; 2026-10-29/30.  The last strata thinking in any pi session is
+                ;; 2026-10-31T08:56; nothing after.
+                ;;   8192 = the tier boundary in frontend.py's budget_effort
+                ;;   (under 2K low, under 8K medium, else high), inside strata's
+                ;;   reserve rule for pi's 16384-token cap, and below the 12288
+                ;;   that 15402 logged runs never saturated (max usage 11566).
+                ;;   medium = one of the four words the Qwen EFFORT table accepts
+                ;;   (none/low/medium/high); anything else is a 400.
+                ;;   answer_room #f keeps the budget deterministic instead of
+                ;;   varying with whatever max_tokens a client happens to send.
+                (reasoning-budget-tokens 8192)
+                (reasoning-effort "medium")
+                (answer-room? #f)))
       ;; /lib64 -> glibc/lib: the Strata bundle's private CPython and the
       ;; downloaded Intel engine both carry PT_INTERP =
       ;; /lib64/ld-linux-x86-64.so.2, an FHS path that does not exist on a
