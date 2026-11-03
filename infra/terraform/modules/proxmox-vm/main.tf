@@ -43,6 +43,19 @@ resource "proxmox_virtual_environment_vm" "vm" {
 
   memory {
     dedicated = var.memory
+    # qm's `balloon` is exposed by the bpg provider as `floating`, the size of
+    # the ballooning device in MB: 0 disables it and is the provider's default
+    # (its 0.73.0 docs for virtual_environment_vm: "The default is 0, which
+    # disables 'ballooning device' for the VM"), while Proxmox itself has
+    # ballooning ON — so a VM that Terraform has never written this for keeps
+    # PVE's default, which is exactly the state comfyui is in (`qm config 120`
+    # has no `balloon:` line).  Upstream's way to turn ballooning ON is to set
+    # `floating` equal to `dedicated`.  null leaves the attribute unset, so
+    # every VM that does not pass `ballooning` keeps the behaviour it has now.
+    # If a plan shows no change here yet `qm config <vmid>` still has no
+    # `balloon: 0` line, the provider is not sending the parameter — set it
+    # once on the host: `qm set <vmid> --balloon 0`.
+    floating = (var.ballooning == null || var.ballooning == false) ? 0 : var.memory
   }
 
   efi_disk {

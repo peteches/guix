@@ -505,7 +505,13 @@ module "claude-workstation" {
   memory        = 2048
 
   cpu = {
-    cores = 4
+    # 2, not the 4 this file used to say: `qm config 118` has been running 2
+    # for a while, and proxmox3 has only 32 physical cores with 36 vCPUs
+    # allocated across its seven VMs, so the shrink was almost certainly made
+    # by hand to leave CPU for comfyui's strata.  Recorded as it is live so
+    # the next plan does not quietly raise it back — revisit it here if that
+    # trade-off changes on purpose.
+    cores = 2
     # claude-code ships a Node SEA whose bundled V8 assumes a modern CPU
     # baseline; the default "qemu64" model exposes no AVX/SSE4/AES/RDRAND and
     # the binary busy-spins forever at startup. "host" passes the node CPU's
@@ -744,8 +750,36 @@ module "comfyui" {
   on_boot       = true
   started       = true
 
-  cpu    = { cores = 8, type = "host" }
-  memory = 49152
+  # Recorded as it runs live: `qm config 120` has 16 vCPUs while this file
+  # still said 8, so applying the plan as-is would have halved strata's
+  # threads in the very power cycle that raises the RAM — and this engine's
+  # MoE prefill is plain SSE vector code (no AVX path), so its throughput
+  # tracks the thread count.  Keep the live value; change CPU here on
+  # purpose, not as plan drift.
+  cpu    = { cores = 16, type = "host" }
+  # 57344, not upstream's 65536: proxmox3 has 94 GiB and on 2026-11-03 had
+  # 17 GiB free / 19 GiB available with comfyui already touching all 48 GiB it
+  # was given.  A +16 GiB bump would put configured VM RAM (78.8 + 16 =
+  # 94.8 GiB) past the physical host, so it would only work by leaning on
+  # ZFS's 16 GiB ARC — the very thing that makes this VM's measured 2.1 GB/s
+  # model reads possible — plus aggressive ballooning, and ballooning is the
+  # one thing this VM must not have (see below).  64 GiB becomes the right
+  # number once something else is trimmed: guix-build (VMID 119) is
+  # configured 12288 and was touching 1.4 GiB.
+  memory = 57344
+  # Never inflate this VM's memory away: it passes through two GPUs, and PVE's
+  # own guidance is balloon 0 with passed-through devices.  Here it is worse
+  # than that — strata runs --mmap-experts, so its expert tiers live in the
+  # guest's page cache and a balloon inflation takes back exactly the RAM that
+  # keeps experts off the NVMe, putting strata back at the slow-prefill tier
+  # the +8 GiB was bought to leave.  118 claude-workstation and 121 agents
+  # already run balloon 0.  The provider has no `ballooning` attribute; this
+  # variable maps to `memory.floating = 0` (no ballooning device) in
+  # ./modules/proxmox-vm.  After applying, check `qm config 120` shows
+  # `balloon: 0` — if it still has no `balloon:` line the provider did not
+  # send the parameter, and it must be set once by hand:
+  # `qm set 120 --balloon 0`.
+  ballooning = false
 
   # GPU passthrough on proxmox3: the RTX 4090 (01:00) was already passed
   # through before the legacy import; the Intel Arc B70 (09:00) is the new

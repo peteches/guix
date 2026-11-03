@@ -926,6 +926,59 @@
                 ;; tailnet proxy reaches the engine under must be listed here
                 ;; (otherwise the UI is refused with "Host ... is not allowed").
                 (allowed-hosts '("strata.ts.peteches.co.uk"))
+                ;; What strata prices this model volume at when it works out
+                ;; what a prompt chunk has to re-read (drive_read_gbps(),
+                ;; src/program/generate.cpp:1477 — the value behind the
+                ;; "host.ssd_gbps" line in the engine's own diagnostics).
+                ;; Left unset, strata reads /sys/block/vdb/queue/rotational,
+                ;; which is 1 here for a reason that has nothing to do with
+                ;; this volume: hot-storage is a single-vdev ZFS pool on
+                ;; nvme0n1 (Seagate FireCuda 530 4 TB, scrub clean) presented
+                ;; to the VM as virtio-blk with aio=io_uring, and virtio-blk
+                ;; has no way to tell a guest its backing media — so the flag
+                ;; is the virtio default and the engine planned for a
+                ;; 150 MB/s platter, and printed the #605 "on a rotational
+                ;; disk" warning for it.  2.1 GB/s is measured, not assumed:
+                ;; a 2048 MiB unbuffered (iflag=direct, so past the guest page
+                ;; cache) read of shard 2 took 959 ms inside this VM on
+                ;; 2026-11-02, and 500 random 16 KiB direct reads came back at
+                ;; <=1.3 ms each including the dd process spawn.  strata's own
+                ;; NVMe bucket is 2.5, so this is the conservative side of it.
+                (ssd-gbps 2.1)
+                ;; Conversation parking — several conversations resident in RAM
+                ;; at once, so switching between them restores their state
+                ;; instead of re-reading and re-prefilling it.  This engine
+                ;; serves rules-lawyer (peteches/systems/agents.scm), pi and
+                ;; SillyTavern through caddy's strata.ts.peteches.co.uk proxy,
+                ;; and with no --batch in the args it runs one conversation at
+                ;; a time: without parking, whoever spoke last owns the resident
+                ;; state and every switch costs that conversation its whole
+                ;; prompt again.  Parking off is also why the Monitor's
+                ;; "Conversation cache" card has always read "disabled" — that
+                ;; card is derived from the engine's reported
+                ;; conversation_cache_mib (serve/server.py:834), so it cannot
+                ;; say enabled while the flag is absent.  The engine's own
+                ;; defaults (budget 0 = off, slots 4, floor 2560 MiB), what
+                ;; parking costs per conversation and how to size the floor are
+                ;; documented on these fields in (peteches services strata).
+                ;;   4096 = 5 conversations at ~800 MB (pi compacts at 131072
+                ;;   tokens, ~6 KB/token of full-attention state at --kv q4_0)
+                ;;   plus the transient copy a park/restore needs.  Upstream's
+                ;;   8192 assumes AGENT_CACHE_FREE_GB = 24 GB of RAM free beside
+                ;;   the model, which this VM's 57344 MB does not have.
+                ;;   5 slots = the five tenants this engine is meant for
+                ;;   (rules-lawyer, pi, SillyTavern, two more); the default 4
+                ;;   evicts the oldest conversation on every turn.
+                ;;   4096 for the floor raises the engine's 2560 default so a
+                ;;   park always leaves ~4 GiB of page cache for the
+                ;;   --mmap-experts expert tiers — that cache is what keeps
+                ;;   expert reads off the NVMe (see the ssd-gbps note above for
+                ;;   the 2.1 GB/s measured on this volume).  "conversation
+                ;;   cache: skipped" in /var/log/strata/strata.log is the sign
+                ;;   that the floor sits above the RAM actually free.
+                (conversation-cache-mib 4096)
+                (conversation-cache-slots 5)
+                (conversation-cache-min-free-mib 4096)
                 ;; Reasoning defaults for every client of this engine —
                 ;; SillyTavern and pi both inherit them and can still override
                 ;; per request.  These were absent from the run config, which is

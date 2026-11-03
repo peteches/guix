@@ -52,6 +52,18 @@ variable "memory" {
   description = "RAM in MB"
 }
 
+variable "ballooning" {
+  # Not a bool with a default: the bpg provider has no `ballooning` attribute,
+  # it exposes Proxmox's balloon as `memory.floating` (MB, 0 = off, and 0 is
+  # the provider's own default).  null therefore means "do not touch what the
+  # provider already does", so no existing module call changes behaviour; false
+  # writes `floating = 0` explicitly, and true sets `floating = dedicated`,
+  # which is upstream's documented way to turn ballooning ON.
+  type        = bool
+  default     = null
+  description = "Proxmox memory ballooning (qm --balloon). null (default) leaves it to the provider, false means floating=0 i.e. no balloon device, true means floating=dedicated. Pass false for VMs with passed-through devices, and for any VM whose guest RAM is a cache the host must not take back — strata's model page cache on comfyui, for example: a balloon inflation there takes back exactly the memory the --mmap-experts expert tiers are using and puts the engine back to reading experts from NVMe."
+}
+
 variable "efi_disk" {
   type = object({
     datastore_id      = string

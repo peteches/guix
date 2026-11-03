@@ -45,6 +45,16 @@ Each VM in =main.tf= is a =module= block that calls =./modules/proxmox-vm= with:
 - =vmid= — unique Proxmox VMID (matches =proxmox-vms.org=)
 - =name= — VM hostname
 - =memory= / =cpu.cores= — resource allocation
+- =ballooning= — Proxmox ballooning.  The bpg provider has no attribute of
+  that name; it exposes qm's =balloon= as =memory.floating= (MB, =0= = off,
+  and =0= is the provider's own default), and this module's =ballooning=
+  variable defaults to =null= — "leave it to the provider" — so calls that do
+  not mention it keep the behaviour they have now.  =false= means
+  =floating = 0= (no balloon device), =true= means =floating = dedicated=,
+  which is the provider's documented way to turn ballooning ON.  =comfyui=
+  passes =false=: a balloon inflation there takes back the guest page cache
+  strata's =--mmap-experts= expert tiers depend on, and PVE's own guidance is
+  =balloon 0= for VMs with passed-through devices
 - =disk.size= — root disk in GiB (minimum 25)
 - =bios= / =machine= — always =ovmf= / =q35= for UEFI
 - =on_boot= / =started= — lifecycle flags
@@ -58,6 +68,19 @@ Each VM in =main.tf= is a =module= block that calls =./modules/proxmox-vm= with:
 3. Merge to =main= — CI applies automatically.
 4. After Terraform creates the VM, proceed with Guix steps from the "Adding a New
    VM" section in =AGENTS.md=.
+
+Merging to =main= applies automatically (see CI below), so the =terraform plan=
+output is the last checkpoint before a live VM changes — read it, because live
+drift does accumulate here: until 2026-11-03 =main.tf= said =cores = 8= for
+=comfyui= while =qm config 120= had 16, and =cores = 4= for =claude-workstation=
+while =qm config 118= had 2; both are now recorded as they run live.  =memory=
+and =ballooning= are written to the running VM's config immediately, but they
+take effect only at the next VM *start* — a guest reboot is not enough,
+because QEMU fixes the guest's RAM when the VM starts, so apply them with
+=qm stop <vmid>= followed by =qm start <vmid>=.  For =comfyui= that start is
+also when the strata wrapper rewrites
+=/var/lib/strata/run-strata.sh= and the run config, so engine options added in
+=(peteches services strata)= reach the engine at the same time.
 
 * Concourse CI (=ci/=)
 

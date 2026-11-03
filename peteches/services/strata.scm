@@ -66,10 +66,17 @@
   ;; list.  Listing them explicitly here is what lets `guix build -e` and any
   ;; other consumer read the reasoning defaults; without it they come back
   ;; "Unbound variable".
+  ;;  The accessors below are named as well as constructed for the same reason
+  ;;  the reasoning ones are: a consumer that only (resolve-interface)s this
+  ;;  module cannot see accessors that came from define-record-type* unless
+  ;;  they are on this module's export list.
   #:export (strata-configuration strata-configuration?
             strata-configuration-reasoning-budget-tokens
             strata-configuration-reasoning-effort
             strata-configuration-answer-room?
+            strata-configuration-conversation-cache-mib
+            strata-configuration-conversation-cache-slots
+            strata-configuration-conversation-cache-min-free-mib
             strata-service-type))
 
 ;;; ── Utilities ────────────────────────────────────────────────────────────
@@ -77,6 +84,17 @@
 (define (maybe-option flag value)
   (if value
       (list flag (if (number? value) (number->string value) value))
+      '()))
+
+;; One element of the native run config's "args" array, ready to be joined
+;; with "\n": the flag and its value quoted, with the comma a NON-last element
+;; needs.  #f emits nothing, i.e. omit the flag and let the engine keep its own
+;; default for it.
+(define (engine-arg-line flag value)
+  (if value
+      (list (string-append "    \"" flag "\", \""
+                           (if (number? value) (number->string value) value)
+                           "\","))
       '()))
 
 ;;; ── Record type ──────────────────────────────────────────────────────────
@@ -144,6 +162,83 @@
             (default #f))
   (extra-args strata-configuration-extra-args
               (default '()))
+
+  ;; What the engine should assume the MODEL volume reads at, in GB/s, when it
+  ;; plans which files a prompt chunk has to re-read.  Unset, strata derives it
+  ;; from the device flag: `drive_read_gbps()` (src/program/generate.cpp:1477)
+  ;; prices a disk whose /sys/block/<dev>/queue/rotational is 1 at 0.15 GB/s,
+  ;; an unrotational device named nvme* at 2.5, and any other unrotational name
+  ;; at 0.45 ("is a SATA-class SSD (assumed)").  That flag is a problem for VMs:
+  ;; virtio-blk has nothing to say — QEMU's `virtio-blk-pci` has no
+  ;; rotation_rate property (scsi-hd and ide-hd do) and the virtio-blk config
+  ;; space has no rotation field — so every virtio disk in a guest comes up
+  ;; rotational, whatever the host pool it sits on really is.  Setting this
+  ;; exports STRATA_SSD_GBPS, which drive_read_gbps() reads before it ever
+  ;; looks at sysfs, so the planner gets the measured number instead of a
+  ;; platter guess.  #f exports 0 = "not set" = detection as before.
+  (ssd-gbps strata-configuration-ssd-gbps
+            (default #f))
+
+  ;; ── Conversation parking ───────────────────────────────────────────────
+  ;; `--conversation-cache-mib` is the switch.  Like `api-key`/`host`/
+  ;; `allowed-hosts` these are NATIVE-MODE ONLY, and unlike the three
+  ;; reasoning keys they go INSIDE the run config's "args": they are engine
+  ;; options, and this is the SYCL engine binary's own help text (0.1.52,
+  ;; read off the component this VM downloaded):
+  ;;
+  ;;   --conversation-cache-mib N           --serve: RAM budget for parked
+  ;;                                        conversations (default 0 = off)
+  ;;   --conversation-cache-slots N         --serve: at most N parked
+  ;;                                        conversations (default 4)
+  ;;   --conversation-cache-min-free-mib N  --serve: physical RAM floor when
+  ;;                                        parking or restoring a session
+  ;;                                        file (default 2560)
+  ;;
+  ;; #f for `mib` omits all three lines, and that is what "disabled" has
+  ;; always meant here: the Monitor's "Conversation cache" card is derived,
+  ;; not configured — serve/server.py:834 `conversation_cache_view()` reports
+  ;; `enabled` only when the engine's INFO line carries
+  ;; `conversation_cache_mib` > 0 — and serve/web/app.js:404's "add
+  ;; --conversation-cache-mib 8192" is setup.py's `AGENT_CACHE_MIB`, sized for
+  ;; its `AGENT_CACHE_FREE_GB = 24` GB of RAM free beside the model.
+  ;;
+  ;; What parking buys, and what it does not: `--prompt-cache` is never passed
+  ;; here, so its default (6 checkpoints, "~118 MB of RAM each") already keeps
+  ;; the LAST conversation's state between requests — single-chat reuse is
+  ;; already working, and this deployment's own /metrics said so: 11,863,657
+  ;; of 12,591,483 prompt tokens (94.2%) were prefix-cache hits over 179
+  ;; requests.  Parking is what lets SEVERAL conversations coexist, and that
+  ;; is the case here: rules-lawyer (peteches/systems/agents.scm), pi
+  ;; (configs/pi/defaults/models.json) and SillyTavern all hit one batch=1
+  ;; engine, so whoever spoke last owns the resident state and every switch
+  ;; costs a full re-read + re-prefill.  `slots` also feeds
+  ;; serve/server.py:4057, which sizes the prompt re-encoder's `keep` from
+  ;; `--conversation-cache-slots`.
+  ;;
+  ;; Sizing: only 12 of this model's 48 layers are full attention (see the
+  ;; context-size note in peteches/systems/comfyui.scm), so at --kv q4_0 the
+  ;; per-token cost is ~6 KB and the recurrent layers hold fixed-size state —
+  ;; 70k tokens ≈ 420 MB, 131k ≈ 800 MB, the full 262k window ≈ 1.5 GB, so 5
+  ;; conversations ≈ 3-4 GiB plus one transient copy per park/restore (that
+  ;; transient copy is exactly what `min-free-mib` guards).  The floor is the
+  ;; knob to get right, because --mmap-experts is always passed and the expert
+  ;; tiers then depend on the guest's page cache: a park that eats the last of
+  ;; that cache re-reads experts off the NVMe.  "conversation cache: skipped"
+  ;; in the service log means the floor is above the RAM actually free
+  ;; (serve/server.py:768 parses exactly that line).
+  (conversation-cache-mib strata-configuration-conversation-cache-mib
+                          (default #f))
+  (conversation-cache-slots strata-configuration-conversation-cache-slots
+                            ;; #f: omit, engine default 4.  Set it to at least
+                            ;; the number of conversations that share the
+                            ;; engine — one conversation more than the slots
+                            ;; available evicts the oldest on every turn.
+                            (default #f))
+  (conversation-cache-min-free-mib
+   strata-configuration-conversation-cache-min-free-mib
+   ;; #f: omit, engine default 2560 MiB.  Raise it once parking is on, so a
+   ;; park never leaves less page cache than the mmap'd experts need.
+   (default #f))
 
   ;; Strata's per-user state (runtime/, tuning/, profiles/, components/
   ;; — the engine download).  Kept off /var to survive a /var rebuild and
@@ -318,6 +413,22 @@
           (maybe-option "--parallel" (strata-configuration-parallel config))
           (strata-configuration-extra-args config)))
 
+;; Must be defined AFTER the record type: define-record-type*'s field accessors
+;; are syntax transformers, so an earlier procedure body that calls one compiles
+;; the identifier as a free-variable reference and fails at call time with
+;; "Wrong type to apply: #<syntax-transformer ...>" — which is exactly what a
+;; helper placed up beside maybe-option did when gexp-elaborated.
+(define (strata-ssd-gbps-export config)
+  ;; The STRATA_SSD_GBPS line both wrappers need (see the ssd-gbps field).
+  ;; `exact->inexact` because number->string renders an exact rational as
+  ;; "21/10", which strata's atof() would read as 21 (`inexact` is not bound
+  ;; in this module's environment).  #f exports 0, and strata's own
+  ;; `atof(e) > 0.0` guard treats 0 as "not set" — so the default
+  ;; configuration keeps the engine's sysfs detection untouched.
+  (let ((v (strata-configuration-ssd-gbps config)))
+    (string-append "export STRATA_SSD_GBPS="
+                   (if (number? v) (number->string (exact->inexact v)) "0"))))
+
 ;;; ── Wrapper script ───────────────────────────────────────────────────────
 ;; Written to <state-dir>/run-strata.sh at activation.  The store paths are
 ;; substituted at system-build time.
@@ -382,6 +493,10 @@
          "export NEOReadDebugKeys=1"
          "export NEO_L0_OverridePreemptionSurfaceSizeInMb=64"
          "export NEO_OverridePreemptionSurfaceSizeInMb=64"
+         ;; What strata prices the model volume at for its prompt/expert tier
+         ;; planning; 0 (the #f default) means "detect from sysfs", which is
+         ;; what happened before this line existed.
+         #$(strata-ssd-gbps-export config)
          (string-append "export STRATA=" #$strata-fa)
          (string-append "export RUNTIME_DIR=" #$state-dir "/state/strata/runtime")
          ""
@@ -474,6 +589,28 @@
                       "true" "false")
                   ",\n")))
            ""))
+         ;; The parking flags as "args" lines, in the same style as
+         ;; reasoning-json above: precomputed HERE and spliced with #$,
+         ;; because a gexp does not capture let-bound locals (see that
+         ;; comment for the 0-byte run-strata.sh that trap produced once).
+         ;; Gated on the budget — slots and the floor mean nothing without
+         ;; one — and each flag is omitted on its own so an unset one keeps
+         ;; the engine's default.  "" when parking is off: the engine then
+         ;; behaves exactly as it did before these knobs existed.
+         (conv-cache-json
+          (let ((mib (strata-configuration-conversation-cache-mib config)))
+            (if mib
+                (string-join
+                 (append
+                  (engine-arg-line "--conversation-cache-mib" mib)
+                  (engine-arg-line "--conversation-cache-slots"
+                                   (strata-configuration-conversation-cache-slots
+                                    config))
+                  (engine-arg-line "--conversation-cache-min-free-mib"
+                                   (strata-configuration-conversation-cache-min-free-mib
+                                    config)))
+                 "\n")
+                "")))
          (slug (strata-native-model-slug model))
          (model-root (string-append data-dir "/" slug))
          (pack-dir (string-append model-root "/pack"))
@@ -528,6 +665,12 @@
          "export NEOReadDebugKeys=1"
          "export NEO_L0_OverridePreemptionSurfaceSizeInMb=64"
          "export NEO_OverridePreemptionSurfaceSizeInMb=64"
+         ;; See the ssd-gbps field: virtio-blk cannot tell the guest that its
+         ;; backing volume is NVMe, so without this the engine plans the expert
+         ;; and file tiers for a 0.15 GB/s platter.  The export MUST be here —
+         ;; this is the script that execs the engine — and it survives because
+         ;; run-strata.sh is rewritten at every activation.
+         #$(strata-ssd-gbps-export config)
          (string-append "BUNDLE=" #$pkg)
          (string-append "MODEL_ROOT=" #$model-root)
          (string-append "HF_REPO=" #$hf-repo)
@@ -624,6 +767,14 @@
          (string-append "    \"--mtp\", \"$MODEL_ROOT/" #$mtp-dir "\",")
          (string-append "    \"--max-context\", \"" (number->string #$context) "\",")
          "    \"--kv\", \"q4_0\","
+         ;; Conversation parking, if a budget was configured (what each flag
+         ;; does and how to size it is documented on the
+         ;; conversation-cache-mib field above).  These belong INSIDE "args"
+         ;; because they are engine options, while the three reasoning keys
+         ;; below are top-level config keys.  With parking off this renders a
+         ;; blank line, which JSON reads as whitespace — `"log"` already sits
+         ;; behind the same blank line coming from reasoning-json.
+         #$conv-cache-json
          (if #$vision-on?
              "    \"--mmap-experts\",\n    \"--vision\""
              "    \"--mmap-experts\"")
