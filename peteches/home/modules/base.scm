@@ -94,6 +94,7 @@
   ;; Your config fragments
   #:use-module (peteches packages gurps)
   #:use-module ((peteches packages pi-coding-agent) #:select (pi-coding-agent pi-mcp-adapter))
+  #:use-module ((peteches packages pi-interactive-subagents) #:select (pi-interactive-subagents))
   #:use-module (peteches packages emacs-anvil)
   #:use-module (peteches packages graphify)
   #:use-module (peteches packages herdr-mx)
@@ -499,10 +500,27 @@
    ;; (pi-coding-agent, in base-packages) plus its ~/.pi config:
    ;; models.json (the remote koboldcpp model) and the MCP servers from
    ;; %desktop-mcp-servers above.
+   ;;
+   ;; pi-mcp-adapter renders the MCP servers above into
+   ;; ~/.pi/agent/mcp.json; pi-interactive-subagents supplies the
+   ;; `subagent' tool, which runs scout/researcher/worker in herdr panes --
+   ;; herdr-mx is in base-packages above, a desktop session runs inside
+   ;; herdr, and tmux is not installed, so the fork's herdr pane path is
+   ;; the only one that works on these boxes. That extension is also the
+   ;; consumer for configs/pi/defaults/agents/ -- CONFIG-DIRECTORY already
+   ;; symlinks those three .md files into ~/.pi/agent/agents/, but pi core
+   ;; has no agents/ directory of its own (docs/configuration.md's agent-dir
+   ;; table lists extensions/, skills/, prompts/ and themes/, not agents/),
+   ;; so until now nothing read them. The extension was wired into
+   ;; (peteches home modules claude-workstation) in b5e6b29 and lost with
+   ;; that module in 125cd4f; the desktops were left out in c2be992
+   ;; ("deliberately not installed here", no reason recorded). This is the
+   ;; one place both desktop home configs compose, so it lands on dagon and
+   ;; nyarlothotep together.
    (service home-pi-service-type
 	    (home-pi-configuration
 	     (config-directory (repo-directory "configs/pi/defaults"))
-	     (extensions (list pi-mcp-adapter))
+	     (extensions (list pi-mcp-adapter pi-interactive-subagents))
 	     (mcp-servers %desktop-mcp-servers)))
    ;; What used to sit between the pi service above and this line was
    ;; `(service home-claude-service-type ...)
