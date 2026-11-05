@@ -98,6 +98,25 @@
   #:use-module (peteches packages emacs-anvil)
   #:use-module (peteches packages graphify)
   #:use-module (peteches packages herdr-mx)
+  ;; These three used to be `(specification->package "...")' calls in
+  ;; base-packages below.  They are now direct imports, for two reasons:
+  ;; specification->package only consults the PULLED CHANNEL package sets plus
+  ;; %package-module-path, so beeper-bin / feishin-bin / apidog (local modules
+  ;; in peteches/packages/{beeper,feishin,apidog}.scm, loaded through -L rather
+  ;; than through a channel since the peteches channel was folded back in)
+  ;; resolve fine under `guix home build' -- which puts the repo on
+  ;; %package-module-path -- but are "unknown package" in a bare `guix repl',
+  ;; where that path is never set.  That asymmetry is documented at length in
+  ;; (peteches home modules vm-jumpbox)'s header, which is why this module
+  ;; follows the same direct-#:select discipline; measured 2026-11-05,
+  ;; `guix home build -L . --dry-run peteches/home/configs/dagon.scm' returned
+  ;; 0 with the old specifications in place, so nothing here was actually
+  ;; broken for the real build path -- this is consistency, not a fix.  The
+  ;; remaining specification->package calls below (matugen, hyprcursor,
+  ;; xcur2png, curl, dconf, qt5ct, ...) are genuine upstream names and stay.
+  #:use-module (peteches packages beeper)
+  #:use-module (peteches packages feishin)
+  #:use-module (peteches packages apidog)
   #:use-module ((peteches packages comfyui-mcp) #:select (node-comfyui-mcp))
   #:use-module (peteches packages rustdesk)
   #:use-module (peteches packages concourse)
@@ -181,9 +200,9 @@
    dank-material-shell
    (specification->package "hyprlock")
    (specification->package "gsettings-desktop-schemas")
-   (specification->package "beeper-bin")
-   (specification->package "feishin-bin")
-   (specification->package "apidog")
+   beeper-bin
+   feishin-bin
+   apidog
    (specification->package "matugen")
    (specification->package "hyprcursor")
    (specification->package "xcur2png")
