@@ -16,12 +16,28 @@
 ;;   guix-home    — ONE home environment, `peteches', from
 ;;                  peteches/home/configs/agents-peteches.scm: the box's agent
 ;;                  account (`pi' + the shared configs/pi/defaults, git, ssh,
-;;                  proxychains, pinned channels).  It exists so
+;;                  proxychains, pinned channels, plus the store-served herdr
+;;                  binary that lets the desktop client attach here).  It exists so
 ;;                  `ssh agents "pi …"' has a real pi to run under a real
 ;;                  account; headless VMs have no login shell that would
 ;;                  otherwise give an agent CLI anywhere to live.  No Claude
 ;;                  Code anywhere on this box — that is the whole point of
 ;;                  the agents/vm-jumpbox split (see that config's header).
+;;   herdr-server -- the box's agent-session server, run as `peteches' so pi
+;;                  sessions survive disconnects AND reboots.  Supervised HERE,
+;;                  at the system layer, not by home-shepherd as the retired
+;;                  (peteches home modules claude-workstation) did: a headless
+;;                  VM never runs a login shell, so user shepherd never starts
+;;                  on it -- confirmed on this box, where `herd status' fails
+;;                  with /run/user/1000/shepherd/socket missing.  See the long
+;;                  note in (peteches services herdr).  The client half lives
+;;                  on dagon, whose herdr-mx sidebar attaches over SSH; the
+;;                  store binary in this account's home profile is what makes
+;;                  that attach see an already-installed remote instead of
+;;                  trying to seed one (and ~/.local/bin/herdr must stay
+;;                  absent -- it is what those failed seedings left behind).
+;;                  Unix-socket only, so nothing is opened in the firewall:
+;;                  the attach rides the already-open ssh port.
 ;;
 ;; Secrets (SOPS-decrypted at boot):
 ;;   /run/secrets/rules-lawyer-discord-token  — Discord bot token
@@ -51,6 +67,7 @@
   #:use-module (peteches home configs agents-peteches)
   #:use-module (peteches services alloy)
   #:use-module (peteches services firewall)
+  #:use-module (peteches services herdr)
   #:use-module (peteches services restic)
   #:use-module (peteches services rules-lawyer)
   #:use-module (peteches services sillytavern)
@@ -117,8 +134,10 @@
      (list
       ;; One home environment for this box's agent account -- see
       ;; peteches/home/configs/agents-peteches.scm for what it contains and
-      ;; what it deliberately leaves out (no Claude Code, no anvil/herdr, no
-      ;; MCP servers).  `guix-home-peteches' owns ~/.gitconfig, ~/.ssh/config,
+      ;; what it deliberately leaves out (no Claude Code, no anvil, no MCP
+      ;; servers -- the herdr *server* is supervised at the system level above,
+      ;; this profile only carries the binary the ssh PATH probe has to find).
+      ;; `guix-home-peteches' owns ~/.gitconfig, ~/.ssh/config,
       ;; ~/.profile and ~/.config/guix/channels.scm as managed symlinks, so a
       ;; hand-edited dotfile in this account gets replaced on the next
       ;; activation -- that is the trade this box makes for having an
@@ -127,6 +146,16 @@
       ;; home-pi-service-type only writes files under ~/.pi.
       (service guix-home-service-type
                `(("peteches" ,agents-peteches-home)))
+      ;; This account's herdr server.  The configuration record's defaults are
+      ;; what this box needs: it requires the `guix-home-peteches' one-shot
+      ;; first so the home profile PATH points at really exists, and its log
+      ;; lands in /var/log where alloy ships it to Loki (next block below).
+      ;; PATH has to name the home profile by hand because herdr's pane shells
+      ;; are not login shells on Linux -- see (peteches services herdr).
+      (service herdr-server-service-type
+               (herdr-server-configuration
+                (user "peteches")
+                (group "users")))
       ;; rules-lawyer — Discord bot, uses the strata engine on the comfyui
       ;; box (Intel Arc B70, SC117 Qwen3.8-Flash-Next IQ2_XS, proxied via
       ;; caddy as strata.ts.peteches.co.uk -> comfyui:8000) as its LLM
@@ -178,6 +207,7 @@
                 (log-files (list (cons "/var/log/messages" "syslog")
                                  (cons "/var/log/prometheus-node-exporter.log" "node-exporter")
                                  (cons "/var/log/rules-lawyer.log" "rules-lawyer")
+                                 (cons "/var/log/herdr-server.log" "herdr")
                                  (cons "/var/log/alloy.log" "alloy")
                                   (cons "/var/log/tailscaled-*.log" "tailscale"))))))))))
 

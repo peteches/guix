@@ -298,7 +298,9 @@ Each module's header comment documents its keyword arguments — read
 | `claude-workstation.scm` | Jump-box VM — split-tunnel WireGuard + microsocks SOCKS5 (the desktops relay `ygo-server`/`ygoswiss1`/`ygoswiss2` ssh through it), tailscale, alloy; ONE home environment (`peteches`) + a plain `ygo` login account. Claude Code, the `criticalgrind` account and the Postgres/Podman dev-DB stack are gone (192.168.51.205) |
 | `comfyui.scm` | ComfyUI VM — RTX 4090 GPU passthrough with nonguix driver/CUDA; successor to nug's desktop-hosted comfyui (192.168.51.206) |
 | `guix-build.scm` | Guix substitute server + build-offload target VM — successor to nug's guix-publish/offload role; signs with `guix-build-substitute-key.pub` (192.168.51.207) |
-| `agents.scm` | "agents" VM — rules-lawyer Discord bot + SillyTavern + `pi` for the peteches account (home-environment from `peteches/home/configs/agents-peteches.scm`); LLM/stable-diffusion offloaded to other VMs (192.168.51.208) |
+| `agents.scm` | "agents" VM — rules-lawyer Discord bot + SillyTavern + `pi` for the peteches account (home-environment from `peteches/home/configs/agents-peteches.scm`); LLM/stable-diffusion offloaded to other VMs; it also runs the **herdr server** — supervised by the
+  system shepherd as `herdr-server-peteches` (`peteches/services/herdr.scm`) —
+  so this is the box `herdr --remote` attaches to (192.168.51.208) |
 | `guix-build-substitute-key.pub` | Guix-publish signing public key for guix-build's substitute server (nug's substitute-server successor) |
 
 #### `peteches/home/configs/`
@@ -310,7 +312,10 @@ Host-specific files only — each exports a complete `home-environment` record.
 | `dagon.scm` | dagon home environment — `(peteches home configs dagon)` |
 | `nyarlothotep.scm` | nyarlothotep home environment — `(peteches home configs nyarlothotep)` |
 | `claude-workstation-peteches.scm` | `(peteches home configs claude-workstation-peteches)` — jump-box account config built by `make-vm-jumpbox-home`; netcat + `known-hosts2` + the `Host *` automation identity |
-| `agents-peteches.scm` | `(peteches home configs agents-peteches)` — `make-vm-jumpbox-home` + `pi-coding-agent` + `home-pi-service-type` (the shared `configs/pi/defaults`); no Claude, no anvil/herdr/MCP |
+| `agents-peteches.scm` | `(peteches home configs agents-peteches)` — `make-vm-jumpbox-home` + `pi-coding-agent` + `home-pi-service-type` (the shared `configs/pi/defaults`); no Claude, no anvil/MCP. herdr is the one daemon
+  exception: it carries `herdr-mx` (the binary the remote probe's
+  `command -v herdr` looks for) and links the pi<->herdr integration hook
+  `configs/pi/herdr-agent-state.ts` |
 
 #### `peteches/home/modules/`
 
@@ -424,6 +429,7 @@ System service *types*, folded in from the retired `peteches` channel.
 | `concourse.scm` | `concourse-web-service-type`, `concourse-worker-service-type` |
 | `firewall.scm` | `firewall-service-type` |
 | `grafana.scm` | `grafana-service-type` |
+| `herdr.scm` | `herdr-server-service-type` + `herdr-server-configuration` — headless herdr agent-server supervised by the SYSTEM shepherd (no login shell, no user shepherd needed); PATH is built in the store, `command -v herdr` coverage comes from the HOME profile, not `~/.local/bin` |
 | `jellyfin.scm` | `jellyfin-service-type` |
 | `loki.scm` | `loki-service-type` |
 | `media-accounts.scm` | `media-accounts-service-type` |

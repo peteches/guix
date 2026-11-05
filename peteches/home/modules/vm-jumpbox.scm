@@ -12,9 +12,16 @@
 ;;; second, near-identical constructor — see the two notes below for what that
 ;;; means in practice: the `pi' BINARY arrives on agents' *system* profile
 ;;; (make-vm-os' #:extra-packages in peteches/systems/agents.scm), not as
-;;; EXTRA-PACKAGES here, because a headless VM has no elogind and no login
-;;; shell for most ssh commands, so anything a non-interactive
-;;; `ssh agents "pi …"' needs has to be in the system profile.
+;;; EXTRA-PACKAGES here.  NOTE the older claim in these lines was WRONG: it
+;;; said a headless VM's ssh commands get no login shell, so anything they need
+;;; must live in the *system* profile.  Measured on 2026-11-05: sshd's
+;;; `bash -c' DOES source /etc/profile (the SSH_CLIENT guard in Guix's managed
+;;; ~/.bashrc), and that PATH is
+;;; /run/privileged/bin, ~/.config/guix/current/bin, ~/.guix-home/profile/{bin,sbin},
+;;; ~/.guix-profile/bin, the system profiles -- so HOME-profile packages are
+;;; visible to `command -v' over ssh, which is precisely how agents' home-profile
+;;; herdr-mx package satisfies the remote probe (see (peteches services herdr)).
+;;; ~/.local/bin is the exception: nothing in that PATH carries it.
 ;;;
 ;;; Deliberately NOT provided — the things (peteches home modules
 ;;; claude-workstation) used to provide, all of which existed to serve Claude

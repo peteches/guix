@@ -25,10 +25,21 @@
 ;;;     desktop as its local backends), so nothing on this box needs Anthropic's
 ;;;     CLI.  It is the reason this file does not import (peteches home modules
 ;;;     claude) or (peteches home modules base).
-;;;   * no anvil emacs daemon, no herdr server, no MCP servers -- there is no X
-;;;     session and no Emacs on this VM, and pi's config is the plain shared
-;;;     one; the desktops keep their own MCP wiring through (peteches home
-;;;     modules base).
+;;;   * no anvil emacs daemon and no MCP servers -- there is no X session and
+;;;     no Emacs on this VM, and pi's config is the plain shared one; the
+;;;     desktops keep their own MCP wiring through (peteches home modules
+;;;     base).  herdr IS the one daemon this box runs, but its supervision is
+;;;     not here: the server is a system service (see (peteches services
+;;;     herdr) and peteches/systems/agents.scm), because user shepherd never
+;;;     starts on a headless VM and home-shepherd would therefore never have
+;;;     started it.  What this profile has to supply is the BINARY: the
+;;;     attaching client's add-remote worker asks the remote `command -v
+;;;     herdr' and only reports AlreadyInstalled when what it finds matches
+;;;     the client's FULL version string and protocol -- and an mx build
+;;;     cannot seed a remote that has nothing on it, because
+;;;     src/remote/attach.rs download_release_asset refuses every non-stable
+;;;     channel.  One package definition, both ends, so the probe passes and
+;;;     nothing is ever written to ~/.local/bin/herdr.
 ;;;   * no ~/.ssh identity beyond what openssh picks up by default.  This box
 ;;;     has no automation-key secret (secrets/hosts/agents/ carries none, and
 ;;;     vm-base only decrypts the automation key where a #:sops-secrets entry
@@ -62,6 +73,8 @@
   ;; `%package-module-path' fold-packages scan documented in
   ;; (peteches home modules vm-jumpbox)'s header.
   #:use-module ((peteches packages pi-coding-agent) #:select (pi-coding-agent))
+  ;; Same #:select discipline as the line above, for the same reason.
+  #:use-module ((peteches packages herdr-mx) #:select (herdr-mx))
   #:use-module (peteches home modules vm-jumpbox)
   #:use-module (peteches home modules pi)   ;; home-pi-service-type
   #:use-module (peteches repository))
@@ -69,9 +82,24 @@
 ;; The same pi defaults the desktop profiles use -- repo-directory resolves
 ;; through %load-path so this works under `-L .' and in a worktree, exactly as
 ;; the retired (peteches home modules claude-workstation) passed it.  Only the
-;; config files: no extensions, no MCP servers, no pi-interactive agents.
+;; config files: no npm extensions, no MCP servers, no pi-interactive agents.
+;; The one extension this account does get is added below as an
+;; #:extra-extension-files entry, not inside this directory.
 (define %pi-config-defaults
   (repo-directory "configs/pi/defaults"))
+
+;; herdr's own pi integration, committed under configs/pi/ so it is
+;; declarative instead of written by hand with `herdr integration install pi'
+;; (see (peteches home modules pi)'s header for that mechanism).  It is the
+;; file that lets a pi session running inside a herdr pane tell the sidebar it
+;; is working / blocked / idle over HERDR_SOCKET_PATH, so it only does
+;; anything once this box has a server -- which it now does, above.  The
+;; content is versioned with the herdr binary: HERDR_INTEGRATION_VERSION=8 in
+;; its header is what the pinned herdr-mx (79803d18) bundles, checked against
+;; src/integration/mod.rs PI_INTEGRATION_VERSION at that commit -- re-copy it
+;; from a running install whenever the pin moves.
+(define %pi-herdr-integration
+  (local-file (source-path "configs/pi/herdr-agent-state.ts")))
 
 (define-public agents-peteches-home
   (make-vm-jumpbox-home
@@ -82,10 +110,26 @@
    ;; is the same shape.  Keeping it out of the system profile also means
    ;; `pi' never appears for the rules-lawyer/sillytavern service accounts
    ;; this box runs.
-   #:extra-packages (list pi-coding-agent)
+   ;;
+   ;; herdr-mx goes in the SAME profile for the same reason, and it is the
+   ;; only place it can go: the ssh PATH that the client's add-remote probe
+   ;; sees is whatever /etc/profile builds, and that profile list already
+   ;; includes ~/.guix-home/profile/bin (verified on this box -- that is how
+   ;; `ssh agents "echo $PATH"' answers), so a package installed here is
+   ;; found by `command -v herdr' from a plain `ssh agents COMMAND'.  Putting
+   ;; it in the system profile would work too and is deliberately avoided for
+   ;; the same reason pi is kept out of it.
+   #:extra-packages (list pi-coding-agent herdr-mx)
    #:extra-services
    (list (service home-pi-service-type
                   (home-pi-configuration
-                   (config-directory %pi-config-defaults))))))
+                   (config-directory %pi-config-defaults)
+                   ;; Loose .ts file, not an npm package directory -- pi's
+                   ;; extension loader picks up both (see pi.scm's
+                   ;; EXTRA-EXTENSION-FILES note).  Placed at
+                   ;; ~/.pi/agent/extensions/herdr-agent-state.ts.
+                   (extra-extension-files
+                    (list (cons "herdr-agent-state.ts"
+                                %pi-herdr-integration))))))))
 
 agents-peteches-home
