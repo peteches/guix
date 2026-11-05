@@ -315,7 +315,10 @@ Host-specific files only — each exports a complete `home-environment` record.
 | `agents-peteches.scm` | `(peteches home configs agents-peteches)` — `make-vm-jumpbox-home` + `pi-coding-agent` + `home-pi-service-type` (the shared `configs/pi/defaults`); no Claude, no anvil/MCP. herdr is the one daemon
   exception: it carries `herdr-mx` (the binary the remote probe's
   `command -v herdr` looks for) and links the pi<->herdr integration hook
-  `configs/pi/herdr-agent-state.ts` |
+  `configs/pi/herdr-agent-state.ts`, and it now installs the
+  `pi-interactive-subagents` extension (the `subagent` tool -- the only
+  consumer of `configs/pi/defaults/agents/*.md`, whose three overrides were
+  inert on this box before) |
 
 #### `peteches/home/modules/`
 
@@ -394,6 +397,7 @@ culminating package(s) — most of their content is transitive deps.
 | `nyxt.scm` | `sbcl-nyxt-webkit`, `nyxt-webkit`, `nyxt-electron` |
 | `nzbget.scm` | `nzbget` |
 | `pihole-exporter.scm` | `pihole-exporter` |
+| `pi-interactive-subagents.scm` | `pi-interactive-subagents` — peteches fork of amosblomqvist/pi-interactive-subagents (itself tmux-only) with herdr pane support added; provides pi's `subagent` tool and is the *only* consumer of `configs/pi/defaults/agents/*.md`, since pi core has no `agents/` directory. Wired on the desktops through `base.scm` and on agents through `agents-peteches.scm`; extensions install as store symlinks into `~/.pi/agent/extensions/`, never as PATH packages |
 | `pihole.scm` | `pihole-ftl`, `pihole-scripts`, `pihole-web` |
 | `prometheus.scm` | `prometheus` |
 | `prowlarr.scm` | `prowlarr` |

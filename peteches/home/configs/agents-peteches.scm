@@ -75,6 +75,7 @@
   #:use-module ((peteches packages pi-coding-agent) #:select (pi-coding-agent))
   ;; Same #:select discipline as the line above, for the same reason.
   #:use-module ((peteches packages herdr-mx) #:select (herdr-mx))
+  #:use-module ((peteches packages pi-interactive-subagents) #:select (pi-interactive-subagents))
   #:use-module (peteches home modules vm-jumpbox)
   #:use-module (peteches home modules pi)   ;; home-pi-service-type
   #:use-module (peteches repository))
@@ -82,9 +83,11 @@
 ;; The same pi defaults the desktop profiles use -- repo-directory resolves
 ;; through %load-path so this works under `-L .' and in a worktree, exactly as
 ;; the retired (peteches home modules claude-workstation) passed it.  Only the
-;; config files: no npm extensions, no MCP servers, no pi-interactive agents.
-;; The one extension this account does get is added below as an
-;; #:extra-extension-files entry, not inside this directory.
+;; config files plus the ONE package extension added below (the subagent tool)
+;; and the loose herdr hook; still no MCP servers, so no ~/.pi/agent/mcp.json
+;; is rendered for this account.  Nothing here installs a PATH package: an
+;; extension is a store symlink, not a profile entry (see pi.scm's EXTENSIONS
+;; note).
 (define %pi-config-defaults
   (repo-directory "configs/pi/defaults"))
 
@@ -124,6 +127,19 @@
    (list (service home-pi-service-type
                   (home-pi-configuration
                    (config-directory %pi-config-defaults)
+                   ;; The subagent tool -- scout/researcher/worker run as
+                   ;; panes.  Symlinked straight from the store into
+                   ;; ~/.pi/agent/extensions/pi-interactive-subagents; it is
+                   ;; also the consumer that configs/pi/defaults/agents/*.md
+                   ;; finally has, because pi core has no agents/ directory of
+                   ;; its own (see the table in pi.scm's commentary), so those
+                   ;; three .md overrides were inert on this box until now. On
+                   ;; the desktops the same extension landed in 6d6b820.
+                   ;; Caveat: the fork drives subagents through HERDR_* pane
+                   ;; context, which only exists INSIDE a herdr pane -- pi
+                   ;; started from a plain ssh session has none, so run pi from
+                   ;; an agents workspace pane if you want the tool to work.
+                   (extensions (list pi-interactive-subagents))
                    ;; Loose .ts file, not an npm package directory -- pi's
                    ;; extension loader picks up both (see pi.scm's
                    ;; EXTRA-EXTENSION-FILES note).  Placed at
