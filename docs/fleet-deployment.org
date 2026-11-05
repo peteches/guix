@@ -393,7 +393,7 @@ Failure modes worth knowing before touching this list:
 - That permission check is also where offload diagnostics lie, because
   `/run/secrets/<path>` is a **symlink** the sops service creates into
   `/run/secrets/<sops-key-name>` — the configured `permissions` live on the
-  target, not on the link. Measured on `agents` 2026-11-05:
+  target, not on the link. Measured on =agents= 2026-11-05:
   `sudo stat -c "%a %n" /run/secrets/guix-offload-key` reported `777` (the link)
   while `sudo stat -Lc "%a %U"` reported `400 root`, and the same pair of probes
   showed `/run/secrets/peteches-automation-ssh-key` → `400 peteches` ✓. Use
@@ -532,3 +532,44 @@ Interpreting results:
 IPs and short names above are current as of this writing; =proxmox-vms.org=
 is the authoritative source if the fleet has grown — regenerate the
 association array from there rather than trusting a stale copy indefinitely.
+
+* Deploy gaps recorded on 2026-11-05
+
+The coordinator-key change was deployed to 18 of the 22 machines in
+=machines.scm=. Four did not take it, for two different reasons, and both
+reasons have to be re-checked before assuming a fifth host is "just slow":
+
+| host(s)                              | state          | evidence                                                                 |
+|--------------------------------------+----------------+--------------------------------------------------------------------------|
+| =comfyui=                            | build blocked  | =guix build= fails fetching the CUDA 12.9.1 local installer; gen 67 still dated 2026-11-03 |
+| =plane=, =rustdesk=, =critical-grind-campaign= | powered off | tcp/22 closed on the tailnet name *and* on the LAN IP =192.168.51.204/197/202= ✓ |
+
+=comfyui='s failure is not the transient kind. The =shepherd-koboldcpp=
+service it deploys pulls =cuda-toolkit-12.9.1=, whose source is
+=https://developer.download.nvidia.com/compute/cuda/12.9.1/local_installers/cuda_12.9.1_575.57.08_linux.run=
+— 5,860,276,058 bytes — and three attempts today (two via =guix download=,
+one via =guix build=) all failed *before* any body bytes arrived, i.e. the
+fetch logs contained zero =download-progress= lines ✓ while =curl -sI= on the
+same URL returns =HTTP/2 200= with that content-length ✓ so the host is
+reachable and it is guix's own downloader that cannot hold the connection
+open. The usual escape hatches are not available in this pulled guix: =guix
+build --help= and =guix deploy --help= list =--max-silent-time= and
+=--timeout= but *no* =--network-timeout= knob ✓, =guix download --help=
+accepts only =-f --format=, =-H --hash=, =-o --output=, =-g --git=,
+=-r --recursive=, =-h= and =-V= (no =--no-check-certificate= and no timeout
+option ✓), and =guix-register= is not on =PATH= ✓, so neither "give it a
+longer timeout" nor "fetch it with =curl= and register it by hand" works from
+here. Until the CUDA fetch is fixed — mirror the =.run= file somewhere
+reachable, or move the =nonguix= cuda package onto a different URL —
+=comfyui= stays on gen 67, and because it was not deployed its
+=/etc/guix/acl= lacks =agents=' key, which means an =agents=-origin deploy to
+it fails at the last step with =unauthorized public key= (see
+"Verifying success", subsubsection 4). Verify it is genuinely reachable
+again with =curl -sf http://<ip>:8188/system_stats= before chasing it.
+
+The two "powered off" hosts are the ordinary kind: =proxmox-vms.org= has their
+VMIDs, boot them, then re-run the deploy for just those names. =caddy=
+is in neither table — it was blocked at first by the =caddyserver.com=
+endpoint serving a different bundle than its pinned hash, which the package
+file now records along with the =go version -m= check that proves what the
+endpoint actually served.
