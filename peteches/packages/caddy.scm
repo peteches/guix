@@ -9,7 +9,16 @@
 ;; and no reliability guarantee (https://caddy.community/t/download-site-url-script/15768).
 ;; It silently started serving 2.11.4 under a URL/idempotency string that had
 ;; previously returned 2.11.3, breaking the pinned sha256 with no upstream
-;; changelog to follow.  TODO: migrate to an xcaddy source build (go-build-system,
+;; changelog to follow, and it moved again on 2026-11-05: the pinned 2.11.4 hash
+;; failed with `hash mismatch for store item`, and `go version -m` on the
+;; downloaded bundle showed it was built from github.com/caddyserver/caddy/v2
+;; v2.11.8 + github.com/caddy-dns/desec v1.1.0 — so the =version= field here is
+;; only as true as the endpoint happens to be, and the hash has to be re-chased
+;; whenever the bundle changes. Verify the bundle's real contents before
+;; accepting a new hash, and do it this way, because ordinary =strings= output is
+;; full of Go dependency tags that look like versions:
+;;   go version -m /gnu/store/<hash>-caddy | grep caddyserver/caddy
+;; TODO: migrate to an xcaddy source build (go-build-system,
 ;; pinned Caddy release tag + vendored desec plugin) for real reproducibility.
 
 (define-module (peteches packages caddy)
@@ -22,7 +31,7 @@
 (define-public caddy
   (package
     (name "caddy")
-    (version "2.11.4")
+    (version "2.11.8")
     (source
      (origin
        (method url-fetch)
@@ -35,7 +44,7 @@
                            "&idempotency=2.10.0"))
        (file-name "caddy")
        (sha256
-        (base32 "1jw8rlkdd2qm4hb5h203p3bmlhi8477q7n49n7jb1z6jfb79j2x6"))))
+        (base32 "1c39s88p444a4syb7aq7ssb23z2shqn467w7bfidk262ybam8wkb"))))
     (build-system copy-build-system)
     (arguments
      (list

@@ -87,6 +87,44 @@ discovered independently on 15 different VMs:
 guix system build -L . --dry-run peteches/systems/<any-affected-host>.scm
 #+end_src
 
+** Which box a fleet deploy runs from
+
+A deploy needs *two* independent credentials on the box that runs it, and
+only one of them is an SSH key:
+
+1. *A login identity every target accepts.* Either a desktop's own
+   =~/.ssh/id_ed25519= (dagon and nyarlothotep each have one, and both are
+   enrolled in every VM's =%vm-peteches-authorized-keys=), or the private half
+   of the fleet-wide *peteches automation keypair*, whose public half every VM
+   also authorizes for the peteches login (=vm-base.scm='s
+   =%automation-authorized-key-secret= plus its sshd =Match= block). Since
+   2026-11-05 that private half is decrypted on =agents= only (its
+   =#:sops-secrets= entry); =claude-workstation= held it first and lost it
+   when it became a pure WireGuard/SOCKS jump box, so that box has no outbound
+   identity at all now. =machines.scm='s =%deploy-identity= picks whichever of
+   the two paths exists on the host running the deploy.
+2. *That box's own =guix-daemon= signing key*, listed in
+   =%authorize-coordinator-key= (=peteches/systems/common.scm=). =agents=,
+   =dagon= and =nyarlothotep= are listed. A coordinator that is not listed
+   still connects, still sends the closure and still switches the target's
+   generation — but its deploy then fails on the last step, so listing is not
+   optional for a box meant to deploy (see §4 below).
+
+=agents= has no =~/area_51/guix= checkout today (checked live 2026-11-05), and
+neither does =claude-workstation=, so until somebody clones the repo on
+=agents= the skill still runs from a desktop. That clone is the only piece
+missing there — its deploy key, its =known_hosts2= for the fetch and its
+coordinator entry in =common.scm= are all in place.
+
+Build-wise =agents= is now fully wired to the offload farm — both halves of its
+offload keypair (ssh and archive-signing) were verified against the box and
+added to =guix-build.scm= on 2026-11-05, so a deploy run from there pushes its
+closures to =guix-build= instead of building them locally. Running the same
+deploy from dagon does the opposite: dagon has no offload keypair at all (no
+=secrets/hosts/dagon/guix-build.yaml=), so every closure a desktop-origin
+deploy needs is built on that desktop's own daemon — see “The build-offload
+keypairs drift separately” below.
+
 * Verifying success, per host
 
 A deploy that exits =0= is necessary but not sufficient — =scripts/deploy.scm=
@@ -95,10 +133,15 @@ not that the intended service is actually serving. Check both.
 
 ** 1. Generation actually advanced
 
-From this machine (claude-workstation), using the automation identity
-explicitly — plain hostnames don't resolve here (no full SSH config is
-deployed to this account) and =~/.ssh/config='s =Host localhost= stanza only
-covers the local socket, so pass =-i= by hand:
+Run these checks *from the box that holds the deploy identity*. Since
+2026-11-05 that is =agents= — its =peteches= account decrypts the private half
+of the automation keypair to =/run/secrets/peteches-automation-ssh-key=, and
+=-i= has to be passed by hand there because no fleet SSH config is deployed to
+that account, so neither the VMs' short names nor =.ts= aliases resolve, and
+the key is not in an ssh-agent. A desktop works too and needs no =-i= at all:
+from dagon the fleet resolves through =~/.ssh/config= and the =id_ed25519=
+there is authorized on every VM (=claude-workstation= is the one box that can
+no longer do this at all — it has neither key any more):
 
 #+begin_src bash
 ssh -i /run/secrets/peteches-automation-ssh-key peteches@<lan-ip> \
@@ -171,7 +214,8 @@ connect to its port is the floor: =timeout 3 bash -c "echo > /dev/tcp/<ip>/<port
 
 ** 4. Known failure mode: shepherd-reload ACL gap
 
-Deploying from claude-workstation can end with:
+Any deploy run from a box whose =guix-daemon= signing key is *not* in the
+target's declarative ACL ends with:
 
 #+begin_example
 guix deploy: error: unauthorized public key: (public-key ...)
@@ -180,8 +224,68 @@ guix deploy: error: unauthorized public key: (public-key ...)
 on the *final* step (the live =upgrade-shepherd-services= archive send) —
 even though the new generation and =/etc= were already switched over
 correctly by the steps before it. This is a store-archive trust (ACL) gap
-(claude-workstation's =guix-daemon= signing key isn't in the target's
-=/etc/guix/acl=), not an SSH/login failure.
+(the coordinator's =guix-daemon= signing key isn't in the target's
+=/etc/guix/acl=), not an SSH/login failure — and note *why* it happens even
+though =guix deploy= authorizes the coordinator's key itself first
+(=(gnu machine ssh)='s =authorize?= field, default =#t#=): the
+=switch-to-system= that follows rebuilds =/etc/guix/acl= from the target's own
+declarative =authorized-keys= list, so any key absent from
+=%authorize-coordinator-key= is revoked again before that last send, and
+adding it by hand on the target only holds until the next deploy.
+
+=claude-workstation= is the box this failure mode was named for, until its
+deploy role ended on 2026-11-05 — its key was then *removed* from
+=%authorize-coordinator-key= (it had gone stale anyway: that VM was rebuilt
+from the MinIO image on 2026-10-27 and its =/etc/guix/signing-key.pub= changed
+with the image — see the registry table below). =agents= is the VM in that
+list now. The rule for anything new: a box meant to deploy has to be in
+=common.scm='s list *before* the first deploy from it is expected to finish
+cleanly.
+
+*** Coordinator signing-key registry — current state, audited 2026-11-05
+
+Hashes below are *not* the whole-file =sha256sum=. Compute them the same way on
+both sides or they are not comparable: the stable identity of a guix archive
+key is the set of =#…#= fingerprint tokens it is built from, so hash *those*:
+
+#+begin_src bash
+grep -o '#[0-9A-Fa-f]*#' <file> | sha256sum | cut -c1-10
+#+end_src
+
+A whole-file =sha256sum= of the same key gives a different number depending on
+trailing whitespace — which is how a "verified" key can quietly stop matching.
+
+| Coordinator          | Committed key                                            | Live on the box  | Status                                                |
+|----------------------+----------------------------------------------------------+------------------+--------------------------------------------------------|
+| dagon                | =d43223e08f= in =common.scm=                             | =d43223e08f=     | ✅ MATCH — verified by hashing =/etc/guix/signing-key.pub= on dagon itself |
+| agents               | =eed65f7d40= in =common.scm=                             | =eed65f7d40=     | ✅ MATCH — verified live over ssh on 2026-11-05, the day its entry was added |
+| nyarlothotep         | =04f0a01446= in =common.scm=                             | *not sampled*    | ⚠️ UNVERIFIED — unreachable 2026-11-05 on *both* its Tailscale name and LAN =192.168.50.10= (tcp/22 timeout on each), so its committed key is taken on trust; re-sample when the box is back |
+| claude-workstation   | *none in fleet config* — removed from =%authorize-coordinator-key= on 2026-11-05 when it stopped being a deploy origin | =543f3b13f0=     | ✅ RESOLVED 2026-11-05 — the VM was rebuilt from the MinIO image on 2026-10-27, and =/etc/guix/signing-key.pub= is baked into that image, so the =7b9d70cae1= text this table used to show (inherited from =nug=) no longer existed anywhere on the box. Its stale copy in =guix-build.scm='s =guix-offload-signing-keys= — the only place it still appeared — was replaced with the live key the same day. =7b9d70cae1= now survives only in git history |
+
+One more drift the same audit turned up, because it is the easy miss: the
+registry is *two* lists that drift independently — the archive-signing keys
+above, and the age keys in =age-keys/= that decide who can decrypt a secret.
+=jellyfin= was the one confirmed case, and it is now fixed: its live
+=/etc/age/keys.pub= (the per-VM own age key — there is no =keyring.pub= on that
+box, checked 2026-11-05) did *not* match committed =age-keys/jellyfin.pub=, while
+=.sops.yaml='s =secrets/shared/.*\.yaml$= rule and every already-encrypted
+=secrets/shared/= file carried the *live* key — which is why that VM decrypted
+=secrets/shared/peteches-automation-ssh-pub.yaml= happily at boot and why the
+mismatch was invisible. Encrypting a *new* secret for jellyfin from the stale
+file would have produced one that VM cannot read. It was refreshed from the box
+on 2026-11-05 over an ssh connection verified against =machines.scm='s pinned
+host key, and hash-checked before and after, so the committed file and the live
+one now agree. =dagon.pub= is likewise absent from that rule — expected, a desktop is
+not a =make-vm-os= VM and reaches every secret through the operator PGP
+recipient instead. Re-check both lists after **any** VM rebuild or
+re-provision; that is exactly the event that invalidates a key that looked
+fine the week before.
+
+The same recount also shows the shared rule carries age keys that have **no**
+committed =age-keys/*.pub= file (22 recipients against 23 committed files, with
+=dagon.pub= expected to be absent from the recipients), so a recipient audit
+against =age-keys/= can never be complete, and a recipient with no committed
+file cannot be re-keyed from the repo at all.
 
 When you see this: don't report the deploy as failed outright. Check §1
 above — the generation almost always did advance. If §2's restart check
@@ -247,6 +351,89 @@ carried a 15:59 mtime and no =--vision= — its activation snippet
 *did* contain =--vision= (found by the recipe above), proving the deploy
 was fine and that only the boot-time activation was missing.
 
+* The build-offload keypairs drift separately from everything above
+
+Offload to =guix-build= depends on /two/ more keypairs per box, checked by two
+different daemons, so they drift on their own schedule and independently of the
+coordinator registry:
+
+| Half                       | Where it must be authorized                             | What happens when it is stale or missing              |
+|----------------------------+---------------------------------------------------------+------------------------------------------------------|
+| SSH =guix-offload= keypair | =guix-build.scm= =guix-offload-authorized-keys=          | ssh connection refused — =guix= reports it as an offload failure |
+|                            | (source: =/etc/guix/offload/guix-build.pub= per box,     |                                                      |
+|                            | matching =secrets/hosts/<vm>/guix-build.yaml=)           |                                                      |
+| Box's =signing-key.pub=    | =guix-build.scm= =guix-offload-signing-keys=             | =unauthorized public key= at the archive send; the build |
+|                            | (the =guix-extension= =authorized-keys=)                 | falls back to building locally, so nothing visible breaks |
+
+Before 2026-11-05 the ssh half had been kept roughly current while the archive
+half held /one/ key (claude-workstation's), and that one had gone stale when the
+box was rebuilt from the MinIO image on 2026-10-27 — so offload from
+claude-workstation had been falling back to local builds silently for weeks and
+every other intended offloader was missing outright. That silent-fallback
+behavior is why the gap survived: offload *looked* like it was working (it
+connected, ssh auth passed) and only the archive send failed, which =guix=
+reports as an ordinary build failure.
+
+Both halves are now populated from live, host-key-verified material. The archive
+list carries the live signing key of every box with a verified offload keypair
+(agents, arr, caddy, claude-workstation, the three Concourse boxes, downloads,
+git, grafana, jellyfin, loki, pihole, prometheus, prowlarr), each entry
+hash-checked against that box's =/etc/guix/signing-key.pub= at the time of
+writing, and the ssh list gained the four boxes that had an offload keypair but
+no ssh entry (=agents= and the three Concourse boxes, each checked against the
+box's live =/run/secrets/guix-offload-key=).
+
+Failure modes worth knowing before touching this list:
+
+- =ssh-keygen -y= on a private key refuses to run when the key file is group or
+  world readable, which is how =/run/secrets/guix-offload-key= can land after
+  some activations — =ssh-keygen -e= on the same file still echoes the PEM, so
+  "it reads" is not evidence the derived key is sound. Copy it with mode =0600=
+  and derive from the copy.
+- That permission check is also where offload diagnostics lie, because
+  `/run/secrets/<path>` is a **symlink** the sops service creates into
+  `/run/secrets/<sops-key-name>` — the configured `permissions` live on the
+  target, not on the link. Measured on `agents` 2026-11-05:
+  `sudo stat -c "%a %n" /run/secrets/guix-offload-key` reported `777` (the link)
+  while `sudo stat -Lc "%a %U"` reported `400 root`, and the same pair of probes
+  showed `/run/secrets/peteches-automation-ssh-key` → `400 peteches` ✓. Use
+  `stat -L` whenever a `/run/secrets` mode matters, and note that
+  `sudo ssh-keygen -y -f /run/secrets/<path>` is refused on the symlink while
+  `ssh -i` with the very same path authenticates fine — so derive public keys
+  from a mode-`0600` copy rather than from the symlink, and treat a refused
+  `ssh-keygen` as a probe artifact until you have retried it on a copy.
+- =ssh-keygen -e= emits *SSH2* format (=---- BEGIN SSH2 PUBLIC KEY ----=, base64
+  of an ASN.1 wrapper), not the =ssh-ed25519 AAAA…= line =authorized_keys= and
+  =machines.scm= use, so byte-comparing an =-e= blob against a committed entry
+  is a guaranteed false negative. Compare fingerprints (=ssh-keygen -lf=) or the
+  first two fields of a =-y=-style line.
+- Some boxes have /no/ offload keypair at all (=vault=, =plane=, =comfyui=,
+  =dagon=, =agents= before 2026-11-05, =critical-grind-*=): offload from them
+  cannot even authenticate as =guix-offload=, their signing keys are
+  deliberately absent, and =#:with-nug-offload? #t= on them is aspirational
+  rather than wired.
+- =rustdesk= and =nyarlothotep= are the reverse gap: both /are/ in the ssh list
+  and /both/ have an offload keypair, but neither box was reachable on
+  2026-11-05, so no verified signing key could be added — their offload keeps
+  falling back to local builds until one is fetched. nyarlothotep is the
+  asymmetry to watch for: its ssh half is authorized and its archive half is
+  not, and those two trusts only stay in step if somebody keeps them there by
+  hand.
+- =guix-build= itself does not use =make-vm-os='s =#:with-nug-offload?= hook (it
+  passes =#:with-nug-offload? #f= and defines its own offload user and both key
+  lists), and its own keypair is generated on the box, so =guix-build='s key
+  appears in no file in this repo.
+
+To re-audit the whole set in one pass, derive each box's two public halves from
+the box itself — never from a copy — and hash instead of printing:
+
+#+begin_src bash
+ssh <host> 'cat /etc/guix/signing-key.pub' > /dev/shm/$h.signing.pub   # public material
+ssh <host> 'umask 077; sudo install -m 600 /run/secrets/guix-offload-key /tmp/k.$$$$ \
+            && sudo ssh-keygen -y -f /tmp/k.$$$$; sudo rm -f /tmp/k.$$$$' > /dev/shm/$h.offload
+ssh-keygen -lf /dev/shm/$h.signing.pub | awk '{print $2}'              # fingerprint only
+#+end_src
+
 * Rollback
 
 =guix deploy= has no built-in "undo" — rollback happens on the target VM
@@ -256,7 +443,7 @@ safer than trying to redeploy an old commit from here.
 ** Single host
 
 #+begin_src bash
-ssh -i /run/secrets/peteches-automation-ssh-key peteches@<lan-ip>
+ssh -i /run/secrets/peteches-automation-ssh-key peteches@<lan-ip>   # from agents; from a desktop, ssh peteches@<ip> with no -i
 sudo guix system list-generations      # find the last-known-good number
 sudo guix system roll-back             # steps back exactly one generation
 # or, to jump to a specific one:
@@ -299,6 +486,12 @@ every reachable VM is actually on the generation you expect, rather than
 assuming a deploy that reported success actually landed everywhere. This is
 the check to run when asked to "check the fleet" or "when was the last
 deploy":
+
+Run it from =agents=, the box that now holds the automation key the =-i=
+below names. From a desktop drop =-i= — the =id_ed25519= there is authorized
+on every VM too — but expect to confirm host keys on first contact by bare
+IP, because a desktop's =known_hosts= is keyed by the fleet's names rather
+than their addresses.
 
 #+begin_src bash
 declare -A ips=(

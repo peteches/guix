@@ -40,15 +40,41 @@
 ;;;     src/remote/attach.rs download_release_asset refuses every non-stable
 ;;;     channel.  One package definition, both ends, so the probe passes and
 ;;;     nothing is ever written to ~/.local/bin/herdr.
-;;;   * no ~/.ssh identity beyond what openssh picks up by default.  This box
-;;;     has no automation-key secret (secrets/hosts/agents/ carries none, and
-;;;     vm-base only decrypts the automation key where a #:sops-secrets entry
-;;;     asks for it), so `Host *' keeps the default identities and ssh-out from
-;;;     this account is limited to whatever ~/.ssh/id_* the operator puts there.
-;;;     Nothing depends on it: the deploy path runs FROM the desktops /
-;;;     claude-workstation, never from agents, so `known-hosts2' stays empty
-;;;     too -- see the constructor's KNOWN-HOSTS2 note for why an empty list
-;;;     still means an empty managed file.
+;;; WHAT THIS ACCOUNT GOT ON 2026-11-05: THE FLEET DEPLOY IDENTITY, moved here
+;;; from claude-workstation's peteches account, which no longer needs it now
+;;; that that box is a pure WireGuard/SOCKS jump box (see
+;;; peteches/home/configs/claude-workstation-peteches.scm). Two pieces:
+;;;   * `Host *' -> IdentityFile /run/secrets/peteches-automation-ssh-key --
+;;;     the private half of the peteches automation keypair, whose public half
+;;;     EVERY vm authorizes for the peteches login (vm-base.scm's
+;;;     %automation-authorized-key-secret plus its sshd Match block).  One line
+;;;     makes the whole fleet ssh-reachable from this account as peteches, and
+;;;     %deploy-identity in peteches/machines.scm picks the same path up, which
+;;;     is how scripts/deploy.scm / the deploy-vms skill authenticate from
+;;;     here. It is a PATH, not a value: unlike an API key it never reaches the
+;;;     world-readable store, ssh reads it from tmpfs at connect time, and only
+;;;     this box decrypts it -- see the #:sops-secrets entry in
+;;;     peteches/systems/agents.scm.
+;;;   * known-hosts2 -- github.com / codeberg.org / git.peteches.co.uk host
+;;;     keys, so a non-interactive git fetch needs no TTY. Forward-looking:
+;;;     this account has no ~/area_51/guix checkout today (checked live on
+;;;     2026-11-05) so nothing reads them yet, but the box that now holds the
+;;;     deploy identity is the box a fleet deploy will run from, and it needs
+;;;     them the moment it has a repo to fetch. The two asset files are the
+;;;     ones the retired (peteches home modules claude-workstation) wrote; they
+;;;     stay in peteches/home/modules/ and their store names still say
+;;;     claude-workstation, so that module's deletion stayed a pure deletion.
+;;; The half of "can this box deploy" that is NOT a ssh key: its own
+;;; guix-daemon signing key is listed in %authorize-coordinator-key
+;;; (peteches/systems/common.scm). Without that, `guix deploy' from here still
+;;; connects and still switches the target's generation, but the LAST step --
+;;; the live upgrade-shepherd-services archive send -- fails with
+;;; `unauthorized public key', which is exactly the failure mode
+;;; docs/fleet-deployment.org §4 documents for claude-workstation.
+;;;
+;;; STILL ABSENT: any personal ~/.ssh/id_* key. There was none here before and
+;;; there is none now -- `Host *' names the automation key, and vm-base only
+;;; ever decrypts automation keys where a #:sops-secrets entry asks for one.
 ;;;
 ;;; CHANNELS, and the one thing a reader should know about them: the
 ;;; constructor pins ~/.config/guix/channels.scm to
@@ -63,12 +89,20 @@
 ;;; account's hand-made channel file, which still lists the retired codeberg
 ;;; `peteches' channel whose contents were folded back into this repo.  If this
 ;;; box ever genuinely needs (critical-grind ...), wire a deploy-key secret and
-;;; the reply-with-ssh-add replyer, as claude-workstation's automation-key
-;;; entry does; do not solve it by dropping the pin.
+;;; the reply-with-ssh-add replyer -- the pattern the retired
+;;; (peteches home modules claude-workstation) used for its own automation
+;;; key -- and note that a `Host *' IdentityFile does not help here at all,
+;;; because guix's git fetch never reads ~/.ssh/config; do not solve it by
+;;; dropping the pin.
 
 (define-module (peteches home configs agents-peteches)
   #:use-module (guix gexp)
   #:use-module (gnu home services)
+  ;; home-openssh-service-type / home-openssh-configuration / openssh-host all
+  ;; live in (gnu home services ssh) -- needed for the #:ssh-hosts `Host *'
+  ;; entry below, and importing (gnu services ssh) instead would drag in the
+  ;; SYSTEM openssh-host record of the same name.
+  #:use-module (gnu home services ssh)
   ;; Direct import with #:select, not `specification->package' -- the
   ;; `%package-module-path' fold-packages scan documented in
   ;; (peteches home modules vm-jumpbox)'s header.
@@ -104,6 +138,23 @@
 (define %pi-herdr-integration
   (local-file (source-path "configs/pi/herdr-agent-state.ts")))
 
+;; Host keys for the git remotes this account fetches from (github.com,
+;; codeberg.org, git.peteches.co.uk) plus the VM's own loopback keys.  Same
+;; files claude-workstation's account used until 2026-11-05 -- read by name
+;; through (peteches repository)'s source-path so they resolve under `-L .'
+;; and in a worktree, and their store names still carry the old
+;; claude-workstation spelling on purpose (see that config's header for why
+;; renaming them was not worth the diff churn).
+(define %agents-known-hosts
+  (list (local-file (source-path "peteches/home/modules/claude-workstation-known-hosts"))
+        (local-file (source-path "peteches/home/modules/claude-workstation-loopback-known-hosts"))))
+
+;; The private half of the peteches automation keypair, decrypted at system
+;; boot by the #:sops-secrets entry in peteches/systems/agents.scm -- the same
+;; path claude-workstation used to decrypt it to, so %deploy-identity in
+;; peteches/machines.scm resolves on this box now.
+(define %automation-ssh-key "/run/secrets/peteches-automation-ssh-key")
+
 (define-public agents-peteches-home
   (make-vm-jumpbox-home
    ;; pi in this account's OWN profile: sshd's non-interactive shell gets
@@ -123,6 +174,15 @@
    ;; it in the system profile would work too and is deliberately avoided for
    ;; the same reason pi is kept out of it.
    #:extra-packages (list pi-coding-agent herdr-mx)
+   ;; `Host *' -> the automation key, so ssh-ing from this account into any
+   ;; other VM's peteches login authenticates -- and so %deploy-identity has
+   ;; something real to resolve to here. ONE instance rule: these two hooks
+   ;; share a single home-openssh-service-type, see the constructor's
+   ;; SSH-HOSTS/KNOWN-HOSTS2 comment for why two instances would conflict.
+   #:ssh-hosts (list (openssh-host
+                      (name "*")
+                      (identity-file %automation-ssh-key)))
+   #:known-hosts2 %agents-known-hosts
    #:extra-services
    (list (service home-pi-service-type
                   (home-pi-configuration

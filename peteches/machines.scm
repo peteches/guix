@@ -58,13 +58,24 @@
 ;; SSH private key used to connect out to every machine below. Dagon and
 ;; nyarlothotep (the desktop deploy coordinators) each have their own
 ;; personal keypair at the conventional path, already enrolled in every
-;; VM's %vm-peteches-authorized-keys (vm-base.scm). claude-workstation has
-;; no such personal key, but it does decrypt the private half of the
-;; fleet-wide "peteches automation" keypair at boot (see
-;; %automation-authorized-key-secret in peteches/systems/vm-base.scm) --
-;; every VM already trusts its public half for the peteches login. Use it
-;; when present so `guix deploy'/scripts/deploy.scm works unmodified from
-;; whichever host runs it.
+;; VM's %vm-peteches-authorized-keys (vm-base.scm). `agents' has no such
+;; personal key, but since 2026-11-05 it decrypts the private half of the
+;; fleet-wide "peteches automation" keypair at boot -- see its
+;; #:sops-secrets entry, and %automation-authorized-key-secret in
+;; peteches/systems/vm-base.scm for the public half that EVERY vm already
+;; trusts for the peteches login. Prefer that path when it exists, so
+;; `guix deploy'/scripts/deploy.scm work unmodified from whichever host runs
+;; them, desktop or VM.
+;;
+;; claude-workstation was the VM that used to have this path. It no longer
+;; decrypts the key -- it became a pure WireGuard/SOCKS jump box -- so the
+;; fallback below is all it gets, and since that account has no
+;; ~/.ssh/id_ed25519 either (checked live), deploys do not run from there any
+;; more. The same evaluation happens on `agents' now: the path exists there,
+;; so this expression resolves to the automation key when `guix deploy' runs
+;; on that box, and it must be evaluated ON the deploying host -- %deploy-identity
+;; is read at deploy time by the host that runs scripts/deploy.scm, not baked
+;; into any system image.
 (define %deploy-identity
   (if (file-exists? "/run/secrets/peteches-automation-ssh-key")
       "/run/secrets/peteches-automation-ssh-key"

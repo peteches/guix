@@ -23,6 +23,30 @@
 ;;                  otherwise give an agent CLI anywhere to live.  No Claude
 ;;                  Code anywhere on this box — that is the whole point of
 ;;                  the agents/vm-jumpbox split (see that config's header).
+;;                  Since 2026-11-05 it also carries the FLEET DEPLOY IDENTITY:
+;;                  `Host * -> IdentityFile /run/secrets/peteches-automation-ssh-key',
+;;                  the private half of the automation keypair every VM
+;;                  authorizes for the peteches login, moved here from
+;;                  claude-workstation when that box stopped being a deploy
+;;                  origin.  So scripts/deploy.scm / the deploy-vms skill can
+;;                  run from here as well as from the desktops -- %deploy-identity
+;;                  in peteches/machines.scm resolves to that path on whatever
+;;                  box it is evaluated on, and it now exists here. The other
+;;                  half of "can this box deploy" is not an SSH key at all:
+;;                  this box's own guix-daemon signing key has to be in
+;;                  %authorize-coordinator-key (peteches/systems/common.scm),
+;;                  or the last deploy step -- the live
+;;                  upgrade-shepherd-services archive send -- fails with
+;;                  `unauthorized public key' (docs/fleet-deployment.org §4).
+;;
+;; DEPLOY ORIGIN, and the honest caveats attached to it: holding the
+;; automation key makes a deploy FROM this box possible, not sufficient. Two
+;; things are still missing on the live box as of 2026-11-05: no ~/area_51/guix
+;; checkout for scripts/deploy.scm to run from (~/ here is empty of repos),
+;; and no critical-grind deploy key in an ssh-agent, so that one channel cannot
+;; be pulled here. Deploys therefore still run from the desktops until someone
+;; clones the repo here -- see the deploy-vms skill, which documents the repo
+;; root as its working directory.
 ;;   herdr-server -- the box's agent-session server, run as `peteches' so pi
 ;;                  sessions survive disconnects AND reboots.  Supervised HERE,
 ;;                  at the system layer, not by home-shepherd as the retired
@@ -45,6 +69,10 @@
 ;;   /run/secrets/restic-password             — restic backup password
 ;;   /run/secrets/restic-ssh-key              — restic backup SSH key
 ;;   /run/secrets/guix-offload-key            — guix build-offload SSH key
+;;   /run/secrets/peteches-automation-ssh-key — private half of the fleet-wide
+;;     peteches automation keypair, i.e. this box's deploy identity (moved
+;;     here from claude-workstation on 2026-11-05; only this box and the
+;;     operator's PGP key can decrypt it)
 ;;
 ;; FIRST-BOOT TODO:
 ;;   * age-keys/agents.pub + a .sops.yaml creation rule
@@ -129,7 +157,27 @@
        (key '("ssh-private-key"))
        (file (local-file "../../secrets/hosts/agents/guix-build.yaml"))
        (path "/run/secrets/guix-offload-key")
-       (permissions #o400)))
+       (permissions #o400))
+      ;; Private half of the peteches automation SSH keypair, moved here from
+      ;; claude-workstation on 2026-11-05 -- its public half is decrypted on
+      ;; EVERY vm by vm-base's %automation-authorized-key-secret and authorized
+      ;; for the peteches login by that module's sshd Match block, so holding
+      ;; this file is what lets one key open every VM in the fleet. Read
+      ;; (user "peteches") because two consumers need it and both run as that
+      ;; user: the `Host *' IdentityFile in
+      ;; peteches/home/configs/agents-peteches.scm, and %deploy-identity in
+      ;; peteches/machines.scm when a deploy is run from here. Only this box
+      ;; decrypts it -- the file is age-encrypted for `agents' key plus the
+      ;; operator's PGP key (see .sops.yaml's hosts/agents rule), which is
+      ;; also why claude-workstation, whose age key was the sole age recipient
+      ;; before this move, can no longer read it at all.
+      (sops-secret
+       (key '("private-key"))
+       (file (local-file "../../secrets/hosts/agents/peteches-automation-ssh.yaml"))
+       (user "peteches")
+       (group "users")
+       (permissions #o400)
+       (path "/run/secrets/peteches-automation-ssh-key")))
      #:extra-services
      (list
       ;; One home environment for this box's agent account -- see

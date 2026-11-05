@@ -41,10 +41,14 @@
 ;;     reconfigure'/`guix deploy' activates it as the guix-home-peteches
 ;;     shepherd service in the same run -- editing a home config for this VM
 ;;     just needs a redeploy (scripts/deploy.scm; see AGENTS.md).  Its
-;;     ~/.ssh/config ends up with `Host * -> IdentityFile
-;;     /run/secrets/peteches-automation-ssh-key', so this box can still ssh
-;;     into every other VM as peteches: it remains a listed deploy coordinator
-;;     (%authorize-coordinator-key in peteches/systems/common.scm).
+;;     ~/.ssh/config now carries NO IdentityFile of its own: the private half
+;;     of the peteches automation keypair that used to sit behind a `Host *'
+;;     entry here moved to `agents' on 2026-11-05 (see
+;;     peteches/systems/agents.scm), so this box has no outbound fleet
+;;     identity, cannot ssh into any other VM as peteches, and is no longer a
+;;     deploy coordinator -- deploys run from the desktops or from `agents'.
+;;     Every ssh session this box serves arrives FROM a desktop (the
+;;     ProxyCommand hop above), so it has no reason to ssh out at all.
 ;;   * TWO OS accounts: `peteches' (that environment) and `ygo', now only a
 ;;     login account -- key + console password, no home environment, nothing
 ;;     running as it.
@@ -113,12 +117,17 @@
      ;; execs, so the desktops' ProxyCommands still resolve (verified on the
      ;; live box).
      ;;
-     ;; No #:automation-key-extra-users either (default '()): the automation
-     ;; key only has to be readable by `peteches' now, and vm-base already
-     ;; chowns it to peteches:peteches 0600 as part of this box's
-     ;; #:sops-secrets -- see %automation-authorized-key-secret in
-     ;; peteches/systems/vm-base.scm.  The criticalgrind/ygo entries this
-     ;; used to pass went with those accounts.
+     ;; No #:automation-key-extra-users (default '()): there is no private
+     ;; automation key left on this box for any account to read -- the
+     ;; criticalgrind/ygo entries this used to pass went with those accounts.
+     ;; What still matters here is the OTHER half of the pair: this box must
+     ;; keep ACCEPTING the fleet-wide automation key so its new holder
+     ;; (`agents') can log in as peteches, and that is exactly what vm-base's
+     ;; %automation-authorized-key-secret -- the public half, decrypted on
+     ;; EVERY VM including this one -- plus the sshd Match block do.  So
+     ;; #:with-automation-key? stays at its #t default, and this box's own
+     ;; peteches login keeps working for the desktops' admin keys
+     ;; (%vm-peteches-authorized-keys).
      #:users-extra (list %ygo-user)
      ;; Tailscale unattended join.  The auth-key is a SHARED sops secret
      ;; (secrets/shared/tailscale.yaml), decrypted at boot with the VM's own
@@ -157,23 +166,15 @@
       ;; The four files are still in secrets/hosts/claude-workstation/ and
       ;; still decryptable with this box's age key; they are simply no longer
       ;; decrypted at boot because nothing reads them any more.
-      ;; Private half of the peteches automation SSH keypair -- see
-      ;; %automation-authorized-key-secret in vm-base.scm for the public
-      ;; half, decrypted on every VM.  Only claude-workstation ever decrypts
-      ;; the private half, and now only for one purpose: `Host *' in
-      ;; peteches' ~/.ssh/config points at this path (the #:ssh-hosts
-      ;; argument in peteches/home/configs/claude-workstation-peteches.scm),
-      ;; which is what lets this box ssh into any other VM's peteches account
-      ;; -- and so keep working as a deploy coordinator -- without borrowing a
-      ;; desktop's admin key.  It used to double as the key peteches used to
-      ;; ssh into the criticalgrind/ygo accounts here; those are gone.
-      (sops-secret
-       (key '("private-key"))
-       (file (local-file "../../secrets/hosts/claude-workstation/peteches-automation-ssh.yaml"))
-       (user "peteches")
-       (group "users")
-       (permissions #o400)
-       (path "/run/secrets/peteches-automation-ssh-key"))
+      ;; The peteches automation SSH keypair's PRIVATE half is no longer
+      ;; decrypted on this box (2026-11-05): the file that carried it,
+      ;; secrets/hosts/claude-workstation/peteches-automation-ssh.yaml, moved
+      ;; to secrets/hosts/agents/ and was re-keyed for `agents' age key, and
+      ;; peteches/systems/agents.scm now decrypts it to
+      ;; /run/secrets/peteches-automation-ssh-key.  What this box still gets,
+      ;; automatically from vm-base (%automation-authorized-key-secret), is the
+      ;; PUBLIC half -- authorized for `peteches' by the sshd Match block, so
+      ;; whoever holds the private half can still land here.
       ;; Private half of the guix-offload keypair, encrypted for this VM's
       ;; own age key -- see the matching public half added to
       ;; guix-offload-authorized-keys in peteches/systems/guix-build.scm. Same

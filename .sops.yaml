@@ -64,6 +64,16 @@ creation_rules:
     age:
       - age127sr66dp0za797zes24lxlsj4pvc5nn0097mpcdmrckf468ycfdsjrhe6g # concourse-web01
 
+  # Also covers secrets/hosts/agents/peteches-automation-ssh.yaml -- the PRIVATE
+  # half of the fleet-wide peteches automation keypair, moved here from
+  # claude-workstation on 2026-11-05 (that box is a pure WireGuard/SOCKS jump
+  # box now and has no deploy identity left to keep). No dedicated rule for it:
+  # this one already resolves to exactly the recipient set the file needs, and a
+  # second rule above it would only duplicate this one. Re-keyed in place with
+  # `sops updatekeys' during the move, so `agents' age key is now the only age
+  # recipient -- claude-workstation can no longer decrypt that file at all --
+  # and the operator PGP key stays, as in every rule in this file, so a desktop
+  # can still edit it with gpg-agent.
   - path_regex: secrets/hosts/agents/.*\.yaml$
     pgp: "5FFB7006A36B0AEDE8D08E3753B1E002546A642A"
     age: "age1ytrm8ea22xsvzlhqxc7jykuscn8wp4hmj8vg9ul7fcy9ncxutcwqepxjtd"
@@ -178,12 +188,30 @@ creation_rules:
     pgp: "5FFB7006A36B0AEDE8D08E3753B1E002546A642A"
     age: "age1gcrgp0sy04kdxuyn2rmkeknx32jvw55yku8v0mwyhypagds5z9jqz0h0z2"
 
-  # Private half of the peteches automation SSH keypair -- only ever
-  # decrypted on claude-workstation, where peteches uses it as its own
-  # outbound identity to reach the criticalgrind/ygo accounts (and, in
-  # general, any other VM's peteches login) without borrowing a desktop's
-  # admin key. See (peteches home modules claude-workstation) and
-  # docs/secrets-management.org.
-  - path_regex: secrets/hosts/claude-workstation/peteches-automation-ssh\.yaml$
-    pgp: "5FFB7006A36B0AEDE8D08E3753B1E002546A642A"
-    age: "age1gcrgp0sy04kdxuyn2rmkeknx32jvw55yku8v0mwyhypagds5z9jqz0h0z2"
+  # Nothing left to spell out for claude-workstation below this point: the
+  # automation-ssh keypair rule that used to sit here, last in the file, was
+  # deleted on 2026-11-05 along with the file it matched --
+  # secrets/hosts/claude-workstation/peteches-automation-ssh.yaml, which held
+  # the PRIVATE half of the fleet-wide peteches automation keypair and is now
+  # secrets/hosts/agents/peteches-automation-ssh.yaml under the agents rule
+  # quoted further above. What is left in that directory is covered by the two
+  # rules directly above this comment -- critical-grind.env by its own rule,
+  # the four .yaml files by the generic directory rule -- and only two of them
+  # are still read at boot: wireguard.yaml and guix-build.yaml (see
+  # peteches/systems/claude-workstation.scm). critical-grind.env, deepgram.yaml,
+  # onepassword.yaml and slack.yaml sit there unread because every consumer of
+  # theirs left with Claude Code; they are kept only so a future rewrite does
+  # not have to recover the values from somewhere else.
+  #
+  # Rule order matters and is load-bearing: sops uses the FIRST matching
+  # creation_rule, so a specific rule only has an effect while it sits ahead of
+  # the directory rule it refines -- which is how the deepgram/sillytavern/colibri
+  # rules above work, and why a duplicate rule anywhere else is pure noise.
+  # There is no `sops file' subcommand to ask which recipients a file has: 3.13
+  # offers `filestatus', which reports only {"encrypted":true|false}. The
+  # recipient list is stored in cleartext in each file's own `sops:' tree, so
+  # verify it by counting -- `grep -c <age-key-prefix> <file>' -- not by
+  # printing age keys, which the repo's no-key-material rule forbids. See
+  # docs/secrets-management.org for the full verification recipe, including the
+  # gpg-agent-cache and private-key-permissions traps that make a healthy file
+  # look broken.

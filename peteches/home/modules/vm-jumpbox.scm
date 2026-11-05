@@ -39,8 +39,12 @@
 ;;;     anvil and herdr daemons need a runtime dir and this VM fleet has no
 ;;;     elogind to make /run/user/<uid>. With no daemons there is nothing to
 ;;;     redirect; see that module's docstring before re-adding it.
-;;;   * ~/area_51/<repo> pre-cloning, which only claude-workstation needs any
-;;;     more (agents has no repos and does not clone the guix repo either)
+;;;   * ~/area_51/<repo> pre-cloning, which neither VM has today -- both
+;;;     claude-workstation and `agents' were checked live on 2026-11-05 and
+;;;     neither has a checkout (the comment claiming otherwise in
+;;;     claude-workstation's home config was stale and has been deleted).
+;;;     `agents' is now the candidate if one ever comes back, since it holds
+;;;     the deploy identity and a fleet deploy needs a repo to run from
 ;;;   * build-offload key wiring: offload is vm-base.scm's job at the system
 ;;;     level (#:with-nug-offload? + a /run/secrets/guix-offload-key
 ;;;     sops-secret), not this module's, and never was — so dropping it here
@@ -49,12 +53,19 @@
 ;;; SECRETS are deliberately NOT here: the store is world-readable, so an API
 ;;; key set via home-environment-variables would leak. Anything secret arrives
 ;;; through the VM's own #:sops-secrets (decrypting to /run/secrets/… at boot)
-;;; and is exported into the shell by #:secret-env-vars below — see
-;;; claude-workstation.scm for an instance of that path. The one exception is
-;;; a *key file* rather than a value: #:ssh-hosts can point an IdentityFile at
-;;; a /run/secrets path (see that same file's automation-key entry), which is
-;;; safe because ssh reads it at connect time from tmpfs, it is never copied
-;;; into the store, and IdentityFile itself names only the path.
+;;; and, when a shell needs it, is exported by #:secret-env-vars below -- no
+;;; caller passes that argument today, so the live instances of the *value*
+;;; path are the boot-time secrets in peteches/systems/claude-workstation.scm
+;;; (wireguard.yaml, guix-build.yaml) and peteches/systems/agents.scm
+;;; (rules-lawyer, sillytavern, restic, guix-offload). What this module does
+;;; carry is the one exception, a *key file* rather than a value: #:ssh-hosts
+;;; can point an IdentityFile at a /run/secrets path, and the `agents'
+;;; account does exactly that -- `Host *' at
+;;; /run/secrets/peteches-automation-ssh-key, the private half of the fleet
+;;; automation keypair -- which is safe because ssh reads it from tmpfs at
+;;; connect time, it is never copied into the store, and IdentityFile names
+;;; only the path. claude-workstation was the box with that entry until
+;;; 2026-11-05, when it lost both the key and the entry.
 
 (define-module (peteches home modules vm-jumpbox)
   #:use-module (gnu home)
@@ -169,8 +180,9 @@ EXTRA-PACKAGES are added to the base tool set — this is how an agent host gets
 its agent CLI, e.g. pi-coding-agent on `agents'. SSH-HOSTS is a list of
 <openssh-host> records merged into this account's ~/.ssh/config — the way to
 add an IdentityFile or a Host block without growing another service. Pass
-`(name "*")' to make an identity apply to every host, as claude-workstation
-does for the peteches automation key. ENV-VARS is a plain
+`(name "*")' to make an identity apply to every host, as `agents' does for
+the peteches automation key (peteches/home/configs/agents-peteches.scm;
+claude-workstation passed the same entry until 2026-11-05). ENV-VARS is a plain
 (non-secret) alist of (ENV-VAR . VALUE) exported via
 home-environment-variables-service-type (i.e. into
 ~/.guix-home/setup-environment, sourced by ~/.profile); $HOME in a value is

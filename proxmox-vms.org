@@ -208,17 +208,41 @@ already full and packages can't be installed, rebuild the image with a larger
 
 *** Step 3: Authorize the deploy key (automatic)
 
-The coordinators' signing keys (each host's own =/etc/guix/signing-key.pub=,
-currently nyarlothotep and claude-workstation — nug's entry was dropped
-following its decommission; dagon isn't registered yet) are baked into
-=common.scm='s =%authorize-coordinator-key= via =guix-service-type='s
-=authorized-keys= field. Any VM built with =make-vm-os= already trusts
-those hosts to push store items. No manual =guix archive --authorize= step
-is needed.
+Two different keys are involved in a deploy, and this step covers only the
+second:
 
-If you ever rotate the coordinator key or add a second deploy machine,
+- *The SSH login identity* — either a coordinator desktop's own
+  =id_ed25519= (dagon and nyarlothotep are enrolled in every VM's
+  =%vm-peteches-authorized-keys=), or the private half of the fleet-wide
+  peteches automation keypair, which every VM also accepts for the peteches
+  login. That private half lives on =agents= since 2026-11-05 (see
+  =peteches/systems/agents.scm=); =claude-workstation= held it before that and
+  now holds neither it nor any other outbound identity.
+- *The coordinator's =guix-daemon= signing key* — each deploying host's own
+  =/etc/guix/signing-key.pub=, currently =agents=, =dagon= and
+  =nyarlothotep= (nug's entry was dropped with its decommission,
+  claude-workstation's with its deploy role on 2026-11-05 — see
+  =peteches/systems/common.scm= for the full history) — are baked into
+  =common.scm='s =%authorize-coordinator-key= via =guix-service-type='s
+  =authorized-keys= field. Any VM built with =make-vm-os= already trusts
+  those hosts to push store items. No manual =guix archive --authorize= step
+  is needed, and one would not last: the next deploy's own =/etc-populate=
+  rebuilds =/etc/guix/acl= from the declarative list and drops whatever was
+  added by hand.
+
+If you rotate a coordinator key, or add a machine that will run deploys,
 update the =plain-file= content in =%authorize-coordinator-key= in
-=peteches/systems/vm-base.scm= and redeploy.
+=peteches/systems/common.scm= — NOT =vm-base.scm=, which only *imports* that
+binding — and redeploy the **whole fleet**, because every VM carries this
+list. Verify the value against the coordinator's live
+=/etc/guix/signing-key.pub= rather than trusting a copy — hash the =#…#=
+fingerprint tokens the key is built from (=grep -o='# … =| sha256sum=), not the
+whole file, or the two numbers will not be comparable. The current state of
+that list, verified host by host on 2026-11-05, is tabulated in
+=docs/fleet-deployment.org= under "Coordinator signing-key registry": dagon and
+agents match their committed entries, nyarlothotep's could not be sampled
+(host offline), and claude-workstation's had silently gone stale when that VM
+was rebuilt from the MinIO image on 2026-10-27.
 
 ** Approach B: Installer ISO + guix system init
 
@@ -273,7 +297,8 @@ scripts/deploy.scm --hosts prometheus   ; deploy one VM
    authorized keys by default; add one via the Proxmox console first.
 
 2. *Store key authorization* — already handled: the coordinator's signing
-   key is embedded in =vm-base.scm= and applied at system init time.
+   key is in =peteches/systems/common.scm= (=%authorize-coordinator-key=) and
+   applied at system init time on every VM built with =make-vm-os=.
 
 3. *Passwordless sudo* — the =make-vm-os= sudoers config already grants
    =%wheel ALL=(ALL) ALL= but without =NOPASSWD=. For non-interactive
@@ -352,7 +377,7 @@ redeploy.
 |---------+-------|
 | VM not reachable after deploy | Boot via Proxmox console; check Shepherd status with =herd status= |
 | Prometheus not starting | =herd status prometheus=; logs at =/var/log/prometheus.log= |
-| Deploy fails at store transfer | Key mismatch — check =%authorize-coordinator-key= in =vm-base.scm= matches =/etc/guix/signing-key.pub= on the coordinator |
+| Deploy fails at store transfer | Key mismatch — check =%authorize-coordinator-key= in =peteches/systems/common.scm= matches =/etc/guix/signing-key.pub= on the coordinator (hash both: =grep -o '#[0-9A-Fa-f]*#' <file> | sha256sum=). A failure on the *last* step only, after the generation already switched, is the same gap — see =docs/fleet-deployment.org= §4 |
 | DHCP not getting an IP | Check Proxmox bridge/VLAN config; =ip addr= in Proxmox console |
 | Clock skew warnings | Check NTP: =herd status ntpd= |
 | =guix system image= fails: "EFI bootloader required with GPT partitioning" | Use =-t qcow2-gpt= instead of =-t qcow2=; the plain qcow2 type uses MBR and is incompatible with =grub-efi-bootloader= |

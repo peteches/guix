@@ -104,9 +104,9 @@
 ;; Baseline every VM gets: openssh (key-only, dagon + nyarlothotep enrolled),
 ;; ntpd, qemu-guest-agent, nftables firewall (%vm-base-firewall: ssh + 9100
 ;; + icmp only), cifs-client, prometheus-node-exporter, and
-;; %authorize-coordinator-key (trusts nyarlothotep/claude-workstation to push
-;; store items, and registers guix-build's guix-publish as a substitute
-;; server).
+;; %authorize-coordinator-key (trusts the deploy coordinators -- dagon,
+;; nyarlothotep, agents -- to push store items, and registers guix-build's
+;; guix-publish as a substitute server).
 ;;
 ;; The age key sops uses to decrypt #:sops-secrets is baked into each VM's
 ;; image by the CI build-vm-image pipeline (debugfs-written to
@@ -282,10 +282,15 @@ time.  A no-op on subsequent boots."
 ;; Public half of the peteches automation SSH keypair, decrypted on every
 ;; VM (unless #:with-automation-key? #f) into this path and consulted only
 ;; for the "peteches" user's login attempts -- see the Match block below.
-;; The matching private key lives ONLY on claude-workstation (see
-;; peteches/systems/claude-workstation.scm and docs/secrets-management.org)
-;; so peteches there can reach any VM's peteches account, plus (via
-;; #:automation-key-extra-users) the criticalgrind/ygo accounts.
+;; The matching PRIVATE key lives ONLY on `agents' since 2026-11-05 -- see
+;; the #:sops-secrets entry in peteches/systems/agents.scm -- so that box is
+;; the one machine that can ssh into every other VM's peteches account with
+;; one key, which is what makes it a deploy origin (%deploy-identity in
+;; peteches/machines.scm resolves to that path on whatever box it is
+;; evaluated on). claude-workstation held this key first and lost it with
+;; the deploy role, when it became a pure WireGuard/SOCKS jump box; the
+;; #:automation-key-extra-users argument is what used to make its retired
+;; criticalgrind/ygo accounts accept the key as well.
 (define %automation-authorized-key-path
   "/run/secrets/peteches-automation-ssh-key.pub")
 

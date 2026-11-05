@@ -295,12 +295,17 @@ Each module's header comment documents its keyword arguments — read
 | `critical-grind-campaign.scm` | Critical Grind campaign system VM — Go/Gin app on :8080 + local PostgreSQL (192.168.51.202). Package and service come from the `critical-grind` channel |
 | `critical-grind-outline.scm` | Outline wiki VM — Podman container + local PostgreSQL/Redis (192.168.51.203, :3000) |
 | `plane.scm` | Plane project management VM — Podman containers + PostgreSQL/Redis/RabbitMQ (192.168.51.204, :80) |
-| `claude-workstation.scm` | Jump-box VM — split-tunnel WireGuard + microsocks SOCKS5 (the desktops relay `ygo-server`/`ygoswiss1`/`ygoswiss2` ssh through it), tailscale, alloy; ONE home environment (`peteches`) + a plain `ygo` login account. Claude Code, the `criticalgrind` account and the Postgres/Podman dev-DB stack are gone (192.168.51.205) |
+| `claude-workstation.scm` | Jump-box VM — split-tunnel WireGuard + microsocks SOCKS5 (the desktops relay `ygo-server`/`ygoswiss1`/`ygoswiss2` ssh through it), tailscale, alloy; ONE home environment (`peteches`) + a plain `ygo` login account. Claude Code, the `criticalgrind` account and the Postgres/Podman dev-DB stack are gone. It is **not** a deploy origin any more: the automation SSH key it used to decrypt moved to `agents` on 2026-11-05 and its signing key was dropped from `%authorize-coordinator-key` (it had gone stale with the 2026-10-27 MinIO-image rebuild) (192.168.51.205) |
 | `comfyui.scm` | ComfyUI VM — RTX 4090 GPU passthrough with nonguix driver/CUDA; successor to nug's desktop-hosted comfyui (192.168.51.206) |
-| `guix-build.scm` | Guix substitute server + build-offload target VM — successor to nug's guix-publish/offload role; signs with `guix-build-substitute-key.pub` (192.168.51.207) |
+| `guix-build.scm` | Guix substitute server + build-offload target VM — successor to nug's guix-publish/offload role; signs with `guix-build-substitute-key.pub` (192.168.51.207). Holds BOTH offload trust lists: `guix-offload-authorized-keys` (ssh logins) and `guix-offload-signing-keys` (archive pushes). Until 2026-11-05 the second held one stale key; it now carries every offloader's live key, and `rustdesk` + `nyarlothotep` are the known gap (in the ssh list, no archive key, both unreachable when it was audited) |
 | `agents.scm` | "agents" VM — rules-lawyer Discord bot + SillyTavern + `pi` for the peteches account (home-environment from `peteches/home/configs/agents-peteches.scm`); LLM/stable-diffusion offloaded to other VMs; it also runs the **herdr server** — supervised by the
   system shepherd as `herdr-server-peteches` (`peteches/services/herdr.scm`) —
-  so this is the box `herdr --remote` attaches to (192.168.51.208) |
+  so this is the box `herdr --remote` attaches to. Since 2026-11-05 it is also a
+  **deploy origin**: it decrypts the private half of the fleet-wide peteches
+  automation keypair (`secrets/hosts/agents/peteches-automation-ssh.yaml`) and
+  its own signing key is listed in `%authorize-coordinator-key` — what is still
+  missing for deploys to actually run from here is a `~/area_51/guix` checkout
+  (192.168.51.208) |
 | `guix-build-substitute-key.pub` | Guix-publish signing public key for guix-build's substitute server (nug's substitute-server successor) |
 
 #### `peteches/home/configs/`
@@ -311,14 +316,18 @@ Host-specific files only — each exports a complete `home-environment` record.
 |---|---|
 | `dagon.scm` | dagon home environment — `(peteches home configs dagon)` |
 | `nyarlothotep.scm` | nyarlothotep home environment — `(peteches home configs nyarlothotep)` |
-| `claude-workstation-peteches.scm` | `(peteches home configs claude-workstation-peteches)` — jump-box account config built by `make-vm-jumpbox-home`; netcat + `known-hosts2` + the `Host *` automation identity |
+| `claude-workstation-peteches.scm` | `(peteches home configs claude-workstation-peteches)` — jump-box account config built by `make-vm-jumpbox-home`; **netcat only**. The `Host *` automation identity and `known-hosts2` it used to pass moved to `agents-peteches.scm` on 2026-11-05, and the repo-checkout justification for them was already false — neither VM has a `~/area_51` checkout (checked live) |
 | `agents-peteches.scm` | `(peteches home configs agents-peteches)` — `make-vm-jumpbox-home` + `pi-coding-agent` + `home-pi-service-type` (the shared `configs/pi/defaults`); no Claude, no anvil/MCP. herdr is the one daemon
   exception: it carries `herdr-mx` (the binary the remote probe's
   `command -v herdr` looks for) and links the pi<->herdr integration hook
   `configs/pi/herdr-agent-state.ts`, and it now installs the
   `pi-interactive-subagents` extension (the `subagent` tool -- the only
   consumer of `configs/pi/defaults/agents/*.md`, whose three overrides were
-  inert on this box before) |
+  inert on this box before). It also carries the **fleet deploy identity** since
+  2026-11-05: `#:ssh-hosts` `Host *` → `IdentityFile
+  /run/secrets/peteches-automation-ssh-key` (the automation keypair every VM
+  accepts for `peteches`) plus `#:known-hosts2` for the github/codeberg/git
+  fetches — i.e. exactly what claude-workstation's config used to pass |
 
 #### `peteches/home/modules/`
 
@@ -633,7 +642,11 @@ When creating a new VM system config (`peteches/systems/<name>.scm`), always upd
 
 9. **`age-keys/<name>.pub`** — after first boot, retrieve the VM's age public key and commit it. Add the corresponding entry to `.sops.yaml`. See `docs/secrets-management.org`.
 
-10. **Build offload** — `make-vm-os` enables it by default. Either add a `guix-offload-key` sops-secret (from `secrets/hosts/<name>/guix-build.yaml`) **and** the VM's `guix-offload` public key to `guix-build.scm`'s authorized-keys, or pass `#:with-nug-offload? #f`. Half-wiring it fails silently.
+10. **Build offload** — `make-vm-os` enables it by default, and it has **three** halves that all have to be wired or it degrades silently. Pick one:
+    - **Wire it:** (a) add a `guix-offload-key` `sops-secret` reading `secrets/hosts/<name>/guix-build.yaml`; (b) put the VM's `guix-offload` **ssh** public key in `guix-build.scm`'s `guix-offload-authorized-keys`; **and** (c) put the VM's `/etc/guix/signing-key.pub` in `guix-build.scm`'s `guix-offload-signing-keys`. Half-wiring fails silently in two *different* ways: missing (b) means ssh refuses and `guix` reports an offload failure, while missing (c) means the connection and the build request succeed and only the **archive push** is refused with `unauthorized public key` — which `guix` degrades to building locally, so offload looks fine and never happens. Read `docs/fleet-deployment.org`'s "The build-offload keypairs drift separately" section before touching either list, and take both keys **from the live box** (host-key-verified, hashed with the `#…#`-token method): a key copied from an old commit is how `claude-workstation`'s entry sat stale there for weeks.
+    - **Opt out:** pass `#:with-nug-offload? #f`.
+
+    `guix-build`'s own keypair is generated on the box and is in no file in this repo, and `secrets/hosts/<name>/guix-build.yaml` can only be re-keyed from a desktop if the operator is a recipient of *that* file — `secrets/hosts/claude-workstation/guix-build.yaml` is age-only with no `pgp:` group, so it is not (see `docs/secrets-management.org`).
 
 Pick a free IPv6 suffix too, if the VM needs one. The `2a10:d582:ef59::`
 addresses are assigned by hand and tracked **only** in the `#:ipv6-address`

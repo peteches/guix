@@ -91,8 +91,10 @@ Used by exactly 2 hosts: **dagon** (NVIDIA desktop) and **nyarlothotep** (AMD la
 ### Shared system modules
 
 - `common.scm` — `%nug-build-machine` (gexp build-machine repointed at the guix-build VM);
-  `%authorize-coordinator-key` (trust nyarlothotep + claude-workstation to push store
-  items; registers the guix-publish substitute on the guix-build VM).
+  `%authorize-coordinator-key` (trust the deploy coordinators — dagon,
+  nyarlothotep, agents — to push store items; registers the guix-publish
+  substitute on the guix-build VM). A box that runs deploys has to be listed
+  here or its deploys fail on the last step; see `docs/fleet-deployment.org` §4.
 - `monitored-hosts.scm` — `%monitored-hosts` (Prometheus scrape registry, auto-regenerated on deploy).
 - `network-mounts.scm` — manual CIFS mount for desktops.
 - `bootstrap.scm` — legacy Proxmox template.
@@ -107,8 +109,10 @@ Used by exactly 2 hosts: **dagon** (NVIDIA desktop) and **nyarlothotep** (AMD la
 `operating-system <name>-os` + `machine-ssh-configuration`. Hostnames are **Tailscale
 MagicDNS names** (`<host>.spaniel-cordylus.ts.net`); user is always `peteches`
 (passwordless sudo). `%deploy-identity` prefers
-`/run/secrets/peteches-automation-ssh-key` (claude-workstation) else
-`~/.ssh/id_ed25519`. `%all-machines` is the list. The desktops are deliberately absent
+`/run/secrets/peteches-automation-ssh-key` — the private half of the fleet-wide
+peteches automation keypair, decrypted on `agents` since 2026-11-05 and nowhere
+else (it lived on claude-workstation until then) — else `~/.ssh/id_ed25519`.
+`%all-machines` is the list. The desktops are deliberately absent
 (reconfigured locally).
 
 ### `scripts/deploy.scm`

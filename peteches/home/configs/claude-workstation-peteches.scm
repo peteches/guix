@@ -28,32 +28,44 @@
 ;;; ~/.config/guix/channels.scm. No Claude Code, no pi, no MCP servers, no
 ;;; anvil daemon, no herdr server.
 ;;;
-;;; THE THREE THINGS PASSED IN BEYOND THE CONSTRUCTOR'S DEFAULTS:
+;;; THE ONE THING PASSED IN BEYOND THE CONSTRUCTOR'S DEFAULTS:
 ;;;   * netcat -- the desktops' ProxyCommand for the tunnel-only hosts is
 ;;;     `ssh claude-workstation -- proxychains4 -q -f ~/.config/proxychains.conf
 ;;;      nc %h %p' (see (peteches home modules ssh)), and that `nc' runs HERE
 ;;;     in this account's non-interactive shell, so this VM needs it even
 ;;;     though `agents' does not. It is deliberately absent from vm-jumpbox's
 ;;;     base package set -- see that module's note -- so it is asked for here.
-;;;   * known-hosts2 -- this account still has ~/area_51/guix checked out (the
-;;;     copy `scripts/deploy.scm' runs from when this VM deploys the fleet),
-;;;     so a non-interactive git fetch needs github.com / codeberg.org /
-;;;     git.peteches.co.uk host keys without a TTY. Those two asset files
-;;;     stayed where the retired (peteches home modules claude-workstation)
-;;;     kept them -- co-located in peteches/home/modules/, next to this
-;;;     module's own sibling assets -- and are located by name through
-;;;     (peteches repository)'s source-path rather than by a relative path,
-;;;     which would break under `-L .' and in a worktree.
-;;;   * ssh-hosts -- one `Host *' block whose IdentityFile is
+;;;
+;;; THE TWO THINGS THAT USED TO BE PASSED HERE AND MOVED TO `agents' ON
+;;; 2026-11-05. Both belonged to this box's old deploy-coordinator role, and
+;;; that role stopped making sense the moment the box became a pure jump box:
+;;;   * ssh-hosts -- a `Host *' block whose IdentityFile was
 ;;;     /run/secrets/peteches-automation-ssh-key, the private half of the
 ;;;     automation keypair that every VM authorizes for peteches (see
 ;;;     %automation-authorized-key-secret and the Match block in
-;;;     peteches/systems/vm-base.scm). That keeps this VM able to ssh into any
-;;;     other VM's peteches account: it is still a listed deploy coordinator
-;;;     (%authorize-coordinator-key in peteches/systems/common.scm) and can
-;;;     still push deploys. The key is a PATH, not a value, so unlike an API
-;;;     key it never lands in the world-readable store -- ssh reads it from
-;;;     tmpfs at connect time.
+;;;     peteches/systems/vm-base.scm). That is what let this box ssh into any
+;;;     other VM's peteches account, and so push deploys, without borrowing a
+;;;     desktop's admin key. The key FILE is gone from the system config too
+;;;     -- see the #:sops-secrets note in peteches/systems/claude-workstation.scm
+;;;     -- and `agents' now carries both the key and this `Host *' block (see
+;;;     peteches/home/configs/agents-peteches.scm).
+;;;   * known-hosts2 -- declarative github.com / codeberg.org /
+;;;     git.peteches.co.uk host keys, so a non-interactive git fetch of the
+;;;     ~/area_51/guix checkout that `scripts/deploy.scm' runs from needs no
+;;;     TTY. Two things were wrong with keeping them here: that checkout is
+;;;     not on this box (checked live on 2026-11-05 -- ~/area_51 exists and is
+;;;     EMPTY, so the justification these lines had been carrying was already
+;;;     false), and the deploy origin they were written for is `agents' now,
+;;;     which has no checkout either YET but is the box deploys will run from.
+;;;     The two asset files stay where the retired (peteches home modules
+;;;     claude-workstation) put them -- co-located in peteches/home/modules/,
+;;;     next to that module's own sibling assets -- and agents-peteches.scm
+;;;     now reads them by name through (peteches repository)'s source-path,
+;;;     which works under `-L .' and in a worktree where a relative path would
+;;;     not. Their store file names keep the claude-workstation spelling
+;;;     instead of being renamed for the new consumer: renaming them would
+;;;     have churned the diff that deleted that module into more than a pure
+;;;     deletion, and nothing keys off those names.
 ;;;
 ;;; DROPPED, ALL OF IT CLAUDE-CODE SCAFFOLDING that make-claude-workstation-home
 ;;; (now deleted) used to add: claude-code + ~/.claude, pi + ~/.pi, the anvil
@@ -71,34 +83,21 @@
 (define-module (peteches home configs claude-workstation-peteches)
   #:use-module (guix gexp)
   #:use-module (gnu home services)
-  #:use-module (gnu home services ssh)   ;; openssh-host for #:ssh-hosts below
   ;; Direct import with #:select, not `specification->package' -- the reason
   ;; is the `%package-module-path' fold-packages scan documented in
   ;; (peteches home modules vm-jumpbox)'s header.
   #:use-module ((gnu packages admin) #:select (netcat))
-  #:use-module (peteches home modules vm-jumpbox)
-  #:use-module (peteches repository))
+  #:use-module (peteches home modules vm-jumpbox))
 
-;; Host keys for the remotes this account's git talks to (github.com,
-;; codeberg.org, git.peteches.co.uk) plus the VM's own loopback keys.  They
-;; keep the names the retired claude-workstation home module gave them, so the
-;; diff that deleted that module is a pure deletion -- renaming them here
-;; would have to rename the store file names too, and nothing else reads
-;; those.
-(define %claude-workstation-known-hosts
-  (list (local-file (source-path "peteches/home/modules/claude-workstation-known-hosts"))
-        (local-file (source-path "peteches/home/modules/claude-workstation-loopback-known-hosts"))))
-
-;; The private half of the automation keypair, decrypted at system boot by the
-;; #:sops-secrets entry in peteches/systems/claude-workstation.scm.
-(define %automation-ssh-key "/run/secrets/peteches-automation-ssh-key")
-
+;; Nothing else is passed here. The two hooks this file used to fill in --
+;; #:ssh-hosts (the `Host *' automation identity) and #:known-hosts2 (the git
+;; host keys for a repo checkout) -- moved to agents-peteches.scm on
+;; 2026-11-05 with the deploy-coordinator role that needed them; see the
+;; header above. What is left is the ONE thing this jump box still needs that
+;; the constructor does not give every VM: `netcat', because ssh's
+;; ProxyCommand for the tunnel-only hosts execs `nc' in THIS account's shell.
 (define-public claude-workstation-peteches-home
   (make-vm-jumpbox-home
-   #:extra-packages (list netcat)
-   #:known-hosts2 %claude-workstation-known-hosts
-   #:ssh-hosts (list (openssh-host
-                      (name "*")
-                      (identity-file %automation-ssh-key)))))
+   #:extra-packages (list netcat)))
 
 claude-workstation-peteches-home

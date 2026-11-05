@@ -99,17 +99,75 @@
                 ;; (see common.scm's %authorize-coordinator-key).
                 (advertise? #f)
                 (cache "/var/cache/guix/publish")))
-      ;; Trusts claude-workstation's Guix archive signing key so this VM's
-      ;; daemon accepts store items it sends during offload -- separate from
-      ;; the SSH guix-offload key below, which only grants login. Without
-      ;; this, offload connects fine but every export fails with
-      ;; "unauthorized public key" and silently falls back to a local build.
+      ;; Every box that offloads builds TO this VM pushes its input closure
+      ;; here first, signed by its own /etc/guix/signing-key.pub -- so this
+      ;; VM's daemon has to authorize each one or the connection succeeds,
+      ;; the build request is accepted, and the archive send is refused with
+      ;; "unauthorized public key", which guix reports as a plain build
+      ;; failure and quietly falls back to building locally. That fallback is
+      ;; what kept this list half-wired for so long: offload looked like it
+      ;; was working (it connected, ssh auth passed) and only the archive
+      ;; step failed. Until 2026-11-05 it held exactly ONE key
+      ;; (claude-workstation's), and even that one had gone stale when that
+      ;; VM was rebuilt from the MinIO image on 2026-10-27 -- offload from
+      ;; claude-workstation has been falling back to local builds since.
+      ;;
+      ;; Populated 2026-11-05 from each box's live /etc/guix/signing-key.pub,
+      ;; fetched over ssh against machines.scm's pinned host keys (so the key
+      ;; came from a host-key-verified peer, not from a copy) and then
+      ;; hash-checked entry by entry against the same file on the box. Keys
+      ;; here are compared as the set of #...# fingerprint tokens they are
+      ;; built from, not as whole-file hashes:
+      ;;   grep -o '#[0-9A-Fa-f]*#' <file> | sha256sum | cut -c1-10
+      ;;
+      ;; NOT here, and why: rustdesk and nyarlothotep have an offload keypair
+      ;; (secrets/hosts/<them>/guix-build.yaml) and are already in the ssh
+      ;; list below, but neither box was reachable on 2026-11-05, so there was
+      ;; no verified signing key to put here -- their offload keeps falling
+      ;; back to local builds until it is fetched and added. nyarlothotep is
+      ;; the asymmetry to watch for: its ssh half is in the list below and its
+      ;; archive half is not, and the two trusts have to be kept in step by
+      ;; hand. vault, plane, comfyui, dagon and the critical-grind/outlines
+      ;; have no offload keypair at all, so offload from them cannot even
+      ;; authenticate as guix-offload; adding their signing keys here would be
+      ;; decoration, not wiring.
       (simple-service 'guix-offload-signing-keys
                       guix-service-type
                       (guix-extension
                        (authorized-keys
-                        (list (plain-file "claude-workstation-signing-key.pub"
-                                          "(public-key \n (ecc \n  (curve Ed25519)\n  (q #EFED7FDADFFF4E2559977AFD10310E21C4EEF7685C6297595D5333CBEF037EDE#)\n  )\n )\n")))))
+                        (list
+                        (plain-file "agents-signing-key.pub"
+                                          "(public-key \n (ecc \n  (curve Ed25519)\n  (q #F4004CE8FDDF38E595E3E3F729AAA8A859A9668426D9A97625D9BB06F3E92505#)\n  )\n )\n")
+                        (plain-file "arr-signing-key.pub"
+                                          "(public-key \n (ecc \n  (curve Ed25519)\n  (q #F8790D830443BE34C9BFA0094C4EBF53B05DAAB7D9CC1EED68C27A6F1864B53A#)\n  )\n )\n")
+                        (plain-file "caddy-signing-key.pub"
+                                          "(public-key \n (ecc \n  (curve Ed25519)\n  (q #2F0EDD2DCB06E68EA337FCBED653CEF897EB57A6ED1E09DD949A04A0752B5761#)\n  )\n )\n")
+                        (plain-file "claude-workstation-signing-key.pub"
+                                          "(public-key \n (ecc \n  (curve Ed25519)\n  (q #1A6D33B325CD6BA778237B44FFD7DB8A52388CEB4C721F02AC2B4C7A388A3E3D#)\n  )\n )\n")
+                        (plain-file "concourse-db-signing-key.pub"
+                                          "(public-key \n (ecc \n  (curve Ed25519)\n  (q #72F26FF2FEF90828672D1C9D5042F45C1131706AB43D0C78A1E3D9B1C1CB0CFE#)\n  )\n )\n")
+                        (plain-file "concourse-web01-signing-key.pub"
+                                          "(public-key \n (ecc \n  (curve Ed25519)\n  (q #AB41D70ABEEEAB9ED42421D544225FF14497D4F12726618EBB888887FC6D5F30#)\n  )\n )\n")
+                        (plain-file "concourse-worker01-signing-key.pub"
+                                          "(public-key \n (ecc \n  (curve Ed25519)\n  (q #5BE3C868E7B0C0D78007155B278EC33EB103CF78DACD43252D6F3AB09BBA65B2#)\n  )\n )\n")
+                        (plain-file "downloads-signing-key.pub"
+                                          "(public-key \n (ecc \n  (curve Ed25519)\n  (q #B612C4C2ACA4C3CBF3AEB3DF6DABB43848DEC7055CB70AE872D21280C8846FF7#)\n  )\n )\n")
+                        (plain-file "git-signing-key.pub"
+                                          "(public-key \n (ecc \n  (curve Ed25519)\n  (q #64F15C0142989CE13EBAE661933E8255E9D2B01C5679415E67D275C808796104#)\n  )\n )\n")
+                        (plain-file "grafana-signing-key.pub"
+                                          "(public-key \n (ecc \n  (curve Ed25519)\n  (q #7E2059149175B499A495DCD04A9C55417EC73535263BF461A8457D721CECA6B1#)\n  )\n )\n")
+                        (plain-file "jellyfin-signing-key.pub"
+                                          "(public-key \n (ecc \n  (curve Ed25519)\n  (q #D76B2155EB6DACF6DA52766ECB3B2B8E140B288ACABF479E7692A30FE1F1251C#)\n  )\n )\n")
+                        (plain-file "loki-signing-key.pub"
+                                          "(public-key \n (ecc \n  (curve Ed25519)\n  (q #C45A1F7B839D2FEADE560338156B11D15D92EE5FCF100610DCEE5404E2C47AB8#)\n  )\n )\n")
+                        (plain-file "pihole-signing-key.pub"
+                                          "(public-key \n (ecc \n  (curve Ed25519)\n  (q #32FD8219F7BFE7AAAF40832F81F539CDA7260BDBC87A0546E358EEB53173BEE5#)\n  )\n )\n")
+                        (plain-file "prometheus-signing-key.pub"
+                                          "(public-key \n (ecc \n  (curve Ed25519)\n  (q #D53183A990CDBFBEE87323948146E93CFC8DAF3D6DF3B7EDAC177F8568380D6F#)\n  )\n )\n")
+                        (plain-file "prowlarr-signing-key.pub"
+                                          "(public-key \n (ecc \n  (curve Ed25519)\n  (q #662D86C273C94C01D3AD544210C6FDEBCCF192B12D7A006F984EC2050ED039A3#)\n  )\n )\n")
+))))
+
       (simple-service 'guix-offload-authorized-keys
                       openssh-service-type
                       `(("guix-offload"
@@ -126,10 +184,21 @@
                          ,(plain-file "prometheus-offload.pub" "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIM+nhIk+ySFYMj7I4SDwA/LKyM8MH3+8NMIabyAIuMSC guix-offload@prometheus\n")
                          ,(plain-file "prowlarr-offload.pub" "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIPxWQLDvXJGgp4HsOpSEMyLTGi0lL2zYcvRvARuVv/nU guix-offload@prowlarr\n")
                          ,(plain-file "rustdesk-offload.pub" "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAII0DTgAJjaG1+0STwTBDRfUrbP/q0KFVnY5OdjrqKasS guix-offload@rustdesk\n")
+                         ,(plain-file "agents-offload.pub" "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIAqCZu5kUl0/ghyS01gQJDrRWhn+ZnVJ/ofqaP/L2dd6 guix-offload@agents\n")
+                         ,(plain-file "concourse-db-offload.pub" "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFSFUzB2qQ/oYwfwYk2rfNvnLwoSmjWYvqZaMuH3saCq concourse-db-guix-build\n")
+                         ,(plain-file "concourse-web01-offload.pub" "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIObAHuUSuAvA27OHWQlCp6MbSpaK9usd6gMA1YYzj5Kx concourse-web01-guix-build\n")
+                         ,(plain-file "concourse-worker01-offload.pub" "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIEP76t+Fz1kBP8RpBJ5iDlJKZvN4NjuSFeJoR31nu/xw concourse-worker01-guix-build\n")
                          ;; New since this list was on nug: comfyui itself
                          ;; offloads TO this VM (with-nug-offload? default #t
-                         ;; in comfyui.scm), so its key needs to land here
-                         ;; too once generated.
+                         ;; in comfyui.scm), so its key needs to land here too
+                         ;; once generated -- but it has NO offload keypair yet
+                         ;; (secrets/hosts/comfyui/guix-build.yaml does not
+                         ;; exist), so nothing can be added for it until one is
+                         ;; created; dagon is in the same position. The four
+                         ;; entries above this comment (agents + the three
+                         ;; concourse boxes) were added 2026-11-05 from each
+                         ;; box's live /run/secrets/guix-offload-key, verified
+                         ;; against the same file on the box.
                          )))
       (service alloy-service-type
                (alloy-configuration
