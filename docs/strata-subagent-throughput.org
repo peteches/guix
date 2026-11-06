@@ -1,0 +1,617 @@
+#+TITLE: Strata throughput plan for the orchestrator + subagents workflow
+#+DATE: [2026-11-06]
+#+STATUS: implemented through Phase C and the model swap (2026-11-06) — engine 0.1.57 live, the native-path batch/parallel/serve plumbing wired, parking raised to 9 windows, ISTA IQ2_XS serving. ~--parallel~ is OFF: measured, it costs throughput on this card (§11).
+
+* 0. Summary — what to change, in what order
+| Phase | Engine config                                        | Lanes | pi working set | Expert cache          | Expected result                |
+|-------+------------------------------------------------------+-------+----------------+-------------------------+--------------------------------|
+| **U** | engine 0.1.52 → **0.1.57** (app ~v0.2.11~), ~--drafting mtp~ pinned by hand | — | unchanged | unchanged | Arc prompt/parallel gains measured upstream; ~--batch~ slot parking keeps its prefix (#4420); new K/V-window ladder may replace the context sacrifice |
+| A     | ~--context 196608 --parallel 2 --batch-mtp --spec 2~ |   2   |     ≤ 98k      | ~15,400 slots (63 %)    | +33 % at 2 lanes, −3..−5 % solo |
+| B     | ~--context 131072 --parallel 4 --batch-mtp --spec 2~ |   4   |     ≤ 65k      | ~14,500 slots (59 %)    | ~2× aggregate under fan-out     |
+| C     | ~--context 98304  --parallel 4 --batch-mtp --spec 2~ |   4   |     ≤ 65k      | ~15,400 slots (63 %)    | ~2× aggregate, *cheaper than B* |
+| C'    | ~--context 98304  --parallel 6 --batch-mtp~          |   6   |     ≤ 65k      | ~13,700 slots (56 %)    | probe: likely diminishing       |
+
+Run **Phase U** first (§0a): upgrading to engine 0.1.57 changes the cost model —
+the ~#4420~ batch-slot parking fix, measured Arc prompt/parallel gains in 0.2.9,
+and 0.2.10's new K/V-window ladder that may let us keep ~196608~ with four lanes
+— then re-measure and decide. Phase C is the recommendation once the
+orchestrator/subagent workflow is the dominant load: **four lanes at ~98k cost the same VRAM as the two lanes measured
+at 196608** (4 × 98304 = 2 × 196608 = 393,216 tokens of session K/V), so it buys
+double the concurrency for nothing beyond a smaller pi window. Phase B is the
+fallback if the orchestrator cannot live inside 98k.
+
+Three things gate any of this, and a fourth sets expectations:
+1. ~--batch-mtp~ is *not optional* — ~--batch~ alone measured −59 % on this box (§3).
+2. The native-mode wrapper in ~peteches/services/strata.scm~ silently dropped
+   ~--batch~/~--parallel~ and ~extra-args~ (§6), so batching could not be switched
+   on from the Guix config at all — **this is fixed** (§11), and the measured
+   answer is that on this card it should stay off. The ~STRATA_BATCH_MTP=1~
+   environment route is still the only part that worked without a patch.
+3. Every slot's K/V is sized by the *engine-wide* ~--context~, not by what a
+   request actually uses (~--max-sequence-length~ is unsupported on SYCL,
+   ~--kv-grow~ auto-disables here). So context is the price of concurrency, and
+   pi's compaction settings are the lever that lets us pay less.
+4. Batching does **not** prefill in parallel — the server admits requests one at
+   a time (§3a). What it buys is decode overlap, cheaper CPU-expert amortisation
+   per row, and prompt-read yielding for the orchestrator's 65 k+ reads. Run
+   §6a's free levers first; set ~--parallel~ to the usual fan-out *plus the
+   orchestrator*, not to a hope.
+
+* 0a. Phase U — upgrade the engine first (recommended, changes the cost model)
+We run **engine 0.1.52**, which ships inside app release **v0.2.7**. Latest is
+**engine 0.1.57** inside **v0.2.11** (2026-11-05); every release in between
+publishes ~strata-engine-<ver>-linux-x86_64-sycl.tar.gz~, so the SYCL path is
+maintained at each step:
+
+| App tag (engine)     | What it contains that bears on this box                                                                                                                                  | Effect on the plan                       |
+|----------------------+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------+--------------------------------------------|
+| v0.2.8 (0.1.54)      | **"Parking an idle ~--batch~ slot keeps the shared prefix, so the first token of round 2 takes 0.66 s instead of 3.3 s (#4420)"**; "the automatic expert cache leaves the reserve you asked for (#4474)"; release title "fewer lost tool calls"; clearer message when a model folder needs AVX-512 | Removes the handoff/parking pain that made ~--batch~ cost −59 % here. **Strongest single reason to upgrade before enabling lanes.** |
+| v0.2.9 (0.1.55)      | **Intel Arc Pro B65: prompts 4.6 %, 14.6 %, 15.8 % faster** at 1K/4K/16K tokens; **8 requests at once 53.8 vs 42.1 tok/s**; **single request through the batch server only 2.7 % slower**; Arc card detection fixes in ~strata launch~; research switches ~STRATA_PAR_COUNTERS~, ~STRATA_COALESCE_PREFILL~ (prefill coalescing = the serial-admission problem); GDN kernels default-on for NVIDIA and some Radeon cards — **SYCL is not named** | Arc/SYCL got real prompt and parallel gains, and the single-lane batch penalty there is ~−2.7 %~ against our −3 % (with drafts) / −59 % (without). Re-measure rather than re-use my numbers. |
+| v0.2.10 (0.1.56)     | **The memory ladder: "the context never shrinks"** — when a start is short of VRAM it keeps your context *and* your request count and moves work off the card: KV window steps 20480 → 8192 → 4096, then the MTP layer is dropped, then "the prompt path's buffers use less (it keeps 16 expert-cache slots instead of 128)", and as the last step the output head (0.41 GiB) goes to pinned host RAM which makes **decode about 3 times slower**. 128K on 8 GB cards. **DFlash2 becomes the default drafter, one drafter per run**, and "DFlash2 answers one request at a time … to run several at once, choose MTP"; Intel Arc A750 measured DFlash2 2.6 % slower than MTP | **Potentially plan-changing**: it may let us keep ~--context 196608~ with 4 lanes by stepping the *resident K/V window* instead of stealing expert-cache VRAM. Watch for the last ladder step. Must now pin ~--drafting mtp~ explicitly. |
+| v0.2.11 (0.1.57)     | Unsloth "Dynamic v3.1" Qwen3.8-Flash-Next quants (UD-IQ1_M 68.0 GB, UD-Q2_0 70.6, UD-IQ2_XS 75.8 GB, … each 3–4 files, "the last file is the 28.8 GB table the model reads per token"); NVIDIA-only prefill chunk 32768 (compute capability ≥ 8.0) and Radeon prompt gains — **Arc is not in the prompt-speed list**; "a fix for mixed-up replies from model copies" (named in the title, sub-section not locatable); published batch-path drafter curve on one RTX PRO 6000 (users → aggregate tok/s: 1 = 105.7/136.9/146.8, 2 = 150.9/172.4/171.2, 4 = 176.6/**192.2**/180.7, 8 = **209.8**/190.6/194.0 for no-drafter/MTP/DFlash2) | Quant options for later (our IQ2_XS stays right). The drafter curve confirms the shape we plan for: drafting wins at 1–2 users, raw batching keeps climbing to 8. |
+
+Why this is low-risk for us specifically: ~INTEL_ARC.md~ says Intel Arc is an
+official platform since 0.1.40.2 and **the maintainers test on an Arc Pro B70
+(32 GB, ~xe~ driver)** — our exact card — and ~INTEL_INT8_EXPERTS.md~ says the
+int8 MoE expert kernels default to ~auto~ on Battlemage ~bmg-g21~ / ~bmg-g31~,
+where ~bmg-g31~ **is the Pro B70**. So our card is the reference platform, not an
+exotic port. Check the engine's one line about that path after the upgrade.
+
+Sanity band for any post-upgrade measurement (INTEL_ARC.md, same card):
+- Port author, B70 32 GB, 0.1.31-sycl: Flash-Next-adjacent **IQ2_XS 51–64 tok/s,
+  256K context** (Coder IQ1_M 70–78 tok/s, ~790 tok/s prompt). Our 60 tok/s sits
+  at the top of that band — our config is not a degenerate one.
+- Maintainers, B70 32 GB (~xe~), 0.1.40.2+: **IQ3_S with 11.5k of 24.6k experts
+  resident → decode 30 (prose) to 41 (code) tok/s**, prompt 980–1,000 tok/s at 4K.
+  So ~IQ3_S~ *loses* decode on one B70 against our IQ2_XS — BATCHING.md's
+  "32 GB or a split" for IQ3_S is about fitting, not about speed.
+- 2× Arc Pro B70, IQ3_S, 0.1.44: ~--layer-split auto~ mis-picked a split
+  (~11 tok/s~ where ~--layer-split 30~ ran ~54~) — if a second card is ever
+  added, pin the split by hand; and a *pair* of B-series cards gets
+  ~--pipeline-windows 2~ + ~--spec 2~ from setup, measured **17–23 % faster
+  decode** (chat 71–74 vs 60–63) — that is the one place the pipelined machinery
+  does exist on Arc, and it needs a second card.
+
+Decision rule: **upgrade, re-run §3's arms on 0.1.57, then decide lanes and
+context.** Phase U does not replace §6a; run the free levers *after* the upgrade
+so they are measured against the new engine. Deploy mechanics:
+- bump ~peteches/packages/strata.scm~: engine ~0.1.52~ → ~0.1.57~ and
+  ~%strata-vision-release-tag~ ~v0.2.7~ → ~v0.2.11~, re-hash
+  ~strata-engine-0.1.57-linux-x86_64-sycl.tar.gz~ (and the matching
+  ~strata-control-0.1.57~ / vision assets);
+- re-diff the engine's ~--help~ against the wrapper's flags before deploying —
+  drafting selection is now ~--drafting~ / ~--draft dflash2~, one drafter per
+  run, and ~--spec~ semantics moved; pin MTP explicitly (Arc measured MTP ahead
+  of DFlash2, and DFlash2 serves one request at a time, which would silently
+  undo the lanes);
+- first start after an upgrade can JIT-compile kernels (~about 47 s~ per
+  INTEL_ARC.md) unless the binary is AOT for ~bmg-g31~ — shepherd is fine with
+  it, but any health check with a short timeout will cry;
+- upstream has ~strata components rollback~; on Guix rollback means redeploying
+  the previous package version, so keep the old hash in the git history.
+
+* 1. Why the economics flip under subagents
+Measured over 3,559 logged requests (1–6 Nov, engine 0.1.52, batch off):
+
+- 32.9 requests/hour, 207–1157 per day, mean duration 31.4 s, mean output 1148 tokens.
+- **Time-weighted mean concurrency 0.30, peak 2.** Only **1 of 60 traffic hours**
+  exceeded one stream's capacity (3,663 s busy vs 3,600), and only **3.3 % of all
+  busy time** sits in that hour.
+- Prompt-dominated agent loops: 98.7 % prefix reuse (98.7 M of 113 M tokens read),
+  working prompts up to 146,264 tokens, TTFT p95 far worse than decode:
+  observed 33.2 s, 46.3 s and **120.2 s** waiting behind one long read/decode.
+- Single-stream ceiling ~**60 tok/s** (MTP drafts accepted ~65 %), and it is
+  flat: 1, 2 and 4 open connections all measured ~52–61 tok/s aggregate.
+
+So batch=1 was chosen correctly for the traffic of the last months — the engine
+was idle ~74 % of the time and batching had nothing to buy. The orchestrator +
+subagents workflow changes the shape in two ways at once:
+
+- N lanes arrive *simultaneously*, each with a small, independent prompt
+  (the bundled ~scout.md~/~researcher.md~/~worker.md~ definitions all say
+  "operate in an isolated context … all necessary context is in the task
+  description"). That is exactly the load 2–4 slots serve.
+- The orchestrator itself stops needing a huge window, because its subagents
+  return *summaries*, not raw context. Its 113–146 k prompts were a symptom of
+  doing everything in one context.
+
+Both effects point the same way: smaller ~--context~, more lanes.
+
+* 2. The measured arithmetic that decides everything
+(Names: ~--context~ below is BATCHING.md's config name and this repo's
+~strata-instance~ field; the engine's CLI flag is ~--max-context~, which is what
+appears in ~run-strata.sh~ and in the quoted log lines.)
+
+Anchors, all from this card (Arc Pro B70, 32 GiB, engine 0.1.52 SYCL, IQ2_XS):
+
+| Constant                              | Value                          | Source                                            |
+|---------------------------------------+--------------------------------+---------------------------------------------------|
+| K/V cells, ~--kv q4_0~                | 6,144 B/token                  | BATCHING.md §"How big the K/V cache is"            |
+| Session state                        | ~3,000 B/token                 | engine help (1,265) + measured slot cost          |
+| **Slot cost, engine-stated**          | ~9,300 B/token of ~--context~  | ~2.25 GiB@262144~, ~1.71 GiB@196608~ (linear)     |
+| **Marginal cache loss per slot**      | up to ~20,500 B/token          | baseline 24,479 MiB → arm E 21,204 MiB at 2 slots |
+| ~--batch-mtp~ extra per slot          | ~198 MiB (draft state+buffers) | ~--batch 2~ 19,877 MiB/14,479 slots → ~--batch 2 --batch-mtp~ 19,480/14,190 |
+| Expert slot size (compressed)        | ~1.37 MiB  (≈ 740 slots/GiB)   | 24,479 MiB / 17,801 slots                          |
+| Total experts                        | 24,576 pairs, 62,208 MiB GGUF  | ~expert-profile.bin~                              |
+| VRAM ceiling for the cache            | ~25,124 MiB ≈ 18,300 slots     | cache 24,479 + ~vram_free_mib 645~                |
+| Parking (conversation cache)         | RAM, not VRAM — ~240 MiB window, ~3.9 GiB pinned, 167 evictions | measured ~conversation_cache~ block |
+
+Two consequences that matter more than anything else:
+
+1. **The cache ceiling is ~18,300 slots regardless of context.** Raising
+   ~--parallel~ at a small context stops paying for itself once ~N × context ×
+   9.3 kB~ pushes the cache back to that ceiling — which happens around
+   ~--context 163840~ at 1 lane. Below that, every GiB freed by a smaller window
+   can go to experts.
+2. **Batch windows on this card are half CPU.** With the ~xe~ driver
+   ~--pcie-frac~ is pinned at 0 ("the GPU faults on pageable host memory, so
+   --pcie-frac defaults to 0 here (the CPU computes the experts outside VRAM)"),
+   so experts outside the cache run on the 15 pool workers at ~80 GB/s DDR5.
+   Window anatomy: ~52.12 ms/window = run 48.12 (CUDA0 GPU-reach wait 27.36 +
+   CPU experts 20.16) + commit 1.42 + emit 2.58; ~avg 3.35 rows~ per window.
+   That is why sharing a layer pass works well here (2 rows ≈ 48 % of the work of
+   1 row) *and* why shrinking the cache hurts: the CPU-expert term is the single
+   biggest slice of every window.
+
+* 3. Evidence: A/B on the live engine (5 restarts, same prompts, warm arms)
+Probe prompts identical across arms; ~busy_fraction 1.0~ means the window was
+occupied only by the probe's own requests. Baseline = today's config.
+
+| Config                                        | Slots → cache        | 1 stream | seq ×4 | 2 conc ×4 | 4 conc ×4 | 2×1024 | TTFT          |
+|-----------------------------------------------+----------------------+----------+--------+-----------+-----------+--------+---------------|
+| batch **off** (today)                         | 17,801 / 24,479 MiB  | **60.0** | 61.0   | 52.1      | 60.2      | 59.0   | 3.6 – 10.1 s   |
+| ~--batch 2~                                    | 14,479 / 19,877      | 5.4–17   | **25.7 (−59 %)** | 25.5 | 32.6       | 26.2   | 0.4 – 1.3 s    |
+| ~--batch 2 --batch-mtp~                        | 14,190 / 19,480      | 37.7 cold| 55.5   | 51.4      | 66.2 (+10 %)| 67.6 (+15 %) | 0.2 – 6.1 s |
+| ~--batch 2 --batch-mtp --kv-grow~              | 14,190 (no change)   | 52.4     | 56.2   | **70.1 (+35 %)** | 60.4     | **72.8 (+23 %)** | **0.27 – 6.3 s** |
+| ~--batch 2 --batch-mtp --context 196608~       | 15,442 / 21,204      | 56.7     | 58.9   | **69.3 (+33 %)** | 73.4*     | **72.5 (+23 %)** | **0.23 – 4.3 s** |
+
+\* contaminated by background production traffic (busy fraction 3.25).
+
+Readings:
+- **MTP drafts are the whole game.** Slots carry no drafts by default; this
+  engine's solo speed is draft-dominated (60 with, ~26 without), so plain
+  ~--batch~ cost −59 %. With ~--batch-mtp~ the windows do carry proposals
+  (~captured the batch window over slots 1,1,0,0~) and the cost collapses to −3 %.
+- **~--context~ buys back the cache.** 262144 → 196608 cut slot cost 2.25 → 1.71
+  GiB and returned **+2,359 expert slots**, recovering most of the loss.
+- ~--kv-grow~ is **auto-off** on this box: ~--kv-grow is off (one GPU, a profile,
+  the whole K/V in VRAM, every expert in RAM, no --batch, --vram-elastic or
+  --peer-device)~ — printed even with ~--batch~ present, and ~expert_slots~
+  unchanged. Lazy K/V is therefore *not* an escape hatch in 0.1.52 SYCL.
+- ~--batch~ **without** ~--batch-mtp~ degrades parking, our biggest lever
+  (87 % prompt reuse): ~conversation cache: slot 0 not parked before its
+  overwrite (its 623 tokens have no per-slot draft K/V without --batch-mtp)~.
+  With ~--batch-mtp~ parking from slots works again (~parked 437 tokens from slot 0~).
+- Long prompt reads **yield to the slots** once there is a second session:
+  ~the prompt read gives way at 73920 of 113651 tokens; slot 1 holds it~,
+  ~the prompt was read in 9 parts, the slots decoding 26124 ms between them~.
+  That is the cure for the 120 s head-of-line waits, and it works even without
+  steady concurrency.
+
+** 3a. What batching does *not* do — read this before promising 4×
+BATCHING.md is explicit, and it is the single most important caveat for the
+subagent workflow:
+
+#+BEGIN_QUOTE
+It does not make independent cold prompts prefill in parallel. The server admits
+them one at a time; a running value of four can mean four requests are in
+flight, not four slots decoding together. A slot already decoding may make
+progress while the next prompt is read, but long independent prompts can finish
+before enough admissions overlap to fill every configured slot.
+#+END_QUOTE
+
+So four scout lanes do not prefill four prompts at once. What batching *does*
+provide, in the doc's words and as observed in our engine log:
+
+- ~Each admission reads the request's prompt through the usual prompt path …
+  the slots decode between the prompt's chunks: after each chunk (~--prefill~,
+  2048–8192 tokens) they decode for half as long as the chunk took
+  (~STRATA_BATCH_DECODE_SHARE~, default 0.5), so a long prompt slows the others
+  down instead of stopping them.~ Confirmed live: ~the prompt read gives way at
+  73920 of 113651 tokens; slot 1 holds it~, ~the prompt was read in 9 parts,
+  the slots decoding 26124 ms between them~.
+- ~A long prompt gives way to a short one (#656's cooperative preemption): when
+  a request with a prompt under half as long is waiting, the server sends
+  BYIELD.~ Orchestrator (65–146 k) beside a scout (2–8 k) is that pattern
+  exactly — the new workflow makes yielding worth far more than it was under
+  the old traffic.
+- ~A request left alone in a slot … goes back to the solo path … (at most twice
+  per request; with --prompt-cache 0 it stays in the slot; STRATA_PARALLEL_SOLO=0
+  turns it off).~ And the doc's measurement of a draft layer built for another
+  conversation accepting as many drafts (140 of 172) as one that read the
+  conversation (140 of 173) means the solo-return path keeps its drafts.
+- ~More requests than slots wait for a free one (~live.slots~, ~live.running~)~
+  — fan out to ~--parallel − 1~ lanes if the orchestrator also decodes, or the
+  queue comes back.
+
+The honest expectation: the gain is **decode overlap plus prompt-read yielding**,
+not parallel prefill. Warm agent turns read only their new 2–8 k tokens, so
+aggregate rises because decodes overlap; the ~first~ turn of each lane still
+pays a serial cold read (cold reads measured ~3.4 k tok/s~, so four lanes' first
+turns cost ~4 × 8 k tokens ≈ 9 s of admission time, amortised over each run).
+
+* 4. Sizing table (measured anchors, estimates flagged)
+Using the engine-stated 9.3 kB/token for session cost and the measured
+~25,124 MiB~ VRAM ceiling, with the pessimistic 20.5 kB/token marginal slope
+shown as the low end:
+
+| ~--context~ | ~--parallel~ | Session K/V      | Est. cache       | Est. slots (residency) | Notes                                        |
+|-------------+--------------+------------------+------------------+------------------------+----------------------------------------------|
+| 262144      | 1            | —                | 24,479 MiB       | 17,801 (72 %)          | **today**, measured                          |
+| 196608      | 1            | —                | ~23.0 GiB        | ~16,900 (69 %)         | estimate, batch off, no lane cost            |
+| 196608      | 2            | 3.43 GiB         | 21,204 MiB       | 15,442 (63 %)          | **measured** (Phase A)                       |
+| 131072      | 4            | 4.57 GiB         | 19.5 – 20.4 GiB  | ~14,200 – 14,900 (58–61 %) | estimate (Phase B)                      |
+|  98304      | 4            | 3.43 GiB         | ~20.4 – 21.2 GiB | ~15,400 (63 %)         | **≈ arm E's cache**, Phase C                 |
+|  98304      | 6            | 5.16 GiB         | ~18.4 – 19.9 GiB | ~13,700 – 14,700 (56–60 %) | estimate, probe (Phase C')            |
+
+Rule of thumb to keep: **~--parallel × --context ≤ 400,000 tokens~** keeps
+residency ≥ 55 % on this card; ~6 × 98304 = 590k~ is already past it.
+
+Residency vs measured decode hit rate: 72 % → 97–99 %, 63 % → 92–98 %,
+58 % → 86–93 % (the last from the ~--batch~ without drafts arm, where CPU-expert
+time per window rose to 24–34 ms of 45–52 ms). Below ~55 % residency the CPU term
+grows faster than the lane gain — that is the doc's "batching buys waiting time,
+not speed" cliff, and it is real here.
+
+* 5. pi-side changes (the other half of the deal)
+pi's compaction trigger is ~contextWindow − reserveTokens~ — confirmed by
+BATCHING.md §32 GB section: ~contextWindow 262144 + reserveTokens 98304 →
+compact_above_tokens = 163840 --mtp-max-t 0~, and by today's observed prompts
+(113–146 k, i.e. just under 163,840).
+
+| Engine ~--context~ | ~models.json contextWindow~ | ~reserveTokens~ | compact at | ~keepRecentTokens~ | comment                                   |
+|--------------------+-----------------------------+-----------------+------------+--------------------+---------------------------------------------|
+| 262144             | 262144                      | 98304           | 163,840    | 49152              | today                                       |
+| 196608             | 196608                      | 98304           |  98,304    | 49152              | Phase A: orchestrator drops ~45 k of work   |
+| 131072             | 131072                      | 65536           |  65,536    | 32768              | Phase B                                     |
+|  98304             |  98304                      | 32768           |  65,536    | 32768              | Phase C — same working set, half the window |
+
+Constraints worth writing down, because they bite:
+- ~reserveTokens ≥ 32768~ always. The model entry's ~maxTokens 16384~ plus
+  ~reasoning_budget_tokens 8192~ means one turn can legitimately want ~25 k~ of
+  room; a smaller reserve makes compaction fight the requests.
+- ~models.json contextWindow~ must never exceed the engine ~--context~: the cap
+  is hard, and an over-cap prompt is a 400, not a graceful shrink.
+- ~maxTokens 16384~ on a 98k window is fine, and ~--mtp-max-t~ should be left
+  alone: help says ~cap the MTP's windows at M tokens (0 = --spec; longer ones
+  come from suffixes)~, and the live engine reports ~spec 4, mtp_max 2~ — the
+  draft window is already capped at the ~--spec 2~ the wrapper passes, so the
+  budget clamp this knob addresses does not apply to us. Caveat worth a probe:
+  ~--spec~ is **absent from 0.1.52's SYCL ~--help~** while ~/metrics~ reports
+  ~spec 4~ — the wrapper's ~--spec 2~ is either a no-op or overridden by the
+  server, and if it is a no-op then ~--spec 4~ is already live and the draft
+  window question is settled by the engine, not by us.
+- Other tenants must be brought down with the cap, or they will 400:
+  SillyTavern's context slider on ~agents:8001~, and any client that asks for
+  262k. rules-lawyer's prompts (4–17 k) are unaffected.
+
+* 6. Required code change (~peteches/services/strata.scm~) — done 2026-11-06
+**As implemented it differs from the sketch below**, because ~serve --help~ on
+0.1.57 shows ~--parallel~ is a *serve* flag ("requested concurrent engine slots")
+while ~--batch N~ / ~--slots N~ are engine flags: the implementation keeps them as
+separate config fields (~parallel~ spliced onto the exec line, ~batch~ spliced into
+~"args"~, ~batch-mtp?~ defaulting true, plus ~serve-args~ for serve-only flags and
+~engine-flag-line~ for valueless ones). Measured outcome in §11.
+
+The catalog path honours ~parallel~ and ~extra-args~:
+
+#+CAPTION: ~strata-launch-args~, lines 401–414 — used only at line 451 (catalog)
+#+BEGIN_SRC scheme
+(append (list "launch" …)
+        (if (strata-configuration-parallel config)
+            (list "--parallel" (number->string …)) '())
+        (strata-configuration-extra-args config))
+#+END_SRC
+
+~comfyui~ runs the **native-pack** path, whose ~--serve~ line is emitted by
+~strata-native-wrapper-script~ (line 544 ff.) from a literal arg list that
+includes ~--max-context~, ~--kv~, ~--vision~ and the parking flags but **not**
+~--parallel~ and **not** ~extra-args~ — verified against the live
+~/var/lib/strata/run-strata.sh~ before the patch (0 occurrences of ~--batch~ /
+~--parallel~, despite the record having both fields).
+
+There is a **shorter route for the MTP half** that needs no arg patch: the
+native wrapper already writes ~export STRATA_SSD_GBPS=…~ lines, and the engine
+takes ~STRATA_BATCH_MTP=1~ from the environment (help: "~(STRATA_BATCH_MTP=1
+does the same)~"), alongside ~STRATA_KV_GROW~, ~STRATA_PREFILL_AUTO_MAX~,
+~STRATA_HOST_CORE~, ~STRATA_POOL_CORES~, ~STRATA_SPEC_COUPLED~; BATCHING.md
+adds ~STRATA_BATCH_DECODE_SHARE~ (default 0.5), ~STRATA_PARALLEL_SOLO~,
+~STRATA_BATCH_MTP_SERIAL~ and ~STRATA_BATCH_SELF_COMMIT~. An ~env-extra~ field
+(or reusing the ~ssd-gbps~ pattern) flips those *today*. Only the lane count
+itself needs the arg patch — ~--batch N~ / ~--slots N~ has no env equivalent.
+
+Fix, in the idiom the file already uses for ~reasoning-json~ and
+~conv-cache-json~ (precompute at gexp-elaboration time, splice with ~#$~ — a
+gexp does not capture let-bound locals, and the file's own comment records the
+0-byte ~run-strata.sh~ that mistake produced):
+
+#+BEGIN_SRC scheme
+        ;; Batch lanes as "args" lines, precomputed HERE like conv-cache-json.
+        ;; The engine's own default for --batch-groups on SYCL/Metal is absent
+        ;; (pipeline.* is CUDA/HIP-only), so only the lane count + --batch-mtp are
+        ;; emitted; --batch-groups/--pipeline-windows stay catalog-path only.
+        (batch-json
+         (string-join
+          (append
+           (if (strata-configuration-parallel config)
+               ;; --batch is the documented name for the lane count (help:
+               ;; "--batch N / --slots N"); --parallel is the alias the
+               ;; catalog path uses.
+               (list (string-append "    \"--batch\", \""
+                                    (number->string
+                                     (strata-configuration-parallel config))
+                                    "\",\n"))
+               '())
+           (if (and (strata-configuration-parallel config)
+                    (strata-configuration-batch-mtp? config)
+                    ;; MTP is model-scoped, not config-scoped: the wrapper
+                    ;; already lets (mtp-dir (strata-native-model-mtp-dir
+                    ;; model)) at line 627 — reuse it, and note --spec is
+                    ;; emitted as a literal "--spec", "2" at line 766, so
+                    ;; --batch-mtp's precondition holds and raising --spec
+                    ;; is also a wrapper edit.
+                    (strata-native-model-mtp-dir model))
+               (list "    \"--batch-mtp\",\n") '())
+           (map (lambda (a) (string-append "    \"" (string-quote a) "\",\n"))
+                (strata-configuration-extra-args config)))
+          ""))
+#+END_SRC
+
+and splice ~#$batch-json~ into the ~"args": [ … ]~ block anywhere after the
+~--spec~ / ~--mtp~ lines (the measurement harness put it right after the
+~"--mmap-experts"~ line, which is inside ~args~ and worked). Add the record field:
+
+#+BEGIN_SRC scheme
+  (batch-mtp? strata-configuration-batch-mtp?
+             (default #t)
+             (documentation "Give each batch lane its own MTP drafter. Without
+              it, batched windows carry no drafts: measured -59% on this box."))
+#+END_SRC
+
+With that, Phase A/B/C are pure configuration values in
+~peteches/systems/comfyui.scm~ (~context~, ~parallel~, ~extra-args~ and the
+parking flags) — no new machinery.
+
+* 6a. Phase 0 — free levers first (no VRAM, no context, no lane cost)
+Before paying for lanes with context, measure these: they cost a restart and
+nothing else, and single-stream speed is still ~96 %~ of this box's time.
+
+| Lever                                             | Why it is free here |
+|---------------------------------------------------+-----------------------------------------------------|
+| ~--lookup-chain 2~                                 | opt-in: "after the MTP's drafts, add up to K prompt-lookup drafts that continue them (the window grows to at most 8; default 0 = off)". Agent loops repeat tool-call boilerplate, which is what prompt lookup drafts from, and a wider window **amortises the CPU-expert term** that costs 20–34 ms of every window on this card. No VRAM. |
+| ~--suffix-draft~ (default 3)                       | already active (that is the ~lookup: 3~ in ~/metrics~); tune it with ~--lookup-chain~. |
+| ~--short-read 256~                                 | "read at most N fresh text tokens through the decode windows instead of the batched prompt path (default 64, 0 = off)" — an agent turn's new content (a tool result) is exactly that shape. But ~N~ tokens read at ~60 tok/s~ is ~N/60~ s (256 ≈ 4 s), so this only wins if the prompt-path stall dominates. Measure it, don't assume it. |
+| ~--prompt-cache~ (default 6, "~118 MB of RAM each~"), ~--prompt-cache-every 16384~, ~--prompt-cache-tail~ | the ~GEN → BGEN~ slot-handoff checkpoints BATCHING.md describes; ~--prompt-cache 0~ makes a returning conversation re-read its prompt, which is the worst thing that can happen to a 65 k orchestrator turn. RAM, not VRAM. |
+| ~--prefill auto:16384~ / ~STRATA_PREFILL_AUTO_MAX~ | bigger chunks = fewer yields = faster cold reads, but each lane stop gets longer. Tune *after* lanes exist. |
+| ~--adapt-async 1~                                  | opt-in with the resident-RAM mode (ours: ~R4 hit path ON - resident experts are computed on the GPU~): the adaptive tier's expert swaps advance between verify windows instead of a window waiting for a whole swap. Unmeasured here — worth one probe. |
+
+~--lookup-chain 2~ is the one to run first: it attacks the same CPU-expert-bound
+window that caps per-lane speed, for zero VRAM.
+
+* 7. Phase A — deploy this first (no risk, measurable)
+~peteches/systems/comfyui.scm~, the sc117 instance + service fields:
+
+#+BEGIN_SRC scheme
+(context 196608)                      ; was 262144
+(parallel 2)                          ; was unset (=1)
+(batch-mtp? #t)                       ; or via extra-args until §6 lands
+(extra-args '("--lookup-chain" "2"))  ; Phase 0 lever, no VRAM
+#+END_SRC
+
+plus the pi-side pair in ~configs/pi/defaults/~ (~models.json contextWindow
+196608~, ~settings.json reserveTokens 98304~ unchanged → compact at 98,304).
+
+Expected, from §3: +33 % aggregate and ~15× lower TTFT whenever two conversations
+coexist, −3..−5 % single stream, −45 k off pi's working set. Rollback is a
+revert + reconfigure; the wrapper is regenerated at activation so there is no
+state to clean.
+
+* 8. Phase B/C — the target for the subagent workflow
+Engine (Phase C):
+#+BEGIN_SRC scheme
+(context 98304) (parallel 4) (batch-mtp? #t)
+(conversation-cache-mib 8192)          ; was 4096 — 4-6 lanes × ~240 MiB windows
+(conversation-cache-slots 9)           ; was 5;  evictions=167 already at 5 slots
+(extra-args '("--lookup-chain" "2"))   ; wider draft windows, no VRAM
+#+END_SRC
+Why the parking numbers move: parked conversations live in **RAM** (measured
+~pinned_mib 3,875~, each park ~30–60 ms~ and a ~24576-token/~240 MiB window), and
+evictions today (167) already cost full prompt re-reads. Under fan-out every lane
+is its own conversation, so 5 park slots is not enough — an evicted orchestrator
+turn is a ~65 k-token re-read (~15–20 s).
+
+pi (Phase C): ~contextWindow 98304~, ~reserveTokens 32768~, ~keepRecentTokens 32768~.
+
+Lane arithmetic: ~--parallel 4~ means the orchestrator **plus three** subagents —
+the orchestrator's own decode holds a slot while it waits on its children. Four
+scouts alongside it need ~--parallel 5~ = 4.6 GiB of session K/V rather than
+3.4 GiB at ~98304~, i.e. roughly ~800~ expert slots dearer. Read the startup
+log's ~expert cache N slots~ line before promising five lanes; the doc's rule is
+that requests beyond the slot count simply wait, so fan-out past ~--parallel~
+moves the queue rather than removing it.
+
+Acceptance thresholds (run the same harness used for §3 —
+~/tmp/arm.py~ + ~/tmp/patch_wrapper.py~, driven over
+~ssh -T comfyui.ts 'sudo -n python3 -'~):
+
+| Check                             | Pass condition                              |
+|-----------------------------------+---------------------------------------------|
+| ~expert_slots~ after start         | ≥ 13,000 (≥ 55 % residency)                 |
+| ~batch_slots~ / ~concurrency.serving~ | == ~--parallel~                          |
+| ~GET /metrics~ → ~live.slots~, ~live.running~ during a 4-lane probe | ≥ 2 slots in state ~decoding~ at once. The doc's own warning: "a running value of four can mean four requests are in flight, not four slots decoding together" — serial admission with one busy slot is a *fail*, not a pass. |
+| doc-prescribed handoff test       | long request alone, then a second one while it decodes; the first's ~GEN → BGEN~ transfer must report "a large reused prefix and only the new token(s) read" (BATCHING.md §"After changing the setting…") |
+| sequential ×4 (one lane)         | ≥ 52 tok/s (within 15 % of the 60 ceiling)  |
+| 4 concurrent ×4                  | ≥ 110 tok/s aggregate (~2× ceiling)         |
+| TTFT p95 at 4 open connections   | < 3 s                                       |
+| ~conversation_cache evictions~    | not rising vs. baseline rate                |
+| production                        | no 400s from clients pinned at 262k         |
+
+If "sequential ×4" fails, the context is too small / cache residency too low:
+step back to Phase B (131072 / 4 lanes) or A.
+
+* 9. Knobs deliberately *not* in the plan
+| Knob                                    | Why not                                                     |
+|-----------------------------------------+--------------------------------------------------------------|
+| ~--batch-groups~, ~--pipeline-windows~, ~--piped-read-pieces~, ~STRATA_PIPED_READ_PIECE~, ~STRATA_PIPE_ADAPT_EVERY~ | CUDA/HIP-only in 0.1.52 (~pipeline.*~ is ~#ifdef STRATA_CUDA~); BATCHING.md marks the pipelined-read row "SYCL, Metal 8 not touched". Caveat worth knowing: ~INTEL_ARC.md~ says setup *does* write ~--pipeline-windows 2~ for a **pair** of B-series cards (17–23 % faster decode) — so the machinery exists on Arc, it just needs a second card. One card anyway. |
+| ~--stream-experts~                      | needs "a VRAM cache that holds every expert": 24,576 pairs ≈ 62 GiB ≫ 32 GiB. It is the doc's cure for the ~xe~ pageable-memory fault, and it is unreachable for this quant on one B70. |
+| ~--vram-elastic~                        | NVIDIA-only ("the pool follows the peak"); ~vram_elastic 0~.  |
+| ~--mtp-max-t~                             | leave at 0 (= ~--spec~); ~mtp_max 2~ already, and the budget clamp it exists for does not apply here (§5). |
+| ~--spec 4~ as an explicit change        | unverified: ~--spec~ is not in 0.1.52 SYCL ~--help~ yet ~/metrics~ reports ~spec 4~. Probe what the engine is actually doing before changing it. |
+| ~--max-sequence-length~                 | not supported on SYCL/Metal (BATCHING.md §1) — so per-lane windows cannot be cheaper than the engine ~--context~. |
+| ~--kv~ below q4_0 (~iq2_xxl~)            | doc: "2-3bit formats sit near the cliff edge where a long session stops making sense", and this model is QSA/TopK. |
+| ~--kv-resident 20480~                    | would free ~1.4 GiB~ (+~1,000 slots~) but puts the whole K/V in pinned host RAM, read every token — risky given the xe pageable-memory fault. Worth one experiment *after* Phase C, not before. |
+| ~--sparse-block 32 --qsa-topk 2048 --qsa-local 8192~ | doc-recommended *with* ~--mtp~ for QSA, but costs "2.0× attention, 4× K/V reads, +4,730 B/token for q4_0" → directly fights the lane plan. Revisit only if quality or attention is the next bottleneck. |
+| ~--ple-io ram~                           | the ~rotational disk (vdb)~ warning is real, but the direct-read probe passed (~41346 rows/s fine~) and RAM is already ~54.8 GiB~ of ~60~. Keep watching prompt-read stalls, don't spend RAM. |
+
+Upstream asks worth filing (each one unlocks money on this box):
+1. per-request sequence caps on SYCL/Metal (~--max-sequence-length~) — would let
+   lanes pay for their own context instead of the engine's maximum;
+2. ~--batch-groups~/pipelined read for SYCL (the doc's own table says it was never
+   ported);
+3. make ~--kv-grow~ auto-enable when batch slots steal VRAM from the expert cache
+   (today it prints "off" even with ~--batch~ present);
+4. the setup heuristic should model the MTP-draft loss, not just cache residency —
+   it green-lit 2 slots on this card that measured −59 %.
+
+* 10. Deploy and verify (per ~docs/fleet-deployment.org~)
+Blast radius is **not** just ~comfyui~:
+- ~peteches/services/strata.scm~ is a shared service module → fleet deploy;
+- ~configs/pi/defaults/{models,settings}.json~ is consumed by every host whose
+  pi reads the shared defaults (agents, and the desktops if they carry
+  ~home-pi-service-type~), so their compaction triggers move with it;
+- SillyTavern/rules-lawyer/caddy paths need the new cap checked.
+
+Recipe:
+1. Land §6, then Phase A values; ~guix system build -L . --dry-run
+   peteches/systems/comfyui.scm~ (needs the store daemon — ~guix build~ cannot
+   even compute a derivation without it).
+2. Fleet deploy with the ~deploy-vms~ skill (never raw ~scripts/deploy.scm~ for
+   >1 host), then the consistency audit: per-host ~guix system describe~ over
+   SSH, generation bumped + services healthy.
+3. Engine checks on comfyui after start: ~loglines~ for ~expert cache N slots~,
+   ~batch windows of up to N sequences~, ~vram_free_mib~; ~GET /metrics~ for
+   ~engine.expert_slots~, ~engine.batch_slots~, ~concurrency.serving~.
+   Note ~concurrency~ and ~speculative~ blocks only appear after the first
+   request completes — don't mistake their absence for a failure.
+4. Run the §3 harness once for the new config and compare against the table.
+5. Hand-edit rule: any ~run-strata.sh~ fiddling (as §3's arms required) must be
+   reverted with ~patch_wrapper.py "__RESTORE__"~ + ~herd restart strata~ — the
+   next reconfigure overwrites the file anyway, and drifted wrappers between
+   measurement and config are how fleet drift starts.
+
+Rollback: revert the two Guix files and reconfigure ~comfyui~ alone (the fleet
+doc's single-host rollback), leaving pi's ~reserveTokens~ at the larger value —
+a too-small pi window against a too-small engine cap is the only failure mode
+that takes the orchestrator down, and it fails loudly (400 "prompt too long").
+
+* 11. Phase C — the plumbing, as implemented (deployed 2026-11-06)
+§6's gap is closed. Three fields were added to ~<strata-configuration>~
+(~batch~, ~batch-mtp?~, ~serve-args~), ~parallel~ and ~extra-args~ are now spliced
+into the native wrapper, and ~engine-flag-line~ exists for valueless flags. All
+of it is precomputed in the wrapper's ~let*~ and interpolated with ~#$~, which is
+the only way a gexp can see it (the 0-byte ~run-strata.sh~ trap noted in
+~peteches/services/strata.scm~).
+
+** What ~--parallel~ actually costs here — measured, and the reason it is off
+Requesting lanes does work (with ~(parallel 5)~ ~"concurrency": {"serving": 5,
+"requested": 5}" appears in ~(/v1/status)~), but each requested slot is a batch
+window holding its own session K/V, and on this card those windows are paid for
+out of the profile-filled expert cache:
+
+| (parallel)      | expert slots | expert cache | solo   | 2 conc | 4 conc | TTFT at 4 |
+|-----------------+--------------+--------------+--------+--------+--------+-----------|
+| off (deployed)  | 17,830       | 24,480 MiB   | 64.8   | 64.4   | 64.5   | 0.87 s    |
+| ~--parallel 5"  | 9,432        | 12,973 MiB   | 49.6   | 42.0   | 38.7   | 13.8 s    |
+
+So lanes here *cost* throughput rather than buying it: after Phase U the engine
+already serves 2 and 4 concurrent requests at essentially the single-stream rate
+with no slots requested at all. ~--kv-grow~ is the documented countermeasure (and
+measured +34 % in §3's batch arms), but it has not been re-validated on this
+configuration without ~--batch~, so it is not enabled either. If a batch arm is
+ever wanted it is one word in ~peteches/systems/comfyui.scm~ — and ~batch-mtp?~
+defaults true, because ~--batch~ without it measured −59 %.
+
+** Two constraints learned by breaking the service
+1. ~--queue-timeout~ on its own makes ~strata serve~ refuse to start:
+   "queue_timeout requires max_queue to bound pending calls". It is configured
+   as a pair — ~'("--max-queue" "12" "--queue-timeout" "300")~ — 12 being a full
+   pi fan-out (orchestrator plus four sub-agents) plus one or two tenant turns,
+   and 300 s being comfortably above the ~84 s" a 113k-token orchestrator prompt
+   read takes at the measured 1350 tok/s.
+2. Deploy regenerates ~run-strata.sh~ but does not restart the service — the
+   known shepherd-reload gap in ~docs/fleet-deployment.org~. The new flags only
+   take effect after ~herd restart strata~, so verify the live exec line, not the
+   file, when checking whether a change landed.
+
+** Parking: 5 windows → 9\nNine parked windows, one per lane, inside the same
+4096 MiB budget (a parked window measured ~240 MiB), so this is not extra RAM;
+the earlier 5 slots evicted (167 evictions in the log before the change).
+
+** pi side: there is no lane cap to set\nGrepped the installed
+~pi-interactive-subagents~ extension on agents: its environment names are
+~PI_SUBAGENT_{ACTIVITY_FILE,AGENT,ALLOWED,AUTO_EXIT,HERDR_PARENT_RATIO,ID,MUX,
+NAME,SESSION,SHELL_READY_DELAY_MS,SURFACE}~ — no ~maxParallel~, no concurrency
+limit. So the number of lanes that actually arrive is set by how the
+orchestrator spawns, and the engine side is the queue bound above. ~reserveTokens
+98304~ in ~(~/.pi/agent/settings.json)~ stays as it is; the engine keeps its full
+~262144~ context because concurrency is free without slots.
+
+* 12. The model swap — Option A, ISTA IQ2_XS (deployed 2026-11-06)
+SC117's abliterated IQ2_XS was replaced by ISTA-DASLab's IQ2_XS of the same
+GSQ-RCO weights — the tier strata's own catalog ships as its ~qwen~ family —
+with **no host change** (comfyui stays at 57344 MiB; IQ3_XXS would have needed
+63360–65536 MiB and the Proxmox host has only ~9 GiB of headroom).
+
+| Asset      | What happened                                                    |
+|------------+------------------------------------------------------------------|
+| shard 1    | downloaded, 39,225,954,592 B, sha256 matched setup.py's pin       |
+| shard 2    | **reused by hard link** — byte-identical between both repos       |
+|            | (28,800,138,432 B, sha ~316b46f3…~, verified on the live box)     |
+| strata/rt  | hard-linked from the sc117 tree; it is setup's own MTP runtime    |
+|            | from the original Qwen checkpoint, and the ISTA repo does not     |
+|            | publish it, so a fresh host needs ~tools/mtp_fetch.py~            |
+| mmproj     | re-downloaded: ISTA publishes 907,543,008 B against SC117's       |
+|            | 907,542,944, so the hard link is not the published file          |
+| pack       | rebuilt with the bundle's ~tools/iq_pack.py~ → ~native_experts.txt"  |
+|            | (49 lines, same shape as SC117's)                                |
+
+Measured after the swap, same probe as §3: solo **65.0 tok/s**, 2 concurrent
+**67.8**, 4 concurrent **65.4**, TTFT 0.13/0.62/0.90 s, expert cache hit 96.9 %
+(540,660 / 557,760 lookups), ~expert_slots 18132" — slightly better than SC117
+(64.1/65.4/65.2, 17,830 slots), because this quant is 1.1 % smaller.
+
+The abliteration question came out clean on the canary: the un-abliterated base
+answered both a plain coding request and a security-audit-framed lock question
+without refusing, so nothing here needs SC117's transform. The rollback is one
+line — ~'(native-model 'sc117-iq2xs)~ in ~peteches/systems/comfyui.scm~ — and the
+sc117 tree and pack are still on disk.
+
+* Appendix — measurement artefacts
+- Official reference band for this card (~docs/INTEL_ARC.md~): Arc is an
+  official platform since 0.1.40.2 and the maintainers' test card is an
+  **Arc Pro B70 32 GB, ~xe~ driver** — ours exactly. B70 numbers on record:
+  IQ2_XS 51–64 tok/s at 256K (port author, 0.1.31-sycl); IQ3_S with 11.5k/24.6k
+  experts resident → 30–41 tok/s decode, 980–1,000 tok/s prompt at 4K
+  (maintainers, 0.1.40.2+); 2×B70 IQ3_S ~--layer-split auto~ mis-picked (11 vs
+  54 tok/s). Also ~INTEL_ARC.md~ on ~xe~: under ~STRATA_VERIFY_NO_HOST=1~ there
+  is **no SSD expert tier** — every expert must be in VRAM or in the pinned RAM
+  mirror (~STRATA_MIRROR_MIB~) or the engine refuses to start. We do not set
+  that switch, so our ~--mmap-experts~ + SSD tier path is unaffected — but do
+  not set it casually after the upgrade.
+- Engine: ~comfyui~ (B70 passthrough, PCI ~8086:e223~, driver i915-5.27),
+  engine 0.1.52 **SYCL** native-pack, SC117 Qwen3.8-Flash-Next IQ2_XS (68 GiB,
+  split shards), ~--mmap-experts --kv q4_0 --spec 2 --mtp … --expert-profile
+  --expert-cache auto --prefill auto~; host i9-14900KS, 16 logical cores,
+  **no AVX-512** (AVX-2 kernels), 15 pool workers, 60 GiB RAM.
+- Live files: ~/var/lib/strata/run-strata.sh~ (wrapper, regenerated by
+  activation), ~/var/lib/strata/sc117-iq2xs.json~ (regenerated every start),
+  ~/var/log/strata/strata.log~ (shepherd, timestamped ~done: … in N s~),
+  ~/var/lib/strata/sc117-iq2xs.log~ (engine, binary-ish → always ~grep -a~).
+- Harness (local ~/tmp~, piped over ~ssh -T comfyui.ts 'sudo -n python3 -'~):
+  ~patch_wrapper.py~ (edits the args block after ~--mmap-experts~,
+  ~"__RESTORE__~ reverts), ~arm.py~ (waits for ~in_flight == 0~, restarts,
+  polls, runs arms, harvests ~/metrics~), ~probe2.py~ (baseline load + queue).
+  Copy on the VM: ~/tmp/{arm.py,patch_wrapper.py,probe2.py,arm_results.jsonl,
+  strata_engine_help.txt}~ (root-owned, non-secret).
+- No ~curl~ on the VM; use ~/run/current-system/profile/bin/{wget,python3}~
+  (~python-minimal~, so ~json~ only).
