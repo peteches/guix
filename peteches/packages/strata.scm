@@ -220,16 +220,16 @@ at it, the same thing the oneAPI installer does.")
 (define-public strata
   (package
     (name "strata")
-    (version "0.1.52")
+    (version "0.1.57")
     (source
      (origin
        (method url-fetch)
        (uri (string-append
-             "https://github.com/Niko1221/Strata/releases/download/v0.2.7/"
+             "https://github.com/Niko1221/Strata/releases/download/v0.2.11/"
              "strata-control-" version "-linux-x86_64.tar.gz"))
        (sha256
         (base32
-         "180hh7y7z9389yi7gn6f35882jsahxixi0nznxx2yar35n7wr7rr"))))
+         "022d16v0ddsgiifp04ib5b9x32yshmd0s0nk697qnqsaxvzqrira"))))
     (build-system trivial-build-system)
     (arguments
      (list
@@ -285,7 +285,7 @@ SYCL port) and downloads model files into @option{--data-dir}.  See
 ;; reader"), and `packaging/build_sycl_linux.sh` has no vision target at all.
 ;; `packaging/ENGINE-COMPONENT.md` then packages the reader only "when the
 ;; build has one", so the engine folder this service runs
-;; (0.1.52-linux-x86_64-sycl) holds one program and vision cannot start.
+;; (0.1.57-linux-x86_64-sycl) holds one program and vision cannot start.
 ;; Rebuild the reader here from `tools/vision`, CPU-only (`STRATA_PORTABLE=ON`
 ;; is upstream's default: AVX2 baseline, OpenMP off, so it is not tuned to the
 ;; building PC and needs no GPU runtime).  `tools/vision` links
@@ -294,7 +294,7 @@ SYCL port) and downloads model files into @option{--data-dir}.  See
 ;; @code{LLAMA_CPP_COMMIT}, downloaded as a zip "as a zip: no git", with
 ;; @code{tools/ui} skipped — mirrored below.
 
-(define %strata-vision-release-tag "v0.2.7")     ; app tag; the Terminal inside it is 0.1.52
+(define %strata-vision-release-tag "v0.2.11")     ; app tag; the Terminal inside it is 0.1.57
 (define %strata-vision-llama-commit
   "3cf03257f219afbe7334045ff7c6a06ac68c627d")   ; setup.py LLAMA_CPP_COMMIT at that tag
 
@@ -348,7 +348,7 @@ program.")
 (define-public strata-vision
   (package
     (name "strata-vision")
-    (version "0.1.52")
+    (version "0.1.57")
     (source
      (origin
        (method url-fetch)
@@ -358,7 +358,7 @@ program.")
        (file-name (string-append "strata-" version "-source.tar.gz"))
        (sha256
         (base32
-         "1y9s1qwc012g1lmhwc4k66wfdkypbpxpvyb4d18dkrgmg0a8dbj1"))))
+         "16nvypih8zra31sq9pfqqbzgnamlxr3g5d5kgh8pdil8sxjhfmby"))))
     (build-system cmake-build-system)
     (arguments
      (list
