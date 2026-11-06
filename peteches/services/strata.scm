@@ -77,6 +77,9 @@
             strata-configuration-conversation-cache-mib
             strata-configuration-conversation-cache-slots
             strata-configuration-conversation-cache-min-free-mib
+            strata-configuration-batch
+            strata-configuration-batch-mtp?
+            strata-configuration-serve-args
             strata-service-type))
 
 ;;; ── Utilities ────────────────────────────────────────────────────────────
@@ -96,6 +99,12 @@
                            (if (number? value) (number->string value) value)
                            "\","))
       '()))
+
+;; The same, for a flag that takes NO value ("--batch-mtp", "--batch-telemetry"
+;; on the engine side). It still carries the comma, because every element of
+;; "args" that is not the last one needs it.
+(define (engine-flag-line flag)
+  (list (string-append "    \"" flag "\",")))
 
 ;;; ── Record type ──────────────────────────────────────────────────────────
 
@@ -161,6 +170,37 @@
   (parallel strata-configuration-parallel
             (default #f))
   (extra-args strata-configuration-extra-args
+              (default '()))
+  ;; Batch decode windows for the engine ("--batch N", 2..8 normally). #f - what
+  ;; every host runs today - is the right setting for a single stream: on engine
+  ;; 0.1.57 aggregate decode on this B70 is flat in concurrency (measured 65.4
+  ;; tok/s at 2 concurrent requests, 65.2 at 4, first token 0.11-0.77 s), so
+  ;; lanes now buy FAIRNESS, not throughput. Set it when several conversations
+  ;; genuinely decode at once, as pi's parallel sub-agents on agents do.
+  ;; docs/strata-subagent-throughput.org §6 has the measured arm table.
+  (batch strata-configuration-batch
+         (default #f))
+  ;; "--batch-mtp": each slot also verifies one MTP proposal per window.
+  ;; Defaults ON because --batch WITHOUT it measured -59% on this card: the
+  ;; slots then carry no proposal, every window decodes a single token, and
+  ;; parking degrades ("conversation cache: slot 0 not parked before its
+  ;; overwrite"). Its marginal cost is small - ~198 MiB of VRAM per slot
+  ;; measured, against 2.25 GiB of session K/V per slot - and it is what turned
+  ;; 2 lanes into +33%. It needs --mtp and --spec, which the native path always
+  ;; passes, so it is silently omitted for a model with no MTP runtime.
+  (batch-mtp? strata-configuration-batch-mtp?
+              (default #t))
+  ;; Extra flags for `strata serve' ITSELF (see serve --help), not for the
+  ;; engine's "args" array: e.g. '("--queue-timeout" "300" "--max-queue" "12").
+  ;; `--parallel' is emitted from the `parallel' field and `--batch-telemetry'
+  ;; from `batch', so keep those out of this list. Two constraints learned the
+  ;; hard way (verified live 2026-11-06): `--queue-timeout' on its own makes
+  ;; serve refuse to start with "queue_timeout requires max_queue to bound
+  ;; pending calls", so it must always come with `--max-queue'; and `--parallel'
+  ;; really is honoured — /v1/status reports it as
+  ;; "concurrency": {"serving": N, "requested": N} — so asking for more lanes
+  ;; than the card can hold is visible there rather than silent.
+  (serve-args strata-configuration-serve-args
               (default '()))
 
   ;; What the engine should assume the MODEL volume reads at, in GB/s, when it
@@ -375,7 +415,53 @@
            (shard2 "IQ2_XS/Qwen3.8-Flash-Next-GSQ-RCO-abliterated-IQ2_XS-00002-of-00002.gguf")
            (mmproj "mmproj-Qwen3.8-Flash-Next-BF16.gguf")
            (mtp-dir "strata/rt")
-           (slug "sc117-iq2xs")))))
+           (slug "sc117-iq2xs")))
+         ;; The upstream quantiser's own IQ2_XS of the same weights, WITHOUT
+         ;; SC117's abliteration: ISTA-DASLab make the GSQ-RCO quants that
+         ;; strata's catalog `qwen' family points at (setup.py's MODELS table,
+         ;; "by": "Qwen; GSQ-RCO quants by ISTA-DASLab"), so this is the model
+         ;; upstream actually ships, and it is 1.1% smaller than SC117's file
+         ;; (39225954592 against 39665015072 for shard 1). Chosen 2026-11-06 as
+         ;; the plan-recommended model for the agents workflow
+         ;; (docs/strata-subagent-throughput.org); SC117's abliterated variant
+         ;; stays as the rollback, because abliteration is what keeps the bot
+         ;; from refusing, and only live traffic can show whether the base model
+         ;; refuses enough to matter.
+         ;;    Shard 2 is the n-gram/PLE table and is byte-identical between the
+         ;; two repos: both publish 28800138432 bytes and the sc117 file hashed
+         ;; 316b46f3a2dbd68c900f43136ab9449f9dcc3725dfd8c794847c204bc161e113 on
+         ;; 2026-11-06, which is setup.py's pin for this quant tier. That is why
+         ;; this entry costs one 36.5 GiB download and not two: comfyui hardlinks
+         ;; shard 2, strata/rt and the tokenizer pack out of the sc117 tree.
+         ;;    strata/rt is NOT fetchable from this repo — the HF tree API lists
+         ;; 21 files and none of them is under strata/rt (verified 2026-11-06).
+         ;; setup.py builds the MTP runtime itself with tools/mtp_fetch.py from
+         ;; the original Qwen checkpoint, so the files listed here exist only
+         ;; because fetch skips a file that is already present at the published
+         ;; size. On a fresh host these four lines download nothing but a 404;
+         ;; it needs the MTP runtime built by that tool (which is exactly what
+         ;; upstream would have done anyway).
+         ;;    The mmproj does differ: 907543008 bytes here against SC117's
+         ;; 907542944, so the sc117 hard link is NOT reused and the wrapper
+         ;; re-downloads the projector next start — 907 MB, and the right thing
+         ;; to do rather than record a size this repo does not publish.
+         (cons 'ista-iq2xs
+          (strata-native-model
+           (hf-repo "ISTA-DASLab/Qwen3.8-Flash-Next-GSQ-RCO-GGUF")
+           (model-files
+            (list (cons "IQ2_XS/Qwen3.8-Flash-Next-GSQ-RCO-IQ2_XS-00001-of-00002.gguf" 39225954592)
+                  (cons "IQ2_XS/Qwen3.8-Flash-Next-GSQ-RCO-IQ2_XS-00002-of-00002.gguf" 28800138432)))
+           (aux-files
+            (list (cons "strata/rt/dense.bin" 116099072)
+                  (cons "strata/rt/dense.txt" 1880)
+                  (cons "strata/rt/draft_vocab.bin" 425196)
+                  (cons "strata/rt/experts.bin" 707788800)
+                  (cons "mmproj-Qwen3.8-Flash-Next-BF16.gguf" 907543008)))
+           (pack-source "IQ2_XS/Qwen3.8-Flash-Next-GSQ-RCO-IQ2_XS-00001-of-00002.gguf")
+           (shard2 "IQ2_XS/Qwen3.8-Flash-Next-GSQ-RCO-IQ2_XS-00002-of-00002.gguf")
+           (mmproj "mmproj-Qwen3.8-Flash-Next-BF16.gguf")
+           (mtp-dir "strata/rt")
+           (slug "ista-iq2xs")))))
 
 (define-public (strata-native-model-lookup symbol)
   "The strata-native-model record for SYMBOL (a key into %native-models), or
@@ -625,6 +711,58 @@
          ;; — a vision sub-config with no "exe".
          (vision-on? (and vision-reader mmproj))
          (mtp-dir (strata-native-model-mtp-dir model))
+         ;; Batch windows as "args" lines, in the same precomputed style as
+         ;; conv-cache-json above - a gexp does NOT capture let-bound locals, so
+         ;; everything that is not written #$ like this resolves at activation
+         ;; time in a nearly empty environment and leaves run-strata.sh at 0
+         ;; bytes (see the comment on reasoning-json for that trap).
+         ;; --batch without --batch-mtp measured -59% sequential here, hence the
+         ;; gate: batch-mtp? is emitted only with a model that has an MTP runtime.
+         (batch-json
+          (let ((batch (strata-configuration-batch config)))
+            (if batch
+                (string-join
+                 (append
+                  (engine-arg-line "--batch" batch)
+                  (if (and (strata-configuration-batch-mtp? config) mtp-dir)
+                      (engine-flag-line "--batch-mtp") '()))
+                 "\n")
+                "")))
+         ;; `extra-args' was the catalog `strata launch' path's hook; on the
+         ;; native path it reached NOTHING until now, which is why --batch could
+         ;; not be expressed from a Guix config at all (the verified live wrapper
+         ;; had zero occurrences of it). Engine options go here, one array
+         ;; element per list element, so a flag and its value are two entries.
+         (extra-args-json
+          (if (null? (strata-configuration-extra-args config))
+              ""
+              (string-join
+               (map (lambda (a) (string-append "    " (string-quote a) ","))
+                    (strata-configuration-extra-args config))
+               "\n")))
+         ;; `serve' flags, spliced onto the exec line: `--parallel' is "requested
+         ;; concurrent engine slots" (serve --help) and `--batch-telemetry'
+         ;; samples the real decode windows so the monitor's live.slots is
+         ;; populated - the way the batch arms were verified in
+         ;; docs/strata-subagent-throughput.org §8. With none of parallel/batch/
+         ;; serve-args configured this renders "", so a host that asks for no
+         ;; lanes keeps exactly the command line it has always had.
+         (serve-flags
+          (string-append
+           (if (strata-configuration-parallel config)
+               (string-append " --parallel "
+                              (number->string
+                               (strata-configuration-parallel config)))
+               "")
+           (if (strata-configuration-batch config)
+               " --batch-telemetry" "")
+           (if (null? (strata-configuration-serve-args config))
+               ""
+               (string-append " "
+                              (string-join
+                               (map string-quote
+                                    (strata-configuration-serve-args config))
+                               " ")))))
          (cfg (string-append state-dir "/" slug ".json"))
          (log (string-append state-dir "/" slug ".log"))
          (api-key-json (if api-key (string-quote api-key) "\"none\""))
@@ -718,9 +856,23 @@
          "# now — the install also fetches the catalog model it is invoked"
          "# with, a one-time cost paid only when the engine is absent."
          "ENGINE_DIR=\"$XDG_DATA_HOME/strata/components/engine\""
-         "if ! ls \"$ENGINE_DIR\"/*-sycl >/dev/null 2>&1; then"
-         "  echo \"[strata] engine component not found; installing it (one-time)\""
-         "  \"$BUNDLE/bin/strata\" install --family qwen --model q2_0 --yes"
+         "# The engine component version MUST match the Terminal/Control"
+         "# bundle: $BUNDLE/VERSION holds exactly the engine version this"
+         "# bundle expects (\"0.1.57\"), so the guard below fires on every"
+         "# package bump instead of leaving the old component in place"
+         "# (\"strata launch\" resolves component:strata-engine by newest"
+         "# glob, so an unmatched old engine would otherwise keep running"
+         "# after an upgrade). \"strata update\" fetches ONLY the engine"
+         "# package (docs/INTEL_ARC.md); \"strata install\" also pulls a"
+         "# whole catalog model, so it is the fallback for a fresh VM."
+         "WANT=$(head -1 \"$BUNDLE/VERSION\" 2>/dev/null | tr -d ' \\t\\r\\n')"
+         "if [ -n \"$WANT\" ] && ! ls \"$ENGINE_DIR\"/\"$WANT\"-*-sycl >/dev/null 2>&1; then"
+         "  echo \"[strata] engine $WANT-sycl not present; fetching it (one-time)\""
+         "  if ls \"$ENGINE_DIR\"/*-sycl >/dev/null 2>&1; then"
+         "    printf 'y\\n' | \"$BUNDLE/bin/strata\" update --yes --no-control || echo \"[strata] WARNING: engine fetch failed; continuing with the installed component\""
+         "  else"
+         "    \"$BUNDLE/bin/strata\" install --family qwen --model q2_0 --yes"
+         "  fi"
          "fi"
          ""
          #$fetch-calls
@@ -732,6 +884,20 @@
          "  (cd \"$BUNDLE\" && \"$BUNDLE/python/bin/python3\" tools/iq_pack.py \\"
          (string-append "     --gguf \"$MODEL_ROOT/" #$shard1 "\" \\")
          "     --out \"$PACK_DIR\")"
+         "fi"
+         ""
+         "# Which expert-VRAM ranking to pre-load. INTEL.md: on the `xe` driver"
+         "# setup uses data/expert-profile-sycl.bin — a ranking built from the"
+         "# routing of 45 varied chat/code/non-English prompts — while an"
+         "# i915 card keeps the shipped generic profile. Both files ship in"
+         "# the bundle, and which driver the guest has is NOT visible to"
+         "# Guile when this script is generated, so choose it here at run"
+         "# time. (comfyui's B70 runs on xe, so this normally picks the"
+         "# sycl ranking; deleting the /sys test back to \"i915 behaviour\""
+         "# is the A/B arm.)"
+         "PROFILE=\"$BUNDLE/data/expert-profile.bin\""
+         "if [ -e /sys/bus/pci/drivers/xe ] && [ -f \"$BUNDLE/data/expert-profile-sycl.bin\" ]; then"
+         "  PROFILE=\"$BUNDLE/data/expert-profile-sycl.bin\""
          "fi"
          ""
          "# Write the run config the server will load. The engine reads the"
@@ -754,17 +920,21 @@
          ;; --expert-cache 64 is far too small for the prompt path to borrow
          ;; from, hence "auto" (the engine then sizes the resident expert tier
          ;; to the free VRAM and streams the rest from the mmap'd GGUFs). The
-         ;; profile ships with the bundle at $BUNDLE/data/expert-profile.bin
-         ;; and is the same file the catalog `strata launch` path passes (the
-         ;; working q2_0 install config passes it too) - it is a bundle-level
-         ;; architecture default, not a per-model artifact, so it is valid for
-         ;; the abliterated weights. Confirmed live 2026-10-29: with these two
+         ;; profile ships with the bundle (data/expert-profile.bin plus the
+         ;; xe-specific expert-profile-sycl.bin, which the PROFILE line above
+         ;; selects) and is the same kind of file the catalog `strata launch`
+         ;; path passes - it is a bundle-level architecture default, not a
+         ;; per-model artifact, so it is valid for the abliterated weights.
+         ;; Confirmed live 2026-10-29: with these two
          ;; flags the abliterated IQ2_XS serves (context 32768) on the B70.
-         "    \"--expert-profile\", \"$BUNDLE/data/expert-profile.bin\","
+         "    \"--expert-profile\", \"$PROFILE\","
          "    \"--expert-cache\", \"auto\","
          "    \"--prefill\", \"auto\","
          "    \"--spec\", \"2\","
          (string-append "    \"--mtp\", \"$MODEL_ROOT/" #$mtp-dir "\",")
+         ;; After --spec and --mtp on purpose: --batch-mtp says it "needs --mtp
+         ;; and --spec", and the engine parses flags in order.
+         #$batch-json
          (string-append "    \"--max-context\", \"" (number->string #$context) "\",")
          "    \"--kv\", \"q4_0\","
          ;; Conversation parking, if a budget was configured (what each flag
@@ -775,6 +945,7 @@
          ;; blank line, which JSON reads as whitespace — `"log"` already sits
          ;; behind the same blank line coming from reasoning-json.
          #$conv-cache-json
+         #$extra-args-json
          (if #$vision-on?
              "    \"--mmap-experts\",\n    \"--vision\""
              "    \"--mmap-experts\"")
@@ -818,7 +989,13 @@
          "# Start the server in the foreground. `exec` chains wrapper ->"
          "# bin/strata (sh) -> the private CPython server, all one PID, so"
          "# shepherd tracks the server and TERM to it stops the engine."
-         "exec \"$BUNDLE/bin/strata\" serve --profile \"$CFG\" --engine strata --host \"$HOST\" --port \"$PORT\""
+         ;; --parallel / --batch-telemetry / serve-args, all precomputed into
+         ;; serve-flags above: empty when nothing is configured, so the line is
+         ;; byte-identical to what it was before those fields existed.
+         (string-append
+          "exec \"$BUNDLE/bin/strata\" serve --profile \"$CFG\" --engine strata"
+          " --host \"$HOST\" --port \"$PORT\""
+          #$serve-flags)
          "\n")
         "\n")))
 
