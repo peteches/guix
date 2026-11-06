@@ -44,11 +44,14 @@
 ;;; from claude-workstation's peteches account, which no longer needs it now
 ;;; that that box is a pure WireGuard/SOCKS jump box (see
 ;;; peteches/home/configs/claude-workstation-peteches.scm). Two pieces:
-;;;   * `Host *' -> IdentityFile /run/secrets/peteches-automation-ssh-key --
-;;;     the private half of the peteches automation keypair, whose public half
-;;;     EVERY vm authorizes for the peteches login (vm-base.scm's
-;;;     %automation-authorized-key-secret plus its sshd Match block).  One line
-;;;     makes the whole fleet ssh-reachable from this account as peteches, and
+;;;   * IdentityFile /run/secrets/peteches-automation-ssh-key scoped to the two
+;;;     fleet name suffixes (`Host *.spaniel-cordylus.ts.net
+;;;     *.peteches.co.uk', %fleet-ssh-host-patterns below) -- the private
+;;;     half of the peteches automation keypair, whose public half EVERY vm
+;;;     authorizes for the peteches login (vm-base.scm's
+;;;     %automation-authorized-key-secret plus its sshd Match block).  That one
+;;;     pattern list makes the whole fleet ssh-reachable from this account as
+;;;     peteches, and
 ;;;     %deploy-identity in peteches/machines.scm picks the same path up, which
 ;;;     is how scripts/deploy.scm / the deploy-vms skill authenticate from
 ;;;     here. It is a PATH, not a value: unlike an API key it never reaches the
@@ -72,9 +75,13 @@
 ;;; `unauthorized public key', which is exactly the failure mode
 ;;; docs/fleet-deployment.org §4 documents for claude-workstation.
 ;;;
-;;; STILL ABSENT: any personal ~/.ssh/id_* key. There was none here before and
-;;; there is none now -- `Host *' names the automation key, and vm-base only
+;;; STILL ABSENT: any personal ~/.ssh/id_* key wired in declaratively. The
+;;; automation key is the only identity this profile names, and vm-base only
 ;;; ever decrypts automation keys where a #:sops-secrets entry asks for one.
+;;; Hosts OUTSIDE %fleet-ssh-host-patterns therefore fall back to the default
+;;; identities ssh always tries (~/.ssh/id_*), which this account picks up by
+;;; hand as it goes -- one exists on the live box today, unmanaged -- rather
+;;; than by anything here.
 ;;;
 ;;; CHANNELS, and the one thing a reader should know about them: the
 ;;; constructor pins ~/.config/guix/channels.scm to
@@ -91,7 +98,7 @@
 ;;; box ever genuinely needs (critical-grind ...), wire a deploy-key secret and
 ;;; the reply-with-ssh-add replyer -- the pattern the retired
 ;;; (peteches home modules claude-workstation) used for its own automation
-;;; key -- and note that a `Host *' IdentityFile does not help here at all,
+;;; key -- and note that no ~/.ssh/config IdentityFile helps here at all,
 ;;; because guix's git fetch never reads ~/.ssh/config; do not solve it by
 ;;; dropping the pin.
 
@@ -155,6 +162,38 @@
 ;; peteches/machines.scm resolves on this box now.
 (define %automation-ssh-key "/run/secrets/peteches-automation-ssh-key")
 
+;; Which hosts that identity is offered to.  `name' goes verbatim into the
+;; `Host' line (serialize-openssh-host in (gnu home services ssh) just
+;; concatenates it), and OpenSSH treats a space-separated Host argument as a
+;; LIST of patterns any of which can match, so this is ONE block covering both
+;; fleet spellings.  Note `*' matches ACROSS dots in an OpenSSH Host pattern,
+;; which is what makes the second suffix do double duty:
+;;   * <vm>.spaniel-cordylus.ts.net -- the Tailscale MagicDNS name, and the
+;;     host-name every entry in peteches/machines.scm deploys to, so this is
+;;     the suffix that matters for ssh-ing between VMs.
+;;   * <host>.peteches.co.uk -- the LAN zone, which is BOTH the VMs' own
+;;     host-names (agents.scm's #:host-name, pihole.scm's custom-hosts forward
+;;     DNS) and the ts.peteches.co.uk service names Caddy fronts
+;;     (caddy.scm's dns-zone), because a leading `*' matches the intervening
+;;     dots.  It also covers git.peteches.co.uk, so the non-interactive git
+;;     fetch that #:known-hosts2 exists for keeps authenticating as before.
+;; It deliberately is NOT `*'.  As `*' this account offered the fleet
+;; automation key to EVERY host it touched -- github.com, codeberg.org, raw
+;; 100.x Tailscale IPs, anything -- which announces the fleet identity to
+;; servers that have no reason to know it.  That is precisely what the
+;; narrowing removes: third parties and bare addresses.  The cost is two LAN
+;; hosts that are not Guix vms, nas.peteches.co.uk and
+;; proxmox1.peteches.co.uk, being offered a key they do not authorize -- ssh
+;; discards an identity the server will not accept, so that is free.
+;; Consequence worth knowing: OpenSSH always tries ~/.ssh/id_* as well, so
+;; narrowing cannot BREAK an existing path -- a host inside the two suffixes
+;; still gets the automation key and a host outside them simply stops getting
+;; it as an extra candidate.  `guix deploy' is untouched either way: it
+;; authenticates through libssh with the explicit `identity' field of each
+;; machine record, never through ~/.ssh/config.
+(define %fleet-ssh-host-patterns
+  "*.spaniel-cordylus.ts.net *.peteches.co.uk")
+
 (define-public agents-peteches-home
   (make-vm-jumpbox-home
    ;; pi in this account's OWN profile: sshd's non-interactive shell gets
@@ -174,13 +213,14 @@
    ;; it in the system profile would work too and is deliberately avoided for
    ;; the same reason pi is kept out of it.
    #:extra-packages (list pi-coding-agent herdr-mx)
-   ;; `Host *' -> the automation key, so ssh-ing from this account into any
-   ;; other VM's peteches login authenticates -- and so %deploy-identity has
-   ;; something real to resolve to here. ONE instance rule: these two hooks
-   ;; share a single home-openssh-service-type, see the constructor's
-   ;; SSH-HOSTS/KNOWN-HOSTS2 comment for why two instances would conflict.
+   ;; The automation key, scoped to %fleet-ssh-host-patterns, so ssh-ing from
+   ;; this account into any other VM's peteches login authenticates -- and so
+   ;; %deploy-identity has something real to resolve to here. ONE instance
+   ;; rule: these two hooks share a single home-openssh-service-type, see the
+   ;; constructor's SSH-HOSTS/KNOWN-HOSTS2 comment for why two instances would
+   ;; conflict.
    #:ssh-hosts (list (openssh-host
-                      (name "*")
+                      (name %fleet-ssh-host-patterns)
                       (identity-file %automation-ssh-key)))
    #:known-hosts2 %agents-known-hosts
    #:extra-services

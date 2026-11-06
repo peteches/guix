@@ -59,13 +59,14 @@
 ;;; (wireguard.yaml, guix-build.yaml) and peteches/systems/agents.scm
 ;;; (rules-lawyer, sillytavern, restic, guix-offload). What this module does
 ;;; carry is the one exception, a *key file* rather than a value: #:ssh-hosts
-;;; can point an IdentityFile at a /run/secrets path, and the `agents'
-;;; account does exactly that -- `Host *' at
-;;; /run/secrets/peteches-automation-ssh-key, the private half of the fleet
-;;; automation keypair -- which is safe because ssh reads it from tmpfs at
-;;; connect time, it is never copied into the store, and IdentityFile names
-;;; only the path. claude-workstation was the box with that entry until
-;;; 2026-11-05, when it lost both the key and the entry.
+;;; can point an IdentityFile at a /run/secrets path, and the `agents' account
+;;; does exactly that -- /run/secrets/peteches-automation-ssh-key, the private
+;;; half of the fleet automation keypair, offered to the fleet name suffixes
+;;; rather than to `*' (see %fleet-ssh-host-patterns in
+;;; peteches/home/configs/agents-peteches.scm) -- which is safe because ssh
+;;; reads it from tmpfs at connect time, it is never copied into the store,
+;;; and IdentityFile names only the path. claude-workstation was the box with
+;;; that entry until 2026-11-05, when it lost both the key and the entry.
 
 (define-module (peteches home modules vm-jumpbox)
   #:use-module (gnu home)
@@ -179,10 +180,13 @@
 EXTRA-PACKAGES are added to the base tool set — this is how an agent host gets
 its agent CLI, e.g. pi-coding-agent on `agents'. SSH-HOSTS is a list of
 <openssh-host> records merged into this account's ~/.ssh/config — the way to
-add an IdentityFile or a Host block without growing another service. Pass
-`(name "*")' to make an identity apply to every host, as `agents' does for
-the peteches automation key (peteches/home/configs/agents-peteches.scm;
-claude-workstation passed the same entry until 2026-11-05). ENV-VARS is a plain
+add an IdentityFile or a Host block without growing another service. `name'
+is copied verbatim into the `Host' line, so a space-separated pattern LIST is
+one block that matches if ANY of its patterns does — `agents' uses that to
+scope the peteches automation key to the two fleet suffixes instead of `*'
+(%fleet-ssh-host-patterns in peteches/home/configs/agents-peteches.scm; the
+live `Host *' it replaced is why that key was being offered to github,
+codeberg.org and every other address this account touched). ENV-VARS is a plain
 (non-secret) alist of (ENV-VAR . VALUE) exported via
 home-environment-variables-service-type (i.e. into
 ~/.guix-home/setup-environment, sourced by ~/.profile); $HOME in a value is
