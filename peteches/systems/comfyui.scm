@@ -891,7 +891,18 @@
       (service strata-service-type
                (strata-configuration
                 (auto-start? #t)
-                (native-model 'sc117-iq2xs)
+                ;; Which weights to serve. 'ista-iq2xs is ISTA-DASLab's IQ2_XS
+                ;; GSQ-RCO quant of Qwen3.8-Flash-Next - the quantisation tier
+                ;; strata's own catalog ships as its `qwen' family - swapped in
+                ;; on 2026-11-06 for the agents-VM sub-agent workflow
+                ;; (docs/strata-subagent-throughput.org). 'sc117-iq2xs is the
+                ;; same tier with SC117's abliteration on top and is the
+                ;; rollback: abliteration is what keeps a coding bot from
+                ;; refusing, and only live traffic can show whether the base
+                ;; model refuses enough to matter. %native-models in
+                ;; (peteches services strata) records what each repo publishes
+                ;; and which files this VM hard-links from one tree to the other.
+                (native-model 'ista-iq2xs)
                 (data-dir "/media/models/strata")
                 (host "0.0.0.0")
                 ;; 262144 = the model's full trained context (GGUF
@@ -966,9 +977,6 @@
                 ;;   plus the transient copy a park/restore needs.  Upstream's
                 ;;   8192 assumes AGENT_CACHE_FREE_GB = 24 GB of RAM free beside
                 ;;   the model, which this VM's 57344 MB does not have.
-                ;;   5 slots = the five tenants this engine is meant for
-                ;;   (rules-lawyer, pi, SillyTavern, two more); the default 4
-                ;;   evicts the oldest conversation on every turn.
                 ;;   4096 for the floor raises the engine's 2560 default so a
                 ;;   park always leaves ~4 GiB of page cache for the
                 ;;   --mmap-experts expert tiers — that cache is what keeps
@@ -976,9 +984,51 @@
                 ;;   the 2.1 GB/s measured on this volume).  "conversation
                 ;;   cache: skipped" in /var/log/strata/strata.log is the sign
                 ;;   that the floor sits above the RAM actually free.
+                ;;   9 slots = one parked window per lane — pi's orchestrator plus
+                ;;   its four sub-agent lanes, plus SillyTavern and rules-lawyer —
+                ;;   rather than the default 4, which evicts the oldest conversation
+                ;;   on every turn, or the 5 this file used, which still evicted
+                ;;   (167 evictions in strata.log before this change). It costs no
+                ;;   extra RAM: a parked window measured ~240 MiB at the ~24576-token
+                ;;   snapshot the engine takes, so 9 of them fit inside the 4096 MiB
+                ;;   budget above. If the eviction count climbs again the fix is that
+                ;;   budget, not the slot count.
                 (conversation-cache-mib 4096)
-                (conversation-cache-slots 5)
+                (conversation-cache-slots 9)
                 (conversation-cache-min-free-mib 4096)
+                ;; Lanes: parallel is OFF, and the measurement is why. Requesting
+                ;; concurrent engine slots does make serve honor them (/v1/status
+                ;; reports "concurrency": {"serving": 5, "requested": 5} with
+                ;; (parallel 5) set, verified 2026-11-06), but each requested slot
+                ;; is a batch window holding its own session K/V, and on this card
+                ;; those windows come straight out of the profile-filled expert
+                ;; cache: expert_slots went 17830 -> 9432 and expert_cache_mib
+                ;; 24480 -> 12973, i.e. 11.5 GiB of resident experts traded for 5
+                ;; lanes. Measured with the same probe that produced §6 of
+                ;; docs/strata-subagent-throughput.org: 49.6 tok/s for one stream
+                ;; (64.1 without), 42.0 at 2 concurrent (65.4), 38.7 at 4 (65.2),
+                ;; and first token 13.8 s at 4 lanes (0.77 s without). So lanes
+                ;; cost throughput here rather than buying it, and since the
+                ;; upgrade made concurrency nearly free, off is the right setting.
+                ;;    --kv-grow is the documented countermeasure (it releases the
+                ;; batch slots' K/V to grow into expert cache instead of locking
+                ;; the cache up, and measured +34% in the §6 batch arms) but it has
+                ;; not been re-validated on this configuration without --batch, so
+                ;; it is not enabled here either - see the extra-args note below.
+                ;;    queue-timeout needs max-queue: `strata serve' refuses to
+                ;;    start with "queue_timeout requires max_queue to bound
+                ;;    pending calls", so the two are configured as a pair - that
+                ;;    error is exactly what the service threw on 2026-11-06 when
+                ;;    only the timeout was set.  max_queue 12 = enough headroom for
+                ;;    a full pi fan-out (orchestrator plus four sub-agents) with a
+                ;;    SillyTavern or rules-lawyer turn on top; past that a request
+                ;;    is turned away rather than queueing forever.  queue-timeout
+                ;;    300 = seconds a waiting request may take its first engine turn
+                ;;    (serve --help, range 0.1..600): a 113k-token orchestrator
+                ;;    prompt read takes ~84 s at the measured 1350 tok/s, so the
+                ;;    cap has to sit above that or pi's big turns fail as the lanes
+                ;;    fill up.
+                (serve-args '("--max-queue" "12" "--queue-timeout" "300"))
                 ;; Reasoning defaults for every client of this engine —
                 ;; SillyTavern and pi both inherit them and can still override
                 ;; per request.  These were absent from the run config, which is
