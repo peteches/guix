@@ -4,8 +4,11 @@
 ;; being reinstalled as the Proxmox host (proxmox3) this VM runs on, so its
 ;; GPU-bound services had to move into VMs. Unlike nug, this VM runs two GPU
 ;; workloads -- ComfyUI and koboldcpp -- which are mutually exclusive by
-;; configuration because 24GB of VRAM cannot hold both (see the note on the
-;; koboldcpp service below). nug's other GPU services (vllm-code-agent,
+;; configuration because 24GB of VRAM cannot hold both: since 2026-11-07 ComfyUI
+;; auto-starts and koboldcpp is manual-start, so a boot leaves the card with a
+;; full VRAM budget for image work instead of the 2GB remainder it had when
+;; koboldcpp auto-started (see the note on the koboldcpp service below). nug's
+;; other GPU services (vllm-code-agent,
 ;; koboldcpp-rp, sillytavern, colibri) were retired -- the local-LLM
 ;; experiments didn't pan out, though koboldcpp has since come back as pi's
 ;; LLM backend -- and nginx/certbot were dropped entirely — comfyui was
@@ -60,6 +63,14 @@
   #:use-module (gnu system)
   #:use-module (gnu system file-systems)
   #:use-module (gnu system keyboard)
+  ;; Canonical home of `uv' at the pinned guix commit (b13c7c0) is
+  ;; (gnu packages build-tools); (gnu packages rust-apps) only carries a
+  ;; deprecated alias for it. The load failure seen here was not the import but
+  ;; a drifted local guix (64d4de2, where the package itself moved to
+  ;; rust-apps) -- fixed by `guix pull -C peteches/channels/manual.scm`, which
+  ;; also brought the sops/guix-science/nonguix channels this file needs.
+  ;; Use the profile guix, not the system one: PATH here resolves to
+  ;; /run/current-system/profile/bin/guix, still at the off-pin commit.
   #:use-module ((gnu packages build-tools) #:select (uv))
   #:use-module ((gnu packages commencement) #:select (gcc-toolchain-14))
   #:use-module ((gnu packages linux) #:select (linux-libre-headers))
@@ -207,17 +218,21 @@
   (service comfyui-service-type
            (list
 	    (comfyui-configuration
-	     ;; Manual start only -- ComfyUI and the koboldcpp service below
-	     ;; share this VM's single RTX 4090 and 24GB cannot hold both.
-	     ;; koboldcpp's live allocations total ~20.4GB (15.1GB weights +
-	     ;; 3.7GB KV + 0.6GB recurrent state + 1.0GB compute + ~1.5GB CUDA
-	     ;; context), leaving ~1.7GB free; ComfyUI's idle CUDA context alone
-	     ;; is 386MB and an SDXL/Flux workflow needs 8-16GB. Both daemons
-	     ;; auto-started until 2026-10-04, which put them in silent
-	     ;; contention -- no OOM only because no image job had run since.
-	     ;; `herd stop koboldcpp; herd start comfyui` for an image session,
-	     ;; then the reverse when done.
-	     (auto-start? #f)
+	     ;; Auto-start -- ComfyUI owns the card at boot; the koboldcpp service
+	     ;; below is manual-start, because 24GB cannot hold both and the split
+	     ;; decides whether ComfyUI's weights stay resident or are re-streamed
+	     ;; per step. With koboldcpp up it holds 20.47GB (nvidia-smi,
+	     ;; 2026-11-07), leaving ComfyUI ~2GB, so its dynamic-VRAM loader cannot
+	     ;; keep the 5.1GB int8 MOSS model resident and re-streams it on every
+	     ;; KSampler step: measured 4.4-4.6 s/it (~18-21s per prompt) against
+	     ;; 2.5 it/s (1.85s per prompt) measured on 2026-11-02 with the model
+	     ;; resident. PCIe bandwidth is the smaller term -- 3.2-3.3 GB/s
+	     ;; measured through the x4 slot vs ~13 GB/s on the Gen5 x8 path the
+	     ;; card used before -- and it only bites because nothing is resident.
+	     ;; For an LLM session: `herd start koboldcpp', and `herd stop comfyui'
+	     ;; if the image work matters at that moment, then the reverse
+	     ;; afterwards.
+	     (auto-start? #t)
 	     (listen "0.0.0.0,::")
 	     (extra-model-paths-config %comfyui-model-paths)
 	     (runtime-packages (list uv))
@@ -633,19 +648,19 @@
 	       (comfyui-custom-node
 		(name "ComfyUI-Impact-Subpack")
 		(git-repo-url "https://github.com/ltdrdata/ComfyUI-Impact-Subpack")))))))
-      ;; The primary workload on this VM, and the sole LLM backend for
-      ;; every pi session on claude-workstation (all three accounts, via
-      ;; configs/pi/defaults/models.json -> Caddy's
-      ;; koboldcpp.ts.peteches.co.uk). Was declared auto-start? #f for
-      ;; "ad-hoc GPU-context experiments" but has in practice run
-      ;; continuously (11 days uptime, observed 2026-10-04), so it now
-      ;; auto-starts -- otherwise, with ComfyUI also manual-start above, a
-      ;; reboot would leave this VM serving nothing.
+      ;; The LLM backend for every pi session on claude-workstation (all three
+      ;; accounts, via configs/pi/defaults/models.json -> Caddy's
+      ;; koboldcpp.ts.peteches.co.uk), but manual-start (reverted on 2026-11-07):
+      ;; its 20.47GB live allocation is exactly what pushes ComfyUI into a ~2GB
+      ;; VRAM budget and per-step weight streaming, so a boot now leaves the card
+      ;; with ComfyUI resident and an LLM session is started by hand with
+      ;; `herd start koboldcpp' -- accepting that image generation runs at
+      ;; ~4.5 s/it instead of ~0.4 s/it while it is up, or stopping comfyui
+      ;; first. See the comfyui-configuration comment above for the arithmetic.
       ;;
-      ;; Shares this VM's single RTX 4090 with ComfyUI, which is therefore
-      ;; manual-start: the card cannot hold both. See the
-      ;; comfyui-configuration comment above for the VRAM arithmetic and
-      ;; the stop/start dance.
+      ;; It was auto-start? #t from 2026-10-04 because it ran continuously in
+      ;; practice; that split is no longer preferred now that image work on this
+      ;; box has a measured cost attached to it.
       ;;
       ;; model-name is huihui-ai's abliterated (uncensored) build of the
       ;; same Qwen3.8-27B checkpoint below, swapped in for the stock one --
@@ -685,7 +700,7 @@
       (service koboldcpp-service-type
                (koboldcpp-configuration
                 (service-name "koboldcpp")
-                (auto-start? #t)
+                (auto-start? #f)
                 (model-path "/media/models/koboldcpp-test")
                 (model-name "current-model.gguf")
                 (host "0.0.0.0")
