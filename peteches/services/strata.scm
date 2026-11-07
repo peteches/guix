@@ -74,6 +74,8 @@
             strata-configuration-reasoning-budget-tokens
             strata-configuration-reasoning-effort
             strata-configuration-answer-room?
+            strata-configuration-repetition-penalty
+            strata-configuration-repeat-stop-tokens
             strata-configuration-conversation-cache-mib
             strata-configuration-conversation-cache-slots
             strata-configuration-conversation-cache-min-free-mib
@@ -354,7 +356,21 @@
                     ;; budgets without prompt text.
                     (default "medium"))
   (answer-room? strata-configuration-answer-room?
-                (default #f)))
+                (default #f))
+  ;; #606: a degenerate output (one token repeated to the limit, e.g. 256 '!'
+  ;; mid-reply) is cut off by the engine's repeat_stop_tokens (default 256),
+  ;; which caps the damage but does not prevent the loop. The IQ2_XS model's
+  ;; thinking-mode sampling (server.py MODEL_CARD_SAMPLING) has no repetition
+  ;; penalty, which is what lets it fall into a single-token loop.
+  ;; repetition-penalty writes a `sampling` block into the run config
+  ;; (self.sampling_defaults, server.py:4775) that overrides the model-card
+  ;; sampling and forwards `repetition_penalty` to the engine as
+  ;; `penalty_repeat`, breaking the loop. repeat-stop-tokens shortens the
+  ;; safety net so a caller sees less of a loop if one still happens.
+  (repetition-penalty strata-configuration-repetition-penalty
+                      (default #f))
+  (repeat-stop-tokens strata-configuration-repeat-stop-tokens
+                      (default #f)))
 
 ;;; ── Resolved defaults ────────────────────────────────────────────────────
 
@@ -675,6 +691,30 @@
                       "true" "false")
                   ",\n")))
            ""))
+         ;; #606: the degenerate "!" loop guard. See the repetition-penalty /
+         ;; repeat-stop-tokens fields above for what each does. Precomputed
+         ;; HERE and spliced with #$ (a gexp does not capture let-bound locals
+         ;; - see the comment on reasoning-json for the 0-byte run-strata.sh
+         ;; that trap produced). Each line is omitted on its own, so a host
+         ;; that sets neither keeps the run config byte-identical to before.
+         (sampling-json
+          (string-join
+           (append
+            (if (strata-configuration-repetition-penalty config)
+                (list (string-append
+                       "  \"sampling\": {\"repetition_penalty\": "
+                       (number->string
+                        (strata-configuration-repetition-penalty config))
+                       "},\n"))
+                '())
+            (if (strata-configuration-repeat-stop-tokens config)
+                (list (string-append
+                       "  \"repeat_stop_tokens\": "
+                       (number->string
+                        (strata-configuration-repeat-stop-tokens config))
+                       ",\n"))
+                '()))
+           ""))
          ;; The parking flags as "args" lines, in the same style as
          ;; reasoning-json above: precomputed HERE and spliced with #$,
          ;; because a gexp does not capture let-bound locals (see that
@@ -982,6 +1022,7 @@
          ;; to this config key), and reasoning_budget_tokens / reasoning_effort /
          ;; answer_room are only ever read from the config's top level.
          #$reasoning-json
+         #$sampling-json
          "  \"log\": \"$LOG\""
          "}"
          "EOF"

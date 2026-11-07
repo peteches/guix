@@ -906,18 +906,23 @@
       (service strata-service-type
                (strata-configuration
                 (auto-start? #t)
-                ;; Which weights to serve. 'ista-iq2xs is ISTA-DASLab's IQ2_XS
-                ;; GSQ-RCO quant of Qwen3.8-Flash-Next - the quantisation tier
-                ;; strata's own catalog ships as its `qwen' family - swapped in
-                ;; on 2026-11-06 for the agents-VM sub-agent workflow
-                ;; (docs/strata-subagent-throughput.org). 'sc117-iq2xs is the
-                ;; same tier with SC117's abliteration on top and is the
-                ;; rollback: abliteration is what keeps a coding bot from
-                ;; refusing, and only live traffic can show whether the base
-                ;; model refuses enough to matter. %native-models in
+                ;; Which weights to serve. 'sc117-iq2xs is the same IQ2_XS
+                ;; GSQ-RCO tier with SC117's abliteration on top, i.e.
+                ;; weight-level refusal removal. It is served (not
+                ;; 'ista-iq2xs) because the un-abliterated base refuses
+                ;; explicit sexual content - it degenerates into a single
+                ;; '!' repeated to max_tokens (finish_reason: length),
+                ;; verified on the box 2026-11-06 - and abliteration is what
+                ;; removes that. The base model does NOT refuse
+                ;; morally-questionable creative content (lying, heists,
+                ;; lock-picking were all served fine), so the refusal scope
+                ;; is narrow and abliteration's impact is exactly scoped to
+                ;; what is wanted gone. 'ista-iq2xs is the same tier without
+                ;; the transform and is the rollback if the abliterated
+                ;; weights ever regress. %native-models in
                 ;; (peteches services strata) records what each repo publishes
                 ;; and which files this VM hard-links from one tree to the other.
-                (native-model 'ista-iq2xs)
+                (native-model 'sc117-iq2xs)
                 (data-dir "/media/models/strata")
                 (host "0.0.0.0")
                 ;; 262144 = the model's full trained context (GGUF
@@ -1044,6 +1049,23 @@
                 ;;    cap has to sit above that or pi's big turns fail as the lanes
                 ;;    fill up.
                 (serve-args '("--max-queue" "12" "--queue-timeout" "300"))
+                ;; Refusal-direction control vector (Strata's "Experimental Speed
+                ;; Projection") — OFF. On 2026-11-07 this was enabled via
+                ;; `extra-args' (`--control-vector-scaled
+                ;; data/experimental-speed-projection/...gguf:1.0 --control-vector-
+                ;; layer-range 4 44 --cvec-mode project --cvec-dir per-layer') and
+                ;; every request collapsed into `!'-repetition and hit
+                ;; finish_reason=length (verified live: a one-sentence prompt came
+                ;; back as content "!!" / reasoning "!!!..."). The vector loads
+                ;; fine — the file is in the `strata' store package, the engine's
+                ;; cwd is that bundle, and the args reach the process — but its
+                ;; direction was fit on `unsloth UD-Q2_K_XL' (see the vector's own
+                ;; *.json), not this IQ2_XS quant, so the projection is mismatched
+                ;; and distorts every generation. Re-enable only with a vector fit
+                ;; for this exact quant, or test it per request (`experimental_speed_
+                ;; projection` sampling key) before making it the default. Note the
+                ;; SYCL port does implement cvec (sycl/src/kernels/cuda/cvec.dp.cpp)
+                ;; where Metal does not, so the card is not the blocker.
                 ;; Reasoning defaults for every client of this engine —
                 ;; SillyTavern and pi both inherit them and can still override
                 ;; per request.  These were absent from the run config, which is
@@ -1063,7 +1085,21 @@
                 ;;   varying with whatever max_tokens a client happens to send.
                 (reasoning-budget-tokens 8192)
                 (reasoning-effort "medium")
-                (answer-room? #f)))
+                (answer-room? #f)
+                ;; #606: this model's thinking-mode sampling has no repetition
+                ;; penalty, so over a long reply its 2-bit precision degrades
+                ;; and it falls into a single-token loop - 66 such events in
+                ;; /var/log/strata/strata.log, most ending in 256 '!'s after
+                ;; thousands of normal tokens (the engine's repeat_stop_tokens
+                ;; safety net capped the damage but never prevented the loop).
+                ;; A repetition_penalty in the run config's `sampling` block
+                ;; (self.sampling_defaults, server.py:4775) overrides that
+                ;; model-card sampling and breaks the loop; repeat-stop-tokens
+                ;; 64 shortens the safety net so a caller sees less of a loop
+                ;; if one still happens.  1.2 is a conservative start - bump
+                ;; toward 1.3 if loops persist.
+                (repetition-penalty 1.2)
+                (repeat-stop-tokens 64)))
       ;; /lib64 -> glibc/lib: the Strata bundle's private CPython and the
       ;; downloaded Intel engine both carry PT_INTERP =
       ;; /lib64/ld-linux-x86-64.so.2, an FHS path that does not exist on a
