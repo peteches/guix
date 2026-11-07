@@ -110,7 +110,7 @@
   ;; default uv-command path (/run/current-system/profile/bin/uv) resolves,
   ;; and declared in the container too.
   (uv-package vllm-configuration-uv-package
-              (default (@ (gnu packages rust-apps) uv)))
+              (default (@ (gnu packages build-tools) uv)))
   ;; Guix package providing a standalone C compiler, declared in the FHS
   ;; container so Triton can find a working `cc' on PATH the same way it
   ;; would on a normal FHS distro.

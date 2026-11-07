@@ -172,7 +172,7 @@
   ;; Guix package providing uv.  Installed into the system profile so the
   ;; default uv-command path (/run/current-system/profile/bin/uv) resolves.
   (uv-package comfyui-configuration-uv-package
-              (default (@ (gnu packages rust-apps) uv)))
+              (default (@ (gnu packages build-tools) uv)))
   ;; Guix package providing a standalone C compiler.  Declared as a package
   ;; in the FHS container so Triton (used by Triton-backed nodes/kernels,
   ;; e.g. MiniMaxH3) can find a working `cc' on PATH the same way it would
