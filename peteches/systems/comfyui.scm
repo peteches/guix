@@ -888,9 +888,12 @@
       ;; It must be downloaded before the service can start; the service
       ;; does not auto-download it.
       ;;
-      ;; --cache-type-k/v q8_0: Q8_0-quantised KV cache.  At the 262K ctx
-      ;; the full-attention layers' KV is ~2.7 GB quantised (vs ~5.4 GB
-      ;; f16), keeping weights+KV inside 32 GB with headroom.
+      ;; --cache-type-k/v q4_0: Q4_0-quantised KV cache.  At the 131072 ctx
+      ;; the full-attention layers' KV is small enough that the 25.3 GB model
+      ;; stays entirely in the B70's 32 GB VRAM.  (The previous 262144 ctx +
+      ;; q8_0 KV was large enough to spill the model to CPU -- the process held
+      ;; ~24 GB of anonymous CPU memory and generated at ~11 tok/s instead of
+      ;; the tens of tok/s a 3B-active MoE should hit in VRAM.)
       ;; --spec-type draft-mtp: MTP speculative decoding (the model carries
       ;; a dedicated MTP layer); --spec-draft-n-max 6 is huihui-ai's
       ;; recommended draft depth.
@@ -904,7 +907,7 @@
                 (model-path "/media/models/llama-server/Huihui-Qwen3.6-35B-A3B-abliterated-ggml-model-Q5_K.gguf")
                 (host "0.0.0.0")
                 (port 8000)
-                (ctx-size 262144)
+                (ctx-size 131072)
                 (open-firewall? #t)
                 ;; Sampling defaults ported from the strata engine config we
                 ;; tuned against the #606 single-token `!` loops (see the
@@ -930,8 +933,8 @@
                               "--presence-penalty" "0.6"
                               "--frequency-penalty" "1.0"
                               "--repeat-last-n" "256"
-                              "--cache-type-k" "q8_0"
-                              "--cache-type-v" "q8_0"
+                              "--cache-type-k" "q4_0"
+                              "--cache-type-v" "q4_0"
                               "--spec-type" "draft-mtp"
                               "--spec-draft-n-max" "6")))))))))
 
