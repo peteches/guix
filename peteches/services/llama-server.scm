@@ -209,7 +209,7 @@
                      ;; is built into the package's own lib dir, next to
                      ;; libggml.so; ggml dlopens backends from there, so no
                      ;; GGML_BACKEND_DIR wiring is needed.
-                     #:environment-variables #$env))
+                     #:environment-variables (list #$@env)))
            (stop #~(make-kill-destructor))))))
 
 (define (llama-server-firewall-rules config)
