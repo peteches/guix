@@ -935,7 +935,14 @@
                               "--repeat-last-n" "256"
                               "--cache-type-k" "q4_0"
                               "--cache-type-v" "q4_0"
-                              "--spec-type" "draft-mtp"
-                              "--spec-draft-n-max" "6")))))))))
+                              "--threads" "8")))))))))
+
+      ;; The model's MTP (multi-token-prediction) draft layer is NOT used for
+      ;; speculative decoding (--spec-type draft-mtp was tried): on this build
+      ;; its draft-acceptance rate is ~10%, so llama.cpp spends most of its
+      ;; time generating drafts that get rejected, tripling generation latency
+      ;; (16.76 tok/s with spec-decode vs ~50 tok/s without).  Plain decoding
+      ;; is faster.  --threads 8 is marginally faster than the 16-core default
+      ;; for this model's CPU-side attention/MoE routing.
 
 comfyui-os
