@@ -113,10 +113,11 @@
                   (caddy-reverse-proxy
                    (domain "koboldcpp.ts.peteches.co.uk")
                    (upstream "comfyui.spaniel-cordylus.ts.net:5001"))
-                  ;; strata-service-type on comfyui.scm — auto-starts at boot
-                  ;; and listens on the tailnet (--access tailscale), so this
-                  ;; proxies to the B70 MoE engine (Qwen3.8-Flash-Next Q2_0)
-                  ;; on the same VM as ComfyUI/koboldcpp (different GPU).
+                  ;; llama-server (Vulkan) on comfyui.scm — replacement for the
+                  ;; strata engine (the domain name is legacy).  Listens on
+                  ;; 8000 on the B70 via llama.cpp's Vulkan backend, so this
+                  ;; proxies to the Qwen3.8-Flash-Next Q4_K_XL-V2 GGUF serving
+                  ;; the OpenAI API that pi drives.
                   (caddy-reverse-proxy
                    (domain "strata.ts.peteches.co.uk")
                    (upstream "comfyui.spaniel-cordylus.ts.net:8000"))
