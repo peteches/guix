@@ -75,6 +75,14 @@
             strata-configuration-reasoning-effort
             strata-configuration-answer-room?
             strata-configuration-repetition-penalty
+            strata-configuration-temperature
+            strata-configuration-top-p
+            strata-configuration-top-k
+            strata-configuration-min-p
+            strata-configuration-seed
+            strata-configuration-presence-penalty
+            strata-configuration-frequency-penalty
+            strata-configuration-penalty-last-n
             strata-configuration-repeat-stop-tokens
             strata-configuration-conversation-cache-mib
             strata-configuration-conversation-cache-slots
@@ -107,6 +115,21 @@
 ;; "args" that is not the last one needs it.
 (define (engine-flag-line flag)
   (list (string-append "    \"" flag "\",")))
+
+;; One "key": value entry for the run config's `sampling` block (the object
+;; the engine merges over the model-card sampling, server.py:6200), ready to
+;; be joined with ", ".  #f emits nothing, i.e. omit the key and let the model
+;; card (server.py MODEL_CARD_SAMPLING) keep its default for it.  Called from
+;; the sampling-json local at gexp elaboration, so the record accessors that
+;; feed it are in scope - the same constraint as every other *-json local in
+;; strata-native-wrapper-script.  A number is rendered with number->string, so
+;; an integer field (top_k, penalty_last_n, seed) must be given an integer,
+;; not a float, or the engine's sampling_defaults_from_config rejects it.
+(define (sampling-entry key value)
+  (if value
+      (list (string-append "\"" key "\": "
+                           (if (number? value) (number->string value) value)))
+      '()))
 
 ;;; ── Record type ──────────────────────────────────────────────────────────
 
@@ -357,18 +380,45 @@
                     (default "medium"))
   (answer-room? strata-configuration-answer-room?
                 (default #f))
-  ;; #606: a degenerate output (one token repeated to the limit, e.g. 256 '!'
-  ;; mid-reply) is cut off by the engine's repeat_stop_tokens (default 256),
-  ;; which caps the damage but does not prevent the loop. The IQ2_XS model's
-  ;; thinking-mode sampling (server.py MODEL_CARD_SAMPLING) has no repetition
-  ;; penalty, which is what lets it fall into a single-token loop.
-  ;; repetition-penalty writes a `sampling` block into the run config
-  ;; (self.sampling_defaults, server.py:4775) that overrides the model-card
-  ;; sampling and forwards `repetition_penalty` to the engine as
-  ;; `penalty_repeat`, breaking the loop. repeat-stop-tokens shortens the
-  ;; safety net so a caller sees less of a loop if one still happens.
+  ;; ── Sampling ───────────────────────────────────────────────────────────────
+  ;; These are the run config's `sampling` block (self.sampling_defaults,
+  ;; server.py:4775), which the engine merges OVER the model-card sampling
+  ;; (server.py:6200 `defaults = {**model_card_sampling(...), **self.sampling_defaults,
+  ;; **self.shared}`): a value set here overrides whatever the model card
+  ;; (server.py MODEL_CARD_SAMPLING) chose for this arch, and a value left #f
+  ;; keeps the card's default for that key.  The accepted keys and their
+  ;; validation are server.py:9377 `sampling_defaults_from_config`:
+  ;; temperature/top_p/top_k/min_p/seed numbers, presence_penalty and
+  ;; frequency_penalty >= 0, penalty_last_n a non-negative integer, and
+  ;; top_k/penalty_last_n/seed integers not floats; aliases
+  ;; repeat_penalty->repetition_penalty and repeat_last_n->penalty_last_n
+  ;; (server.py:9344).  The IQ2_XS model's thinking-mode card carries no
+  ;; repetition penalty, which is what lets it fall into a single-token loop
+  ;; (#606); repetition-penalty is the guard for that.  seed is a server-wide
+  ;; default, so setting it makes every caller's generation deterministic.
   (repetition-penalty strata-configuration-repetition-penalty
                       (default #f))
+  (temperature strata-configuration-temperature
+               (default #f))
+  (top-p strata-configuration-top-p
+         (default #f))
+  (top-k strata-configuration-top-k
+         (default #f))
+  (min-p strata-configuration-min-p
+         (default #f))
+  (seed strata-configuration-seed
+        (default #f))
+  (presence-penalty strata-configuration-presence-penalty
+                    (default #f))
+  (frequency-penalty strata-configuration-frequency-penalty
+                     (default #f))
+  (penalty-last-n strata-configuration-penalty-last-n
+                  (default #f))
+  ;; #606: a degenerate output (one token repeated to the limit, e.g. 256 '!'
+  ;; mid-reply) is cut off by the engine's repeat_stop_tokens (default 256),
+  ;; which caps the damage but does not prevent the loop.  This is a TOP-LEVEL
+  ;; run-config key (a sibling of `sampling`), not part of the sampling block;
+  ;; it shortens the safety net so a caller sees less of a loop if one happens.
   (repeat-stop-tokens strata-configuration-repeat-stop-tokens
                       (default #f)))
 
@@ -691,30 +741,56 @@
                       "true" "false")
                   ",\n")))
            ""))
-         ;; #606: the degenerate "!" loop guard. See the repetition-penalty /
-         ;; repeat-stop-tokens fields above for what each does. Precomputed
-         ;; HERE and spliced with #$ (a gexp does not capture let-bound locals
-         ;; - see the comment on reasoning-json for the 0-byte run-strata.sh
-         ;; that trap produced). Each line is omitted on its own, so a host
-         ;; that sets neither keeps the run config byte-identical to before.
+         ;; The run config's `sampling` block (see the Sampling record fields
+         ;; above for what each key does and which the engine accepts) plus the
+         ;; top-level repeat_stop_tokens safety net.  Precomputed HERE and
+         ;; spliced with #$ (a gexp does not capture let-bound locals - see the
+         ;; comment on reasoning-json for the 0-byte run-strata.sh that trap
+         ;; produced).  Each key is omitted on its own via sampling-entry, so a
+         ;; host that sets none keeps the run config byte-identical to before;
+         ;; the `sampling` object itself is emitted only when at least one key
+         ;; is set.
          (sampling-json
-          (string-join
-           (append
-            (if (strata-configuration-repetition-penalty config)
-                (list (string-append
-                       "  \"sampling\": {\"repetition_penalty\": "
-                       (number->string
-                        (strata-configuration-repetition-penalty config))
-                       "},\n"))
-                '())
-            (if (strata-configuration-repeat-stop-tokens config)
-                (list (string-append
-                       "  \"repeat_stop_tokens\": "
-                       (number->string
-                        (strata-configuration-repeat-stop-tokens config))
-                       ",\n"))
-                '()))
-           ""))
+          (let ((sampling-entries
+                 (append
+                  (sampling-entry "repetition_penalty"
+                                  (strata-configuration-repetition-penalty
+                                   config))
+                  (sampling-entry "presence_penalty"
+                                  (strata-configuration-presence-penalty
+                                   config))
+                  (sampling-entry "frequency_penalty"
+                                  (strata-configuration-frequency-penalty
+                                   config))
+                  (sampling-entry "penalty_last_n"
+                                  (strata-configuration-penalty-last-n
+                                   config))
+                  (sampling-entry "temperature"
+                                  (strata-configuration-temperature config))
+                  (sampling-entry "top_p"
+                                  (strata-configuration-top-p config))
+                  (sampling-entry "top_k"
+                                  (strata-configuration-top-k config))
+                  (sampling-entry "min_p"
+                                  (strata-configuration-min-p config))
+                  (sampling-entry "seed"
+                                  (strata-configuration-seed config)))))
+           (string-join
+            (append
+             (if (null? sampling-entries)
+                 '()
+                 (list (string-append
+                        "  \"sampling\": {"
+                        (string-join sampling-entries ", ")
+                        "},\n")))
+             (if (strata-configuration-repeat-stop-tokens config)
+                 (list (string-append
+                        "  \"repeat_stop_tokens\": "
+                        (number->string
+                         (strata-configuration-repeat-stop-tokens config))
+                        ",\n"))
+                 '()))
+            "")))
          ;; The parking flags as "args" lines, in the same style as
          ;; reasoning-json above: precomputed HERE and spliced with #$,
          ;; because a gexp does not capture let-bound locals (see that
