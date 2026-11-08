@@ -874,20 +874,26 @@
                                  (cons "/var/log/tailscaled-*.log" "tailscale")
                                  (cons "/var/log/comfyui/comfyui/update.log" "comfyui")))))
       ;; llama-server (Vulkan) — replacement for the strata engine.
-      ;; The Q4_K_XL-V2 abliterated GGUF is a standard GGUF (no GSQ-RCO
-      ;; native pack, no MTP/spec), so the strata service's native-pack
-      ;; machinery does not apply.  llama.cpp's llama-server loads the
-      ;; GGUF directly and exposes the OpenAI /v1/chat/completions API
-      ;; that pi drives.  The Vulkan backend runs on the Intel Arc B70
-      ;; via Mesa's ANV driver.
+      ;; llama.cpp's llama-server loads the GGUF directly and exposes the
+      ;; OpenAI /v1/chat/completions API that pi drives.  The Vulkan backend
+      ;; runs on the Intel Arc B70 via Mesa's ANV driver.
       ;;
-      ;; The model is the huihui-ai/Huihui-Qwen3.8-Flash-Next-abliterated-v2
-      ;; Q4_K_XL-V2 quant, published as a 4-shard GGUF (~104 GiB total) on
-      ;; /media/models/llama-server (the 3.4 T hot-storage volume).  llama.cpp
-      ;; loads a sharded GGUF by being pointed at shard 1 — it auto-loads the
-      ;; 00002/00003/00004 siblings from the same directory.  It must be
-      ;; downloaded before the service can start; the service does not
-      ;; auto-download it.
+      ;; The model is the huihui-ai/Huihui-Qwen3.6-35B-A3B-abliterated-MTP-GGUF
+      ;; Q5_K quant (25.3 GB, single file) on /media/models/llama-server (the
+      ;; 3.4 T hot-storage volume).  It replaced the 177B dense
+      ;; Qwen3.8-Flash-Next abliterated model, which ran at ~0.5 tok/s
+      ;; (unusable): this is a hybrid linear-attention MoE (35B total, ~3B
+      ;; active per token; 30 of 40 layers carry no growing KV), so it fits
+      ;; entirely in the B70's 32 GB VRAM and generates at tens of tok/s.
+      ;; It must be downloaded before the service can start; the service
+      ;; does not auto-download it.
+      ;;
+      ;; --cache-type-k/v q8_0: Q8_0-quantised KV cache.  At the 262K ctx
+      ;; the full-attention layers' KV is ~2.7 GB quantised (vs ~5.4 GB
+      ;; f16), keeping weights+KV inside 32 GB with headroom.
+      ;; --spec-type draft-mtp: MTP speculative decoding (the model carries
+      ;; a dedicated MTP layer); --spec-draft-n-max 6 is huihui-ai's
+      ;; recommended draft depth.
       ;;
       ;; Port 8000 is the same port the strata engine used, so
       ;; caddy's strata.ts.peteches.co.uk proxy does not need
@@ -895,7 +901,7 @@
       (service llama-server-service-type
                (llama-server-configuration
                 (auto-start? #t)
-                (model-path "/media/models/llama-server/Qwen3.8-Flash-Next-UD-Q4_K_XL-00001-of-00004.gguf")
+                (model-path "/media/models/llama-server/Huihui-Qwen3.6-35B-A3B-abliterated-ggml-model-Q5_K.gguf")
                 (host "0.0.0.0")
                 (port 8000)
                 (ctx-size 262144)
@@ -923,6 +929,10 @@
                               "--repeat-penalty" "1.35"
                               "--presence-penalty" "0.6"
                               "--frequency-penalty" "1.0"
-                              "--repeat-last-n" "256")))))))))
+                              "--repeat-last-n" "256"
+                              "--cache-type-k" "q8_0"
+                              "--cache-type-v" "q8_0"
+                              "--spec-type" "draft-mtp"
+                              "--spec-draft-n-max" "6")))))))))
 
 comfyui-os
