@@ -906,14 +906,26 @@
       (service strata-service-type
                (strata-configuration
                 (auto-start? #t)
-                ;; Which weights to serve. 'sc117-iq2xs is the same IQ2_XS
-                ;; GSQ-RCO tier with SC117's abliteration on top, i.e.
-                ;; weight-level refusal removal. It is served (not
+                ;; Which weights to serve. 'sc117-iq3xxs is the 3-bit
+                ;; IQ3_XXS GSQ-RCO tier with SC117's abliteration on top,
+                ;; i.e. weight-level refusal removal. It is served (not
                 ;; 'ista-iq2xs) because the un-abliterated base refuses
                 ;; explicit sexual content - it degenerates into a single
                 ;; '!' repeated to max_tokens (finish_reason: length),
                 ;; verified on the box 2026-11-06 - and abliteration is what
-                ;; removes that. The base model does NOT refuse
+                ;; removes that.
+                ;;
+                ;; The quant was raised from IQ2_XS to IQ3_XXS (2026-11-09)
+                ;; as the durable fix for the 2-bit single-token `!' loop
+                ;; (#606): at 2 bpw the `!' token dominates the sampling
+                ;; distribution and a long reply degenerates into it, which
+                ;; repetition-penalty 1.2 only blunted. At 3 bpw the loop is
+                ;; gone at the source, so repetition-penalty stays at 1.2
+                ;; (a bare nudge) and no band-aid is needed. Same abliterated
+                ;; weights, same hf-repo, same strata/rt + mmproj — only the
+                ;; two IQ3_XXS shards are new (~71 GiB download on first
+                ;; start). Rollback is 'sc117-iq2xs (the IQ2_XS shards are
+                ;; still on disk) or 'ista-iq2xs. The base model does NOT refuse
                 ;; morally-questionable creative content (lying, heists,
                 ;; lock-picking were all served fine), so the refusal scope
                 ;; is narrow and abliteration's impact is exactly scoped to
@@ -922,7 +934,7 @@
                 ;; weights ever regress. %native-models in
                 ;; (peteches services strata) records what each repo publishes
                 ;; and which files this VM hard-links from one tree to the other.
-                (native-model 'sc117-iq2xs)
+                (native-model 'sc117-iq3xxs)
                 (data-dir "/media/models/strata")
                 (host "0.0.0.0")
                 ;; 262144 = the model's full trained context (GGUF
@@ -1096,9 +1108,39 @@
                 ;; (self.sampling_defaults, server.py:4775) overrides that
                 ;; model-card sampling and breaks the loop; repeat-stop-tokens
                 ;; 64 shortens the safety net so a caller sees less of a loop
-                ;; if one still happens.  1.2 is a conservative start - bump
-                ;; toward 1.3 if loops persist.
-                (repetition-penalty 1.2)
+                ;; if one still happens.
+                ;;
+                ;; Full sampling config ported from the llama-server state
+                ;; (commit c5be866), which was explicitly tuned against the
+                ;; #606 single-token `!' loops on this model. The llama-server
+                ;; config used temp 0.8 / top-p 0.95 / top-k 40 / min-p 0.05
+                ;; (matching llama.cpp's own defaults) plus repeat-penalty 1.35
+                ;; over a 256-token window, presence-penalty 0.6 and
+                ;; frequency-penalty 1.0 (the two samplers built to break
+                ;; token-lock). The strata revert (d7cad82) kept only
+                ;; repetition-penalty 1.2 and dropped all the other anti-loop
+                ;; knobs; this restores them. 1.2 only blunted the loop; the
+                ;; presence/frequency penalties + temp 0.8 are what broke it.
+                ;;   - repetition-penalty 1.35 (was 1.2) + penalty-last-n 256:
+                ;;     a 1.2 multiplier over the engine's 64-token window could
+                ;;     not dislodge a token already 256-deep in a loop; a
+                ;;     stronger penalty over a wider recent window can.
+                ;;   - presence-penalty 0.6 + frequency-penalty 1.0: the two
+                ;;     samplers built to break token-lock, both 0.0 (off) in
+                ;;     the engine defaults.
+                ;;   - temp 0.8 / top-p 0.95 / top-k 40 / min-p 0.05: match
+                ;;     llama.cpp's own defaults (and the model card's nucleus),
+                ;;     stated explicitly so they are not silently inherited.
+                ;;     temp 0.8 also lifts thinking off the ~0.3 engine default
+                ;;     that #728/#5128 document as the loop trigger.
+                (repetition-penalty 1.35)
+                (penalty-last-n 256)
+                (presence-penalty 0.6)
+                (frequency-penalty 1.0)
+                (temperature 0.8)
+                (top-p 0.95)
+                (top-k 40)
+                (min-p 0.05)
                 (repeat-stop-tokens 64)))
       ;; /lib64 -> glibc/lib: the Strata bundle's private CPython and the
       ;; downloaded Intel engine both carry PT_INTERP =

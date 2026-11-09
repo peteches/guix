@@ -482,6 +482,39 @@
            (mmproj "mmproj-Qwen3.8-Flash-Next-BF16.gguf")
            (mtp-dir "strata/rt")
            (slug "sc117-iq2xs")))
+         ;; The 3-bit IQ3_XXS of the same SC117 abliterated weights — the
+         ;; durable fix for the 2-bit IQ2_XS single-token `!' loop (#606).
+         ;; At 3 bpw the `!' token no longer dominates the sampling
+         ;; distribution, so the loop is gone at the source and
+         ;; repetition-penalty 1.2 (a bare nudge) is sufficient again.
+         ;; Same hf-repo as sc117-iq2xs: the two IQ3_XXS shards are the only
+         ;; new downloads (~71 GiB) and the native pack rebuilds from them.
+         ;; strata/rt and mmproj are byte-identical to the IQ2_XS entry
+         ;; (published at this repo's root, shared across quants — the MTP
+         ;; runtime is tied to the MTP draft and the projector to the base
+         ;; model, neither to the main quant), so they are reused, not
+         ;; re-fetched. Experts are mmap'd, so the larger on-disk size costs
+         ;; no extra memory: the profile-filled expert cache is memory-bound
+         ;; and holds the hot experts regardless of quant. The higher quant's
+         ;; only cost is a larger per-expert footprint (fewer cached experts,
+         ;; slower decode) — the IQ3_XXS-vs-IQ3_S trade-off.
+         (cons 'sc117-iq3xxs
+          (strata-native-model
+           (hf-repo "SC117/Qwen3.8-Flash-Next-GSQ-RCO-abliterated-GGUF")
+           (model-files
+            (list (cons "IQ3_XXS/Qwen3.8-Flash-Next-GSQ-RCO-abliterated-IQ3_XXS-00001-of-00002.gguf" 47342144896)
+                  (cons "IQ3_XXS/Qwen3.8-Flash-Next-GSQ-RCO-abliterated-IQ3_XXS-00002-of-00002.gguf" 28800138432)))
+           (aux-files
+            (list (cons "strata/rt/dense.bin" 116099072)
+                  (cons "strata/rt/dense.txt" 1880)
+                  (cons "strata/rt/draft_vocab.bin" 425196)
+                  (cons "strata/rt/experts.bin" 707788800)
+                  (cons "mmproj-Qwen3.8-Flash-Next-BF16.gguf" 907542944)))
+           (pack-source "IQ3_XXS/Qwen3.8-Flash-Next-GSQ-RCO-abliterated-IQ3_XXS-00001-of-00002.gguf")
+           (shard2 "IQ3_XXS/Qwen3.8-Flash-Next-GSQ-RCO-abliterated-IQ3_XXS-00002-of-00002.gguf")
+           (mmproj "mmproj-Qwen3.8-Flash-Next-BF16.gguf")
+           (mtp-dir "strata/rt")
+           (slug "sc117-iq3xxs")))
          ;; The upstream quantiser's own IQ2_XS of the same weights, WITHOUT
          ;; SC117's abliteration: ISTA-DASLab make the GSQ-RCO quants that
          ;; strata's catalog `qwen' family points at (setup.py's MODELS table,
