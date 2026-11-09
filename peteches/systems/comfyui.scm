@@ -84,14 +84,19 @@
   ;; no render node appears (verified on 6.12.103: xe loads, card unbound).
   #:use-module ((nongnu packages linux) #:select (linux))
   #:use-module ((gnu packages glib) #:select (glib))
-  #:use-module (peteches packages llama-cpp-qwen4)
   #:use-module (peteches systems vm-base)
   #:use-module (peteches services alloy)
   #:use-module (peteches services comfyui)
   #:use-module (peteches services koboldcpp)
   #:use-module (peteches services restic)
-  #:use-module (peteches services llama-server)
+  #:use-module (peteches services strata)
   #:use-module (peteches services tailscale)
+  #:use-module (peteches packages strata)
+  #:use-module (gnu packages base)         ; glibc (for the /lib64 symlink)
+  #:use-module (gnu packages gcc)          ; gcc `lib' output (libstdc++/libgcc_s)
+  #:use-module (gnu packages oneapi)       ; level-zero (libze_loader.so.1)
+  #:use-module (gnu packages opencl)       ; opencl-icd-loader (libOpenCL.so.1)
+  #:use-module (gnu packages compression)  ; zstd (libzstd.so.1, an IGC dep)
   #:use-module (sops secrets)
   #:use-module (guix-science-nonfree packages cuda)   ; cuda-13
   #:export (comfyui-os))
@@ -181,17 +186,30 @@
      #:with-nonguix? #t
      #:with-intel-gpu? #t
      #:with-nvidia? #t
-     ;; llama-server (Vulkan) — llama-cpp-qwen4 (llama.cpp b12211, vendored
-     ;; ggml with -DGGML_VULKAN=ON; the stock channel package is b10318 and
-     ;; rejects this model's `qwen4exp' architecture) provides the
-     ;; llama-server binary the llama-server-service-type runs; its Vulkan
-     ;; backend is built into the package's own lib dir and dlopen'd from
-     ;; there.  Pulled into the profile by this extra-packages entry.
-     #:extra-packages (list llama-cpp-qwen4)
      ;; RTX 4090 (Ada Lovelace) is well clear of the 590+ pre-Turing GPU
      ;; cutoff that bit dagon's Pascal-based GTX 1060 — see (peteches
      ;; systems vm-base)'s nvidia-packages-for-version.
      #:nvidia-driver-version '595
+     ;; Intel Arc B70 (Battlemage) SYCL/Level Zero stack for the Strata
+     ;; service below.  These are the engine's *system* library deps (the
+     ;; engine package itself is fetched by Strata at first launch, not a
+     ;; guix input) — see (peteches services strata)'s header.  In the
+     ;; profile so `clinfo`/`ze_*` are available for debugging the B70.
+     #:extra-packages
+     (list strata intel-level-zero-gpu intel-igc-core libigdgmm level-zero pocl
+           ;; The Strata SYCL engine's system-library deps that are NOT in
+           ;; %base-packages.  `libOpenCL.so.1' comes from opencl-icd-loader
+           ;; (pocl only provides libpocl.so.2, an OpenCL *implementation*,
+           ;; not the ICD *loader* the engine links).  libstdc++.so.6/
+           ;; libgcc_s.so.1 come from gcc's `lib' OUTPUT — gcc's default `out'
+           ;; is the compiler, not the runtime libs, so the (PACKAGE OUTPUT)
+           ;; cons pair is required (the OS `packages' field supports it).
+           ;; `libzstd.so.1' comes from zstd's `lib' OUTPUT (zstd's default
+           ;; `out' is the command, not the library): the Intel IGC
+           ;; (libigc.so.2, loaded by the NEO runtime via dlopen) NEEDs it,
+           ;; and without it the compiler interface fails to load and the
+           ;; engine aborts.
+           (list zstd "lib") opencl-icd-loader (list gcc "lib"))
      #:extra-services
      (list
       (service tailscale-service-type
@@ -873,76 +891,231 @@
                                  (cons "/var/log/alloy.log" "alloy")
                                  (cons "/var/log/tailscaled-*.log" "tailscale")
                                  (cons "/var/log/comfyui/comfyui/update.log" "comfyui")))))
-      ;; llama-server (Vulkan) — replacement for the strata engine.
-      ;; llama.cpp's llama-server loads the GGUF directly and exposes the
-      ;; OpenAI /v1/chat/completions API that pi drives.  The Vulkan backend
-      ;; runs on the Intel Arc B70 via Mesa's ANV driver.
-      ;;
-      ;; The model is the huihui-ai/Huihui-Qwen3.6-35B-A3B-abliterated-MTP-GGUF
-      ;; Q5_K quant (25.3 GB, single file) on /media/models/llama-server (the
-      ;; 3.4 T hot-storage volume).  It replaced the 177B dense
-      ;; Qwen3.8-Flash-Next abliterated model, which ran at ~0.5 tok/s
-      ;; (unusable): this is a hybrid linear-attention MoE (35B total, ~3B
-      ;; active per token; 30 of 40 layers carry no growing KV), so it fits
-      ;; entirely in the B70's 32 GB VRAM and generates at tens of tok/s.
-      ;; It must be downloaded before the service can start; the service
-      ;; does not auto-download it.
-      ;;
-      ;; --cache-type-k/v q4_0: Q4_0-quantised KV cache.  At the 131072 ctx
-      ;; the full-attention layers' KV is small enough that the 25.3 GB model
-      ;; stays entirely in the B70's 32 GB VRAM.  (The previous 262144 ctx +
-      ;; q8_0 KV was large enough to spill the model to CPU -- the process held
-      ;; ~24 GB of anonymous CPU memory and generated at ~11 tok/s instead of
-      ;; the tens of tok/s a 3B-active MoE should hit in VRAM.)
-      ;; --spec-type draft-mtp: MTP speculative decoding (the model carries
-      ;; a dedicated MTP layer); --spec-draft-n-max 6 is huihui-ai's
-      ;; recommended draft depth.
-      ;;
-      ;; Port 8000 is the same port the strata engine used, so
-      ;; caddy's strata.ts.peteches.co.uk proxy does not need
-      ;; changing.
-      (service llama-server-service-type
-               (llama-server-configuration
+      ;; Strata — the SC117 abliterated Qwen3.8-Flash-Next (IQ2_XS) on the
+      ;; Intel Arc B70 via its SYCL/Level Zero backend, run through the
+      ;; native-pack path.  The catalog's fingerprint and SHA-256 gates
+      ;; refuse a modified GGUF (eddoursul/Strata issues #4087/#4160), so the
+      ;; service downloads the model's files, builds a native pack with the
+      ;; bundle's tools/iq_pack.py, and serves them with `strata serve` in
+      ;; the foreground (see (peteches services strata) for the design).
+      ;; Auto-starts at boot and listens on 0.0.0.0, so it is reachable from
+      ;; the fleet via caddy (strata.ts.peteches.co.uk -> this VM:8000). The
+      ;; first start downloads ~70 GB (the IQ2_XS shards + strata/rt +
+      ;; mmproj) and builds the pack (a few minutes); the engine component is
+      ;; fetched on the same first start if it is not already on disk.
+      (service strata-service-type
+               (strata-configuration
                 (auto-start? #t)
-                (model-path "/media/models/llama-server/Huihui-Qwen3.6-35B-A3B-abliterated-ggml-model-Q5_K.gguf")
+                ;; Which weights to serve. 'sc117-iq2xs is the same IQ2_XS
+                ;; GSQ-RCO tier with SC117's abliteration on top, i.e.
+                ;; weight-level refusal removal. It is served (not
+                ;; 'ista-iq2xs) because the un-abliterated base refuses
+                ;; explicit sexual content - it degenerates into a single
+                ;; '!' repeated to max_tokens (finish_reason: length),
+                ;; verified on the box 2026-11-06 - and abliteration is what
+                ;; removes that. The base model does NOT refuse
+                ;; morally-questionable creative content (lying, heists,
+                ;; lock-picking were all served fine), so the refusal scope
+                ;; is narrow and abliteration's impact is exactly scoped to
+                ;; what is wanted gone. 'ista-iq2xs is the same tier without
+                ;; the transform and is the rollback if the abliterated
+                ;; weights ever regress. %native-models in
+                ;; (peteches services strata) records what each repo publishes
+                ;; and which files this VM hard-links from one tree to the other.
+                (native-model 'sc117-iq2xs)
+                (data-dir "/media/models/strata")
                 (host "0.0.0.0")
-                (port 8000)
-                (ctx-size 131072)
+                ;; 262144 = the model's full trained context (GGUF
+                ;; context_length / n_ctx_train) -- the hard ceiling; past it
+                ;; is RoPE extrapolation. This is a hybrid Gated-DeltaNet
+                ;; model (only 12 of 48 layers are full attention), so the
+                ;; per-token KV is ~6 KB at --kv q4_0 and the whole window is
+                ;; only ~1.5 GB of VRAM -- it fits, and the --expert-cache
+                ;; auto tier just shrinks by that amount.
+                (context 262144)
+                ;; Images, read on the CPU: `Vision` spawns the reader this
+                ;; repo builds (strata-vision in (peteches packages strata) —
+                ;; upstream's own tools/vision over llama.cpp mtmd at the
+                ;; commit setup.py pins) and the run-config sub-config sets
+                ;; "gpu": false, so the reader never opens the 4090: the B70's
+                ;; profile-filled expert cache keeps every slot it has, which
+                ;; is also what upstream chooses for an Arc of 24 GB or more
+                ;; (vision_reader.py, INTEL_GPU_READER_BY_DEFAULT = False).
+                ;; Upstream packages a Linux picture reader only inside its
+                ;; CUDA engine builds, so until now this SYCL engine had none
+                ;; and every image-bearing request came back 400 "this server
+                ;; was started without the vision encoder".
+                (vision "cpu")
+                ;; Open the engine's port in the host firewall: the comfyui
+                ;; VM's base firewall is drop-by-default, so without this
+                ;; Caddy's strata.ts.peteches.co.uk proxy cannot reach the
+                ;; engine over Tailscale.
                 (open-firewall? #t)
-                ;; Sampling defaults ported from the strata engine config we
-                ;; tuned against the #606 single-token `!` loops (see the
-                ;; strata log analysis earlier this session).  Rationale:
-                ;;  - repeat-penalty 1.35 (was 1.2) + penalty-last-n 256: a
-                ;;    1.2 multiplier over the engine's 64-token window could
-                ;;    not dislodge a token already 256-deep in a loop; a
-                ;;    stronger penalty over a wider recent window can.
-                ;;  - presence-penalty 0.6 + frequency-penalty 1.0: the two
-                ;;    samplers built to break token-lock, both 0.0 (off) in
-                ;;    the engine defaults.
-                ;;  - temp 0.8 / top-p 0.95 / top-k 40 / min-p 0.05: match
-                ;;    llama.cpp's own defaults (and the model card's nucleus),
-                ;;    stated explicitly so they are not silently inherited.
-                ;;  - strata's repeat_stop_tokens 64 tripwire has no llama.cpp
-                ;;    equivalent; the windowed penalties above serve the same
-                ;;    role (dislodge the loop before it forms).
-                (extra-args '("--temp" "0.8"
-                              "--top-p" "0.95"
-                              "--top-k" "40"
-                              "--min-p" "0.05"
-                              "--repeat-penalty" "1.35"
-                              "--presence-penalty" "0.6"
-                              "--frequency-penalty" "1.0"
-                              "--repeat-last-n" "256"
-                              "--cache-type-k" "q4_0"
-                              "--cache-type-v" "q4_0"
-                              "--threads" "8")))))))))
-
-      ;; The model's MTP (multi-token-prediction) draft layer is NOT used for
-      ;; speculative decoding (--spec-type draft-mtp was tried): on this build
-      ;; its draft-acceptance rate is ~10%, so llama.cpp spends most of its
-      ;; time generating drafts that get rejected, tripling generation latency
-      ;; (16.76 tok/s with spec-decode vs ~50 tok/s without).  Plain decoding
-      ;; is faster.  --threads 8 is marginally faster than the 16-core default
-      ;; for this model's CPU-side attention/MoE routing.
+                (port 8000)
+                ;; The web UI's DNS-rebinding protection: without an API key
+                ;; every request passes a Host check, so the name Caddy's
+                ;; tailnet proxy reaches the engine under must be listed here
+                ;; (otherwise the UI is refused with "Host ... is not allowed").
+                (allowed-hosts '("strata.ts.peteches.co.uk"))
+                ;; What strata prices this model volume at when it works out
+                ;; what a prompt chunk has to re-read (drive_read_gbps(),
+                ;; src/program/generate.cpp:1477 — the value behind the
+                ;; "host.ssd_gbps" line in the engine's own diagnostics).
+                ;; Left unset, strata reads /sys/block/vdb/queue/rotational,
+                ;; which is 1 here for a reason that has nothing to do with
+                ;; this volume: hot-storage is a single-vdev ZFS pool on
+                ;; nvme0n1 (Seagate FireCuda 530 4 TB, scrub clean) presented
+                ;; to the VM as virtio-blk with aio=io_uring, and virtio-blk
+                ;; has no way to tell a guest its backing media — so the flag
+                ;; is the virtio default and the engine planned for a
+                ;; 150 MB/s platter, and printed the #605 "on a rotational
+                ;; disk" warning for it.  2.1 GB/s is measured, not assumed:
+                ;; a 2048 MiB unbuffered (iflag=direct, so past the guest page
+                ;; cache) read of shard 2 took 959 ms inside this VM on
+                ;; 2026-11-02, and 500 random 16 KiB direct reads came back at
+                ;; <=1.3 ms each including the dd process spawn.  strata's own
+                ;; NVMe bucket is 2.5, so this is the conservative side of it.
+                (ssd-gbps 2.1)
+                ;; Conversation parking — several conversations resident in RAM
+                ;; at once, so switching between them restores their state
+                ;; instead of re-reading and re-prefilling it.  This engine
+                ;; serves rules-lawyer (peteches/systems/agents.scm), pi and
+                ;; SillyTavern through caddy's strata.ts.peteches.co.uk proxy,
+                ;; and with no --batch in the args it runs one conversation at
+                ;; a time: without parking, whoever spoke last owns the resident
+                ;; state and every switch costs that conversation its whole
+                ;; prompt again.  Parking off is also why the Monitor's
+                ;; "Conversation cache" card has always read "disabled" — that
+                ;; card is derived from the engine's reported
+                ;; conversation_cache_mib (serve/server.py:834), so it cannot
+                ;; say enabled while the flag is absent.  The engine's own
+                ;; defaults (budget 0 = off, slots 4, floor 2560 MiB), what
+                ;; parking costs per conversation and how to size the floor are
+                ;; documented on these fields in (peteches services strata).
+                ;;   4096 = 5 conversations at ~800 MB (pi compacts at 131072
+                ;;   tokens, ~6 KB/token of full-attention state at --kv q4_0)
+                ;;   plus the transient copy a park/restore needs.  Upstream's
+                ;;   8192 assumes AGENT_CACHE_FREE_GB = 24 GB of RAM free beside
+                ;;   the model, which this VM's 57344 MB does not have.
+                ;;   4096 for the floor raises the engine's 2560 default so a
+                ;;   park always leaves ~4 GiB of page cache for the
+                ;;   --mmap-experts expert tiers — that cache is what keeps
+                ;;   expert reads off the NVMe (see the ssd-gbps note above for
+                ;;   the 2.1 GB/s measured on this volume).  "conversation
+                ;;   cache: skipped" in /var/log/strata/strata.log is the sign
+                ;;   that the floor sits above the RAM actually free.
+                ;;   9 slots = one parked window per lane — pi's orchestrator plus
+                ;;   its four sub-agent lanes, plus SillyTavern and rules-lawyer —
+                ;;   rather than the default 4, which evicts the oldest conversation
+                ;;   on every turn, or the 5 this file used, which still evicted
+                ;;   (167 evictions in strata.log before this change). It costs no
+                ;;   extra RAM: a parked window measured ~240 MiB at the ~24576-token
+                ;;   snapshot the engine takes, so 9 of them fit inside the 4096 MiB
+                ;;   budget above. If the eviction count climbs again the fix is that
+                ;;   budget, not the slot count.
+                (conversation-cache-mib 4096)
+                (conversation-cache-slots 9)
+                (conversation-cache-min-free-mib 4096)
+                ;; Lanes: parallel is OFF, and the measurement is why. Requesting
+                ;; concurrent engine slots does make serve honor them (/v1/status
+                ;; reports "concurrency": {"serving": 5, "requested": 5} with
+                ;; (parallel 5) set, verified 2026-11-06), but each requested slot
+                ;; is a batch window holding its own session K/V, and on this card
+                ;; those windows come straight out of the profile-filled expert
+                ;; cache: expert_slots went 17830 -> 9432 and expert_cache_mib
+                ;; 24480 -> 12973, i.e. 11.5 GiB of resident experts traded for 5
+                ;; lanes. Measured with the same probe that produced §6 of
+                ;; docs/strata-subagent-throughput.org: 49.6 tok/s for one stream
+                ;; (64.1 without), 42.0 at 2 concurrent (65.4), 38.7 at 4 (65.2),
+                ;; and first token 13.8 s at 4 lanes (0.77 s without). So lanes
+                ;; cost throughput here rather than buying it, and since the
+                ;; upgrade made concurrency nearly free, off is the right setting.
+                ;;    --kv-grow is the documented countermeasure (it releases the
+                ;; batch slots' K/V to grow into expert cache instead of locking
+                ;; the cache up, and measured +34% in the §6 batch arms) but it has
+                ;; not been re-validated on this configuration without --batch, so
+                ;; it is not enabled here either - see the extra-args note below.
+                ;;    queue-timeout needs max-queue: `strata serve' refuses to
+                ;;    start with "queue_timeout requires max_queue to bound
+                ;;    pending calls", so the two are configured as a pair - that
+                ;;    error is exactly what the service threw on 2026-11-06 when
+                ;;    only the timeout was set.  max_queue 12 = enough headroom for
+                ;;    a full pi fan-out (orchestrator plus four sub-agents) with a
+                ;;    SillyTavern or rules-lawyer turn on top; past that a request
+                ;;    is turned away rather than queueing forever.  queue-timeout
+                ;;    300 = seconds a waiting request may take its first engine turn
+                ;;    (serve --help, range 0.1..600): a 113k-token orchestrator
+                ;;    prompt read takes ~84 s at the measured 1350 tok/s, so the
+                ;;    cap has to sit above that or pi's big turns fail as the lanes
+                ;;    fill up.
+                (serve-args '("--max-queue" "12" "--queue-timeout" "300"))
+                ;; Refusal-direction control vector (Strata's "Experimental Speed
+                ;; Projection") — OFF. On 2026-11-07 this was enabled via
+                ;; `extra-args' (`--control-vector-scaled
+                ;; data/experimental-speed-projection/...gguf:1.0 --control-vector-
+                ;; layer-range 4 44 --cvec-mode project --cvec-dir per-layer') and
+                ;; every request collapsed into `!'-repetition and hit
+                ;; finish_reason=length (verified live: a one-sentence prompt came
+                ;; back as content "!!" / reasoning "!!!..."). The vector loads
+                ;; fine — the file is in the `strata' store package, the engine's
+                ;; cwd is that bundle, and the args reach the process — but its
+                ;; direction was fit on `unsloth UD-Q2_K_XL' (see the vector's own
+                ;; *.json), not this IQ2_XS quant, so the projection is mismatched
+                ;; and distorts every generation. Re-enable only with a vector fit
+                ;; for this exact quant, or test it per request (`experimental_speed_
+                ;; projection` sampling key) before making it the default. Note the
+                ;; SYCL port does implement cvec (sycl/src/kernels/cuda/cvec.dp.cpp)
+                ;; where Metal does not, so the card is not the blocker.
+                ;; Reasoning defaults for every client of this engine —
+                ;; SillyTavern and pi both inherit them and can still override
+                ;; per request.  These were absent from the run config, which is
+                ;; why thinking went silent: with no configured budget strata
+                ;; guesses one from max_tokens ("answer_room", server.py:5253),
+                ;; and requests arriving capped at max_tokens 1024 got a 512-token
+                ;; thinking budget instead of the 12288/24522 that worked on
+                ;; 2026-10-29/30.  The last strata thinking in any pi session is
+                ;; 2026-10-31T08:56; nothing after.
+                ;;   8192 = the tier boundary in frontend.py's budget_effort
+                ;;   (under 2K low, under 8K medium, else high), inside strata's
+                ;;   reserve rule for pi's 16384-token cap, and below the 12288
+                ;;   that 15402 logged runs never saturated (max usage 11566).
+                ;;   medium = one of the four words the Qwen EFFORT table accepts
+                ;;   (none/low/medium/high); anything else is a 400.
+                ;;   answer_room #f keeps the budget deterministic instead of
+                ;;   varying with whatever max_tokens a client happens to send.
+                (reasoning-budget-tokens 8192)
+                (reasoning-effort "medium")
+                (answer-room? #f)
+                ;; #606: this model's thinking-mode sampling has no repetition
+                ;; penalty, so over a long reply its 2-bit precision degrades
+                ;; and it falls into a single-token loop - 66 such events in
+                ;; /var/log/strata/strata.log, most ending in 256 '!'s after
+                ;; thousands of normal tokens (the engine's repeat_stop_tokens
+                ;; safety net capped the damage but never prevented the loop).
+                ;; A repetition_penalty in the run config's `sampling` block
+                ;; (self.sampling_defaults, server.py:4775) overrides that
+                ;; model-card sampling and breaks the loop; repeat-stop-tokens
+                ;; 64 shortens the safety net so a caller sees less of a loop
+                ;; if one still happens.  1.2 is a conservative start - bump
+                ;; toward 1.3 if loops persist.
+                (repetition-penalty 1.2)
+                (repeat-stop-tokens 64)))
+      ;; /lib64 -> glibc/lib: the Strata bundle's private CPython and the
+      ;; downloaded Intel engine both carry PT_INTERP =
+      ;; /lib64/ld-linux-x86-64.so.2, an FHS path that does not exist on a
+      ;; pure-Guix system.  The symlink makes the dynamic loader path
+      ;; resolvable so the kernel can load either binary.  (Runtime
+      ;; *library* resolution for the non-store engine is handled
+      ;; separately by the wrapper's LD_LIBRARY_PATH — a non-store binary
+      ;; cannot use Guix's per-package ld.so.cache, which is looked up
+      ;; relative to the executable.)
+      (simple-service 'lib64-symlink
+                      activation-service-type
+                      #~(begin
+                          (use-modules (guix build utils))
+                          (if (file-exists? "/lib64")
+                              (delete-file "/lib64")
+                              #f)
+                          (symlink (string-append #$glibc "/lib") "/lib64"))))))))
 
 comfyui-os
