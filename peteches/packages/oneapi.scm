@@ -99,19 +99,21 @@
     (arguments
      (list
       #:builder
-      #~(let ((src #$(package-source this-package))
-              (dst (string-append %output "/" #$(package-name this-package))))
-         (let ((in (open-input-file src #:binary #t))
-               (out (open-output-file dst #:binary #t)))
-           (let loop ()
-             (let ((buf (get-bytevector-n in 65536)))
-               (if (eof-object? buf)
-                   #t
-                   (begin
-                     (put-bytevector out buf)
-                     (loop)))))
-           (close in)
-           (close out)))))
+      #~(begin
+          (mkdir %output)
+          (let ((src #$(package-source this-package))
+                (dst (string-append %output "/" #$(package-name this-package))))
+            (let ((in (open-input-file src #:binary #t))
+                  (out (open-output-file dst #:binary #t)))
+              (let loop ()
+                (let ((buf (get-bytevector-n in 65536)))
+                  (if (eof-object? buf)
+                      #t
+                      (begin
+                        (put-bytevector out buf)
+                        (loop)))))
+              (close in)
+              (close out))))))
     (synopsis "An Intel oneAPI .deb (fetched from Intel's official apt pool)")
     (home-page %oneapi-pool)
     (description
