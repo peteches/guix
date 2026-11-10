@@ -488,6 +488,13 @@ engine.")
                  (repo (string-append extract
                                       "/Strata-dfe7e883296cd0d52f9f5ae94df36a0578a4794d"))
                  (engine-out (string-append out ".engine")))
+            (for-each (lambda (nm)
+                        (unless (string? (assoc-ref %build-inputs nm))
+                          (display (string-append "MISSING-INPUT: " nm))
+                          (newline (current-error-port))))
+                      (list "cmake" "ninja" "binutils" "patchelf" "glibc"
+                            "sed" "grep" "coreutils" "bash" "python-3.12"
+                            "gzip" "tar" "intel-oneapi" "strata-llama-cpp-src"))
             (setenv "PATH"
                     (string-append
                      gzip "/bin:"
