@@ -63,6 +63,7 @@
   #:use-module (gnu packages cmake)
   #:use-module (gnu packages gcc)
   #:use-module (gnu packages compression)
+  #:use-module (gnu packages elf)
   #:use-module (gnu packages autotools)
   #:use-module (gnu packages pkg-config)
   #:use-module (gnu packages python)
@@ -71,8 +72,9 @@
   #:use-module (guix download)
   #:use-module (guix gexp)
   #:use-module (guix packages)
+  #:use-module (peteches packages oneapi)
   #:export (intel-igc-core libigdgmm intel-level-zero-gpu strata
-            strata-llama-cpp-src strata-vision))
+            strata-llama-cpp-src strata-vision strata-sycl-engine))
 
 ;;; ── .deb library wrapper ────────────────────────────────────────────────
 ;;;
@@ -220,16 +222,16 @@ at it, the same thing the oneAPI installer does.")
 (define-public strata
   (package
     (name "strata")
-    (version "0.1.57")
+    (version "0.1.59.1")
     (source
      (origin
        (method url-fetch)
        (uri (string-append
-             "https://github.com/Niko1221/Strata/releases/download/v0.2.11/"
+             "https://github.com/Niko1221/Strata/releases/download/v0.2.13/"
              "strata-control-" version "-linux-x86_64.tar.gz"))
        (sha256
         (base32
-         "022d16v0ddsgiifp04ib5b9x32yshmd0s0nk697qnqsaxvzqrira"))))
+         "1b12q0zqxirqdzz8iiplwdivpfq5ajrjjc32f88gl06g90l63yvk"))))
     (build-system trivial-build-system)
     (arguments
      (list
@@ -294,7 +296,7 @@ SYCL port) and downloads model files into @option{--data-dir}.  See
 ;; @code{LLAMA_CPP_COMMIT}, downloaded as a zip "as a zip: no git", with
 ;; @code{tools/ui} skipped — mirrored below.
 
-(define %strata-vision-release-tag "v0.2.11")     ; app tag; the Terminal inside it is 0.1.57
+(define %strata-vision-release-tag "v0.2.13")     ; app tag; the Terminal inside it is 0.1.59.1
 (define %strata-vision-llama-commit
   "3cf03257f219afbe7334045ff7c6a06ac68c627d")   ; setup.py LLAMA_CPP_COMMIT at that tag
 
@@ -348,7 +350,7 @@ program.")
 (define-public strata-vision
   (package
     (name "strata-vision")
-    (version "0.1.57")
+    (version "0.1.59.1")
     (source
      (origin
        (method url-fetch)
@@ -358,7 +360,7 @@ program.")
        (file-name (string-append "strata-" version "-source.tar.gz"))
        (sha256
         (base32
-         "16nvypih8zra31sq9pfqqbzgnamlxr3g5d5kgh8pdil8sxjhfmby"))))
+         "131yhdgzkazdzf6gq6c21h0mbdx2qf4h3qs3nmq2l0n08vlwafxk"))))
     (build-system cmake-build-system)
     (arguments
      (list
@@ -403,4 +405,147 @@ it takes nothing from the card that runs the engine.  Upstream ships a
 Linux reader only inside its CUDA engine packages, which is why
 @code{(peteches services strata)} could not run vision on the SYCL
 engine.")
+    (license expat)))
+
+;;; ── SYCL engine from the giridhart fork ─────────────────────────────────
+;;;
+;; The upstream project's engine packages (strata-engine-...-sycl.tar.gz
+;; from its signed release feed) are built from upstream's own SYCL work,
+;; which has a non-finite-logits defect: ~25% of generations end in a
+;; single-token `!` loop.  The giridhart/Strata fork (branch sycl-b580,
+;; commit dfe7e883296c, "sycl: guard non-finite logits in prefill") fixes
+;; it in src/prefill/sycl/ (prefill.cpp, gemm.cpp) — fork-specific code
+;; that does not exist in upstream v0.2.13.  This package builds that
+;; fork's engine component from source with the oneAPI DPC++ compiler
+;; (intel-oneapi, peteches/packages/oneapi.scm) and the llama.cpp pin the
+;; fork's CMake declares (strata-llama-cpp-src).
+;;
+;; The output is the engine's component folder (strata binary + its
+;; bundled SYCL/MKL-SYCL/UR/Level-Zero libraries + the
+;; engine-component.json manifest + BUILD.json), the same layout the
+;; project's own packages have; (peteches services strata) drops it into
+;; the components directory and pins it (see that module).
+(define-public strata-sycl-engine
+  (package
+    (name "strata-sycl-engine")
+    (version "0.1.56")
+    (source
+     (origin
+      (method url-fetch)
+      (uri (string-append
+            "https://github.com/giridhart/Strata/archive/"
+            "dfe7e883296cd0d52f9f5ae94df36a0578a4794d.tar.gz"))
+      (file-name (string-append name "-" version "-fork-src"))
+      (sha256
+       (base32
+        "14yd8cdsz7a115cc90zq74yfaccd1k03rsmban8kxask092zn1fp"))))
+    (build-system trivial-build-system)
+    (native-inputs
+     (list intel-oneapi strata-llama-cpp-src
+           cmake ninja binutils patchelf
+           glibc sed grep coreutils tar bash python-3.12))
+    (arguments
+     (list
+      #:modules '((guix build utils))
+      #:builder
+      #~(begin
+          (use-modules (guix build utils))
+          (let* ((src (assoc-ref %build-inputs "source"))
+                 (oneapi (assoc-ref %build-inputs "intel-oneapi"))
+                 (llama (assoc-ref %build-inputs "strata-llama-cpp-src"))
+                 (cmake (assoc-ref %build-inputs "cmake"))
+                 (ninja (assoc-ref %build-inputs "ninja"))
+                 (binutils (assoc-ref %build-inputs "binutils"))
+                 (patchelf (assoc-ref %build-inputs "patchelf"))
+                 (glibc (assoc-ref %build-inputs "glibc"))
+                 (sed (assoc-ref %build-inputs "sed"))
+                 (grep (assoc-ref %build-inputs "grep"))
+                 (coreutils (assoc-ref %build-inputs "coreutils"))
+                 (tar (assoc-ref %build-inputs "tar"))
+                 (bash (assoc-ref %build-inputs "bash"))
+                 (python (assoc-ref %build-inputs "python-3.12"))
+                 (out (assoc-ref %outputs "out"))
+                 (extract (string-append out ".extract"))
+                 (repo (string-append extract
+                                      "/Strata-dfe7e883296cd0d52f9f5ae94df36a0578a4794d"))
+                 (engine-out (string-append out ".engine")))
+            (mkdir-p extract)
+            (invoke (string-append tar "/bin/tar")
+                    "xzf" src "-C" extract)
+            (chdir repo)
+            ;; The script's final smoke test runs the engine under
+            ;; `env -i`; the build sandbox has no /lib64, and the engine's
+            ;; program interpreter is /lib64/ld-linux-x86-64.so.2, so that
+            ;; line can only pass on a real system.  The RUNPATH checks
+            ;; (readelf) and the manifest verification (package_engine.py
+            ;; --verify, binary_deps.py) stay; the engine is smoke-tested
+            ;; at deploy time.
+            (invoke (string-append sed "/bin/sed")
+                    "-i" "/env -i /d" "packaging/build_sycl_linux.sh")
+            (mkdir-p engine-out)
+            (setenv "PATH"
+                    (string-append
+                     cmake "/bin:"
+                     ninja "/bin:"
+                     binutils "/bin:"
+                     patchelf "/bin:"
+                     glibc "/bin:"
+                     sed "/bin:"
+                     grep "/bin:"
+                     coreutils "/bin:"
+                     bash "/bin:"
+                     python "/bin:"
+                     (or (getenv "PATH") "")))
+            ;; glibc's lib dir on LD_LIBRARY_PATH so `ldd` (collect_libs.py)
+            ;; resolves the system libraries; the sourced setvars.sh
+            ;; prepends the oneAPI dirs and keeps this value.
+            (setenv "LD_LIBRARY_PATH"
+                    (string-append glibc "/lib:"
+                                   (or (getenv "LD_LIBRARY_PATH") "")))
+            (setenv "ONEAPI" oneapi)
+            (setenv "LLAMA_CPP" llama)
+            (setenv "COMMIT" "dfe7e883296c")
+            (setenv "OUT" engine-out)
+            (setenv "BUILD" (string-append extract "/build-sycl"))
+            (setenv "PYTHON" (string-append python "/bin/python3"))
+            ;; guix-build: 8 cores but 11 GB RAM; 4 parallel icpx jobs is
+            ;; the safe peak.
+            (setenv "JOBS" "4")
+            (invoke (string-append bash "/bin/sh")
+                    "packaging/build_sycl_linux.sh")
+            ;; The script wrote $OUT/<component folder>; move the folder's
+            ;; contents to $out.
+            (let ((folders
+                   (filter (lambda (n)
+                             (file-directory?
+                              (string-append engine-out "/" n)))
+                           (scandir engine-out
+                                    (lambda (n)
+                                      (not (member n (list "." "..")))))))
+                  (folder (string-append engine-out "/" (car folders))))
+              (if (null? (cdr folders))
+                  (invoke (string-append coreutils "/bin/cp")
+                          "-a" (string-append folder "/.") out)
+                  (begin
+                    (display "strata-sycl-engine: unexpected OUT layout: "
+                             (current-error-port))
+                    (for-each (lambda (f)
+                                (display f (current-error-port))
+                                (newline (current-error-port)))
+                               folders)
+                    #f)))
+            #t))))
+    (home-page "https://github.com/giridhart/Strata")
+    (synopsis
+     "Strata SYCL engine (giridhart fork) with the non-finite-logits fix")
+    (description
+     "The Strata inference engine for Intel Arc SYCL, built from the
+@code{giridhart/Strata} fork (@code{sycl-b580}, commit
+@code{dfe7e883296c}) with the oneAPI DPC++ compiler.  The fork fixes the
+non-finite-logits defect in upstream's SYCL prefill path — the ~25%
+single-token @code{!} loop rate — in @code{src/prefill/sycl/}.  The
+output is the engine's component folder: the @command{strata} binary with
+its bundled SYCL, MKL-SYCL, Unified Runtime and Level Zero libraries, the
+@file{engine-component.json} manifest and @file{BUILD.json}, the same
+layout the project's own engine packages have.")
     (license expat)))
