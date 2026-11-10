@@ -142,6 +142,12 @@ which extracts it into the oneAPI tree.")
       #:builder
       #~(begin
           (use-modules (ice-9 ftw))
+          ;; dpkg-deb -x invokes tar as a subprocess by name, and the
+          ;; trivial-build environment does not put the inputs' bin dirs
+          ;; on PATH, so do it here.
+          (setenv "PATH" (string-append (assoc-ref %build-inputs "tar") "/bin:"
+                                        (assoc-ref %build-inputs "coreutils") "/bin:"
+                                        (or (getenv "PATH") "")))
           (let* ((dpkg-deb (string-append (assoc-ref %build-inputs "dpkg")
                                           "/bin/dpkg-deb"))
                  (cp (string-append (assoc-ref %build-inputs "coreutils")
