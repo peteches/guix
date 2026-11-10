@@ -443,7 +443,7 @@ engine.")
     (native-inputs
      (list intel-oneapi strata-llama-cpp-src
            cmake ninja binutils patchelf
-           glibc (package (inherit gcc) (outputs '("lib")))
+           glibc (list gcc "lib")
            sed grep coreutils tar bash gzip python-3.12))
     (arguments
      (list
