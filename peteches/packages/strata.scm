@@ -443,7 +443,7 @@ engine.")
     (native-inputs
      (list intel-oneapi strata-llama-cpp-src
            cmake ninja binutils patchelf
-           glibc (list gcc "lib") zlib
+           glibc gcc (list gcc "lib") linux-libre-headers zlib
            sed grep coreutils tar bash gzip python-3.12))
     (arguments
      (list
@@ -477,7 +477,9 @@ engine.")
                  (binutils (assoc-ref %build-inputs "binutils"))
                  (patchelf (assoc-ref %build-inputs "patchelf"))
                  (glibc (assoc-ref %build-inputs "glibc"))
-                 (gcc-lib (assoc-ref %build-inputs "gcc"))
+                 (gcc-main (assoc-ref %build-inputs "gcc"))
+                 (gcc-lib (assoc-ref %build-inputs "gcc-lib"))
+                 (linux-libre-headers (assoc-ref %build-inputs "linux-libre-headers"))
                  (zlib (assoc-ref %build-inputs "zlib"))
                  (sed (assoc-ref %build-inputs "sed"))
                  (grep (assoc-ref %build-inputs "grep"))
@@ -537,32 +539,70 @@ engine.")
             ;; guix-build: 8 cores but 11 GB RAM; 4 parallel icpx jobs is
             ;; the safe peak.
             (setenv "JOBS" "4")
-            ;; guix's binutils `ld` has no default search path and the
-            ;; sandbox has no /usr, so the oneAPI drivers' link lines
-            ;; (bare crti.o, -lc, -lm, -lgcc, ...) find nothing.  CMake
-            ;; initializes CMAKE_C_FLAGS from the CFLAGS environment
-            ;; variable and CMAKE_CXX_FLAGS from CXXFLAGS (per
-            ;; cmake-variables; the CMAKE_*_FLAGS_INIT environment
-            ;; variables are NOT read by CMake), and those flags reach
-            ;; every compile and link step, including the compiler-ABI
-            ;; test link.  glibc 2.41 ships only the versioned stubs
-            ;; (libdl.so.2, libpthread.so.0, librt.so.1, libutil.so.1),
-            ;; so -ldl/-lpthread/-lrt/-lutil need unversioned symlinks
-            ;; in a writable shim dir.
-            (let ((shim (string-append extract "/link-shim")))
-              (mkdir-p shim)
+            ;; The sandbox has no /usr, so the oneAPI drivers and
+            ;; CMake's compiler-ABI test can find neither the CRT
+            ;; objects (crt1.o, crti.o, crtbegin.o, passed as bare
+            ;; names ahead of any -L) nor the C library / C++ standard
+            ;; library headers.  Build, in the writable build dir:
+            ;;  - a fake gcc installation (symlinked CRT objects and
+            ;;    libgcc from the glibc and gcc store paths, plus the
+            ;;    libstdc++ headers at include/c++/14.3.0), selected
+            ;;    with --gcc-toolchain so the drivers pass the CRT
+            ;;    objects as absolute paths and find the C++ standard
+            ;;    library;
+            ;;  - a fake sysroot (glibc and kernel headers symlinked
+            ;;    under usr/include), selected with --sysroot so those
+            ;;    headers are searched after the C++ standard library
+            ;;    directories, which libstdc++'s #include_next
+            ;;    requires;
+            ;;  - a shim dir with unversioned symlinks for the glibc
+            ;;    stubs (glibc 2.41 ships only libdl.so.2,
+            ;;    libpthread.so.0, librt.so.1, libutil.so.1), needed
+            ;;    by -ldl/-lpthread/-lrt/-lutil.
+            ;; CMake initializes CMAKE_C_FLAGS from the CFLAGS
+            ;; environment variable and CMAKE_CXX_FLAGS from CXXFLAGS
+            ;; (per cmake-variables; the CMAKE_*_FLAGS_INIT
+            ;; environment variables are NOT read by CMake), and those
+            ;; flags reach every compile and link step, including the
+            ;; compiler-ABI test link.
+            (let ((shim (string-append extract "/link-shim"))
+                  (fake (string-append extract "/fake-gcc"))
+                  (sysroot (string-append extract "/fake-sysroot"))
+                  (crt-dir (string-append fake
+                                          "/lib/gcc/x86_64-unknown-linux-gnu/14.3.0"))
+                  (sysinc (string-append sysroot "/usr/include")))
+              (for-each mkdir-p (list shim crt-dir sysinc
+                                      (string-append fake "/include/c++")))
               (run (string-append
                     coreutils "/bin/ln -sf " glibc "/lib/libdl.so.2 " shim "/libdl.so; "
                     coreutils "/bin/ln -sf " glibc "/lib/libpthread.so.0 " shim "/libpthread.so; "
                     coreutils "/bin/ln -sf " glibc "/lib/librt.so.1 " shim "/librt.so; "
-                    coreutils "/bin/ln -sf " glibc "/lib/libutil.so.1 " shim "/libutil.so"))
-              (let ((link-dirs
-                     (string-append "-L" glibc "/lib "
-                                    "-L" gcc-lib "/lib/gcc/x86_64-unknown-linux-gnu/14.3.0 "
-                                    "-L" gcc-lib "/lib "
-                                    "-L" shim)))
-                (setenv "CFLAGS" link-dirs)
-                (setenv "CXXFLAGS" link-dirs)))
+                    coreutils "/bin/ln -sf " glibc "/lib/libutil.so.1 " shim "/libutil.so; "
+                    coreutils "/bin/ln -sf " glibc "/lib/crti.o " crt-dir "/crti.o; "
+                    coreutils "/bin/ln -sf " glibc "/lib/crtn.o " crt-dir "/crtn.o; "
+                    coreutils "/bin/ln -sf " glibc "/lib/crt1.o " crt-dir "/crt1.o; "
+                    coreutils "/bin/ln -sf " glibc "/lib/Scrt1.o " crt-dir "/Scrt1.o; "
+                    coreutils "/bin/ln -sf " gcc-lib "/lib/gcc/x86_64-unknown-linux-gnu/14.3.0/crtbegin.o " crt-dir "/crtbegin.o; "
+                    coreutils "/bin/ln -sf " gcc-lib "/lib/gcc/x86_64-unknown-linux-gnu/14.3.0/crtend.o " crt-dir "/crtend.o; "
+                    coreutils "/bin/ln -sf " gcc-lib "/lib/gcc/x86_64-unknown-linux-gnu/14.3.0/libgcc.a " crt-dir "/libgcc.a; "
+                    coreutils "/bin/ln -sf " gcc-lib "/lib/libgcc_s.so " crt-dir "/libgcc_s.so; "
+                    coreutils "/bin/ln -sfn " gcc-main "/include/c++ " fake "/include/c++/14.3.0"))
+              (run (string-append
+                    bash "/bin/sh -c 'for f in " glibc "/include/*; do "
+                    coreutils "/bin/ln -sf \"$f\" " sysinc "/; done; "
+                    "for f in " linux-libre-headers "/include/*; do "
+                    "[ -e " sysinc "/$(basename \"$f\") ] || "
+                    coreutils "/bin/ln -sf \"$f\" " sysinc "/; done'"))
+              (let ((flags
+                     (string-append "--gcc-toolchain=" fake
+                                    " --sysroot=" sysroot
+                                    " -isystem " gcc-lib "/lib/gcc/x86_64-unknown-linux-gnu/14.3.0/include"
+                                    " -L" glibc "/lib"
+                                    " -L" gcc-lib "/lib"
+                                    " -L" gcc-lib "/lib/gcc/x86_64-unknown-linux-gnu/14.3.0"
+                                    " -L" shim)))
+                (setenv "CFLAGS" flags)
+                (setenv "CXXFLAGS" flags)))
             (run (string-append bash "/bin/sh" " packaging/build_sycl_linux.sh"))
             ;; The script wrote $OUT/<component folder>; move the folder's
             ;; contents to $out.  The sandbox guile has no scandir, so do
