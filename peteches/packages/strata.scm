@@ -495,6 +495,10 @@ engine.")
                       (list "cmake" "ninja" "binutils" "patchelf" "glibc"
                             "sed" "grep" "coreutils" "bash" "python-3.12"
                             "gzip" "tar" "intel-oneapi" "strata-llama-cpp-src"))
+            (for-each (lambda (pair)
+                        (display (string-append "KEY: " (car pair)))
+                        (newline (current-error-port)))
+                      %build-inputs)
             (setenv "PATH"
                     (string-append
                      gzip "/bin:"
