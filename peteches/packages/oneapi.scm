@@ -134,7 +134,7 @@ which extracts it into the oneAPI tree.")
     (version "2025.3")
     (source #f)
     (build-system trivial-build-system)
-    (native-inputs (append (list dpkg coreutils)
+    (native-inputs (append (list dpkg coreutils tar)
                            intel-oneapi-deb-packages))
     (arguments
      (list
@@ -171,27 +171,21 @@ which extracts it into the oneAPI tree.")
             (mkdir out)
             (system (string-append cp " -a " extract "/opt/intel/oneapi/. " out))
             ;; The .deb postinst scripts create the `latest` symlinks;
-            ;; dpkg -x does not run them, so make them here (skip the
-            ;; ones the package data already carries).
-            (for-each
-             (lambda (top)
-               (let ((topdir (string-append out "/" top)))
-                 (when (file-exists? topdir)
-                   (for-each
-                    (lambda (ver)
-                      (let ((latest (string-append topdir "/latest")))
-                        (unless (file-exists? latest)
-                          (symlink (string-append topdir "/" ver)
-                                   latest))))
-                    (filter (lambda (n)
-                              (file-is-directory?
-                               (string-append topdir "/" n)))
-                            (filter (lambda (n)
-                                      (not (member n (list "." ".."))))
-                                    (readdir topdir)))))))
-             (filter (lambda (n)
-                       (file-is-directory? (string-append out "/" n)))
-                     (readdir out)))
+            ;; dpkg-deb -x does not run them, so make them here with a
+            ;; shell one-liner (the sandbox guile has no scandir, and
+            ;; readdir needs a directory port, not a path).
+            (system
+             (string-append
+              "for top in " out "/*/; do "
+              "top=${top%/}; "
+              "for ver in \"$top\"/*/; do "
+              "ver=${ver%/}; "
+              "[ -d \"$ver\" ] || continue; "
+              "if [ ! -e \"$top/latest\" ]; then "
+              "ln -s \"$ver\" \"$top/latest\"; "
+              "fi; "
+              "done; "
+              "done"))
             ;; A self-contained setvars.sh: the Strata build script sources
             ;; it and expects icpx (and icx) on PATH afterwards.
             (with-output-to-file (string-append out "/setvars.sh")
