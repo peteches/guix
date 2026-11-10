@@ -87,6 +87,7 @@
        ;; Download the .debs one by one (each hash-verified) into a
        ;; directory; Guix stores that directory as the origin output.
        (lambda _
+         (use-modules (guix build utils) (guix downloads))
          (let ((tmp (string-append (or (getenv "TMPDIR") "/tmp")
                                    "/oneapi-debs-"
                                    (number->string (getpid)))))
