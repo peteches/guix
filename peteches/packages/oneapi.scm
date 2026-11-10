@@ -8,6 +8,7 @@
 ;;; Code:
 (define-module (peteches packages oneapi)
   #:use-module (guix packages)
+  #:use-module (guix gexp)
   #:use-module ((guix licenses) #:prefix license:)
   #:use-module (guix download)
   #:use-module (guix build-system trivial)
