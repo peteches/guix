@@ -99,10 +99,19 @@
     (arguments
      (list
       #:builder
-      #~(begin
-          (use-modules (guix build utils))
-          (copy-file #$(package-source this-package)
-                     (string-append %output "/" #$(package-name this-package))))))
+      #~(let ((src #$(package-source this-package))
+              (dst (string-append %output "/" #$(package-name this-package))))
+         (let ((in (open-input-file src 'binary))
+               (out (open-output-file dst 'binary)))
+           (let loop ()
+             (let ((buf (get-bytevector-n in 65536)))
+               (if (eof-object? buf)
+                   #t
+                   (begin
+                     (put-bytevector out buf)
+                     (loop)))))
+           (close in)
+           (close out)))))
     (synopsis "An Intel oneAPI .deb (fetched from Intel's official apt pool)")
     (home-page %oneapi-pool)
     (description
@@ -132,17 +141,25 @@ which extracts it into the oneAPI tree.")
                            intel-oneapi-deb-packages))
     (arguments
      (list
-      #:modules '((guix build utils) (ice-9 ftw))
+      #:modules '((ice-9 ftw))
       #:builder
       #~(begin
-          (use-modules (guix build utils) (ice-9 ftw))
+          (use-modules (ice-9 ftw))
           (let* ((dpkg (string-append (assoc-ref %build-inputs "dpkg")
                                       "/bin/dpkg"))
                  (cp (string-append (assoc-ref %build-inputs "coreutils")
                                     "/bin/cp"))
                  (out (assoc-ref %outputs "out"))
                  (extract (string-append out ".extract")))
-            (mkdir-p extract)
+            ;; mkdir -p extract (pure Guile, recursive; the build sandbox
+            ;; has no (guix build utils), so no mkdir-p).
+            (let mp ((dir extract))
+              (unless (file-exists? dir)
+                (let ((parent (dirname dir)))
+                  (when (and (not (equal? parent dir))
+                             (not (file-exists? parent)))
+                    (mp parent))
+                (mkdir dir))))
             ;; dpkg -x each .deb (from its own input directory) into one
             ;; tree: they all install under /opt/intel/oneapi, so the
             ;; extractions merge.
@@ -152,10 +169,10 @@ which extracts it into the oneAPI tree.")
                                               (number->string i)))
                      (deb (string-append (assoc-ref %build-inputs deb-name)
                                          "/" deb-name)))
-                 (invoke dpkg "-x" deb extract)))
+                 (system (string-append dpkg " -x " deb " " extract))))
              (iota 26))
-            (mkdir-p out)
-            (invoke cp "-a" (string-append extract "/opt/intel/oneapi/.") out)
+            (mkdir out)
+            (system (string-append cp " -a " extract "/opt/intel/oneapi/. " out))
             ;; The .deb postinst scripts create the `latest` symlinks;
             ;; dpkg -x does not run them, so make them here (skip the
             ;; ones the package data already carries).

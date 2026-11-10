@@ -446,10 +446,28 @@ engine.")
            glibc sed grep coreutils tar bash python-3.12))
     (arguments
      (list
-      #:modules '((guix build utils) (ice-9 ftw))
+      #:modules '((ice-9 ftw))
       #:builder
       #~(begin
-          (use-modules (guix build utils) (ice-9 ftw))
+          (use-modules (ice-9 ftw))
+          ;; The build sandbox has no (guix build utils), so no mkdir-p /
+          ;; invoke.  Use a pure-Guile recursive mkdir and a system-based
+          ;; runner that raises on non-zero exit.
+          (define (mkdir-p dir)
+            (unless (file-exists? dir)
+              (let ((parent (dirname dir)))
+                (when (and (not (equal? parent dir))
+                           (not (file-exists? parent)))
+                  (mkdir-p parent))
+              (mkdir dir))))
+          (define (run cmd)
+            (let ((status (system cmd)))
+              (unless (zero? status)
+                (display (string-append "strata-sycl-engine: command failed (exit "
+                                        (number->string status)
+                                        "): " cmd)
+                         (current-error-port))
+                (exit 1))))
           (let* ((src (assoc-ref %build-inputs "source"))
                  (oneapi (assoc-ref %build-inputs "intel-oneapi"))
                  (llama (assoc-ref %build-inputs "strata-llama-cpp-src"))
@@ -470,8 +488,7 @@ engine.")
                                       "/Strata-dfe7e883296cd0d52f9f5ae94df36a0578a4794d"))
                  (engine-out (string-append out ".engine")))
             (mkdir-p extract)
-            (invoke (string-append tar "/bin/tar")
-                    "xzf" src "-C" extract)
+            (run (string-append tar "/bin/tar" " xzf " src " -C " extract))
             (chdir repo)
             ;; The script's final smoke test runs the engine under
             ;; `env -i`; the build sandbox has no /lib64, and the engine's
@@ -480,8 +497,8 @@ engine.")
             ;; (readelf) and the manifest verification (package_engine.py
             ;; --verify, binary_deps.py) stay; the engine is smoke-tested
             ;; at deploy time.
-            (invoke (string-append sed "/bin/sed")
-                    "-i" "/env -i /d" "packaging/build_sycl_linux.sh")
+            (run (string-append sed "/bin/sed" " -i \"/env -i /d\" "
+                                "packaging/build_sycl_linux.sh"))
             (mkdir-p engine-out)
             (setenv "PATH"
                     (string-append
@@ -511,8 +528,7 @@ engine.")
             ;; guix-build: 8 cores but 11 GB RAM; 4 parallel icpx jobs is
             ;; the safe peak.
             (setenv "JOBS" "4")
-            (invoke (string-append bash "/bin/sh")
-                    "packaging/build_sycl_linux.sh")
+            (run (string-append bash "/bin/sh" " packaging/build_sycl_linux.sh"))
             ;; The script wrote $OUT/<component folder>; move the folder's
             ;; contents to $out.
             (let ((folders
@@ -524,8 +540,8 @@ engine.")
                                       (not (member n (list "." "..")))))))
                   (folder (string-append engine-out "/" (car folders))))
               (if (null? (cdr folders))
-                  (invoke (string-append coreutils "/bin/cp")
-                          "-a" (string-append folder "/.") out)
+                  (run (string-append coreutils "/bin/cp" " -a "
+                                      folder "/." " " out))
                   (begin
                     (display "strata-sycl-engine: unexpected OUT layout: "
                              (current-error-port))
