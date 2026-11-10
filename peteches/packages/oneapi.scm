@@ -87,16 +87,21 @@
        ;; Download the .debs one by one (each hash-verified) into a
        ;; directory; Guix stores that directory as the origin output.
        (lambda _
-         (use-modules (guix build utils) (guix downloads))
+         (use-modules (guix build utils) (guix build download)
+                      (guix base32))
          (let ((tmp (string-append (or (getenv "TMPDIR") "/tmp")
                                    "/oneapi-debs-"
                                    (number->string (getpid)))))
            (mkdir-p tmp)
            (for-each
             (lambda (row)
-              (url-retrieve (string-append %oneapi-pool "/" (car row))
-                (sha256 (base32 (cadr row)))
-                (destination (string-append tmp "/" (car row)))))
+              (unless (url-fetch (string-append %oneapi-pool "/" (car row))
+                                 (string-append tmp "/" (car row))
+                                 #:hashes
+                                 (list (cons 'sha256
+                                             (nix-base32-string->bytevector
+                                              (cadr row)))))
+                (throw 'oneapi-deb-download-failed (car row))))
             %oneapi-debs)
            tmp)))
       (uri %oneapi-pool)
