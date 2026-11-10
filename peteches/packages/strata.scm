@@ -443,7 +443,7 @@ engine.")
     (native-inputs
      (list intel-oneapi strata-llama-cpp-src
            cmake ninja binutils patchelf
-           glibc (list gcc "lib")
+           glibc (list gcc "lib") zlib
            sed grep coreutils tar bash gzip python-3.12))
     (arguments
      (list
@@ -478,6 +478,7 @@ engine.")
                  (patchelf (assoc-ref %build-inputs "patchelf"))
                  (glibc (assoc-ref %build-inputs "glibc"))
                  (gcc-lib (assoc-ref %build-inputs "gcc"))
+                 (zlib (assoc-ref %build-inputs "zlib"))
                  (sed (assoc-ref %build-inputs "sed"))
                  (grep (assoc-ref %build-inputs "grep"))
                  (coreutils (assoc-ref %build-inputs "coreutils"))
@@ -525,6 +526,7 @@ engine.")
             (setenv "LD_LIBRARY_PATH"
                     (string-append glibc "/lib:"
                                    gcc-lib "/lib:"
+                                   zlib "/lib:"
                                    (or (getenv "LD_LIBRARY_PATH") "")))
             (setenv "ONEAPI" oneapi)
             (setenv "LLAMA_CPP" llama)
