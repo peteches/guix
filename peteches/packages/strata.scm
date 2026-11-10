@@ -537,6 +537,29 @@ engine.")
             ;; guix-build: 8 cores but 11 GB RAM; 4 parallel icpx jobs is
             ;; the safe peak.
             (setenv "JOBS" "4")
+            ;; guix's binutils `ld` has no default search path and the
+            ;; sandbox has no /usr, so the oneAPI drivers' link lines
+            ;; (bare crti.o, -lc, -lm, -lgcc, ...) find nothing.  Point
+            ;; CMake's per-language flags (inherited by every compile and
+            ;; link step; the build script never overrides them) at the
+            ;; glibc and gcc lib dirs.  glibc 2.41 ships only the
+            ;; versioned stubs (libdl.so.2, libpthread.so.0, librt.so.1,
+            ;; libutil.so.1), so -ldl/-lpthread/-lrt/-lutil need
+            ;; unversioned symlinks in a writable shim dir.
+            (let ((shim (string-append extract "/link-shim")))
+              (mkdir-p shim)
+              (run (string-append
+                    coreutils "/bin/ln -sf " glibc "/lib/libdl.so.2 " shim "/libdl.so; "
+                    coreutils "/bin/ln -sf " glibc "/lib/libpthread.so.0 " shim "/libpthread.so; "
+                    coreutils "/bin/ln -sf " glibc "/lib/librt.so.1 " shim "/librt.so; "
+                    coreutils "/bin/ln -sf " glibc "/lib/libutil.so.1 " shim "/libutil.so"))
+              (let ((link-dirs
+                     (string-append "-L" glibc "/lib "
+                                    "-L" gcc-lib "/lib/gcc/x86_64-unknown-linux-gnu/14.3.0 "
+                                    "-L" gcc-lib "/lib "
+                                    "-L" shim)))
+                (setenv "CMAKE_C_FLAGS_INIT" link-dirs)
+                (setenv "CMAKE_CXX_FLAGS_INIT" link-dirs)))
             (run (string-append bash "/bin/sh" " packaging/build_sycl_linux.sh"))
             ;; The script wrote $OUT/<component folder>; move the folder's
             ;; contents to $out.  The sandbox guile has no scandir, so do
