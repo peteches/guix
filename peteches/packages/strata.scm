@@ -539,13 +539,16 @@ engine.")
             (setenv "JOBS" "4")
             ;; guix's binutils `ld` has no default search path and the
             ;; sandbox has no /usr, so the oneAPI drivers' link lines
-            ;; (bare crti.o, -lc, -lm, -lgcc, ...) find nothing.  Point
-            ;; CMake's per-language flags (inherited by every compile and
-            ;; link step; the build script never overrides them) at the
-            ;; glibc and gcc lib dirs.  glibc 2.41 ships only the
-            ;; versioned stubs (libdl.so.2, libpthread.so.0, librt.so.1,
-            ;; libutil.so.1), so -ldl/-lpthread/-lrt/-lutil need
-            ;; unversioned symlinks in a writable shim dir.
+            ;; (bare crti.o, -lc, -lm, -lgcc, ...) find nothing.  CMake
+            ;; initializes CMAKE_C_FLAGS from the CFLAGS environment
+            ;; variable and CMAKE_CXX_FLAGS from CXXFLAGS (per
+            ;; cmake-variables; the CMAKE_*_FLAGS_INIT environment
+            ;; variables are NOT read by CMake), and those flags reach
+            ;; every compile and link step, including the compiler-ABI
+            ;; test link.  glibc 2.41 ships only the versioned stubs
+            ;; (libdl.so.2, libpthread.so.0, librt.so.1, libutil.so.1),
+            ;; so -ldl/-lpthread/-lrt/-lutil need unversioned symlinks
+            ;; in a writable shim dir.
             (let ((shim (string-append extract "/link-shim")))
               (mkdir-p shim)
               (run (string-append
@@ -558,8 +561,8 @@ engine.")
                                     "-L" gcc-lib "/lib/gcc/x86_64-unknown-linux-gnu/14.3.0 "
                                     "-L" gcc-lib "/lib "
                                     "-L" shim)))
-                (setenv "CMAKE_C_FLAGS_INIT" link-dirs)
-                (setenv "CMAKE_CXX_FLAGS_INIT" link-dirs)))
+                (setenv "CFLAGS" link-dirs)
+                (setenv "CXXFLAGS" link-dirs)))
             (run (string-append bash "/bin/sh" " packaging/build_sycl_linux.sh"))
             ;; The script wrote $OUT/<component folder>; move the folder's
             ;; contents to $out.  The sandbox guile has no scandir, so do
