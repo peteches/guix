@@ -162,10 +162,10 @@ which extracts it into the oneAPI tree.")
             ;; extractions merge.
             (for-each
              (lambda (i)
-               (let ((deb-name (string-append "intel-oneapi-deb-"
-                                              (number->string i)))
-                     (deb (string-append (assoc-ref %build-inputs deb-name)
-                                         "/" deb-name)))
+               (let* ((deb-name (string-append "intel-oneapi-deb-"
+                                               (number->string i)))
+                      (deb (string-append (assoc-ref %build-inputs deb-name)
+                                          "/" deb-name)))
                  (system (string-append dpkg " -x " deb " " extract))))
              (iota 26))
             (mkdir out)
