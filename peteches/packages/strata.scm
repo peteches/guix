@@ -62,6 +62,7 @@
   #:use-module (gnu packages build-tools)
   #:use-module (gnu packages cmake)
   #:use-module (gnu packages gcc)
+  #:use-module (gnu packages linux)
   #:use-module (gnu packages compression)
   #:use-module (gnu packages elf)
   #:use-module (gnu packages autotools)
