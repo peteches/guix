@@ -443,7 +443,8 @@ engine.")
     (native-inputs
      (list intel-oneapi strata-llama-cpp-src
            cmake ninja binutils patchelf
-           glibc sed grep coreutils tar bash gzip python-3.12))
+           glibc (package (inherit gcc) (outputs '("lib")))
+           sed grep coreutils tar bash gzip python-3.12))
     (arguments
      (list
       #:modules '((ice-9 ftw))
@@ -476,6 +477,7 @@ engine.")
                  (binutils (assoc-ref %build-inputs "binutils"))
                  (patchelf (assoc-ref %build-inputs "patchelf"))
                  (glibc (assoc-ref %build-inputs "glibc"))
+                 (gcc-lib (assoc-ref %build-inputs "gcc"))
                  (sed (assoc-ref %build-inputs "sed"))
                  (grep (assoc-ref %build-inputs "grep"))
                  (coreutils (assoc-ref %build-inputs "coreutils"))
@@ -515,11 +517,14 @@ engine.")
             (run (string-append sed "/bin/sed" " -i \"/env -i /d\" "
                                 "packaging/build_sycl_linux.sh"))
             (mkdir-p engine-out)
-            ;; glibc's lib dir on LD_LIBRARY_PATH so `ldd` (collect_libs.py)
-            ;; resolves the system libraries; the sourced setvars.sh
-            ;; prepends the oneAPI dirs and keeps this value.
+            ;; glibc's and gcc's lib dirs on LD_LIBRARY_PATH so the
+            ;; oneAPI compilers (which link libgcc_s.so.1, absent from the
+            ;; sandbox) and `ldd` (collect_libs.py) resolve the system
+            ;; libraries; the sourced setvars.sh prepends the oneAPI dirs
+            ;; and keeps this value.
             (setenv "LD_LIBRARY_PATH"
                     (string-append glibc "/lib:"
+                                   gcc-lib "/lib:"
                                    (or (getenv "LD_LIBRARY_PATH") "")))
             (setenv "ONEAPI" oneapi)
             (setenv "LLAMA_CPP" llama)
