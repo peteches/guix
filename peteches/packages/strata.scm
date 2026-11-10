@@ -481,24 +481,13 @@ engine.")
                  (coreutils (assoc-ref %build-inputs "coreutils"))
                  (tar (assoc-ref %build-inputs "tar"))
                  (bash (assoc-ref %build-inputs "bash"))
-                 (python (assoc-ref %build-inputs "python-3.12"))
+                 (python (assoc-ref %build-inputs "python"))
                  (gzip (assoc-ref %build-inputs "gzip"))
                  (out (assoc-ref %outputs "out"))
                  (extract (string-append out ".extract"))
                  (repo (string-append extract
                                       "/Strata-dfe7e883296cd0d52f9f5ae94df36a0578a4794d"))
                  (engine-out (string-append out ".engine")))
-            (for-each (lambda (nm)
-                        (unless (string? (assoc-ref %build-inputs nm))
-                          (display (string-append "MISSING-INPUT: " nm))
-                          (newline (current-error-port))))
-                      (list "cmake" "ninja" "binutils" "patchelf" "glibc"
-                            "sed" "grep" "coreutils" "bash" "python-3.12"
-                            "gzip" "tar" "intel-oneapi" "strata-llama-cpp-src"))
-            (for-each (lambda (pair)
-                        (display (string-append "KEY: " (car pair)))
-                        (newline (current-error-port)))
-                      %build-inputs)
             (setenv "PATH"
                     (string-append
                      gzip "/bin:"
