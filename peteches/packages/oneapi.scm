@@ -197,7 +197,7 @@ which extracts it into the oneAPI tree.")
             (with-output-to-file (string-append out "/setvars.sh")
               (lambda _
                 (display "#!/bin/sh
-ONEAPI_ROOT=$(cd \"$(dirname \"$0\")\" && pwd)
+ONEAPI_ROOT=${ONEAPI:-$(cd \"$(dirname \"$0\")\" && pwd)}
 export ONEAPI_ROOT
 export MKLROOT=$ONEAPI_ROOT/mkl/latest
 export TBBROOT=$ONEAPI_ROOT/tbb/latest
