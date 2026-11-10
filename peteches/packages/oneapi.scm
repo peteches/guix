@@ -103,15 +103,12 @@
           (mkdir %output)
           (let ((src #$(package-source this-package))
                 (dst (string-append %output "/" #$(package-name this-package))))
+            ;; copy-file, not a get-bytevector-n loop: the guix-build
+            ;; sandbox guile has a restricted default module in which the
+            ;; bytevector port procedures are unbound (copy-file is not).
             (let ((in (open-input-file src #:binary #t))
                   (out (open-output-file dst #:binary #t)))
-              (let loop ()
-                (let ((buf (get-bytevector-n in 65536)))
-                  (if (eof-object? buf)
-                      #t
-                      (begin
-                        (put-bytevector out buf)
-                        (loop)))))
+              (copy-file in out)
               (close in)
               (close out))))))
     (synopsis "An Intel oneAPI .deb (fetched from Intel's official apt pool)")
