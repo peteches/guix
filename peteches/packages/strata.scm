@@ -446,10 +446,10 @@ engine.")
            glibc sed grep coreutils tar bash python-3.12))
     (arguments
      (list
-      #:modules '((guix build utils))
+      #:modules '((guix build utils) (ice-9 ftw))
       #:builder
       #~(begin
-          (use-modules (guix build utils))
+          (use-modules (guix build utils) (ice-9 ftw))
           (let* ((src (assoc-ref %build-inputs "source"))
                  (oneapi (assoc-ref %build-inputs "intel-oneapi"))
                  (llama (assoc-ref %build-inputs "strata-llama-cpp-src"))

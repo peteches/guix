@@ -110,10 +110,10 @@
     (native-inputs (list dpkg coreutils))
     (arguments
      (list
-      #:modules '((guix build utils))
+      #:modules '((guix build utils) (ice-9 ftw))
       #:builder
       #~(begin
-          (use-modules (guix build utils))
+          (use-modules (guix build utils) (ice-9 ftw))
           (let* ((debs (assoc-ref %build-inputs "source"))
                  (dpkg (string-append (assoc-ref %build-inputs "dpkg")
                                       "/bin/dpkg"))
