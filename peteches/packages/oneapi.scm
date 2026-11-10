@@ -16,6 +16,7 @@
   #:use-module (guix build-system trivial)
   #:use-module (gnu packages debian)
   #:use-module (gnu packages base)
+  #:use-module (gnu packages elf)
   #:export (intel-oneapi))
 
 (define %oneapi-pool "https://apt.repos.intel.com/oneapi/pool/main")
@@ -134,7 +135,7 @@ which extracts it into the oneAPI tree.")
     (version "2025.3")
     (source #f)
     (build-system trivial-build-system)
-    (native-inputs (append (list dpkg coreutils tar)
+    (native-inputs (append (list dpkg coreutils tar findutils patchelf glibc)
                            intel-oneapi-deb-packages))
     (arguments
      (list
@@ -174,6 +175,23 @@ which extracts it into the oneAPI tree.")
                                           "/" deb-name)))
                  (system (string-append dpkg-deb " -x " deb " " extract))))
              (iota 26))
+            ;; The .deb binaries carry /lib64/ld-linux-x86-64.so.2 as
+            ;; their program interpreter — an FHS path that does not
+            ;; exist in the Guix build sandbox (or on a pure Guix
+            ;; system), so the kernel cannot exec them ("cannot execute:
+            ;; required file not found").  Rewrite the interpreter on
+            ;; every executable in the extracted tree to glibc's loader.
+            ;; The extract tree is in the build directory (writable), so
+            ;; patchelf can modify files in place; non-ELF executables
+            ;; (shell scripts) fail patchelf and are skipped.
+            (system
+             (string-append
+              (assoc-ref %build-inputs "findutils") "/bin/find " extract "/opt/intel/oneapi "
+              "-type f -perm -u+x -print | "
+              "while IFS= read -r f; do "
+              (assoc-ref %build-inputs "patchelf") "/bin/patchelf --set-interpreter "
+              (assoc-ref %build-inputs "glibc") "/lib/ld-linux-x86-64.so.2 \"$f\" 2>/dev/null || true; "
+              "done"))
             (mkdir out)
             (system (string-append cp " -a " extract "/opt/intel/oneapi/. " out))
             ;; The .deb postinst scripts create the `latest` symlinks;
