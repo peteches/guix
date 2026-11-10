@@ -108,7 +108,7 @@
             ;; which the bytevector port procedures (get-bytevector-n,
             ;; read-byte, ...) are unbound, and its copy-file takes file
             ;; names, not ports.
-            (copy-file src dst))))
+            (copy-file src dst)))))
     (synopsis "An Intel oneAPI .deb (fetched from Intel's official apt pool)")
     (home-page %oneapi-pool)
     (description
