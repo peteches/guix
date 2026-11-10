@@ -12,6 +12,7 @@
   #:use-module (guix build utils)
   #:use-module (guix build download)
   #:use-module (guix base32)
+  #:use-module (guix store)
   #:use-module ((guix licenses) #:prefix license:)
   #:use-module (guix download)
   #:use-module (guix build-system trivial)
@@ -88,8 +89,11 @@
      (origin
       (method
        ;; Download the .debs one by one (each hash-verified) into a
-       ;; directory; Guix stores that directory as the origin output.
-       (lambda _
+       ;; directory, add that directory to the store, and return the
+       ;; store path.  The origin method is called as
+       ;; (method uri hash-algo hash name #:system); the result must be
+       ;; a derivation or a store path, so we return a store path here.
+       (lambda (uri hash-algo hash name #:key system)
          (let ((tmp (string-append (or (getenv "TMPDIR") "/tmp")
                                    "/oneapi-debs-"
                                    (number->string (getpid)))))
@@ -104,7 +108,9 @@
                                               (cadr row)))))
                 (throw 'oneapi-deb-download-failed (car row))))
             %oneapi-debs)
-           tmp)))
+           (with-store %store
+             (lambda (store)
+               (add-to-store store name #t "sha256" tmp)))))))
       (uri %oneapi-pool)
       (file-name (string-append name "-" version "-debs"))
       ;; Dummy: the real verification is per-.deb inside the method
