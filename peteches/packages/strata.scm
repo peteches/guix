@@ -443,7 +443,7 @@ engine.")
     (native-inputs
      (list intel-oneapi strata-llama-cpp-src
            cmake ninja binutils patchelf
-           glibc sed grep coreutils tar bash python-3.12))
+           glibc sed grep coreutils tar bash gzip python-3.12))
     (arguments
      (list
       #:modules '((ice-9 ftw))
@@ -482,11 +482,26 @@ engine.")
                  (tar (assoc-ref %build-inputs "tar"))
                  (bash (assoc-ref %build-inputs "bash"))
                  (python (assoc-ref %build-inputs "python-3.12"))
+                 (gzip (assoc-ref %build-inputs "gzip"))
                  (out (assoc-ref %outputs "out"))
                  (extract (string-append out ".extract"))
                  (repo (string-append extract
                                       "/Strata-dfe7e883296cd0d52f9f5ae94df36a0578a4794d"))
                  (engine-out (string-append out ".engine")))
+            (setenv "PATH"
+                    (string-append
+                     gzip "/bin:"
+                     cmake "/bin:"
+                     ninja "/bin:"
+                     binutils "/bin:"
+                     patchelf "/bin:"
+                     glibc "/bin:"
+                     sed "/bin:"
+                     grep "/bin:"
+                     coreutils "/bin:"
+                     bash "/bin:"
+                     python "/bin:"
+                     (or (getenv "PATH") "")))
             (mkdir-p extract)
             (run (string-append tar "/bin/tar" " xzf " src " -C " extract))
             (chdir repo)
@@ -500,19 +515,6 @@ engine.")
             (run (string-append sed "/bin/sed" " -i \"/env -i /d\" "
                                 "packaging/build_sycl_linux.sh"))
             (mkdir-p engine-out)
-            (setenv "PATH"
-                    (string-append
-                     cmake "/bin:"
-                     ninja "/bin:"
-                     binutils "/bin:"
-                     patchelf "/bin:"
-                     glibc "/bin:"
-                     sed "/bin:"
-                     grep "/bin:"
-                     coreutils "/bin:"
-                     bash "/bin:"
-                     python "/bin:"
-                     (or (getenv "PATH") "")))
             ;; glibc's lib dir on LD_LIBRARY_PATH so `ldd` (collect_libs.py)
             ;; resolves the system libraries; the sourced setvars.sh
             ;; prepends the oneAPI dirs and keeps this value.
@@ -530,26 +532,19 @@ engine.")
             (setenv "JOBS" "4")
             (run (string-append bash "/bin/sh" " packaging/build_sycl_linux.sh"))
             ;; The script wrote $OUT/<component folder>; move the folder's
-            ;; contents to $out.
-            (let ((folders
-                   (filter (lambda (n)
-                             (file-directory?
-                              (string-append engine-out "/" n)))
-                           (scandir engine-out
-                                    (lambda (n)
-                                      (not (member n (list "." "..")))))))
-                  (folder (string-append engine-out "/" (car folders))))
-              (if (null? (cdr folders))
-                  (run (string-append coreutils "/bin/cp" " -a "
-                                      folder "/." " " out))
-                  (begin
-                    (display "strata-sycl-engine: unexpected OUT layout: "
-                             (current-error-port))
-                    (for-each (lambda (f)
-                                (display f (current-error-port))
-                                (newline (current-error-port)))
-                               folders)
-                    #f)))
+            ;; contents to $out.  The sandbox guile has no scandir, so do
+            ;; the single-folder check with a shell one-liner.
+            (run (string-append
+                  "n=$(ls -1d " engine-out "/*/ 2>/dev/null | wc -l); "
+                  "if [ \"$n\" -eq 1 ]; then "
+                  "f=$(ls -1d " engine-out "/*/); "
+                  "f=${f%/}; "
+                  coreutils "/bin/cp -a \"$f/.\" " out "; "
+                  "else "
+                  "echo \"strata-sycl-engine: unexpected OUT layout\" >&2; "
+                  "ls -1d " engine-out "/*/; "
+                  "exit 1; "
+                  "fi"))
             #t))))
     (home-page "https://github.com/giridhart/Strata")
     (synopsis
