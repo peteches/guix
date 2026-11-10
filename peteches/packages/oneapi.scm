@@ -10,9 +10,7 @@
   #:use-module (guix packages)
   #:use-module (guix gexp)
   #:use-module (guix build utils)
-  #:use-module (guix build download)
   #:use-module (guix base32)
-  #:use-module (guix store)
   #:use-module ((guix licenses) #:prefix license:)
   #:use-module (guix download)
   #:use-module (guix build-system trivial)
@@ -81,69 +79,81 @@
     ("intel-oneapi-umf-1.0-1.0.3-17_amd64.deb"
      "1612mlvjz7drn93xm51ln1svpyh3d6qp4hd92cbw69nz88zwz4qb")))
 
-;; Origin method: download the .debs one by one (each hash-verified)
-;; into a directory, add that directory to the store, and return the
-;; store path.  The origin method is called as
-;; (method uri hash-algo hash name #:system); the result must be a
-;; derivation or a store path, so we return a store path here.
-(define oneapi-debs-fetch
-  (lambda args
-    ;; args = (uri hash-algo hash name #:system system)
-    (let ((name (list-ref args 3)))
-      (let ((tmp (string-append (or (getenv "TMPDIR") "/tmp")
-                                "/oneapi-debs-"
-                                (number->string (getpid)))))
-        (mkdir-p tmp)
-        (for-each
-         (lambda (row)
-           (unless (url-fetch (string-append %oneapi-pool "/" (car row))
-                              (string-append tmp "/" (car row))
-                              #:hashes
-                              (list (cons 'sha256
-                                          (nix-base32-string->bytevector
-                                           (cadr row)))))
-             (throw 'oneapi-deb-download-failed (car row))))
-         %oneapi-debs)
-        (with-store %store
-          (lambda (store)
-            (add-to-store store name #t "sha256" tmp)))))))
+;; Each oneAPI .deb is its own package: a fixed-output derivation that
+;; fetches the .deb from Intel's official apt pool with its sha256
+;; verified, and installs it into the store as a single file.  The
+;; assembly package (intel-oneapi, below) takes all of these as native
+;; inputs and extracts them.  Using one standard url-fetch origin per
+;; .deb is the robust pattern: each is independently cacheable and
+;; hash-verified, and there is no custom origin method to get wrong.
+(define (make-oneapi-deb-package row index)
+  (package
+    (name (string-append "intel-oneapi-deb-" (number->string index)))
+    (version "2025.3")
+    (source
+     (origin
+      (method url-fetch)
+      (uri (string-append %oneapi-pool "/" (car row)))
+      (sha256 (base32 (cadr row)))))
+    (build-system trivial-build-system)
+    (arguments
+     (list
+      #:builder
+      #~(begin
+          (use-modules (guix build utils))
+          (copy-file #$(package-source this-package)
+                     (string-append %output "/" #$(package-name this-package))))))
+    (synopsis "An Intel oneAPI .deb (fetched from Intel's official apt pool)")
+    (home-page %oneapi-pool)
+    (description
+     "A single Intel oneAPI .deb, fetched from Intel's official apt pool
+with its sha256 verified.  It is a native input to @command{intel-oneapi},
+which extracts it into the oneAPI tree.")
+    (license license:asl2.0)))
+
+(define intel-oneapi-deb-packages
+  (let loop ((rows %oneapi-debs)
+             (i 0)
+             (acc '()))
+    (if (null? rows)
+        (reverse acc)
+        (loop (cdr rows)
+              (+ i 1)
+              (cons (make-oneapi-deb-package (car rows) i)
+                    acc)))))
 
 (define-public intel-oneapi
   (package
     (name "intel-oneapi")
     (version "2025.3")
-    (source
-     (origin
-      (method oneapi-debs-fetch)
-      (uri %oneapi-pool)
-      (file-name (string-append name "-" version "-debs"))
-      ;; Dummy: the real verification is per-.deb inside the method
-      ;; above; this only names the fixed-output derivation.
-      (sha256
-       (base32
-        "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"))))
+    (source #f)
     (build-system trivial-build-system)
-    (native-inputs (list dpkg coreutils))
+    (native-inputs (append (list dpkg coreutils)
+                           intel-oneapi-deb-packages))
     (arguments
      (list
       #:modules '((guix build utils) (ice-9 ftw))
       #:builder
       #~(begin
           (use-modules (guix build utils) (ice-9 ftw))
-          (let* ((debs (assoc-ref %build-inputs "source"))
-                 (dpkg (string-append (assoc-ref %build-inputs "dpkg")
+          (let* ((dpkg (string-append (assoc-ref %build-inputs "dpkg")
                                       "/bin/dpkg"))
                  (cp (string-append (assoc-ref %build-inputs "coreutils")
                                     "/bin/cp"))
                  (out (assoc-ref %outputs "out"))
                  (extract (string-append out ".extract")))
             (mkdir-p extract)
-            ;; dpkg -x each .deb into one tree: they all install under
-            ;; /opt/intel/oneapi, so the extractions merge.
+            ;; dpkg -x each .deb (from its own input directory) into one
+            ;; tree: they all install under /opt/intel/oneapi, so the
+            ;; extractions merge.
             (for-each
-             (lambda (name)
-               (invoke dpkg "-x" (string-append debs "/" name) extract))
-             (scandir debs (lambda (n) (string-suffix? ".deb" n))))
+             (lambda (i)
+               (let ((deb-name (string-append "intel-oneapi-deb-"
+                                              (number->string i)))
+                     (deb (string-append (assoc-ref %build-inputs deb-name)
+                                         "/" deb-name)))
+                 (invoke dpkg "-x" deb extract)))
+             (iota 26))
             (mkdir-p out)
             (invoke cp "-a" (string-append extract "/opt/intel/oneapi/.") out)
             ;; The .deb postinst scripts create the `latest` symlinks;
