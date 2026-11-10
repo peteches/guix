@@ -89,9 +89,7 @@
        (lambda _
          (let ((tmp (string-append (or (getenv "TMPDIR") "/tmp")
                                    "/oneapi-debs-"
-                                   (number->string (getpid))
-                                   "-"
-                                   (number->string (current-time TIME_SECONDS)))))
+                                   (number->string (getpid)))))
            (mkdir-p tmp)
            (for-each
             (lambda (row)
