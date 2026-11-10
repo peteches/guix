@@ -81,36 +81,37 @@
     ("intel-oneapi-umf-1.0-1.0.3-17_amd64.deb"
      "1612mlvjz7drn93xm51ln1svpyh3d6qp4hd92cbw69nz88zwz4qb")))
 
+;; Origin method: download the .debs one by one (each hash-verified)
+;; into a directory, add that directory to the store, and return the
+;; store path.  The origin method is called as
+;; (method uri hash-algo hash name #:system); the result must be a
+;; derivation or a store path, so we return a store path here.
+(define (oneapi-debs-fetch uri hash-algo hash name #:key system)
+  (let ((tmp (string-append (or (getenv "TMPDIR") "/tmp")
+                            "/oneapi-debs-"
+                            (number->string (getpid)))))
+    (mkdir-p tmp)
+    (for-each
+     (lambda (row)
+       (unless (url-fetch (string-append %oneapi-pool "/" (car row))
+                          (string-append tmp "/" (car row))
+                          #:hashes
+                          (list (cons 'sha256
+                                      (nix-base32-string->bytevector
+                                       (cadr row)))))
+         (throw 'oneapi-deb-download-failed (car row))))
+     %oneapi-debs)
+    (with-store %store
+      (lambda (store)
+        (add-to-store store name #t "sha256" tmp)))))
+
 (define-public intel-oneapi
   (package
     (name "intel-oneapi")
     (version "2025.3")
     (source
      (origin
-      (method
-       ;; Download the .debs one by one (each hash-verified) into a
-       ;; directory, add that directory to the store, and return the
-       ;; store path.  The origin method is called as
-       ;; (method uri hash-algo hash name #:system); the result must be
-       ;; a derivation or a store path, so we return a store path here.
-       (lambda (uri hash-algo hash name #:key system)
-         (let ((tmp (string-append (or (getenv "TMPDIR") "/tmp")
-                                   "/oneapi-debs-"
-                                   (number->string (getpid)))))
-           (mkdir-p tmp)
-           (for-each
-            (lambda (row)
-              (unless (url-fetch (string-append %oneapi-pool "/" (car row))
-                                 (string-append tmp "/" (car row))
-                                 #:hashes
-                                 (list (cons 'sha256
-                                             (nix-base32-string->bytevector
-                                              (cadr row)))))
-                (throw 'oneapi-deb-download-failed (car row))))
-            %oneapi-debs)
-           (with-store %store
-             (lambda (store)
-               (add-to-store store name #t "sha256" tmp)))))))
+      (method oneapi-debs-fetch)
       (uri %oneapi-pool)
       (file-name (string-append name "-" version "-debs"))
       ;; Dummy: the real verification is per-.deb inside the method
