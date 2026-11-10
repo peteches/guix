@@ -101,8 +101,8 @@
       #:builder
       #~(let ((src #$(package-source this-package))
               (dst (string-append %output "/" #$(package-name this-package))))
-         (let ((in (open-input-file src #:binary))
-               (out (open-output-file dst #:binary)))
+         (let ((in (open-input-file src #:binary #t))
+               (out (open-output-file dst #:binary #t)))
            (let loop ()
              (let ((buf (get-bytevector-n in 65536)))
                (if (eof-object? buf)
