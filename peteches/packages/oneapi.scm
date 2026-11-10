@@ -86,24 +86,25 @@
 ;; store path.  The origin method is called as
 ;; (method uri hash-algo hash name #:system); the result must be a
 ;; derivation or a store path, so we return a store path here.
-(define (oneapi-debs-fetch uri hash-algo hash name #:key system)
-  (let ((tmp (string-append (or (getenv "TMPDIR") "/tmp")
-                            "/oneapi-debs-"
-                            (number->string (getpid)))))
-    (mkdir-p tmp)
-    (for-each
-     (lambda (row)
-       (unless (url-fetch (string-append %oneapi-pool "/" (car row))
-                          (string-append tmp "/" (car row))
-                          #:hashes
-                          (list (cons 'sha256
-                                      (nix-base32-string->bytevector
-                                       (cadr row)))))
-         (throw 'oneapi-deb-download-failed (car row))))
-     %oneapi-debs)
-    (with-store %store
-      (lambda (store)
-        (add-to-store store name #t "sha256" tmp)))))
+(define oneapi-debs-fetch
+  (lambda (uri hash-algo hash name #:key system)
+    (let ((tmp (string-append (or (getenv "TMPDIR") "/tmp")
+                              "/oneapi-debs-"
+                              (number->string (getpid)))))
+      (mkdir-p tmp)
+      (for-each
+       (lambda (row)
+         (unless (url-fetch (string-append %oneapi-pool "/" (car row))
+                            (string-append tmp "/" (car row))
+                            #:hashes
+                            (list (cons 'sha256
+                                        (nix-base32-string->bytevector
+                                         (cadr row)))))
+           (throw 'oneapi-deb-download-failed (car row))))
+       %oneapi-debs)
+      (with-store %store
+        (lambda (store)
+          (add-to-store store name #t "sha256" tmp))))))
 
 (define-public intel-oneapi
   (package
