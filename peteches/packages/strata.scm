@@ -574,7 +574,12 @@ engine.")
             ;; environment variables are NOT read by CMake), and those
             ;; flags reach every compile and link step, including the
             ;; compiler-ABI test link.
-            (let ((shim (string-append extract "/link-shim"))
+            ;; Guile 3.0's interpreter miscompiles a `let` whose binding
+            ;; initializers reference earlier bindings of the same `let`
+            ;; (sibling references evaluate in the wrong environment and
+            ;; the name is unbound at run time), so this block is a
+            ;; `let*`.
+            (let* ((shim (string-append extract "/link-shim"))
                   (fake (string-append extract "/fake-gcc"))
                   (sysroot (string-append extract "/fake-sysroot"))
                   (crt-dir (string-append fake
