@@ -21,64 +21,102 @@
 
 (define %oneapi-pool "https://apt.repos.intel.com/oneapi/pool/main")
 
-;; (file name, sha256) for the oneAPI 2025.3 .debs the Strata SYCL build
+;; (file name, sha256) for the oneAPI 2026.1 .debs the Strata SYCL build
 ;; needs: the DPC++ compiler (icpx/icx), oneMKL with the MKL-SYCL
 ;; libraries, TBB, the dev utilities and UMF.  The names are the
 ;; pool-relative file names from Intel's apt repository; the hashes were
 ;; taken from the repository's own index (sha256sum of each .deb).
+;;
+;; Why 2026.1 (upgraded from 2025.3 on 2026-11-11): the giridhart fork's
+;; sycl/include/dpct/util.hpp calls
+;; sycl::ext::oneapi::experimental::entangle() and chunked_partition<>,
+;; the subgroup-partition API oneAPI 2026.x introduced (2025.3 only has
+;; the older tangle_group.hpp), so 2025.3 dies with "no member named
+;; 'entangle' in namespace sycl::ext::oneapi::experimental".  The fork's
+;; packaging/build_sycl_linux.sh documents "icx / icpx 2026.1 or newer"
+;; and its dev image builds with 2026.1.
+;;
+;; Two quirks of Intel's apt repo made the headers look nonexistent (and
+;; cost the 2025.3 bundle its build):
+;;
+;;   1. The compiler HEADERS (include/sycl/sycl.hpp, include/CL/,
+;;      syclcompat, ur_api.h) live in the ...-dpcpp-cpp-common deb, which
+;;      is `Architecture: all` — listed ONLY in
+;;      dists/all/main/binary-all/Packages (not binary-amd64) and named
+;;      `..._all.deb`.  Same for ...-compiler-shared-common (67 MB more
+;;      headers) and openmp-common.
+;;   2. Intel's Packages files put the Filename:/Size:/SHA256: fields
+;;      BEFORE the Package:/Version:/Depends: fields of the SAME record,
+;;      so a stanza parser keyed on `Package: ... ^$` silently drops them.
+;;
+;; In the 2026.x generation the MKL base packages (mkl, mkl-devel,
+;; mkl-sycl, mkl-classic-devel) are empty metas: the contents moved to
+;; mkl-core (libs), mkl-core-devel + mkl-sycl-include + mkl-sycl-devel +
+;; mkl-classic-include + mkl-cluster-devel (headers), and the per-domain
+;; mkl-sycl-* packages (libs).  The empty metas, the 428 MB
+;; dpcpp-debugger (not needed to compile) and the eclipse-cfg /
+;; common-vars / common-licensing env packages (this package generates
+;; its own setvars.sh) are deliberately NOT fetched.
 (define %oneapi-debs
-  '(("intel-oneapi-compiler-dpcpp-cpp-2025.3-2025.3.3-30_amd64.deb"
-     "1wxbgqxvm9axmrxy4x83lzh5gfrwhp3ab6appbwxq6189zr0happ")
-    ("intel-oneapi-compiler-dpcpp-cpp-runtime-2025.3-2025.3.3-30_amd64.deb"
-     "10ig2rnrk83nckfnnh80vb04rl5696yg1d6x26h0d8x0pvmmkhbp")
-    ("intel-oneapi-compiler-shared-2025.3-2025.3.3-30_amd64.deb"
-     "01b78779vy145ck7fsybs2gfgkdx3bk2vknjk9809vndsllgll83")
-    ("intel-oneapi-compiler-shared-runtime-2025.3-2025.3.3-30_amd64.deb"
-     "1fjfsvhb97bh5rk5zvrrd1r6gaghyxfn6m031cw3mddphja90apa")
-    ("intel-oneapi-dev-utilities-2025.3-2025.3.1-15_amd64.deb"
-     "0zbclxhr0a29wh2jpk4n9j5m1xbk3wzzdxp88z82mg7di23jgav1")
-    ("intel-oneapi-dpcpp-cpp-2025.3-2025.3.3-30_amd64.deb"
-     "0glkd160fpipvj3awvlkg1p4dlsvllhf68sgrx6x16a9lcjapycs")
-    ("intel-oneapi-dpcpp-debugger-2025.3-2025.3.1-7_amd64.deb"
-     "1cidzd02cj9hkrfcmd2c9m8vwwlai47ji7irici075iq3l8yz2z1")
-    ("intel-oneapi-libdpstd-devel-2022.10-2022.10.0-275_amd64.deb"
-     "0ka786rgzjad8cdd07dgnrrc9lzzg4wpkf6mck4an7zknm9j85xp")
-    ("intel-oneapi-mkl-2025.3-2025.3.1-8_amd64.deb"
-     "17yfg8m55pcdz4k9dlmy2wvywzkafw4clm82hlm21yzp6r2mhgvw")
-    ("intel-oneapi-mkl-classic-2025.3-2025.3.1-8_amd64.deb"
-     "186bx11dyj6z4hqil3hhl0yhl9rg9ka1ibja82pkiaqbnf5kjag6")
-    ("intel-oneapi-mkl-cluster-2025.3-2025.3.1-8_amd64.deb"
-     "0z8f5jcmsr2ic0whwg0z98n3r1yg6mhzv88fyn7k3vvwvcmclj91")
-    ("intel-oneapi-mkl-core-2025.3-2025.3.1-8_amd64.deb"
-     "0byf5a8v8hzbccsnx8ml7kkdn01vl9xnwv25chh6s555c8348j0n")
-    ("intel-oneapi-mkl-sycl-2025.3-2025.3.1-8_amd64.deb"
-     "1y4x4vkz7iixljxf5z8g8all8n67k844xqdyzsjhpmqp0nc33nyk")
-    ("intel-oneapi-mkl-sycl-blas-2025.3-2025.3.1-8_amd64.deb"
-     "1avabq19xyd783ppaqb5qb0isddkxpap1clfxsk18b4216li7d6y")
-    ("intel-oneapi-mkl-sycl-data-fitting-2025.3-2025.3.1-8_amd64.deb"
-     "1a5cd2kb67nzah16spb821f345v4zzj7vjl7n01qaywf3dhlg6ya")
-    ("intel-oneapi-mkl-sycl-dft-2025.3-2025.3.1-8_amd64.deb"
-     "1s199pwnaq78x2smdycp5w20in6a64nvg89cwcq33fgqhlk8f9g8")
-    ("intel-oneapi-mkl-sycl-lapack-2025.3-2025.3.1-8_amd64.deb"
-     "19d0fnkddpx890pivsizyvabbqr34lb53n7b82py724njr5fz5jj")
-    ("intel-oneapi-mkl-sycl-rng-2025.3-2025.3.1-8_amd64.deb"
-     "01y5c0ppflrw7243vs8m32r0amh5bq6hnjbwx7sghxydrpks0nc5")
-    ("intel-oneapi-mkl-sycl-sparse-2025.3-2025.3.1-8_amd64.deb"
-     "1bxgh8caa3am69xanmrf4jr0hhqlmx9ijm5s8b3gqbg57hdywq8j")
-    ("intel-oneapi-mkl-sycl-stats-2025.3-2025.3.1-8_amd64.deb"
-     "1fm9m765hx5105p209n8n454dwsg3c1a1a1f1s9piwjfbxwxfvs2")
-    ("intel-oneapi-mkl-sycl-vm-2025.3-2025.3.1-8_amd64.deb"
-     "1sgplx9pwlkg2wlq3pbdx3wlbnngj8nfmkwkvsccr6ycgzxadya7")
-    ("intel-oneapi-openmp-2025.3-2025.3.3-30_amd64.deb"
-     "1vbap2n72as2zm0w49gv869fj388sd5qpbg8742f2bvx38933dcr")
-    ("intel-oneapi-tbb-2022.3-2022.3.1-400_amd64.deb"
-     "0h86a6yhgyav6j1fdvglbrsqsxzw1xjq946i9v9k0vqd2d8pbb81")
-    ("intel-oneapi-tbb-devel-2022.3-2022.3.1-400_amd64.deb"
-     "0ir96sjhipq169idb71z0myav73y2sy2xlvfbvd9w31360cml27b")
-    ("intel-oneapi-tcm-1.4-1.4.1-445_amd64.deb"
-     "0y6fnpbxnm2bvv9nxxp0ia9d5mxam0zd48ravx0rv70zqwgd4bwf")
-    ("intel-oneapi-umf-1.0-1.0.3-17_amd64.deb"
-     "1612mlvjz7drn93xm51ln1svpyh3d6qp4hd92cbw69nz88zwz4qb")))
+  '(
+    ("intel-oneapi-dpcpp-cpp-2026.1-2026.1.1-325_amd64.deb"
+     "0qlndzrs3qf0zshcp04wf3fbv5scpmzc8vbkdybb0hzgyv1sm5zs")
+    ("intel-oneapi-compiler-dpcpp-cpp-common-2026.1-2026.1.1-325_all.deb"
+     "09jdvlznyj8gsvrlfs1dd3q3zvv62zs4614arkwrybzx928fysyj")
+    ("intel-oneapi-compiler-dpcpp-cpp-runtime-2026.1-2026.1.1-325_amd64.deb"
+     "1706n70gg2p0r5vgkg4bhxvjylg0sxcfkh82pmkrqnpzgkai616z")
+    ("intel-oneapi-compiler-shared-2026.1-2026.1.1-325_amd64.deb"
+     "16ay1hsfql9n128sgdkgbbscsn016rp4ac2sikh7q6sxhmw980w7")
+    ("intel-oneapi-compiler-shared-common-2026.1-2026.1.1-325_all.deb"
+     "14b54dcmr7jmhygjd02lhdfvirndh1lr7g7d0a4s77aw55fnffr8")
+    ("intel-oneapi-compiler-shared-runtime-2026.1-2026.1.1-325_amd64.deb"
+     "0c16zf6hrvrnrrm1pngaf68rbi23k5j2dzdygwzl3w1s4h07giy0")
+    ("intel-oneapi-openmp-2026.1-2026.1.1-325_amd64.deb"
+     "00mxg1vc6i5y5cxn8dwfqq7ldhnlrjwcfd08zfky2fk1f9fgkzc9")
+    ("intel-oneapi-openmp-common-2026.1-2026.1.1-325_all.deb"
+     "045qcgh1240b132rbnglh1pm73670q2i31gbjarmikmr3yzp06s3")
+    ("intel-oneapi-dev-utilities-2026.0-2026.0.1-16_amd64.deb"
+     "1k8z6mjhdzy38lx1v4vhv0an9kmqlkpmpprd25xydfacxfwhpf2h")
+    ("intel-oneapi-libdpstd-devel-2022.13-2022.13.0-107_amd64.deb"
+     "0dc8099vz52yarsz15cg749zcdlgf3kwkk17j4nrkvzxwi2z7xpc")
+    ("intel-oneapi-mkl-core-2026.1-2026.1.0-236_amd64.deb"
+     "14xx8yf2vc0kgw5dqh09w30wcdrvi36j0b06f67lzi0azh10q8rv")
+    ("intel-oneapi-mkl-core-devel-2026.1-2026.1.0-236_amd64.deb"
+     "0hvwrddzc3kp9yzxsf1qjira7r5d25akf16shl06g5ikpcgf4j7p")
+    ("intel-oneapi-mkl-sycl-include-2026.1-2026.1.0-236_amd64.deb"
+     "0kfgql03mjg1wyrzpacwm4ixy6kpk34m54x0kwpgx2d8zrx7gj1x")
+    ("intel-oneapi-mkl-sycl-devel-2026.1-2026.1.0-236_amd64.deb"
+     "0zczi2hrrj6h3mp4gf4agb1z535l9fb0a6aszf9hxxg9y17bqn6d")
+    ("intel-oneapi-mkl-sycl-blas-2026.1-2026.1.0-236_amd64.deb"
+     "10yp5dwjnfv0v27zcj600hkgfkkd9yidm32ajjwf92pnghddas4n")
+    ("intel-oneapi-mkl-sycl-data-fitting-2026.1-2026.1.0-236_amd64.deb"
+     "09xc5k6i3711n2qngq1iwl1315cmx6akd4hpszvv2nylr80dfhiv")
+    ("intel-oneapi-mkl-sycl-dft-2026.1-2026.1.0-236_amd64.deb"
+     "0wykb2g34zmqw9c3c2ry6nhdi2sc1wa9772y3v6cl7534p9jv1ii")
+    ("intel-oneapi-mkl-sycl-lapack-2026.1-2026.1.0-236_amd64.deb"
+     "08friwxr5driqhady3frzfhydsrb2aaa09ssq4qrgcj9bqpq60gp")
+    ("intel-oneapi-mkl-sycl-rng-2026.1-2026.1.0-236_amd64.deb"
+     "1gvmnbg2696s38vd0zky7dbiqmcb5bxq9ir13pfxwhi05waqwx5h")
+    ("intel-oneapi-mkl-sycl-sparse-2026.1-2026.1.0-236_amd64.deb"
+     "0ibxw0w56y3kszf4xcwairdm6gy9y0gib22j599asjghqp0rsjba")
+    ("intel-oneapi-mkl-sycl-stats-2026.1-2026.1.0-236_amd64.deb"
+     "00g12zrxgx94f732486g4k1ik5m3b3994bmw5q7ld93i2iprhqv2")
+    ("intel-oneapi-mkl-sycl-vm-2026.1-2026.1.0-236_amd64.deb"
+     "1ibhsjf29pkxgas0ciq1w0773glc9mip99h205idg8vy4jd1i8w0")
+    ("intel-oneapi-mkl-cluster-2026.1-2026.1.0-236_amd64.deb"
+     "1j0iqgsn6kcgszclvc0ac1ihwk5jn3dk0snivpb0nc0ilzkvs5yf")
+    ("intel-oneapi-mkl-cluster-devel-2026.1-2026.1.0-236_amd64.deb"
+     "1jvm9m79cnkp5qan53wygi2sqbbg2hmjrvqpdhf1cijrz0rv97m4")
+    ("intel-oneapi-mkl-classic-include-2026.1-2026.1.0-236_amd64.deb"
+     "10rlm8ngr3hqrfm3vnya1xyphmqqq3l6rhimzbgkk0zkv0vkg6jh")
+    ("intel-oneapi-tbb-2023.2-2023.2.0-492_amd64.deb"
+     "0gf30hci7vl3gpqgmjqrknpxn3dskk4z3zy00hl33qmz2pz6zx67")
+    ("intel-oneapi-tbb-devel-2023.2-2023.2.0-492_amd64.deb"
+     "0x3ycnvp96ivpdfg68mk9mzqk3s61j2hzzkvbrf0inkzhg8sqz3p")
+    ("intel-oneapi-tcm-1.6-1.6.0-178_amd64.deb"
+     "1d8rihk99spjx56wjnjny5wn2cyr10831knqz9rf8iqi196gknn5")
+    ("intel-oneapi-umf-1.1-1.1.0-340_amd64.deb"
+     "0y6fb2wxbhb1nay2jrlbyvwd672ffn2524xl51rgcxic0jbsj1c7")))
 
 ;; Each oneAPI .deb is its own package: a fixed-output derivation that
 ;; fetches the .deb from Intel's official apt pool with its sha256
@@ -90,7 +128,7 @@
 (define (make-oneapi-deb-package row index)
   (package
     (name (string-append "intel-oneapi-deb-" (number->string index)))
-    (version "2025.3")
+    (version "2026.1")
     (source
      (origin
       (method url-fetch)
@@ -132,7 +170,7 @@ which extracts it into the oneAPI tree.")
 (define-public intel-oneapi
   (package
     (name "intel-oneapi")
-    (version "2025.3")
+    (version "2026.1")
     (source #f)
     (build-system trivial-build-system)
     (native-inputs (append (list dpkg coreutils tar findutils patchelf glibc)
@@ -174,7 +212,7 @@ which extracts it into the oneAPI tree.")
                       (deb (string-append (assoc-ref %build-inputs deb-name)
                                           "/" deb-name)))
                  (system (string-append dpkg-deb " -x " deb " " extract))))
-             (iota 26))
+             (iota #$(length %oneapi-debs)))
             ;; The .deb binaries carry /lib64/ld-linux-x86-64.so.2 as
             ;; their program interpreter — an FHS path that does not
             ;; exist in the Guix build sandbox (or on a pure Guix
