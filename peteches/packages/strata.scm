@@ -220,19 +220,30 @@ it (peteches services strata) writes the ICD json
 at it, the same thing the oneAPI installer does.")
     (license asl2.0)))
 
+;; PINNED to 0.1.57 (app v0.2.11) — do NOT bump without first checking this is
+;; fixed upstream.  0.1.59.x (app v0.2.13) stalls on the Arc Pro B70
+;; (Battlemage, a card Strata has not tested itself): the CPU-side MoE expert
+;; computation hits Strata's 60 s "no progress during a request" watchdog
+;; (engine issue #29) inside the readiness verify window, so the engine is
+;; killed and restarted forever and the server never becomes ready
+;; (probe_transport_failed) — see /var/log/strata/strata.log on the comfyui VM.
+;; Before restoring a newer version, confirm the CPU-expert watchdog stall on
+;; B-series Arc is fixed, then change version back to "0.1.59.1", the url to
+;; .../v0.2.13/..., and the sha256 base32 back to
+;; "1b12q0zqxirqdzz8iiplwdivpfq5ajrjjc32f88gl06g90l63yvk".
 (define-public strata
   (package
     (name "strata")
-    (version "0.1.59.1")
+    (version "0.1.57")
     (source
      (origin
        (method url-fetch)
        (uri (string-append
-             "https://github.com/Niko1221/Strata/releases/download/v0.2.13/"
+             "https://github.com/Niko1221/Strata/releases/download/v0.2.11/"
              "strata-control-" version "-linux-x86_64.tar.gz"))
        (sha256
         (base32
-         "1b12q0zqxirqdzz8iiplwdivpfq5ajrjjc32f88gl06g90l63yvk"))))
+         "022d16v0ddsgiifp04ib5b9x32yshmd0s0nk697qnqsaxvzqrira"))))
     (build-system trivial-build-system)
     (arguments
      (list
@@ -297,7 +308,11 @@ SYCL port) and downloads model files into @option{--data-dir}.  See
 ;; @code{LLAMA_CPP_COMMIT}, downloaded as a zip "as a zip: no git", with
 ;; @code{tools/ui} skipped — mirrored below.
 
-(define %strata-vision-release-tag "v0.2.13")     ; app tag; the Terminal inside it is 0.1.59.1
+;; Kept in lockstep with the `strata` engine pin above (0.1.57 / v0.2.11) —
+;; see that comment for why and how to restore a newer version.  The llama.cpp
+;; commit Strata pins in setup.py is unchanged between the two, so only the app
+;; tag, the `strata-vision` version and its source sha256 move.
+(define %strata-vision-release-tag "v0.2.11")     ; app tag; the Terminal inside it is 0.1.57
 (define %strata-vision-llama-commit
   "3cf03257f219afbe7334045ff7c6a06ac68c627d")   ; setup.py LLAMA_CPP_COMMIT at that tag
 
@@ -351,7 +366,7 @@ program.")
 (define-public strata-vision
   (package
     (name "strata-vision")
-    (version "0.1.59.1")
+    (version "0.1.57")
     (source
      (origin
        (method url-fetch)
@@ -361,7 +376,7 @@ program.")
        (file-name (string-append "strata-" version "-source.tar.gz"))
        (sha256
         (base32
-         "131yhdgzkazdzf6gq6c21h0mbdx2qf4h3qs3nmq2l0n08vlwafxk"))))
+         "16nvypih8zra31sq9pfqqbzgnamlxr3g5d5kgh8pdil8sxjhfmby"))))
     (build-system cmake-build-system)
     (arguments
      (list
