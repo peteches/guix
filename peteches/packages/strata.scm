@@ -543,6 +543,34 @@ engine.")
             ;; at deploy time.
             (run (string-append sed "/bin/sed" " -i \"/env -i /d\" "
                                 "packaging/build_sycl_linux.sh"))
+            ;; include/strata/prefill/gemm.hpp guards a REDUCED Gemm class
+            ;; with `#ifdef SYCL_LANGUAGE_VERSION', but the fork's own
+            ;; migrated SYCL sources are written against the FULL class in
+            ;; the `#else' branch: sycl/src/prefill/gemm.dp.cpp DEFINES
+            ;; Gemm::native (the 10-arg form), native_mmq, bf16_hcd_exact
+            ;; and uses the tc_w_/tc_x_ members, and sycl/src/prefill/
+            ;; prefill.cpp CALLS prompt_f16()/set_f16_io().  icpx -fsycl
+            ;; defines SYCL_LANGUAGE_VERSION in both passes, so the stale
+            ;; reduced branch is selected and both TUs die ("no member
+            ;; named 'set_f16_io' in 'strata::prefill::Gemm'", "use of
+            ;; undeclared identifier 'tc_w_'").  The v0.2.10 merge
+            ;; (c4def51d, 2026-11-03) regenerated the .dp.cpp sources
+            ;; against the grown full API but never extended the header's
+            ;; SYCL branch; the fork's CI last ran 2026-10-14 and never
+            ;; caught it.  The full branch is pure C++ (cstddef/cstdint/
+            ;; string/vector, void* handles, nothing CUDA- or HIP-typed),
+            ;; its API is a strict superset of the reduced one, and no
+            ;; SYCL TU references the HIP-only free functions it declares
+            ;; but gemm.dp.cpp does not define (gemm_set_f16_range & co),
+            ;; so selecting it for every backend is safe.  The verify
+            ;; step makes a future re-pin whose gemm.hpp moved the guard
+            ;; fail HERE instead of mis-declaring silently.
+            (run (string-append sed "/bin/sed -i "
+                                "'1s/^#ifdef SYCL_LANGUAGE_VERSION$/#if 0/' "
+                                "include/strata/prefill/gemm.hpp"))
+            (run (string-append coreutils "/bin/head -1 "
+                                "include/strata/prefill/gemm.hpp | "
+                                grep "/bin/grep -qx '#if 0'"))
             (mkdir-p engine-out)
             ;; glibc's and gcc's lib dirs on LD_LIBRARY_PATH so the
             ;; oneAPI compilers (which link libgcc_s.so.1, absent from the
