@@ -890,6 +890,15 @@
                                  (cons "/var/log/ntpd.log" "ntpd")
                                  (cons "/var/log/alloy.log" "alloy")
                                  (cons "/var/log/tailscaled-*.log" "tailscale")
+                                 ;; The strata engine's shepherd log: fleet-
+                                 ;; visible history for the failure signatures
+                                 ;; that cost a week to diagnose blind —
+                                 ;; "repeated one token" (#606 regression),
+                                 ;; "probe_transport_failed" (readiness),
+                                 ;; "no progress for 60 s … verify window"
+                                 ;; (the 0.1.59 stall class).  Loki-side
+                                 ;; alerts can key on exactly those lines.
+                                 (cons "/var/log/strata/strata.log" "strata")
                                  (cons "/var/log/comfyui/comfyui/update.log" "comfyui")))))
       ;; Strata — the SC117 abliterated Qwen3.8-Flash-Next (IQ2_XS) on the
       ;; Intel Arc B70 via its SYCL/Level Zero backend, run through the
@@ -906,54 +915,72 @@
       (service strata-service-type
                (strata-configuration
                 (auto-start? #t)
-                ;; Which weights to serve. 'sc117-iq3xxs is the 3-bit
-                ;; IQ3_XXS GSQ-RCO tier with SC117's abliteration on top,
-                ;; i.e. weight-level refusal removal. It is served (not
-                ;; 'ista-iq2xs) because the un-abliterated base refuses
-                ;; explicit sexual content - it degenerates into a single
-                ;; '!' repeated to max_tokens (finish_reason: length),
-                ;; verified on the box 2026-11-06 - and abliteration is what
-                ;; removes that.
+                ;; Which weights to serve: the 3-bit IQ3_XXS GSQ-RCO tier
+                ;; with SC117's abliteration on top (weight-level refusal
+                ;; removal).  It is served (not 'ista-iq2xs) because the
+                ;; un-abliterated base refuses explicit sexual content - it
+                ;; degenerates into a single '!' repeated to max_tokens
+                ;; (finish_reason: length), verified on the box 2026-11-06 -
+                ;; and abliteration is what removes that.  The base model
+                ;; does NOT refuse morally-questionable creative content
+                ;; (lying, heists, lock-picking were all served fine), so
+                ;; the refusal scope is narrow and abliteration's impact is
+                ;; exactly scoped to what is wanted gone.  'ista-iq2xs is
+                ;; the same tier without the transform and the rollback if
+                ;; the abliterated weights ever regress; %native-models in
+                ;; (peteches services strata) records what each repo
+                ;; publishes and which files this VM hard-links from one
+                ;; tree to the other.
                 ;;
-                ;; The quant was raised from IQ2_XS to IQ3_XXS (2026-11-09)
-                ;; as the durable fix for the 2-bit single-token `!' loop
-                ;; (#606): at 2 bpw the `!' token dominates the sampling
-                ;; distribution and a long reply degenerates into it, which
-                ;; repetition-penalty 1.2 only blunted. At 3 bpw the loop is
-                ;; gone at the source, so repetition-penalty stays at 1.2
-                ;; (a bare nudge) and no band-aid is needed. Same abliterated
-                ;; weights, same hf-repo, same strata/rt + mmproj — only the
-                ;; two IQ3_XXS shards are new (~71 GiB download on first
-                ;; start). Rollback is 'sc117-iq2xs (the IQ2_XS shards are
-                ;; still on disk) or 'ista-iq2xs. The base model does NOT refuse
-                ;; morally-questionable creative content (lying, heists,
-                ;; lock-picking were all served fine), so the refusal scope
-                ;; is narrow and abliteration's impact is exactly scoped to
-                ;; what is wanted gone. 'ista-iq2xs is the same tier without
-                ;; the transform and is the rollback if the abliterated
-                ;; weights ever regress. %native-models in
-                ;; (peteches services strata) records what each repo publishes
-                ;; and which files this VM hard-links from one tree to the other.
-                ;; Reverted 2026-11-11 from 'sc117-iq3xxs: the 3-bit model
-                ;; still `!`-loops (the #606 fix was only partial), so we go
-                ;; back to the 2-bit 'sc117-iq2xs (shards still on disk).
-                (native-model 'sc117-iq2xs)
-                ;; THE durable fix for the `!' loop.  Every quant of every
-                ;; model `!`-looped (~25% of generations, worse under load)
-                ;; because the UPSTREAM SYCL engine emits non-finite logits
-                ;; in its prefill kernels (#606/#5160) — a model- and
-                ;; quant-independent engine defect, which is why the
-                ;; repetition-penalty band-aids and the iq2xs<->iq3xxs
-                ;; swaps only ever blunted it.  strata-sycl-engine builds
-                ;; the giridhart/Strata fork (sycl-b580, dfe7e88) whose
-                ;; src/prefill/sycl guards the non-finite logits at the
-                ;; source.  With it set, the run config's "exe" points
-                ;; straight at the fork's store binary (self-contained via
-                ;; $ORIGIN RUNPATH) instead of resolving the downloaded
-                ;; component, and the bundle-version engine fetch is
-                ;; skipped.  Set to #f to fall back to the stock upstream
-                ;; engine (and its `!' loops).  See (peteches services
-                ;; strata) and (peteches packages strata).
+                ;; History of the quant swaps: 2026-11-09 raised IQ2_XS ->
+                ;; IQ3_XXS believing the 2-bit `!' loop (#606) was a quant
+                ;; artifact; 2026-11-11 reverted to IQ2_XS when 3-bit still
+                ;; looped.  Both moves were chasing the wrong culprit - the
+                ;; loop was the UPSTREAM ENGINE's non-finite-logits defect
+                ;; (#606/#5160), equal-opportunity across quants and models,
+                ;; fixed at the source the same day by (sycl-engine
+                ;; strata-sycl-engine) below.  With the fork engine serving,
+                ;; IQ3_XXS is back because 3 bpw simply generates better
+                ;; prose and code than 2 bpw (both quants verified loop-free
+                ;; on the fork; the shards and the built pack are already on
+                ;; disk, so this switch costs one restart, no download).
+                ;; Trade-off to watch: 3-bit experts are bigger, so fewer fit
+                ;; the B70's 23.9 GiB expert cache (~12-13k of ~24.5k vs
+                ;; 17830 at IQ2_XS) and more expert reads go to the NVMe;
+                ;; the measured 2.1 GB/s volume (ssd-gbps below) absorbs
+                ;; that, but if the log's "expert cache NN% hit" sags and
+                ;; tok/s with it, IQ2_XS is the rollback.
+                (native-model 'sc117-iq3xxs)
+                ;; THE durable fix for the `!' loop — LIVE and verified.
+                ;; Every quant of every model `!'-looped (~25% of
+                ;; generations, worse under load) because the UPSTREAM SYCL
+                ;; engine emitted non-finite logits in its prefill kernels
+                ;; (#606/#5160) — a model- and quant-independent engine
+                ;; defect, which is why the repetition-penalty band-aids and
+                ;; the iq2xs<->iq3xxs swaps only ever blunted it.
+                ;; strata-sycl-engine builds the giridhart/Strata fork
+                ;; (sycl-b580, dfe7e88) whose root STRATA_ENABLE_SYCL backend
+                ;; guards the non-finite logits at the source.  With it set,
+                ;; the run config's "exe" points straight at the fork's store
+                ;; binary (self-contained via $ORIGIN RUNPATH) instead of
+                ;; resolving the downloaded component, and the bundle-version
+                ;; engine fetch is skipped.  Deployed 2026-11-11: 12/12 test
+                ;; generations clean, zero "repeated one token" events,
+                ;; ~25 tok/s, expert cache 99%+.  Set to #f to fall back to
+                ;; the stock upstream engine (and its `!' loops).
+                ;;
+                ;; EXIT STRATEGY: this is a single-maintainer fork pinned to
+                ;; one commit, and its own sycl/ packaging path is broken at
+                ;; HEAD (we build the root SYCL backend instead — see the
+                ;; package).  Watch upstream Niko1221/Strata releases for a
+                ;; #606/#5160 fix; once one ships newer than the 0.1.57/
+                ;; v0.2.11 bundle pin, set (sycl-engine #f) and unpin the
+                ;; `strata' package to return to the supported engine.  If
+                ;; the fork is re-pinned to a new commit, the builder's
+                ;; verification greps (cmake -S ., ld-linux, chmod) fail
+                ;; loudly on layout drift rather than mis-building silently.
+                ;; See (peteches services strata) and (peteches packages
+                ;; strata).
                 (sycl-engine strata-sycl-engine)
                 (data-dir "/media/models/strata")
                 (host "0.0.0.0")
@@ -989,6 +1016,26 @@
                 ;; tailnet proxy reaches the engine under must be listed here
                 ;; (otherwise the UI is refused with "Host ... is not allowed").
                 (allowed-hosts '("strata.ts.peteches.co.uk"))
+                ;; Tailnet-only exposure.  The engine runs without an API
+                ;; key ("WARNING: no API key" in its startup log) and used
+                ;; to accept from ANY source that could route to :8000 —
+                ;; i.e. the whole 192.168.50.0/23 LAN, where any host could
+                ;; burn the B70 and evict the parked conversations of pi,
+                ;; SillyTavern and rules-lawyer.  Every real consumer arrives
+                ;; over the tailnet: caddy's strata.ts.peteches.co.uk proxy
+                ;; dials comfyui.spaniel-cordylus.ts.net (MagicDNS → the
+                ;; 100.64.0.0/10 CGNAT address or the tailnet's
+                ;; fd7a:115c:a1e0::/48 ULA — Go's dialer may pick either,
+                ;; so both are allowed; fd7a:115c:a6e0::/48, the classic
+                ;; Tailscale ULA prefix, is kept in case node addresses
+                ;; ever migrate to it).  The desktops reach the web UI the
+                ;; same way (tailscale name or the caddy proxy).  Loopback
+                ;; is untouched — the base firewall accepts `iifname "lo"'
+                ;; before any of this, so on-box health checks still work.
+                ;; Empty the list to restore the old unrestricted accept.
+                (firewall-sources '("100.64.0.0/10"
+                                    "fd7a:115c:a1e0::/48"
+                                    "fd7a:115c:a6e0::/48"))
                 ;; What strata prices this model volume at when it works out
                 ;; what a prompt chunk has to re-read (drive_read_gbps(),
                 ;; src/program/generate.cpp:1477 — the value behind the
@@ -1118,45 +1165,34 @@
                 (reasoning-budget-tokens 8192)
                 (reasoning-effort "medium")
                 (answer-room? #f)
-                ;; #606: this model's thinking-mode sampling has no repetition
-                ;; penalty, so over a long reply its 2-bit precision degrades
-                ;; and it falls into a single-token loop - 66 such events in
-                ;; /var/log/strata/strata.log, most ending in 256 '!'s after
-                ;; thousands of normal tokens (the engine's repeat_stop_tokens
-                ;; safety net capped the damage but never prevented the loop).
-                ;; A repetition_penalty in the run config's `sampling` block
-                ;; (self.sampling_defaults, server.py:4775) overrides that
-                ;; model-card sampling and breaks the loop; repeat-stop-tokens
-                ;; 64 shortens the safety net so a caller sees less of a loop
-                ;; if one still happens.
-                ;;
-                ;; Full sampling config ported from the llama-server state
-                ;; (commit c5be866), which was explicitly tuned against the
-                ;; #606 single-token `!' loops on this model. The llama-server
-                ;; config used temp 0.8 / top-p 0.95 / top-k 40 / min-p 0.05
-                ;; (matching llama.cpp's own defaults) plus repeat-penalty 1.35
-                ;; over a 256-token window, presence-penalty 0.6 and
-                ;; frequency-penalty 1.0 (the two samplers built to break
-                ;; token-lock). The strata revert (d7cad82) kept only
-                ;; repetition-penalty 1.2 and dropped all the other anti-loop
-                ;; knobs; this restores them. 1.2 only blunted the loop; the
-                ;; presence/frequency penalties + temp 0.8 are what broke it.
-                ;;   - repetition-penalty 1.35 (was 1.2) + penalty-last-n 256:
-                ;;     a 1.2 multiplier over the engine's 64-token window could
-                ;;     not dislodge a token already 256-deep in a loop; a
-                ;;     stronger penalty over a wider recent window can.
-                ;;   - presence-penalty 0.6 + frequency-penalty 1.0: the two
-                ;;     samplers built to break token-lock, both 0.0 (off) in
-                ;;     the engine defaults.
-                ;;   - temp 0.8 / top-p 0.95 / top-k 40 / min-p 0.05: match
-                ;;     llama.cpp's own defaults (and the model card's nucleus),
+                ;; Sampling — back to the model card's own steady state.
+                ;; Everything here used to be an anti-loop band-aid for #606
+                ;; (repetition-penalty 1.35 over a 256-token window,
+                ;; presence-penalty 0.6, frequency-penalty 1.0).  Those were
+                ;; fighting the ENGINE's non-finite-logits defect, not the
+                ;; model; now that (sycl-engine strata-sycl-engine) fixes the
+                ;; defect at the source (verified 2026-11-11: 12/12 clean,
+                ;; zero repeat events), the band-aids only tax legitimate
+                ;; output.  presence/frequency-penalty in particular penalise
+                ;; EVERY repeated token across the whole context, which is
+                ;; exactly what code (indentation, brackets, `self.`,
+                ;; boilerplate) and structured prose (refrains, lists, tool
+                ;; JSON keys) legitimately do — so they are removed, not
+                ;; merely lowered.  What remains:
+                ;;   - repetition-penalty 1.1 over the engine's default
+                ;;     64-token window: llama.cpp's own default, a bare nudge
+                ;;     against soft degenerate repetition in very long
+                ;;     replies that does not measurably dent code or prose.
+                ;;     penalty-last-n is left unset (engine default 64) — the
+                ;;     256 window was a loop-fighting choice, not a quality one.
+                ;;   - temp 0.8 / top-p 0.95 / top-k 40 / min-p 0.05: the
+                ;;     model card's nucleus sampling (and llama.cpp defaults),
                 ;;     stated explicitly so they are not silently inherited.
-                ;;     temp 0.8 also lifts thinking off the ~0.3 engine default
-                ;;     that #728/#5128 document as the loop trigger.
-                (repetition-penalty 1.35)
-                (penalty-last-n 256)
-                (presence-penalty 0.6)
-                (frequency-penalty 1.0)
+                ;;   - repeat-stop-tokens 64: the engine's hard safety net —
+                ;;     if any single token ever repeats 64× the reply is cut
+                ;;     rather than running to max_tokens.  Costs nothing on
+                ;;     healthy output; kept as cheap insurance.
+                (repetition-penalty 1.1)
                 (temperature 0.8)
                 (top-p 0.95)
                 (top-k 40)

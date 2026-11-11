@@ -197,8 +197,23 @@
   ;; koboldcpp's open-firewall? (peteches/services/koboldcpp.scm).
   (open-firewall? strata-configuration-open-firewall?
                   (default #f))
+  ;; Source CIDRs the open-firewall? accept rules are restricted to — one
+  ;; nft rule per CIDR (`ip saddr' / `ip6 saddr' chosen per family; the
+  ;; chain is inet, so both work).  '() — the default — keeps the
+  ;; historical unrestricted accept.  The engine has no API key by
+  ;; default, so an unrestricted accept hands every host that can route
+  ;; to the port a keyless GPU and a way to starve the parked
+  ;; conversations; a fleet whose consumers all arrive over the tailnet
+  ;; (caddy's reverse proxy) can say so here.  Loopback is unaffected:
+  ;; the base firewall accepts `iifname "lo"' before any of this.
+  (firewall-sources strata-configuration-firewall-sources
+                    (default '()))
   (context strata-configuration-context
            (default #f))
+  ;; KV-cache quant.  Catalog path: the --kv flag (omit on #f, engine
+  ;; default).  Native path: the run config's "--kv" arg, defaulting to
+  ;; q4_0 when unset — the 262k-context VRAM math in comfyui.scm's
+  ;; comment assumes q4_0 (~6 KB/token for the hybrid GDN layout).
   (kv strata-configuration-kv
       (default #f))
   (vision strata-configuration-vision
@@ -926,6 +941,11 @@
          (cfg (string-append state-dir "/" slug ".json"))
          (log (string-append state-dir "/" slug ".log"))
          (api-key-json (if api-key (string-quote api-key) "\"none\""))
+         ;; The native run config's --kv value: the configured quant, or
+         ;; q4_0 — the tier the context/VRAM sizing comments assume.  It
+         ;; used to be hardcoded here while the `kv' field only reached
+         ;; the catalog path; now the field drives both.
+         (kv-native (or (strata-configuration-kv config) "q4_0"))
          ;; The run config's "exe" line.  With `sycl-engine' set it points
          ;; DIRECTLY at the forked engine's entrypoint in the store: an
          ;; absolute path, which strata_control's engine_component.expand()
@@ -1120,7 +1140,7 @@
          ;; and --spec", and the engine parses flags in order.
          #$batch-json
          (string-append "    \"--max-context\", \"" (number->string #$context) "\",")
-         "    \"--kv\", \"q4_0\","
+         (string-append "    \"--kv\", \"" #$kv-native "\",")
          ;; Conversation parking, if a budget was configured (what each flag
          ;; does and how to size it is documented on the
          ;; conversation-cache-mib field above).  These belong INSIDE "args"
@@ -1342,14 +1362,25 @@
 
 (define (strata-firewall-rules config)
   (if (strata-configuration-open-firewall? config)
-      (nftables-rules
-       (input (list (string-append "tcp dport "
-                                   (number->string
-                                    (strata-configuration-port config))
-                                   " accept comment \""
-                                   (strata-configuration-service-name
-                                    config)
-                                   "\""))))
+      (let ((rule-suffix
+             (string-append "tcp dport "
+                            (number->string
+                             (strata-configuration-port config))
+                            " accept comment \""
+                            (strata-configuration-service-name config)
+                            "\""))
+            (sources (strata-configuration-firewall-sources config)))
+        (nftables-rules
+         (input
+          (if (null? sources)
+              (list rule-suffix)
+              (map (lambda (cidr)
+                     (string-append
+                      ;; The chain lives in an inet table: v4 sources match
+                      ;; with `ip saddr', v6 with `ip6 saddr'.
+                      (if (string-index cidr #\:) "ip6 saddr " "ip saddr ")
+                      cidr " " rule-suffix))
+                   sources)))))
       (nftables-rules (input '()))))
 
 (define-public strata-service-type
