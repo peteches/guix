@@ -934,7 +934,10 @@
                 ;; weights ever regress. %native-models in
                 ;; (peteches services strata) records what each repo publishes
                 ;; and which files this VM hard-links from one tree to the other.
-                (native-model 'sc117-iq3xxs)
+                ;; Reverted 2026-11-11 from 'sc117-iq3xxs: the 3-bit model
+                ;; still `!`-loops (the #606 fix was only partial), so we go
+                ;; back to the 2-bit 'sc117-iq2xs (shards still on disk).
+                (native-model 'sc117-iq2xs)
                 (data-dir "/media/models/strata")
                 (host "0.0.0.0")
                 ;; 262144 = the model's full trained context (GGUF
