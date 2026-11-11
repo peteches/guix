@@ -68,6 +68,7 @@
   #:use-module (gnu packages autotools)
   #:use-module (gnu packages pkg-config)
   #:use-module (gnu packages python)
+  #:use-module ((gnu packages oneapi) #:select (level-zero))
   #:use-module (guix build-system cmake)
   #:use-module (guix build-system trivial)
   #:use-module (guix download)
@@ -457,7 +458,7 @@ engine.")
         "14yd8cdsz7a115cc90zq74yfaccd1k03rsmban8kxask092zn1fp"))))
     (build-system trivial-build-system)
     (native-inputs
-     (list intel-oneapi strata-llama-cpp-src
+     (list intel-oneapi strata-llama-cpp-src level-zero
            cmake ninja binutils patchelf
            glibc gcc (list gcc "lib") linux-libre-headers zlib
            sed grep coreutils tar bash gzip python-3.12))
@@ -505,6 +506,7 @@ engine.")
                  (gcc-lib (cdr (assoc-nth "gcc" 1 %build-inputs)))
                  (linux-libre-headers (assoc-ref %build-inputs "linux-libre-headers"))
                  (zlib (assoc-ref %build-inputs "zlib"))
+                 (ze (assoc-ref %build-inputs "level-zero"))
                  (sed (assoc-ref %build-inputs "sed"))
                  (grep (assoc-ref %build-inputs "grep"))
                  (coreutils (assoc-ref %build-inputs "coreutils"))
@@ -543,34 +545,32 @@ engine.")
             ;; at deploy time.
             (run (string-append sed "/bin/sed" " -i \"/env -i /d\" "
                                 "packaging/build_sycl_linux.sh"))
-            ;; include/strata/prefill/gemm.hpp guards a REDUCED Gemm class
-            ;; with `#ifdef SYCL_LANGUAGE_VERSION', but the fork's own
-            ;; migrated SYCL sources are written against the FULL class in
-            ;; the `#else' branch: sycl/src/prefill/gemm.dp.cpp DEFINES
-            ;; Gemm::native (the 10-arg form), native_mmq, bf16_hcd_exact
-            ;; and uses the tc_w_/tc_x_ members, and sycl/src/prefill/
-            ;; prefill.cpp CALLS prompt_f16()/set_f16_io().  icpx -fsycl
-            ;; defines SYCL_LANGUAGE_VERSION in both passes, so the stale
-            ;; reduced branch is selected and both TUs die ("no member
-            ;; named 'set_f16_io' in 'strata::prefill::Gemm'", "use of
-            ;; undeclared identifier 'tc_w_'").  The v0.2.10 merge
-            ;; (c4def51d, 2026-11-03) regenerated the .dp.cpp sources
-            ;; against the grown full API but never extended the header's
-            ;; SYCL branch; the fork's CI last ran 2026-10-14 and never
-            ;; caught it.  The full branch is pure C++ (cstddef/cstdint/
-            ;; string/vector, void* handles, nothing CUDA- or HIP-typed),
-            ;; its API is a strict superset of the reduced one, and no
-            ;; SYCL TU references the HIP-only free functions it declares
-            ;; but gemm.dp.cpp does not define (gemm_set_f16_range & co),
-            ;; so selecting it for every backend is safe.  The verify
-            ;; step makes a future re-pin whose gemm.hpp moved the guard
-            ;; fail HERE instead of mis-declaring silently.
+            ;; Build the ROOT project's SYCL backend (STRATA_ENABLE_SYCL,
+            ;; the hand-written src/kernels/sycl + src/prefill/sycl +
+            ;; src/core/sycl sources), NOT the dpct-migrated sycl/
+            ;; subdirectory the stock script configures.  The fork
+            ;; maintains the root backend: the #606 non-finite-logits
+            ;; fixes (6dd3c156, d0894700, 88b846a2) and every SYCL commit
+            ;; after the v0.2.10 merge (c4def51d) — including dfe7e883
+            ;; itself — touch src/*/sycl/ files, while the sycl/ subtree
+            ;; was last regenerated 2026-10-30 and its stale .dp.cpp
+            ;; kernels no longer even match the grown kernel signatures
+            ;; (fused_gdn_step_norm gained the y_q8_1 epilogue argument
+            ;; in 77387ed7), so `cmake -S sycl' cannot link at HEAD.  The
+            ;; root project needs no gemm.hpp surgery either: the
+            ;; header's #ifdef SYCL_LANGUAGE_VERSION branch IS the root
+            ;; backend's API (src/prefill/sycl/gemm.cpp defines exactly
+            ;; the reduced class it declares).  STRATA_TARGET_XE2 is the
+            ;; root option for the Battlemage optimizations (default ON;
+            ;; passed explicitly).  The script's remaining -D flags are
+            ;; sycl/-subdir options; unused cache entries only warn.
             (run (string-append sed "/bin/sed -i "
-                                "'1s/^#ifdef SYCL_LANGUAGE_VERSION$/#if 0/' "
-                                "include/strata/prefill/gemm.hpp"))
-            (run (string-append coreutils "/bin/head -1 "
-                                "include/strata/prefill/gemm.hpp | "
-                                grep "/bin/grep -qx '#if 0'"))
+                                "'s/cmake -S sycl -B/cmake -S . "
+                                "-DSTRATA_ENABLE_SYCL=ON "
+                                "-DSTRATA_TARGET_XE2=ON -B/' "
+                                "packaging/build_sycl_linux.sh"))
+            (run (string-append grep "/bin/grep -q 'cmake -S \\.' "
+                                "packaging/build_sycl_linux.sh"))
             (mkdir-p engine-out)
             ;; glibc's and gcc's lib dirs on LD_LIBRARY_PATH so the
             ;; oneAPI compilers (which link libgcc_s.so.1, absent from the
@@ -581,7 +581,20 @@ engine.")
                     (string-append glibc "/lib:"
                                    gcc-lib "/lib:"
                                    zlib "/lib:"
+                                   ze "/lib:"
                                    (or (getenv "LD_LIBRARY_PATH") "")))
+            ;; The root CMakeLists' find_library(ZE_LOADER ze_loader) —
+            ;; Level Zero for the doorbell/stager fast paths
+            ;; (STRATA_HAVE_ZE, include/strata/core/sycl_doorbell.hpp)
+            ;; and collect_libs.py's ldd closure.  Guix's level-zero
+            ;; carries both the unversioned .so find_library wants and
+            ;; the level_zero/ze_api.h headers the oneapi bundle lacks;
+            ;; CMake's find_library searches $LIBRARY_PATH and
+            ;; $CMAKE_LIBRARY_PATH.
+            (setenv "LIBRARY_PATH"
+                    (string-append ze "/lib:"
+                                   (or (getenv "LIBRARY_PATH") "")))
+            (setenv "CMAKE_LIBRARY_PATH" (string-append ze "/lib"))
             (setenv "ONEAPI" oneapi)
             (setenv "LLAMA_CPP" llama)
             (setenv "COMMIT" "dfe7e883296c")
@@ -688,9 +701,16 @@ engine.")
                                     ;; keeps gcc's dir as a fallback for
                                     ;; headers only it has.
                                     " -idirafter " gcc-lib "/lib/gcc/x86_64-unknown-linux-gnu/14.3.0/include"
+                                    ;; level_zero/ze_api.h for the
+                                    ;; STRATA_HAVE_ZE doorbell path (the
+                                    ;; dir holds only level_zero/, layers/
+                                    ;; and loader/ — no clang-header
+                                    ;; shadowing risk).
+                                    " -isystem " ze "/include"
                                     " -L" glibc "/lib"
                                     " -L" gcc-lib "/lib"
                                     " -L" gcc-lib "/lib/gcc/x86_64-unknown-linux-gnu/14.3.0"
+                                    " -L" ze "/lib"
                                     " -L" shim)))
                 (setenv "CFLAGS" flags)
                 (setenv "CXXFLAGS" flags)))
