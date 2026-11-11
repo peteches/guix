@@ -625,7 +625,41 @@ engine.")
               (let ((flags
                      (string-append "--gcc-toolchain=" fake
                                     " --sysroot=" sysroot
-                                    " -isystem " gcc-lib "/lib/gcc/x86_64-unknown-linux-gnu/14.3.0/include"
+                                    ;; Guix's gcc-14.3.0 libstdc++ was
+                                    ;; configured without its fenv.h probe
+                                    ;; passing, so its c++config.h leaves
+                                    ;; _GLIBCXX_HAVE_FENV_H and
+                                    ;; _GLIBCXX_USE_C99_FENV(_TR1) undefined
+                                    ;; and <cfenv> never pulls fegetround/
+                                    ;; fesetround into namespace std — which
+                                    ;; oneAPI 2026.1's
+                                    ;; sycl/detail/vector_convert.hpp uses.
+                                    ;; glibc-2.41 DOES provide the full C99
+                                    ;; fenv API (declared unconditionally in
+                                    ;; its fenv.h), so defining the macros
+                                    ;; restores what libstdc++'s configure
+                                    ;; should have detected.  c++config.h
+                                    ;; carries them only as `/* #undef */`
+                                    ;; comments, so a command-line -D
+                                    ;; survives the header's processing.
+                                    " -D_GLIBCXX_HAVE_FENV_H=1"
+                                    " -D_GLIBCXX_USE_C99_FENV=1"
+                                    " -D_GLIBCXX_USE_C99_FENV_TR1=1"
+                                    ;; -idirafter, NOT -isystem: the oneapi
+                                    ;; common deb ships clang's own resource
+                                    ;; headers (compiler/latest/lib/clang/*/
+                                    ;; include — mmintrin.h, stddef.h,
+                                    ;; unwind.h, ...), and icpx must get
+                                    ;; THOSE; gcc's same-named intrinsics
+                                    ;; headers use __builtin_ia32_* forms
+                                    ;; clang does not have, so an -isystem
+                                    ;; (searched before the resource dir)
+                                    ;; made every MMX/SSSE include a fatal
+                                    ;; "use of undeclared identifier
+                                    ;; __builtin_ia32_punpcklbw".  Idirafter
+                                    ;; keeps gcc's dir as a fallback for
+                                    ;; headers only it has.
+                                    " -idirafter " gcc-lib "/lib/gcc/x86_64-unknown-linux-gnu/14.3.0/include"
                                     " -L" glibc "/lib"
                                     " -L" gcc-lib "/lib"
                                     " -L" gcc-lib "/lib/gcc/x86_64-unknown-linux-gnu/14.3.0"
