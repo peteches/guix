@@ -585,6 +585,18 @@ engine.")
                                 "packaging/collect_libs.py"))
             (run (string-append grep "/bin/grep -q 'ld-linux' "
                                 "packaging/collect_libs.py"))
+            ;; collect_libs.py copies the libraries with shutil.copy2,
+            ;; which preserves the store's read-only modes; the script's
+            ;; next step patchelfs RUNPATH $ORIGIN into every staged ELF
+            ;; and dies with "patchelf: open: Permission denied".  Make
+            ;; the stage writable first (on the author's box the sources
+            ;; are ordinary root-owned 755 files, so this never bites).
+            (run (string-append sed "/bin/sed -i "
+                                "'s|# RUNPATH $ORIGIN on the engine|"
+                                "chmod -R u+w \"$stage\"\\n&|' "
+                                "packaging/build_sycl_linux.sh"))
+            (run (string-append grep "/bin/grep -q 'chmod -R u+w' "
+                                "packaging/build_sycl_linux.sh"))
             ;; Build the ROOT project's SYCL backend (STRATA_ENABLE_SYCL,
             ;; the hand-written src/kernels/sycl + src/prefill/sycl +
             ;; src/core/sycl sources), NOT the dpct-migrated sycl/

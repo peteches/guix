@@ -259,8 +259,8 @@ export MKLROOT=$ONEAPI_ROOT/mkl/latest
 export TBBROOT=$ONEAPI_ROOT/tbb/latest
 export PATH=$ONEAPI_ROOT/compiler/latest/bin:$ONEAPI_ROOT/tbb/latest/bin:$ONEAPI_ROOT/mkl/latest/bin:$PATH
 export CPATH=$ONEAPI_ROOT/compiler/latest/include:$ONEAPI_ROOT/mkl/latest/include:$ONEAPI_ROOT/tbb/latest/include:$CPATH
-export LIBRARY_PATH=$ONEAPI_ROOT/compiler/latest/lib:$ONEAPI_ROOT/compiler/latest/lib/sycl:$ONEAPI_ROOT/mkl/latest/lib:$ONEAPI_ROOT/tbb/latest/lib:$LIBRARY_PATH
-export LD_LIBRARY_PATH=$ONEAPI_ROOT/compiler/latest/lib:$ONEAPI_ROOT/compiler/latest/lib/sycl:$ONEAPI_ROOT/mkl/latest/lib:$ONEAPI_ROOT/tbb/latest/lib:$LD_LIBRARY_PATH
+export LIBRARY_PATH=$ONEAPI_ROOT/compiler/latest/lib:$ONEAPI_ROOT/compiler/latest/lib/sycl:$ONEAPI_ROOT/mkl/latest/lib:$ONEAPI_ROOT/tbb/latest/lib:$ONEAPI_ROOT/umf/latest/lib:$ONEAPI_ROOT/tcm/latest/lib:$LIBRARY_PATH
+export LD_LIBRARY_PATH=$ONEAPI_ROOT/compiler/latest/lib:$ONEAPI_ROOT/compiler/latest/lib/sycl:$ONEAPI_ROOT/mkl/latest/lib:$ONEAPI_ROOT/tbb/latest/lib:$ONEAPI_ROOT/umf/latest/lib:$ONEAPI_ROOT/tcm/latest/lib:$LD_LIBRARY_PATH
 ")))
             #t))))
     (home-page "https://www.intel.com/content/www/us/en/developer/tools/oneapi/")
