@@ -561,6 +561,30 @@ engine.")
             ;; at deploy time.
             (run (string-append sed "/bin/sed" " -i \"/env -i /d\" "
                                 "packaging/build_sycl_linux.sh"))
+            ;; collect_libs.py walks ldd's closure and copies every
+            ;; non-distribution library into the component.  In the
+            ;; sandbox, ldd reports the FHS dynamic loader as
+            ;; `/lib64/ld-linux-x86-64.so.2 => /gnu/store/...glibc.../
+            ;; lib/ld-linux-x86-64.so.2' (icpx gives the binary the FHS
+            ;; PT_INTERP; guix's ldd resolves it to the store loader),
+            ;; and the store path defeats is_system()'s /lib,/usr/lib
+            ;; prefixes — the script then tries to copy ONTO the
+            ;; absolute /lib64 path (pathlib: an absolute `name'
+            ;; overwrites `a.out / name'), which cannot exist in the
+            ;; sandbox.  Upstream never sees this: on their Ubuntu
+            ;; /lib64 both exists and passes is_system.  Do NOT bundle
+            ;; the loader: the VM's activation creates the
+            ;; /lib64 -> glibc/lib symlink for exactly this PT_INTERP
+            ;; (see (peteches services strata)'s header, blocker 1) —
+            ;; same contract the stock upstream engine package relies
+            ;; on.  Treat any resolved ld-linux path as a system lib
+            ;; (it lands in SYSTEM-LIBS.txt like libc & co).
+            (run (string-append sed "/bin/sed -i "
+                                "'s|return path.startswith(SYSTEM_DIRS)|"
+                                "return path.startswith(SYSTEM_DIRS) or \"/ld-linux\" in path|' "
+                                "packaging/collect_libs.py"))
+            (run (string-append grep "/bin/grep -q 'ld-linux' "
+                                "packaging/collect_libs.py"))
             ;; Build the ROOT project's SYCL backend (STRATA_ENABLE_SYCL,
             ;; the hand-written src/kernels/sycl + src/prefill/sycl +
             ;; src/core/sycl sources), NOT the dpct-migrated sycl/
