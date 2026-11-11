@@ -536,6 +536,18 @@ engine.")
             (mkdir-p extract)
             (run (string-append tar "/bin/tar" " xzf " src " -C " extract))
             (chdir repo)
+            ;; The root CMakeLists hardcodes the llama.cpp submodule path
+            ;; (third_party/llama.cpp/ggml/{include,src} on
+            ;; strata_prefill's include dirs — src/prefill/sycl/
+            ;; moe_mmq.cpp's #include "ggml-common.h"), and a GitHub
+            ;; tarball has no submodule contents.  Point the submodule
+            ;; path at the pinned llama.cpp source package; this also
+            ;; makes the root project's ggml resolution take its
+            ;; `EXISTS third_party/llama.cpp/ggml/CMakeLists.txt'
+            ;; branch, exactly like the author's checkout does.
+            (run (string-append coreutils "/bin/mkdir -p third_party && "
+                                coreutils "/bin/ln -sfn " llama
+                                " third_party/llama.cpp"))
             ;; The script's final smoke test runs the engine under
             ;; `env -i`; the build sandbox has no /lib64, and the engine's
             ;; program interpreter is /lib64/ld-linux-x86-64.so.2, so that
