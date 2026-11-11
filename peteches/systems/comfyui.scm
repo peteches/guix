@@ -938,6 +938,23 @@
                 ;; still `!`-loops (the #606 fix was only partial), so we go
                 ;; back to the 2-bit 'sc117-iq2xs (shards still on disk).
                 (native-model 'sc117-iq2xs)
+                ;; THE durable fix for the `!' loop.  Every quant of every
+                ;; model `!`-looped (~25% of generations, worse under load)
+                ;; because the UPSTREAM SYCL engine emits non-finite logits
+                ;; in its prefill kernels (#606/#5160) — a model- and
+                ;; quant-independent engine defect, which is why the
+                ;; repetition-penalty band-aids and the iq2xs<->iq3xxs
+                ;; swaps only ever blunted it.  strata-sycl-engine builds
+                ;; the giridhart/Strata fork (sycl-b580, dfe7e88) whose
+                ;; src/prefill/sycl guards the non-finite logits at the
+                ;; source.  With it set, the run config's "exe" points
+                ;; straight at the fork's store binary (self-contained via
+                ;; $ORIGIN RUNPATH) instead of resolving the downloaded
+                ;; component, and the bundle-version engine fetch is
+                ;; skipped.  Set to #f to fall back to the stock upstream
+                ;; engine (and its `!' loops).  See (peteches services
+                ;; strata) and (peteches packages strata).
+                (sycl-engine strata-sycl-engine)
                 (data-dir "/media/models/strata")
                 (host "0.0.0.0")
                 ;; 262144 = the model's full trained context (GGUF

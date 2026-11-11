@@ -138,6 +138,17 @@
   strata-configuration?
   (package strata-configuration-package
            (default strata))
+  ;; Serve this package's engine binary INSTEAD of the upstream engine the
+  ;; bundle would download: the giridhart-fork SYCL engine
+  ;; (strata-sycl-engine in (peteches packages strata)) with the
+  ;; non-finite-logits guard that fixes the single-token `!' loop (#606,
+  ;; #5160).  When set (native-model path only), the run config's "exe"
+  ;; points directly at the fork's entrypoint in the store — an absolute
+  ;; path, not a component: reference — and the bundle-version engine
+  ;; fetch guard is skipped.  #f — the default — keeps the stock
+  ;; download-the-matching-engine behaviour.
+  (sycl-engine strata-configuration-sycl-engine
+               (default #f))
   ;; The engine's system-library dependencies; each contributes
   ;; <store-path>/lib to the wrapper's LD_LIBRARY_PATH.
   (runtime-lib-packages strata-configuration-runtime-lib-packages
@@ -915,6 +926,47 @@
          (cfg (string-append state-dir "/" slug ".json"))
          (log (string-append state-dir "/" slug ".log"))
          (api-key-json (if api-key (string-quote api-key) "\"none\""))
+         ;; The run config's "exe" line.  With `sycl-engine' set it points
+         ;; DIRECTLY at the forked engine's entrypoint in the store: an
+         ;; absolute path, which strata_control's engine_component.expand()
+         ;; passes through unchanged, bypassing the component resolver —
+         ;; newest-wins resolution would otherwise prefer the `!'-looping
+         ;; upstream 0.1.57/0.1.59 component folders over the fork's 0.1.56,
+         ;; and a locally-built component manifest should not have to pass
+         ;; the bundle's component checks at all.  The binary is
+         ;; self-contained: build_sycl_linux.sh collects the SYCL/MKL-SYCL/
+         ;; UR/Level-Zero libraries beside it and patchelfs RUNPATH $ORIGIN
+         ;; into every ELF, so it runs from the read-only store path exactly
+         ;; like the vision sub-config's "exe" below.  Precomputed HERE and
+         ;; spliced with #$ — a gexp does not capture let-bound locals (see
+         ;; the reasoning-json comment).
+         (sycl-engine (strata-configuration-sycl-engine config))
+         (exe-json
+          (if sycl-engine
+              #~(string-append "  \"exe\": \"" #$sycl-engine "/strata\",")
+              "  \"exe\": \"component:strata-engine\","))
+         (engine-fetch-lines
+          (if sycl-engine
+              '()
+              (list
+               "# The engine component version MUST match the Terminal/Control"
+               "# bundle: $BUNDLE/VERSION holds exactly the engine version this"
+               "# bundle expects (\"0.1.57\"), so the guard below fires on every"
+               "# package bump instead of leaving the old component in place"
+               "# (\"strata launch\" resolves component:strata-engine by newest"
+               "# glob, so an unmatched old engine would otherwise keep running"
+               "# after an upgrade). \"strata update\" fetches ONLY the engine"
+               "# package (docs/INTEL_ARC.md); \"strata install\" also pulls a"
+               "# whole catalog model, so it is the fallback for a fresh VM."
+               "WANT=$(head -1 \"$BUNDLE/VERSION\" 2>/dev/null | tr -d ' \\t\\r\\n')"
+               "if [ -n \"$WANT\" ] && ! ls \"$ENGINE_DIR\"/\"$WANT\"-*-sycl >/dev/null 2>&1; then"
+               "  echo \"[strata] engine $WANT-sycl not present; fetching it (one-time)\""
+               "  if ls \"$ENGINE_DIR\"/*-sycl >/dev/null 2>&1; then"
+               "    printf 'y\\n' | \"$BUNDLE/bin/strata\" update --yes --no-control || echo \"[strata] WARNING: engine fetch failed; continuing with the installed component\""
+               "  else"
+               "    \"$BUNDLE/bin/strata\" install --family qwen --model q2_0 --yes"
+               "  fi"
+               "fi")))
          (fetch-calls
           (string-join
            (append
@@ -1005,24 +1057,7 @@
          "# now — the install also fetches the catalog model it is invoked"
          "# with, a one-time cost paid only when the engine is absent."
          "ENGINE_DIR=\"$XDG_DATA_HOME/strata/components/engine\""
-         "# The engine component version MUST match the Terminal/Control"
-         "# bundle: $BUNDLE/VERSION holds exactly the engine version this"
-         "# bundle expects (\"0.1.57\"), so the guard below fires on every"
-         "# package bump instead of leaving the old component in place"
-         "# (\"strata launch\" resolves component:strata-engine by newest"
-         "# glob, so an unmatched old engine would otherwise keep running"
-         "# after an upgrade). \"strata update\" fetches ONLY the engine"
-         "# package (docs/INTEL_ARC.md); \"strata install\" also pulls a"
-         "# whole catalog model, so it is the fallback for a fresh VM."
-         "WANT=$(head -1 \"$BUNDLE/VERSION\" 2>/dev/null | tr -d ' \\t\\r\\n')"
-         "if [ -n \"$WANT\" ] && ! ls \"$ENGINE_DIR\"/\"$WANT\"-*-sycl >/dev/null 2>&1; then"
-         "  echo \"[strata] engine $WANT-sycl not present; fetching it (one-time)\""
-         "  if ls \"$ENGINE_DIR\"/*-sycl >/dev/null 2>&1; then"
-         "    printf 'y\\n' | \"$BUNDLE/bin/strata\" update --yes --no-control || echo \"[strata] WARNING: engine fetch failed; continuing with the installed component\""
-         "  else"
-         "    \"$BUNDLE/bin/strata\" install --family qwen --model q2_0 --yes"
-         "  fi"
-         "fi"
+         #$@engine-fetch-lines
          ""
          #$fetch-calls
          ""
@@ -1055,7 +1090,7 @@
          "mkdir -p \"$XDG_STATE_HOME\""
          "cat > \"$CFG\" <<EOF"
          "{"
-         "  \"exe\": \"component:strata-engine\","
+         #$exe-json
          "  \"cwd\": \"$BUNDLE\","
          "  \"args\": ["
          "    \"--pack\", \"$PACK_DIR\","
