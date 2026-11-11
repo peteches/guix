@@ -544,9 +544,13 @@ engine.")
             ;; path at the pinned llama.cpp source package; this also
             ;; makes the root project's ggml resolution take its
             ;; `EXISTS third_party/llama.cpp/ggml/CMakeLists.txt'
-            ;; branch, exactly like the author's checkout does.
-            (run (string-append coreutils "/bin/mkdir -p third_party && "
-                                coreutils "/bin/ln -sfn " llama
+            ;; branch, exactly like the author's checkout does.  rm -rf
+            ;; first: the GitHub tarball carries the gitlink as an EMPTY
+            ;; directory, and ln -s into an existing directory would nest
+            ;; the link inside it instead of replacing it.
+            (run (string-append coreutils "/bin/rm -rf third_party/llama.cpp && "
+                                coreutils "/bin/mkdir -p third_party && "
+                                coreutils "/bin/ln -s " llama
                                 " third_party/llama.cpp"))
             ;; The script's final smoke test runs the engine under
             ;; `env -i`; the build sandbox has no /lib64, and the engine's
