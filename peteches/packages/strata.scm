@@ -597,112 +597,51 @@ engine.")
                                 "packaging/build_sycl_linux.sh"))
             (run (string-append grep "/bin/grep -q 'chmod -R u+w' "
                                 "packaging/build_sycl_linux.sh"))
-            ;; Patch the dpct-migrated sycl/ tree so it builds at HEAD, and
-            ;; keep the script's `cmake -S sycl'.  History: an earlier
-            ;; revision switched to the ROOT STRATA_ENABLE_SYCL backend
-            ;; (hand-written src/*/sycl sources) because it is where the
-            ;; fork's recent commits landed and it builds clean — but live
-            ;; measurement showed it decodes at roughly HALF the speed
-            ;; (25-28 tok/s vs the upstream engine's 55-71 on this exact
-            ;; box/model): the Battlemage performance stack (two-row GU
-            ;; reuse, GR reuse, ESIMD int8 prompt experts, copy-engine
-            ;; staging — every startup announcement the upstream 0.1.57
-            ;; engine printed) exists only in the sycl/ dpct tree.  The
-            ;; sycl/ tree ALSO already carries the #606 non-finite-logits
-            ;; fix (q8_1_finite clamps in native_mmvq.dp.cpp and
-            ;; iq_kernels.dp.cpp + q8_1_finite.hpp, same hunks as the root
-            ;; tree), so it is both the fast AND the correct tree.  It
-            ;; fails to build at HEAD for exactly two reasons, both the
-            ;; v0.2.10 merge (c4def51d) regenerating callers/headers while
-            ;; leaving kernel files stale:
+            ;; Build the ROOT project's SYCL backend (STRATA_ENABLE_SYCL,
+            ;; the hand-written src/kernels/sycl + src/prefill/sycl +
+            ;; src/core/sycl sources), NOT the dpct-migrated sycl/
+            ;; subdirectory the stock script configures.  The fork
+            ;; maintains the root backend: the #606 non-finite-logits
+            ;; fixes (6dd3c156, d0894700, 88b846a2) and every SYCL commit
+            ;; after the v0.2.10 merge (c4def51d) — including dfe7e883
+            ;; itself — touch src/*/sycl/ files, and the action plan that
+            ;; validates those fixes (B580_IQ3S_NONFINITE_LOGITS_ACTION_
+            ;; PLAN.md, "Completed and validated") references the root
+            ;; backend's generate.cpp.
             ;;
-            ;;   1. include/strata/prefill/gemm.hpp guards a REDUCED Gemm
-            ;;      class with `#ifdef SYCL_LANGUAGE_VERSION', but this
-            ;;      tree's sycl/src/prefill/{prefill.cpp,gemm.dp.cpp} are
-            ;;      written against the FULL class in the `#else' branch
-            ;;      (10-arg native(), native_mmq, bf16_hcd_exact,
-            ;;      tc_w_/tc_x_, prompt_f16()/set_f16_io()).  icpx -fsycl
-            ;;      defines the macro in both passes, so the stale branch
-            ;;      is selected and those two TUs fail.  The full branch
-            ;;      is pure C++ and a strict API superset, and no SYCL TU
-            ;;      references the HIP-only free functions it declares
-            ;;      but gemm.dp.cpp does not define, so neutralizing the
-            ;;      guard (`#if 0') is safe for every consumer.  (The ROOT
-            ;;      backend is written against the reduced branch — if
-            ;;      this ever switches back to `-S .', revert this patch
-            ;;      with it.)
-            ;;   2. fused_gdn.dp.cpp / bf16_gemv.dp.cpp definitions predate
-            ;;      77387ed7, which grew the header declarations by a
-            ;;      defaulted trailing parameter (y_q8_1 / out_event).  A
-            ;;      namespace-scope definition with fewer parameters is
-            ;;      just ANOTHER OVERLOAD (compiles silently), so the
-            ;;      drift surfaces only at link: layer.cpp.o calls through
-            ;;      the header defaults and references the widened mangled
-            ;;      names.  Every caller in this tree passes only the
-            ;;      visible arguments, so widening the definitions with
-            ;;      the (ignored) trailing parameter is the exact, minimal
-            ;;      fix — the epilogue/event were never used here.
+            ;; The dpct sycl/ subtree IS buildable (three patches: the
+            ;; stale gemm.hpp SYCL-branch guard plus widened fused_gdn/
+            ;; bf16_gemv definitions — see commits c9caf9a and bac34ff,
+            ;; kept in history) and roughly TWICE as fast (45-55 tok/s
+            ;; vs 25-28: it carries the Battlemage performance stack —
+            ;; GU/GR reuse, ESIMD int8 prompt experts, copy-engine
+            ;; staging — that the root backend lacks).  DO NOT switch to
+            ;; it yet: on this Arc Pro B70 it degraded under real usage
+            ;; on 2026-11-12 from sporadic `!' events (~2-12%) to a
+            ;; DETERMINISTIC every-request loop that survived engine
+            ;; restarts and a fresh JIT cache, while an A/B swap to the
+            ;; root engine — same VM, GPU, model, pack, run config,
+            ;; minutes apart — came back 3/3 clean (the root engine has
+            ;; now served both quants cleanly across two days).  The
+            ;; dpct tree is the sycl-b580 branch's tuning target; its
+            ;; fast paths are evidently marginal on the B70.  Revisit
+            ;; only with the leak localized (STRATA_DBG_NAN=1, the
+            ;; fork's parity suites) or an upstream #606 fix.
             ;;
-            ;; Each sed is paired with a verification grep so a future
-            ;; re-pin that moves this code fails HERE instead of silently
-            ;; mis-building.
+            ;; The root project needs no gemm.hpp surgery: the header's
+            ;; #ifdef SYCL_LANGUAGE_VERSION branch IS the root backend's
+            ;; API (src/prefill/sycl/gemm.cpp defines exactly the
+            ;; reduced class it declares).  STRATA_TARGET_XE2 is the
+            ;; root option for the Battlemage optimizations (default ON;
+            ;; passed explicitly).  The script's remaining -D flags are
+            ;; sycl/-subdir options; unused cache entries only warn.
             (run (string-append sed "/bin/sed -i "
-                                "'1s/^#ifdef SYCL_LANGUAGE_VERSION$/#if 0/' "
-                                "include/strata/prefill/gemm.hpp"))
-            (run (string-append coreutils "/bin/head -1 "
-                                "include/strata/prefill/gemm.hpp | "
-                                grep "/bin/grep -qx '#if 0'"))
-            (run (string-append sed "/bin/sed -i "
-                                "'/int h_k, int h_v,/{n;s/void\\* stream) {/"
-                                "void* stream, void* y_q8_1) {/}' "
-                                "sycl/src/kernels/cuda/fused_gdn.dp.cpp"))
-            (run (string-append grep "/bin/grep -q 'void\\* stream, void\\* "
-                                "y_q8_1) {' "
-                                "sycl/src/kernels/cuda/fused_gdn.dp.cpp"))
-            (run (string-append sed "/bin/sed -i "
-                                "'s/int threads_per_row, void\\* stream) {/"
-                                "int threads_per_row, void* stream, "
-                                "void* out_event) {/' "
-                                "sycl/src/kernels/cuda/bf16_gemv.dp.cpp"))
-            (run (string-append grep "/bin/grep -q 'void\\* out_event) {' "
-                                "sycl/src/kernels/cuda/bf16_gemv.dp.cpp"))
-            ;;   3. the #606 clamp is missing from the fused int8 ESIMD
-            ;;      prompt-expert path (sycl/src/prefill/esimd_moe.dp.cpp,
-            ;;      two swiglu/activation quantizers): an fp16/fp32
-            ;;      activation overflow makes amax Inf, the stored block
-            ;;      scale dd = amax/127 goes Inf and x*id127 goes NaN —
-            ;;      the exact chain q8_1_finite.hpp documents.  The root
-            ;;      backend's validated fix (moe_mmq.cpp) is mirrored
-            ;;      semantically: clamp dd to the largest finite half.
-            ;;      q8_1_finite() itself cannot be called here — its
-            ;;      sycl::fabs/copysign are rejected in an ESIMD kernel —
-            ;;      so its exact expansion is spelled out as ternaries
-            ;;      (NaN passes through unchanged, as in the original).
-            ;;      The quantizer factor is derived from the CLAMPED dd:
-            ;;      finite blocks quantize as before up to a 1/d vs
-            ;;      127/amax rounding, and an Inf activation yields a
-            ;;      finite saturated block instead of poisoning the
-            ;;      residual.
-            ;;      kv_append_kernel (kernels.dp.cpp) has the same shape
-            ;;      but serves only the int8 KV cache — inert under this
-            ;;      config's --kv q4_0 — and already guards sf > 0, so it
-            ;;      is deliberately left untouched.
-            (run (string-append sed "/bin/sed -i "
-                                "'s|const float dd = amax / 127.f;|"
-                                "const float ddraw = amax / 127.f;\\n"
-                                "                    const float dd = "
-                                "ddraw > 65504.f ? 65504.f : "
-                                "(ddraw < -65504.f ? -65504.f : ddraw);|g; "
-                                "s|const float id127 = amax > 0.f ? 127.f / "
-                                "amax : 0.f;|"
-                                "const float id127 = dd > 0.f ? 1.f / dd : "
-                                "0.f;|g' "
-                                "sycl/src/prefill/esimd_moe.dp.cpp"))
-            (run (string-append "[ $(" grep "/bin/grep -c "
-                                "'ddraw > 65504.f' "
-                                "sycl/src/prefill/esimd_moe.dp.cpp) = 2 ] && [ $("
-                                grep "/bin/grep -c 'id127 = dd > 0.f' "
-                                "sycl/src/prefill/esimd_moe.dp.cpp) = 2 ]"))
+                                "'s/cmake -S sycl -B/cmake -S . "
+                                "-DSTRATA_ENABLE_SYCL=ON "
+                                "-DSTRATA_TARGET_XE2=ON -B/' "
+                                "packaging/build_sycl_linux.sh"))
+            (run (string-append grep "/bin/grep -q 'cmake -S \\.' "
+                                "packaging/build_sycl_linux.sh"))
             (mkdir-p engine-out)
             ;; glibc's and gcc's lib dirs on LD_LIBRARY_PATH so the
             ;; oneAPI compilers (which link libgcc_s.so.1, absent from the
