@@ -7,7 +7,11 @@
 ;; configuration because 24GB of VRAM cannot hold both: since 2026-11-07 ComfyUI
 ;; auto-starts and koboldcpp is manual-start, so a boot leaves the card with a
 ;; full VRAM budget for image work instead of the 2GB remainder it had when
-;; koboldcpp auto-started (see the note on the koboldcpp service below). nug's
+;; koboldcpp auto-started (see the note on the koboldcpp service below). A
+;; third GPU workload joined on 2026-11-13: AllTalk TTS (XTTS v2, ~4GB
+;; resident) auto-starts alongside ComfyUI on the 4090 -- small enough to
+;; share, unlike koboldcpp; starting koboldcpp now means stopping one of the
+;; other two. nug's
 ;; other GPU services (vllm-code-agent,
 ;; koboldcpp-rp, sillytavern, colibri) were retired -- the local-LLM
 ;; experiments didn't pan out, though koboldcpp has since come back as pi's
@@ -86,6 +90,7 @@
   #:use-module ((gnu packages glib) #:select (glib))
   #:use-module (peteches systems vm-base)
   #:use-module (peteches services alloy)
+  #:use-module (peteches services alltalk)
   #:use-module (peteches services comfyui)
   #:use-module (peteches services koboldcpp)
   #:use-module (peteches services restic)
@@ -648,6 +653,51 @@
 	       (comfyui-custom-node
 		(name "ComfyUI-Impact-Subpack")
 		(git-repo-url "https://github.com/ltdrdata/ComfyUI-Impact-Subpack")))))))
+      ;; AllTalk TTS v2 — the GPU TTS server SillyTavern (agents VM) talks to,
+      ;; replacing the CPU Kokoro path (koboldcpp --ttsmodel): XTTS v2 on the
+      ;; 4090 generates several times realtime with per-voice emotional
+      ;; delivery cloned from ~6 s reference WAVs, where CPU Kokoro was slow
+      ;; AND flat.  Runs INSIDE the FHS/uv sandbox as its own service (see
+      ;; (peteches services alltalk) for the design): API on :7851 (what
+      ;; SillyTavern's native AllTalk provider speaks, proxied by caddy as
+      ;; alltalk.ts.peteches.co.uk) + Gradio management UI on :7852
+      ;; (alltalk-ui.ts.peteches.co.uk — engine settings, voice library,
+      ;; in-app model downloads).
+      ;;
+      ;; VRAM budget: auto-start, UNLIKE koboldcpp below.  XTTS v2 resident
+      ;; is ~4GB (1.9GB weights fp32 + runtime), a different class from
+      ;; koboldcpp's 20.47GB: ComfyUI (~13.5GB typical resident) + AllTalk
+      ;; fits the 24GB card with room for ComfyUI's dynamic loader to keep
+      ;; working.  The combination that does NOT fit is all three: starting
+      ;; koboldcpp for an LLM session needs `herd stop alltalk' first (or
+      ;; accepting ComfyUI streams weights per step — see the arithmetic in
+      ;; the comfyui-configuration comment above).
+      ;;
+      ;; First boot: `sudo herd start alltalk-sync' once — clones the
+      ;; alltalkbeta branch into /media/models/alltalk, builds the venv
+      ;; (~8GB of cu128 wheels, project-dir lives on the hot-storage volume,
+      ;; NOT the 74%-full root disk) and downloads the XTTS v2 weights
+      ;; (~1.9GB from HuggingFace); then `sudo herd start alltalk'.  The
+      ;; daemon auto-starts on every boot after that.
+      (service alltalk-service-type
+               (list
+                (alltalk-configuration
+                 (auto-start? #t)
+                 (project-dir "/media/models/alltalk")
+                 (container-extra-shares (list "/media/models"))
+                 (open-firewall? #t)
+                 ;; Serve the Gradio UI over https through caddy's
+                 ;; alltalk-ui.ts.peteches.co.uk vhost.  This makes AllTalk
+                 ;; build every API/audio URL from this absolute https base
+                 ;; (via the ALLTALK_API_URL source patch) instead of
+                 ;; http://<Host-header>:7851 -- without it the proxied UI
+                 ;; POSTs to <proxy-host>:7851 (routes nowhere -> 3-minute
+                 ;; retry hang) and would be http under an https page.
+                 ;; SillyTavern is unaffected either way: it calls the API
+                 ;; (alltalk.ts.peteches.co.uk -> :7851) directly and gets
+                 ;; relative /audio/ URLs back from tts_server.py.
+                 (api-public-url "https://alltalk.ts.peteches.co.uk")
+                 (runtime-packages (list uv)))))
       ;; The LLM backend for every pi session on claude-workstation (all three
       ;; accounts, via configs/pi/defaults/models.json -> Caddy's
       ;; koboldcpp.ts.peteches.co.uk), but manual-start (reverted on 2026-11-07):
@@ -899,6 +949,10 @@
                                  ;; (the 0.1.59 stall class).  Loki-side
                                  ;; alerts can key on exactly those lines.
                                  (cons "/var/log/strata/strata.log" "strata")
+                                 ;; AllTalk TTS daemon log (XTTS server for
+                                 ;; SillyTavern) — model-load failures and the
+                                 ;; /api/ready startup window show up here.
+                                 (cons "/var/log/alltalk/alltalk.log" "alltalk")
                                  (cons "/var/log/comfyui/comfyui/update.log" "comfyui")))))
       ;; Strata — the SC117 abliterated Qwen3.8-Flash-Next (IQ2_XS) on the
       ;; Intel Arc B70 via its SYCL/Level Zero backend, run through the

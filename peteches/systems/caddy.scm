@@ -120,6 +120,34 @@
                   (caddy-reverse-proxy
                    (domain "strata.ts.peteches.co.uk")
                    (upstream "comfyui.spaniel-cordylus.ts.net:8000"))
+                  ;; alltalk-service-type on comfyui.scm — auto-starts at
+                  ;; boot, shares the RTX 4090 with ComfyUI (XTTS v2,
+                  ;; ~2-4GB resident vs koboldcpp's 20.47GB).  Two vhosts:
+                  ;;   :7851 (alltalk)     — the TTS API.  SillyTavern's native
+                  ;;                       AllTalk provider calls this
+                  ;;                       directly (single-origin: POSTs
+                  ;;                       <this>/api/tts-generate, fetches
+                  ;;                       <this>/audio/<f>.wav back).
+                  ;;   :7852 (alltalk-ui)  — the Gradio management UI (voice
+                  ;;                       library, engine settings, test
+                  ;;                       generation).
+                  ;; The UI can be proxied over https because the alltalk
+                  ;; service patches script.py to build every API/audio URL
+                  ;; from ALLTALK_API_URL=https://alltalk.ts.peteches.co.uk
+                  ;; (see (peteches services alltalk)'s api-public-url) rather
+                  ;; than AllTalk's default http://<browser-Host-header>:7851.
+                  ;; Without that patch the proxied UI would POST to
+                  ;; <proxy-host>:7851 (routes nowhere -> 3-minute retry hang)
+                  ;; and mix http audio into an https page.  The UI's own
+                  ;; gradio event queue is same-origin (alltalk-ui -> :7852);
+                  ;; only the API/audio URLs cross to the alltalk vhost, which
+                  ;; the API's CORS allow_origins=[*] permits.
+                  (caddy-reverse-proxy
+                   (domain "alltalk.ts.peteches.co.uk")
+                   (upstream "comfyui.spaniel-cordylus.ts.net:7851"))
+                  (caddy-reverse-proxy
+                   (domain "alltalk-ui.ts.peteches.co.uk")
+                   (upstream "comfyui.spaniel-cordylus.ts.net:7852"))
                   (caddy-reverse-proxy
                    (domain "sillytavern.ts.peteches.co.uk")
                    (upstream "agents.spaniel-cordylus.ts.net:8001"))

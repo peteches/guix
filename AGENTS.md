@@ -296,7 +296,7 @@ Each module's header comment documents its keyword arguments — read
 | `critical-grind-outline.scm` | Outline wiki VM — Podman container + local PostgreSQL/Redis (192.168.51.203, :3000) |
 | `plane.scm` | Plane project management VM — Podman containers + PostgreSQL/Redis/RabbitMQ (192.168.51.204, :80) |
 | `claude-workstation.scm` | Jump-box VM — split-tunnel WireGuard + microsocks SOCKS5 (the desktops relay `ygo-server`/`ygoswiss1`/`ygoswiss2` ssh through it), tailscale, alloy; ONE home environment (`peteches`) + a plain `ygo` login account. Claude Code, the `criticalgrind` account and the Postgres/Podman dev-DB stack are gone. It is **not** a deploy origin any more: the automation SSH key it used to decrypt moved to `agents` on 2026-11-05 and its signing key was dropped from `%authorize-coordinator-key` (it had gone stale with the 2026-10-27 MinIO-image rebuild) (192.168.51.205) |
-| `comfyui.scm` | ComfyUI VM — RTX 4090 GPU passthrough with nonguix driver/CUDA; successor to nug's desktop-hosted comfyui (192.168.51.206) |
+| `comfyui.scm` | ComfyUI VM — RTX 4090 GPU passthrough with nonguix driver/CUDA; successor to nug's desktop-hosted comfyui. Also runs strata (Intel Arc B70) and AllTalk TTS (XTTS on the 4090) (192.168.51.206) |
 | `guix-build.scm` | Guix substitute server + build-offload target VM — successor to nug's guix-publish/offload role; signs with `guix-build-substitute-key.pub` (192.168.51.207). Holds BOTH offload trust lists: `guix-offload-authorized-keys` (ssh logins) and `guix-offload-signing-keys` (archive pushes). Until 2026-11-05 the second held one stale key; it now carries every offloader's live key, and `rustdesk` + `nyarlothotep` are the known gap (in the ssh list, no archive key, both unreachable when it was audited) |
 | `agents.scm` | "agents" VM — rules-lawyer Discord bot + SillyTavern + `pi` for the peteches account (home-environment from `peteches/home/configs/agents-peteches.scm`); LLM/stable-diffusion offloaded to other VMs; it also runs the **herdr server** — supervised by the
   system shepherd as `herdr-server-peteches` (`peteches/services/herdr.scm`) —
@@ -434,6 +434,7 @@ System service *types*, folded in from the retired `peteches` channel.
 
 | File | Provides |
 |---|---|
+| `alltalk.scm` | `alltalk-service-type` — AllTalk TTS v2 server (XTTS voice synthesis) via uv in an FHS sandbox; the GPU TTS backend SillyTavern's native AllTalk provider talks to (comfyui VM, :7851 API + :7852 Gradio UI) |
 | `alloy.scm` | `alloy-service-type` |
 | `boltd.scm` | `boltd-service-type` — Thunderbolt authorization daemon |
 | `caddy.scm` | `caddy-service-type` |
