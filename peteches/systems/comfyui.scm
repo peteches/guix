@@ -964,10 +964,20 @@
                 ;; the run config's "exe" points straight at the fork's store
                 ;; binary (self-contained via $ORIGIN RUNPATH) instead of
                 ;; resolving the downloaded component, and the bundle-version
-                ;; engine fetch is skipped.  Deployed 2026-11-11: 12/12 test
-                ;; generations clean, zero "repeated one token" events,
-                ;; ~25 tok/s, expert cache 99%+.  Set to #f to fall back to
-                ;; the stock upstream engine (and its `!' loops).
+                ;; engine fetch is skipped.  Deployed 2026-11-11; through
+                ;; 2026-11-12 this root-backend build is 0/~79 looped
+                ;; requests across two days on iq3xxs+iq2xs — sequential,
+                ;; concurrent waves, 4k-token generations — at 20-28
+                ;; tok/s.  Re-verify with scripts/strata-soak.js +
+                ;; scripts/strata-battery.js after ANY engine change.
+                ;; The ~2x faster dpct-tree build (commits c9caf9a/
+                ;; bac34ff in history) rots into deterministic `!' loops
+                ;; on this B70 within ~1.5 h of real usage — A/B'd one
+                ;; variable 2026-11-12: same VM/GPU/model/run-config
+                ;; minutes apart, dpct 3/3 looped vs root 3/3 clean — so
+                ;; it is parked; details in the (peteches packages strata)
+                ;; builder comment.  Set to #f to fall back to the stock
+                ;; upstream engine (and its `!' loops).
                 ;;
                 ;; EXIT STRATEGY: this is a single-maintainer fork pinned to
                 ;; one commit, and its own sycl/ packaging path is broken at
