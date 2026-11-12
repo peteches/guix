@@ -9,10 +9,11 @@
 ;; and no reliability guarantee (https://caddy.community/t/download-site-url-script/15768).
 ;; It silently started serving 2.11.4 under a URL/idempotency string that had
 ;; previously returned 2.11.3, breaking the pinned sha256 with no upstream
-;; changelog to follow, and it moved again on 2026-11-05: the pinned 2.11.4 hash
-;; failed with `hash mismatch for store item`, and `go version -m` on the
-;; downloaded bundle showed it was built from github.com/caddyserver/caddy/v2
-;; v2.11.8 + github.com/caddy-dns/desec v1.1.0 — so the =version= field here is
+;; changelog to follow, and it moved again on 2026-11-05 (2.11.8) and again on
+;; 2026-11-13: the pinned 2.11.8 hash failed with `hash mismatch for store
+;; item`, and `go version -m` on the downloaded bundle showed it was built
+;; from github.com/caddyserver/caddy/v2 v2.11.9 + github.com/caddy-dns/desec
+;; v1.1.0 — so the =version= field here is
 ;; only as true as the endpoint happens to be, and the hash has to be re-chased
 ;; whenever the bundle changes. Verify the bundle's real contents before
 ;; accepting a new hash, and do it this way, because ordinary =strings= output is
@@ -31,7 +32,7 @@
 (define-public caddy
   (package
     (name "caddy")
-    (version "2.11.8")
+    (version "2.11.9")
     (source
      (origin
        (method url-fetch)
@@ -44,7 +45,7 @@
                            "&idempotency=2.10.0"))
        (file-name "caddy")
        (sha256
-        (base32 "1c39s88p444a4syb7aq7ssb23z2shqn467w7bfidk262ybam8wkb"))))
+        (base32 "06pjpizw8ajyhrfkzdq9sa04n24dxgpi0whs8h2xmyj2j5xhgxbc"))))
     (build-system copy-build-system)
     (arguments
      (list
