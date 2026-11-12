@@ -992,43 +992,22 @@
                 ;; only ~1.5 GB of VRAM -- it fits, and the --expert-cache
                 ;; auto tier just shrinks by that amount.
                 (context 262144)
-                ;; The fork engine's documented B70 setup recipe
-                ;; (docs/INTEL.md in giridhart/Strata): draft length 4 with
-                ;; a 0.5 confidence floor ("--spec 6 against --spec 4 is
-                ;; +6.5% on code and -1.5% on prose, so the setup default
-                ;; (4, 0.5) stays"), --prefill 8192 for a Battlemage card
-                ;; with >= 24 GB above 32K context (the chunk borrows
-                ;; expert-cache slots, ~1 s refill after the prompt), and a
-                ;; 1024 MiB VRAM reserve so the auto expert-cache tier does
-                ;; not over-commit and retry (the 31.03 GiB malloc_device
-                ;; failure in the 2026-11-12 startup).  The old --spec 2
-                ;; measured 56% draft acceptance / 26.5 tok/s; the author's
-                ;; B70 runs with this recipe measured 66-90% acceptance.
-                (spec 4)
-                (spec-min-p 0.5)
-                (prefill 8192)
-                (vram-reserve-mib 1024)
-                ;; The fork's runtime contract, normally set by its own
-                ;; launcher (sycl/serve/strata-sycl.sh), which this service
-                ;; bypasses by exec'ing the engine binary directly:
-                ;;   STRATA_VERIFY_NO_HOST=1 — REQUIRED on xe whenever part
-                ;;     of the experts is not in VRAM (ours: 14375 of 24576
-                ;;     resident): "Without it the host/GPU handshake is not
-                ;;     visible across the bus on xe and the logits turn NaN
-                ;;     a few tokens in" (INTEL.md) — i.e. the exact
-                ;;     non-finite-logits failure class this engine was
-                ;;     adopted to escape.
-                ;;   STRATA_VERIFY_DEVICE_PLAN=1, STRATA_STAGER_THREADS=12 —
-                ;;     the launcher's other two defaults (device-side verify
-                ;;     plan; copy-stager thread count).
-                ;;   ONEAPI_DEVICE_SELECTOR=level_zero:0 — deterministic GPU
-                ;;     choice on a box that also carries the RTX 4090 (the
-                ;;     dev image sets it; level_zero enumerates only the
-                ;;     Arc).
-                (engine-env '(("STRATA_VERIFY_DEVICE_PLAN" . "1")
-                              ("STRATA_VERIFY_NO_HOST" . "1")
-                              ("STRATA_STAGER_THREADS" . "12")
-                              ("ONEAPI_DEVICE_SELECTOR" . "level_zero:0")))
+                ;; NOTE 2026-11-12: an attempt to apply docs/INTEL.md's B70
+                ;; runtime recipe here — (spec 4) (spec-min-p 0.5)
+                ;; (prefill 8192) (vram-reserve-mib 1024) plus engine-env
+                ;; STRATA_VERIFY_NO_HOST=1 / STRATA_VERIFY_DEVICE_PLAN=1 /
+                ;; STRATA_STAGER_THREADS=12 — made the fork engine throw
+                ;; `non-finite logits (#879)' on EVERY request and crash-
+                ;; respawn.  Those knobs are documented for the dpct sycl/
+                ;; engine (INTEL_ARC.md); this build is the ROOT
+                ;; STRATA_ENABLE_SYCL backend, whose verify path they
+                ;; destabilise.  Reverted to the fields' defaults (spec 2,
+                ;; prefill auto, no reserve, no engine-env) = the verified
+                ;; 25 tok/s clean state.  The fields stay available; any
+                ;; re-tune must be bisected ONE knob at a time against #879.
+                ;; See the tok/s investigation: the ~2x gap to the upstream
+                ;; engine's 55-71 tok/s is architectural (root vs dpct
+                ;; backend), not a flag we can safely flip here.
                 ;; Images, read on the CPU: `Vision` spawns the reader this
                 ;; repo builds (strata-vision in (peteches packages strata) —
                 ;; upstream's own tools/vision over llama.cpp mtmd at the
