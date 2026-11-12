@@ -145,11 +145,12 @@ never have to switch workflows between chats.
 
 | Stage | Nodes |
 |-------+-------|
-| Model chain | =1 UNETLoader → 4 LoRA(4-step speed) → 21 LoRA(edit) → 11 KSampler= |
+| Model chain | =1 UNETLoader → 4 LoraLoaderModelOnly(4-step speed) → 5 LoraLoader(edit, model+clip) → 11 KSampler= |
 | References | =14= (=%char_avatar%=), =30= (=%ref2%=), =32= (=%ref3%=), =34= (=%ref4%=) — each a =LoadImageFromBase64OrUrl= |
 | Collapse | =40 SillyTavernReferenceSheet= → one 1024² sheet |
-| Prompt | =22 StringConcatenate=(instruction, ="%prompt%"=) → =17 TextEncodeMOSSImageEdit= |
-| Sample | =9= negative, =10= 1024² latent, =11 KSampler= 4 steps / cfg 3.0 / euler / sgm_uniform |
+| Positive | =22 StringConcatenate=(instruction, ="%prompt%"=) → =17 TextEncodeMOSSImageEdit= (clip from **node 5 output 1**) |
+| Negative | =24 StringConcatenate=(identity protection, ="%negative_prompt%"=) → =23 TextEncodeMOSSImageEdit= with the **same sheet** |
+| Sample | =10= 1024² latent, =11 KSampler= 4 steps / cfg 3.0 / euler / sgm_uniform |
 
 ** Why one file can serve any reference count
 
@@ -244,19 +245,96 @@ Each reference must be pre-scaled — either an =ImageScale= per slot, or keep
 node 40 for the ones you want sheeted. Never feed a raw ST avatar in: the
 VAE-encode dies with "Kernel size can't be greater than actual input size".
 
-** Deploy status — the node update is REQUIRED
+** The proven recipe — =moss-ref-edit-{4step,20step}.json= in ComfyUI's library
 
-Unlike the earlier revision, this workflow **will hard-fail** against the
-currently deployed =moss_avatar_loader.py=, for two reasons:
+ComfyUI's own workflow library (=/var/lib/comfyui/comfyui/user/default/workflows/=)
+already contained two hand-tuned MOSS reference graphs, dated **after** this
+repo's copies. They are the authority on what works on this host, and they
+contradicted three choices this file previously made:
 
-1. It uses =SillyTavernReferenceSheet=, which is not deployed at all.
-2. In a solo scene =%ref2%= / =%ref3%= / =%ref4%= reach the loader literally.
-   The **old** loader does not recognise those tokens: it base64-decodes
-   =%ref3%= to 3 garbage bytes, =Image.open= raises, the input-dir fallback
-   misses, and it throws =ValueError=. The revised loader matches
-   =^%[^%\s]+%$= and treats it as "no reference".
+| Item | This repo (wrong) | Proven graph |
+|------+-------------------+--------------|
+| =edit_format= | =Moss-Image-Edit= (a guess) | **=ai-toolkit=** |
+| edit LoRA node | =LoraLoaderModelOnly= (model only) | **=LoraLoader=** — model **and clip** |
+| CLIP into the encoders | straight from =CLIPLoader= | **from the edit LoRA's CLIP output** |
+| negative | plain =CLIPTextEncode= | **=TextEncodeMOSSImageEdit= with the same reference** |
 
-So deploy both files before testing tier F' (see "Deploying" below).
+The =LoraLoader= point is the important one: the edit LoRA has a text-encoder
+side, and if the CLIP is not passed through it, the edit instruction is encoded
+by an un-adapted encoder — so the reference binds weakly no matter what the
+prompt says. Both the positive *and* negative encoders must take CLIP from the
+edit LoRA (output index 1).
+
+The reference-conditioned negative matters because =cfg= is 3.0, not 1.0, so the
+negative is live. The proven text is identity-protective:
+
+#+begin_example
+different face, different person, changed identity, deformed face, blurry face,
+extra people, changed hair colour, short hair
+#+end_example
+
+Node 24 here prepends exactly that to ST's =%negative_prompt%=.
+
+Model chain, as proven: =1 UNETLoader → 4 LoraLoaderModelOnly(speed) →
+5 LoraLoader(edit, model+clip) → 11 KSampler=. The =20step= variant simply omits
+node 4 and sets =steps 20= — confirming the speed LoRA is what makes 4 steps
+viable.
+
+** Deploy status — DEPLOYED and GPU-verified (2026-11-12)
+
+Both node files are installed at
+=/srv/comfyui/custom_nodes/peteches_sillytavern_nodes/= (previous versions backed
+up to =/tmp/stnodes-backup-*= on that box) and =comfyui= was restarted via
+=sudo herd restart comfyui=. Verified live:
+
+- =/object_info= lists **both** =LoadImageFromBase64OrUrl= (now with the optional
+  =on_missing= enum) and =SillyTavernReferenceSheet= — so the =__init__.py= merge
+  works.
+- **Solo run** (=%char_avatar%= set, =%ref2/3/4%= left as literal tokens, exactly
+  what ST sends): =status=success= in 15.1 s cold, output 1024×1024. Log:
+  #+begin_example
+  no reference (placeholder not substituted or unset: '%ref2%'); using inert 1x1
+  slot 2: blank/unset reference, dropped      (and 3, and 4)
+  reference sheet: 1 panel(s) in a 1x1 layout at 1024x1024
+  #+end_example
+  i.e. a full-frame single reference, as designed.
+- **Two-reference run** (=%char_avatar%= + =%ref2%= set, 3/4 unset):
+  =status=success= in 3.0 s warm, output 1024×1024, log =reference sheet: 2
+  panel(s) in a 2x1 layout at 1024x1024=.
+
+So one workflow demonstrably serves solo and group scenes with no edit in
+between. **What is verified is that the graph executes and the sheet logic is
+correct — not that the output looks good.** Identity fidelity still needs your
+eyes; see the test plan.
+
+The workflow JSON is also in ComfyUI's own library
+(=sillytavern_moss_sft_4step_ref.json=) so it can be opened on the canvas. It is
+API-format; ComfyUI's frontend converts that on load.
+
+**ST side is NOT deployed.** ST reads workflows from its *own* directory,
+=/var/lib/sillytavern/sillytavern/data/default-user/user/workflows/=, owned by
+=sillytavern=. From the =agents= box =peteches= has no sudo (the sudo binary
+lacks its setuid bit) and cannot read the basic-auth password
+(=/run/secrets/sillytavern-password= is mode 400 root), so neither the file copy
+nor the =/api/sd/comfy/save-workflow= endpoint is reachable. Two ways to finish
+it:
+
+- **No privilege needed** — Settings → Image Generation → the pencil next to
+  =ComfyUI Workflow= → paste the contents of
+  =sillytavern_moss_sft_4step_ref.json= → save under that name → pick it in the
+  dropdown. ST's =save-workflow= endpoint writes the file for you.
+- **As root on =agents=** —
+  #+begin_src sh
+  install -o sillytavern -g sillytavern -m 664 \
+    ~/area_51/guix/configs/sillytavern/comfy/sillytavern_moss_sft_4step_ref.json \
+    /var/lib/sillytavern/sillytavern/data/default-user/user/workflows/
+  #+end_src
+
+Do **not** blindly overwrite ST's =sillytavern_moss_sft_4step.json= with this
+repo's copy without diffing: ST's copy was hand-tuned (it was the source of the
+=cfg 3= / =sgm_uniform= values), and ComfyUI's =/history= — the only way to read
+it back — is **cleared on every service restart**, so it cannot be re-inspected
+now.
 
 * The custom nodes — =custom_nodes/=
 
@@ -512,68 +590,128 @@ pretty" pass, F when you need on-image text or a specific layout.
 - Nothing in this directory is referenced by the Guix build; the files are
   assets to upload into SillyTavern (kept in the repo for versioning).
 
+* SillyTavern prompt templates and the reference system
+
+**Short answer: the workflow needs no template change, but the templates are
+actively wrong for MOSS and should be changed anyway.**
+
+The identity instruction lives in the workflow (node 22's =string_a=), not in
+ST, so nothing *has* to change for references to work. But ST's image-generation
+prompt templates (Settings → Image Generation → "Prompt templates",
+=extension_settings.sd.prompts=, defaults at =index.js:174=) were written for
+SD1.5/SDXL booru models and fight a natural-language edit model on two counts:
+
+1. **They demand tag soup, not prose.** The =CHARACTER=, =FACE=, =USER= and =NOW=
+   templates all say "a detailed **comma-delimited list of keywords and
+   phrases**", "**Do not write in full sentences**", and force a prefix like
+   ='full body portrait,'=. MOSS-Image edit wants an instruction — the proven
+   graph's positive is a plain sentence ("A photo of the same young woman
+   sitting in a seaside cafe booth by the window…").
+2. **Without =minimal_prompt_processing=, ST mangles prose.** =processReply()=
+   (=index.js:2901=) strips all quotes, converts newlines to =", "=, and
+   **strips non-alphanumeric characters**. Tick =minimal_prompt_processing= and
+   it only collapses whitespace and NFD-normalises. For tiers C/F this is not
+   optional.
+
+Also clear **=prompt_prefix=** (default =best quality, absurdres, aesthetic,=) for
+tiers C/F — booru quality tags help SDXL and hurt natural-language models.
+
+** One template genuinely helps for references
+
+The =NOW= template instructs the LLM: "Only mention characters by using pronouns
+('he','his','she','her') or neutral nouns". That is *already* the right instinct
+for a reference workflow — identity comes from the image, not the text — but it
+then also demands "keywords to describe {{char}}'s physical appearance", which
+duplicates and can contradict the reference.
+
+For tier F', a template that tells the LLM the reference exists is better. Add
+to whichever template you use (they accept ={{char}}= / ={{user}}= macros):
+
+#+begin_example
+A reference image of the character is supplied separately, so do NOT describe
+their face, hair colour, eye colour, skin tone or build — those come from the
+reference. Write ONE natural-language sentence (not a keyword list) describing
+only the setting, pose, framing, expression, clothing, lighting and mood. Refer
+to the character as "the same person".
+#+end_example
+
+For **group** scenes, extend it to name who is in shot and in what order, since
+the sheet's panels are positional (left→right, top→bottom) and that ordering is
+the only thing tying a panel to a character:
+
+#+begin_example
+If more than one character is present, state who is in the first and second
+reference panel respectively, matching the order the characters are listed.
+#+end_example
+
+** Interactive / function-tool mode
+
+With =function_tool= enabled the LLM can start a generation itself, using the
+=TOOL= template as the tool description ("an exhaustive description of the
+desired image that will allow an artist or a photographer to perfectly recreate
+it"). That wording invites exactly the appearance re-description a reference
+makes redundant, so update it with the same guidance if you use that mode. Note
+it also means the LLM can fire a 9–25 s generation unprompted.
+
+** Per-character text still has a place
+
+=character_prompts= / =character_negative_prompts= (per-character appendices to
+the prompt) are the right home for costume, pose habits and anatomy details that
+are *not* visible in the avatar — not for hair and eye colour, which the
+reference now carries. Keeping those out of the text is what stops a card's
+stale description from fighting the image.
+
 * Test plan for tier F'
 
-Schema validation is done and passes; what remains is GPU/runtime verification.
-**Deploy the two node files first** — this workflow hard-fails without them (see
-"Deploy status" above).
+Steps 1–3 and 8 are **done and passing** (see "Deploy status" for the runs and
+log lines). What remains is subjective quality, which only you can judge.
 
-1. **Confirm both nodes registered.** =/object_info= should list
-   =LoadImageFromBase64OrUrl= *and* =SillyTavernReferenceSheet=. If only the
-   first appears, =__init__.py= did not merge the mappings.
-2. **Confirm the avatar actually arrives.** Generate once with devtools open;
-   =generateComfyImageCommon= logs the final serialized prompt (=index.js:4283=).
-   Node 14's value must be a long base64 string — **not** =char_avatar=, **not**
-   the 68-char =PNG_PIXEL=. If it is =PNG_PIXEL=, the character card has no
-   avatar (Character → Avatar).
-3. **Confirm the sheet node sees it.** ComfyUI's log should print
-   =[peteches/SillyTavern] reference sheet: 1 panel(s) in a 1x1 layout at
-   1024x1024=. A "no usable references" line means the avatar never arrived, or
-   arrived as =PNG_PIXEL=.
-4. **A/B the edit LoRA before blaming anything else.** This is the highest-value
-   test, because stacking a 4-step distillation LoRA with an edit LoRA is
-   untested on this host and is the most likely remaining quality regressor:
-   - baseline: run tier F (no reference) with the same prompt and seed
-   - then tier F' as shipped (speed LoRA + edit LoRA)
-   - then tier F' with node 21 =strength_model= 0.5
-   - then tier F' with node 21 deleted and =4 → 11= reconnected (reference
-     latents still encoded, but no edit LoRA to consume them — expected to show
-     *no* identity transfer, which confirms the LoRA is what does the work)
-
-   Compare at the same seed. If tier F' is worse than tier F even with a real
-   reference, the edit LoRA is the cost, not the graph.
-5. **Confirm identity hold.** Same character, three generations with =seed= =-1=.
-   Hair/eye colour and face shape should now stay put. This is the actual
-   acceptance criterion, and the one the old graph could never pass (its
-   reference was always a blank 1×1 placeholder).
-6. **Confirm solo == dedicated single-ref.** With only =%char_avatar%= set, the
-   sheet is a full-frame 1024² reference — output should be indistinguishable
-   from a hand-built one-slot graph.
-7. **Try =edit_format= variants** if identity transfer is weak: =Moss-Image-Edit=
-   (shipped) → =ai-toolkit= → =ai-toolkit (kv_cache off)=. The correct value is
-   whichever layout =moss_image_edit_lora_bf16.safetensors= was trained with,
-   and that is not recorded anywhere on this host.
-8. **Multi-ref.** Set =ref2= to =%user_avatar%= (zero-setup case that also
-   exercises the placeholder-ordering discovery) and confirm the log reports
-   =2 panel(s) in a 2x1 layout=. Then move to ={{getvar::…}}= with an STscript
-   populating the variable from the intended character's avatar.
+1. ~~Confirm both nodes registered.~~ **Done** — =/object_info= lists both.
+2. ~~Confirm the avatar arrives.~~ **Not yet** — my runs injected a synthetic
+   base64 directly at the API, bypassing ST. Do this once from the ST UI:
+   devtools console shows the final serialized prompt (=index.js:4283=); node
+   14's value must be a long base64 string, not =char_avatar= and not the 68-char
+   =PNG_PIXEL=. If it is =PNG_PIXEL=, the character card has no avatar.
+3. ~~Confirm the sheet node sees it.~~ **Done for synthetic input** (1 panel /
+   1x1, and 2 panels / 2x1). Re-check with a real avatar — ST avatars are small
+   squares, so watch for the =_cover_crop= upscaling looking soft at 1024².
+4. **Judge identity hold — the actual acceptance criterion.** Same character,
+   three generations, =seed= =-1=. Hair/eye colour and face shape should stay
+   put. The old graph could never pass this (its reference was always a blank
+   1×1 placeholder).
+5. **A/B against tier F if quality is still short.** Now that the graph provably
+   runs, the remaining suspect is the edit LoRA's cost, not the wiring:
+   - baseline tier F (no reference), same prompt + seed
+   - tier F' as shipped
+   - tier F' with node 5 =strength_model= / =strength_clip= at 0.5
+   - tier F' with node 4 deleted and =steps 20= (the proven 20-step variant —
+     drops the speed LoRA, slower but removes a variable)
+6. **Try =edit_format= variants** only if transfer is weak. =ai-toolkit= is
+   shipped because that is what the proven graphs use; =ai-toolkit (kv_cache
+   off)= recomputes references every step (slower, but the references also
+   attend to the image being generated) and =Moss-Image-Edit= is the third
+   option.
+7. **Group casting.** Set =ref2= to =%user_avatar%= first (zero setup, and it
+   exercises the placeholder-ordering behaviour), then move to ={{getvar::…}}=
+   with an STscript populating the variable from the intended character's
+   avatar. Confirm the log reports the expected panel count.
 
 * Known gaps
 
-- **Tier F' has never produced a good image.** Every generation so far used the
-  broken graph (blank 1×1 reference, literal =%prompt%= conditioning, no speed
-  LoRA, cfg 5, 512²). The fixes are schema-validated and unit-tested but **not**
-  GPU-verified. Treat steps 4–5 above as the real gate.
-- **Speed LoRA + edit LoRA stacking is unproven.** Both are
-  =LoraLoaderModelOnly= chained on the model, which is structurally valid, but
-  no one has confirmed =moss_image_edit_lora_bf16= behaves at 4 steps / cfg 3
-  alongside a distillation LoRA. If it does not, the fallback is the official
-  quality recipe (drop the speed LoRA, 50 steps / cfg 3 / =sgm_uniform=) — slow,
-  but it removes one variable.
+- **Execution is proven; quality is not.** The graph runs end-to-end on the 4090
+  and the sheet logic behaves exactly as designed, but no output has been judged
+  against a real character avatar yet. Test steps 4–5 are the gate.
+- **ST-side deployment is outstanding.** The JSON is not in ST's workflow
+  directory, so ST is still generating with whatever is there now. See "Deploy
+  status" for the two ways to finish it.
+- **ST avatars are small.** Upscaling a ~200px card avatar to a 1024² reference
+  panel is lossy. A dedicated high-res reference image (the proven graphs use
+  =leah_canonical_ref.png= from ComfyUI's input dir) will beat the card avatar;
+  the loader also accepts an =https://= URL or an input-dir filename, so you can
+  point a slot at one directly instead of relying on =%char_avatar%=.
 - **=%char_avatar%= is random in group chats.** Not fixable from the workflow —
   it is ST's =getCharacterAvatarUrl()= behaviour. Slot 1 keeps the built-in only
-  as a convenience default; use custom placeholders for anything that must be
-  deterministic.
+  as a convenience default; use custom placeholders for anything deterministic.
 - **2+ references share a 1024² frame**, so per-character detail is halved (2
   refs) or quartered (3–4). The Autogrow alternative restores full resolution at
   the cost of fixing the reference count per file.
@@ -584,14 +722,20 @@ Schema validation is done and passes; what remains is GPU/runtime verification.
   available mechanism here, and the same is true for SDXL (tier A) — so a
   **trained per-character LoRA** in node 4 remains the strongest consistency
   option. The reference workflow is what you use when no LoRA has been trained.
-- **=edit_format= is a guess.** Ships =Moss-Image-Edit=; see test step 7.
-- **Repo ⇄ deployed drift is easy and silent.** The good images were being
-  produced by =cfg 3= + =sgm_uniform= while every file here said =cfg 1.0= +
-  =simple=. ST's workflow editor writes to its own directory and nothing syncs
-  back. Reconcile by reading =/history= after any tuning session, or treat this
-  directory as read-only and tune only here.
+- **Repo ⇄ deployed drift is easy and silent.** The good images were produced by
+  =cfg 3= + =sgm_uniform= while every file here said =cfg 1.0= + =simple=; ST's
+  workflow editor writes to its own directory and nothing syncs back. Worse,
+  **=/history= is in-memory and is wiped by every ComfyUI restart** — so the
+  evidence cannot be re-read after a restart. Capture it into this directory
+  after any tuning session.
+- **ComfyUI's library holds the real source of truth for tuned graphs.** The
+  =moss-ref-edit-*.json= files there were newer and more correct than anything in
+  this repo, and are not version-controlled anywhere. Consider copying them into
+  =configs/sillytavern/comfy/= so the next person does not have to rediscover
+  =ai-toolkit= and the =LoraLoader=-vs-=LoraLoaderModelOnly= distinction from a
+  live box.
 - **Nothing here is wired into the Guix build.** =configs/sillytavern/comfy/= is
   assets-only: JSONs must be copied into ST's workflow directory and the nodes
   into ComfyUI's =custom_nodes=. Neither =peteches/services/sillytavern.scm= nor
   =peteches/services/comfyui.scm= references this directory, so =guix deploy=
-  ships none of it.
+  ships none of it. The node deploy in particular is a manual =scp= + restart.
