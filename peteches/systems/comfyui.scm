@@ -996,18 +996,32 @@
                 ;; runtime recipe here — (spec 4) (spec-min-p 0.5)
                 ;; (prefill 8192) (vram-reserve-mib 1024) plus engine-env
                 ;; STRATA_VERIFY_NO_HOST=1 / STRATA_VERIFY_DEVICE_PLAN=1 /
-                ;; STRATA_STAGER_THREADS=12 — made the fork engine throw
+                ;; STRATA_STAGER_THREADS=12 — made the engine throw
                 ;; `non-finite logits (#879)' on EVERY request and crash-
                 ;; respawn.  Those knobs are documented for the dpct sycl/
-                ;; engine (INTEL_ARC.md); this build is the ROOT
-                ;; STRATA_ENABLE_SYCL backend, whose verify path they
-                ;; destabilise.  Reverted to the fields' defaults (spec 2,
-                ;; prefill auto, no reserve, no engine-env) = the verified
-                ;; 25 tok/s clean state.  The fields stay available; any
-                ;; re-tune must be bisected ONE knob at a time against #879.
-                ;; See the tok/s investigation: the ~2x gap to the upstream
-                ;; engine's 55-71 tok/s is architectural (root vs dpct
-                ;; backend), not a flag we can safely flip here.
+                ;; engine under the fork's OWN launcher; reintroduce them
+                ;; only one at a time, under load testing.  What remains
+                ;; below is the one env knob the soak evidence demands:
+                ;;
+                ;; STRATA_PREFILL_MMQ=0 — force the FP16 prompt-expert
+                ;; chain.  The 2026-11-12 soak (41 requests, concurrent
+                ;; waves) poisoned the engine: 10 #879 detections "in a
+                ;; prompt window" + 108 repeat-one-token events, engine
+                ;; stuck until restart.  That run's startup measurement
+                ;; ("crossover 512 rows per expert (not clear)") put ALL
+                ;; 500 expert groups on the fused int8 ESIMD chain — while
+                ;; the upstream engine's stored measurement on this same
+                ;; box chose FP16 for 500/500 and its prompt path never
+                ;; leaked.  The int8 chain is where the residual non-finite
+                ;; leak lives (its quantizers are the last unclamped-then-
+                ;; patched sites; the build now clamps them, but the soak
+                ;; shows clamps alone are not sufficient there).  FP16 was
+                ;; the measured-preferred chain on this card anyway — the
+                ;; int8 auto-measurement called its own result "not
+                ;; clear".  Decode-side q8_1 clamps (native_mmvq,
+                ;; iq_kernels) stay active; they are the validated #606
+                ;; fix for the path that actually produced the loops.
+                (engine-env '(("STRATA_PREFILL_MMQ" . "0")))
                 ;; Images, read on the CPU: `Vision` spawns the reader this
                 ;; repo builds (strata-vision in (peteches packages strata) —
                 ;; upstream's own tools/vision over llama.cpp mtmd at the
