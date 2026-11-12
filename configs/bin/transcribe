@@ -23,6 +23,20 @@ set -euo pipefail
 
 URL="${TRANSCRIBER_URL:-https://transcribe.ts.peteches.co.uk}"
 
+# TLS trust.  Guix has no /etc/ssl/certs, and curl only finds a bundle when
+# something exports SSL_CERT_FILE/SSL_CERT_DIR (nss-certs in the profile) --
+# which is not installed here, so a plain upload fails with curl's exit 60
+# ("server could not be verified") instead of a transcript.  When nothing is
+# configured, fall back to the openssl bundle that IS part of every Guix
+# System profile.
+ca=()
+if [[ -z "${SSL_CERT_FILE:-}" && -z "${CURL_CA_BUNDLE:-}" ]]; then
+  for cand in /run/current-system/profile/etc/ssl/certs/ca-certificates.crt \
+              /etc/ssl/certs/ca-certificates.crt; do
+    [[ -r "$cand" ]] && { ca=(--cacert "$cand"); break; }
+  done
+fi
+
 die() { echo "transcribe: $*" >&2; exit 1; }
 
 fmt=txt lang="" diarize=true file="" out=""
@@ -33,7 +47,7 @@ while [[ $# -gt 0 ]]; do
     -l|--language) lang="${2:?missing language}"; shift 2 ;;
     -o|--output)   out="${2:?missing output path}"; shift 2 ;;
     --no-diarize)  diarize=false; shift ;;
-    --health)      curl -fsS "$URL/health"; echo; exit 0 ;;
+    --health)      curl -fsS "${ca[@]}" "$URL/health"; echo; exit 0 ;;
     -h|--help)     sed -n '2,20p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
     -*)            die "unknown option: $1 (try --help)" ;;
     *)             [[ -z "$file" ]] || die "only one input file supported"; file="$1"; shift ;;
@@ -49,7 +63,7 @@ args=(-F "file=@${file}" -F "format=${fmt}" -F "diarize=${diarize}")
 
 # No -f: on HTTP errors print the server's (plain-text) explanation, e.g.
 # the 503 telling you the HF token for diarization is missing.
-body=$(curl -sS --max-time 3600 -w $'\n%{http_code}' "${args[@]}" "$URL/transcribe")
+body=$(curl -sS --max-time 3600 -w $'\n%{http_code}' "${ca[@]}" "${args[@]}" "$URL/transcribe")
 code="${body##*$'\n'}"
 body="${body%$'\n'*}"
 
