@@ -216,6 +216,44 @@
   ;; comment assumes q4_0 (~6 KB/token for the hybrid GDN layout).
   (kv strata-configuration-kv
       (default #f))
+  ;; Native path only.  MTP draft length: the engine proposes `spec'
+  ;; tokens per verify window and the target keeps the prefix it agrees
+  ;; with, so decode throughput scales with the acceptance rate.  The
+  ;; default 2 is what this service has always run; the fork's own B70
+  ;; setup default is 4 with a 0.5 confidence floor (docs/INTEL.md:
+  ;; "--spec 6 against --spec 4 is +6.5% on code and -1.5% on prose, so
+  ;; the setup default (4, 0.5) stays").
+  (spec strata-configuration-spec
+        (default 2))
+  ;; --spec-min-p: drafts below this model probability are not proposed
+  ;; (higher acceptance, fewer wasted verify slots).  #f omits the flag.
+  (spec-min-p strata-configuration-spec-min-p
+              (default #f))
+  ;; --prefill chunk tokens.  #f renders "auto".  INTEL.md: setup writes
+  ;; 4096 for cards >= 24 GB and recommends 8192 for a Battlemage card
+  ;; above 32K context (the chunk borrows expert-cache slots and refills
+  ;; them after the prompt, ~1 s).
+  (prefill strata-configuration-prefill
+           (default #f))
+  ;; --vram-reserve-mib: headroom the engine leaves free instead of
+  ;; sizing the expert cache to the last mebibyte.  #f omits the flag
+  ;; (engine default); the fork's B70 recipe uses 1024-2048 — without a
+  ;; reserve the auto tier first tries a cache the card cannot actually
+  ;; back ("malloc_device(31.03 GiB) failed") and retries smaller.
+  (vram-reserve-mib strata-configuration-vram-reserve-mib
+                    (default #f))
+  ;; Native path only: KEY . VALUE pairs the wrapper exports before
+  ;; exec'ing the server; the engine child inherits them (the same path
+  ;; the NEO_* and STRATA_SSD_GBPS exports take).  Values are emitted
+  ;; unquoted so they may reference earlier exports ($XDG_CACHE_HOME)
+  ;; but must not contain spaces.  The fork engine's documented runtime
+  ;; contract lives here — its own launcher (sycl/serve/strata-sycl.sh)
+  ;; sets STRATA_VERIFY_DEVICE_PLAN=1, STRATA_VERIFY_NO_HOST=1 and
+  ;; STRATA_STAGER_THREADS=12, and INTEL.md flags VERIFY_NO_HOST as
+  ;; REQUIRED on xe whenever part of the experts is not in VRAM
+  ;; ("the logits turn NaN a few tokens in" without it).
+  (engine-env strata-configuration-engine-env
+              (default '()))
   (vision strata-configuration-vision
           (default #f))
   (parallel strata-configuration-parallel
@@ -946,6 +984,39 @@
          ;; used to be hardcoded here while the `kv' field only reached
          ;; the catalog path; now the field drives both.
          (kv-native (or (strata-configuration-kv config) "q4_0"))
+         ;; --spec (and its confidence floor) as one precomputed JSON
+         ;; fragment: the draft length the MTP verify window proposes.
+         ;; Both live in the args array; --spec-min-p is omitted on #f.
+         (spec-json
+          (string-append
+           "    \"--spec\", \""
+           (number->string (strata-configuration-spec config)) "\","
+           (if (strata-configuration-spec-min-p config)
+               (string-append
+                "\n    \"--spec-min-p\", \""
+                (number->string (strata-configuration-spec-min-p config))
+                "\",")
+               "")))
+         (prefill-arg
+          (if (strata-configuration-prefill config)
+              (number->string (strata-configuration-prefill config))
+              "auto"))
+         (vram-reserve-json
+          (if (strata-configuration-vram-reserve-mib config)
+              (string-append "    \"--vram-reserve-mib\", \""
+                             (number->string
+                              (strata-configuration-vram-reserve-mib config))
+                             "\",\n")
+              ""))
+         ;; Extra `export KEY=VALUE' lines (the engine-env field): values
+         ;; unquoted so they may reference earlier exports; an empty list
+         ;; renders one blank line, which sh and the JSON both ignore.
+         (engine-env-exports
+          (string-join
+           (map (lambda (kv)
+                  (string-append "export " (car kv) "=" (cdr kv)))
+                (strata-configuration-engine-env config))
+           "\n"))
          ;; The run config's "exe" line.  With `sycl-engine' set it points
          ;; DIRECTLY at the forked engine's entrypoint in the store: an
          ;; absolute path, which strata_control's engine_component.expand()
@@ -1030,6 +1101,13 @@
          ;; this is the script that execs the engine — and it survives because
          ;; run-strata.sh is rewritten at every activation.
          #$(strata-ssd-gbps-export config)
+         ;; The fork engine's persistent measurement cache (int8 expert
+         ;; crossovers etc., re-measured at start when absent).  Under
+         ;; XDG_CACHE_HOME so it survives restarts but not reimages.
+         "mkdir -p \"$XDG_CACHE_HOME/strata-engine\""
+         "export STRATA_CACHE_DIR=\"$XDG_CACHE_HOME/strata-engine\""
+         ;; Host-configured engine environment (the engine-env field).
+         #$engine-env-exports
          (string-append "BUNDLE=" #$pkg)
          (string-append "MODEL_ROOT=" #$model-root)
          (string-append "HF_REPO=" #$hf-repo)
@@ -1133,8 +1211,9 @@
          ;; flags the abliterated IQ2_XS serves (context 32768) on the B70.
          "    \"--expert-profile\", \"$PROFILE\","
          "    \"--expert-cache\", \"auto\","
-         "    \"--prefill\", \"auto\","
-         "    \"--spec\", \"2\","
+         #$vram-reserve-json
+         (string-append "    \"--prefill\", \"" #$prefill-arg "\",")
+         #$spec-json
          (string-append "    \"--mtp\", \"$MODEL_ROOT/" #$mtp-dir "\",")
          ;; After --spec and --mtp on purpose: --batch-mtp says it "needs --mtp
          ;; and --spec", and the engine parses flags in order.
