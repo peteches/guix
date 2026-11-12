@@ -666,6 +666,43 @@ engine.")
                                 "sycl/src/kernels/cuda/bf16_gemv.dp.cpp"))
             (run (string-append grep "/bin/grep -q 'void\\* out_event) {' "
                                 "sycl/src/kernels/cuda/bf16_gemv.dp.cpp"))
+            ;;   3. the #606 clamp is missing from the fused int8 ESIMD
+            ;;      prompt-expert path (sycl/src/prefill/esimd_moe.dp.cpp,
+            ;;      two swiglu/activation quantizers): an fp16/fp32
+            ;;      activation overflow makes amax Inf, the stored block
+            ;;      scale dd = amax/127 goes Inf and x*id127 goes NaN —
+            ;;      the exact chain q8_1_finite.hpp documents.  The root
+            ;;      backend's validated fix (moe_mmq.cpp) is mirrored
+            ;;      semantically: clamp dd to the largest finite half.
+            ;;      q8_1_finite() itself cannot be called here — its
+            ;;      sycl::fabs/copysign are rejected in an ESIMD kernel —
+            ;;      so its exact expansion is spelled out as ternaries
+            ;;      (NaN passes through unchanged, as in the original).
+            ;;      The quantizer factor is derived from the CLAMPED dd:
+            ;;      finite blocks quantize as before up to a 1/d vs
+            ;;      127/amax rounding, and an Inf activation yields a
+            ;;      finite saturated block instead of poisoning the
+            ;;      residual.
+            ;;      kv_append_kernel (kernels.dp.cpp) has the same shape
+            ;;      but serves only the int8 KV cache — inert under this
+            ;;      config's --kv q4_0 — and already guards sf > 0, so it
+            ;;      is deliberately left untouched.
+            (run (string-append sed "/bin/sed -i "
+                                "'s|const float dd = amax / 127.f;|"
+                                "const float ddraw = amax / 127.f;\\n"
+                                "                    const float dd = "
+                                "ddraw > 65504.f ? 65504.f : "
+                                "(ddraw < -65504.f ? -65504.f : ddraw);|g; "
+                                "s|const float id127 = amax > 0.f ? 127.f / "
+                                "amax : 0.f;|"
+                                "const float id127 = dd > 0.f ? 1.f / dd : "
+                                "0.f;|g' "
+                                "sycl/src/prefill/esimd_moe.dp.cpp"))
+            (run (string-append "[ $(" grep "/bin/grep -c "
+                                "'ddraw > 65504.f' "
+                                "sycl/src/prefill/esimd_moe.dp.cpp) = 2 ] && [ $("
+                                grep "/bin/grep -c 'id127 = dd > 0.f' "
+                                "sycl/src/prefill/esimd_moe.dp.cpp) = 2 ]"))
             (mkdir-p engine-out)
             ;; glibc's and gcc's lib dirs on LD_LIBRARY_PATH so the
             ;; oneAPI compilers (which link libgcc_s.so.1, absent from the
