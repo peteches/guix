@@ -438,14 +438,19 @@ System service *types*, folded in from the retired `peteches` channel.
 | `boltd.scm` | `boltd-service-type` — Thunderbolt authorization daemon |
 | `caddy.scm` | `caddy-service-type` |
 | `cifs.scm` | `cifs-client-service-type` |
+| `colibri.scm` | `colibri-service-type` — Colibrì MoE inference engine (defined, not currently wired into any system) |
 | `comfyui.scm` | `comfyui-service-type` |
 | `concourse.scm` | `concourse-web-service-type`, `concourse-worker-service-type` |
 | `firewall.scm` | `firewall-service-type` |
 | `grafana.scm` | `grafana-service-type` |
 | `herdr.scm` | `herdr-server-service-type` + `herdr-server-configuration` — headless herdr agent-server supervised by the SYSTEM shepherd (no login shell, no user shepherd needed); PATH is built in the store, `command -v herdr` coverage comes from the HOME profile, not `~/.local/bin` |
 | `jellyfin.scm` | `jellyfin-service-type` |
+| `koboldcpp.scm` | `koboldcpp-service-type` — KoboldCpp text-generation server on the CUDA GPU (comfyui's RTX 4090; system-level port of the home service) |
+| `lidarr.scm` | `lidarr-service-type` — Lidarr music automation (arr VM) |
 | `loki.scm` | `loki-service-type` |
 | `media-accounts.scm` | `media-accounts-service-type` |
+| `media-normalise.scm` | `media-normalise-service-type` — nightly media-library normalisation (jellyfin VM) |
+| `nvidia.scm` | `nvidia-vm-service-type` — repo-local NVIDIA VM service type (driver/kernel-module plumbing for `with-nvidia?` systems) |
 | `nzbget.scm` | `nzbget-service-type` |
 | `outline.scm` | `outline-service-type` |
 | `pihole.scm` | `pihole-service-type` |
@@ -454,14 +459,18 @@ System service *types*, folded in from the retired `peteches` channel.
 | `prowlarr.scm` | `prowlarr-service-type` |
 | `radarr.scm` | `radarr-service-type` |
 | `restic.scm` | `restic-vm-backup-service-type` — restic backups over SFTP to Synology |
+| `rules-lawyer.scm` | `rules-lawyer-service-type` — the rules-lawyer Discord bot (agents VM); talks to strata through caddy's tailnet proxy |
 | `rustdesk.scm` | `rustdesk-service-type` |
 | `seerr.scm` | `seerr-service-type` |
+| `sillytavern.scm` | `sillytavern-service-type` — SillyTavern LLM frontend (agents VM, :8001 via caddy) |
 | `sonarr.scm` | `sonarr-service-type` |
 | `sops-key-generator.scm` | `sops-key-generator-service-type` — one-shot age keypair generation on first boot |
+| `strata.scm` | `strata-service-type` + `strata-configuration` — Strata MoE inference engine (Intel Arc SYCL, comfyui VM): native-pack models (`%native-models`), conversation parking, `sycl-engine` field serving the giridhart-fork engine binary directly (the #606 non-finite-logits fix), `firewall-sources` tailnet restriction |
 | `tailscale.scm` | `tailscale-service-type` |
 | `transmission.scm` | `transmission-service-type` |
 | `vault.scm` | `vault-service-type` |
 | `vllm.scm` | `vllm-service-type` |
+| `wireguard-socks5.scm` | `wireguard-socks5-service-type` — namespaced WireGuard + microsocks SOCKS5 split tunnel (claude-workstation; see `.claude/skills/wireguard-socks5/`) |
 
 #### `peteches/home/services/`
 
