@@ -148,6 +148,15 @@
                   (caddy-reverse-proxy
                    (domain "alltalk-ui.ts.peteches.co.uk")
                    (upstream "comfyui.spaniel-cordylus.ts.net:7852"))
+                  ;; transcriber-service-type on comfyui.scm — WhisperX
+                  ;; (transcription + speaker diarization) on the 4090,
+                  ;; lazy-loaded so it only holds VRAM during a request.
+                  ;; Single-origin FastAPI app (upload UI + POST /transcribe
+                  ;; + /health on :8787), so plain reverse-proxying works
+                  ;; with no AllTalk-style URL-rewriting concerns.
+                  (caddy-reverse-proxy
+                   (domain "transcribe.ts.peteches.co.uk")
+                   (upstream "comfyui.spaniel-cordylus.ts.net:8787"))
                   (caddy-reverse-proxy
                    (domain "sillytavern.ts.peteches.co.uk")
                    (upstream "agents.spaniel-cordylus.ts.net:8001"))

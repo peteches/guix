@@ -35,7 +35,11 @@
 			 ("wofi-dms-random-wallpaper" "bin/")
                          ("peteches-apply-matugen" "bin/")
                          ("setup-phinger-cursors" "bin/")
-                         ("colorize-phinger-cursors" "bin/"))
+                         ("colorize-phinger-cursors" "bin/")
+                         ;; CLI for the fleet WhisperX service (comfyui VM,
+                         ;; transcribe.ts.peteches.co.uk) — speaker-labelled
+                         ;; transcripts from any audio file.
+                         ("transcribe" "bin/"))
       #:phases
       #~(modify-phases %standard-phases
           (add-after 'install 'make-executable

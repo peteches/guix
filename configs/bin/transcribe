@@ -1,0 +1,66 @@
+#!/usr/bin/env bash
+# transcribe — send an audio/video file to the fleet WhisperX service
+# (comfyui VM's 4090, proxied by caddy) and print/save a transcript with
+# speaker labels ([SPEAKER_00], [SPEAKER_01], ...).
+#
+# Usage:
+#   transcribe FILE                      # txt transcript to stdout
+#   transcribe FILE -f srt -o out.srt    # SRT with speaker prefixes
+#   transcribe FILE -f json | jq         # segments with start/end/speaker
+#   transcribe FILE -l de                # force language (default: auto)
+#   transcribe FILE --no-diarize         # plain transcript (no HF token /
+#                                        #   fewer VRAM cycles)
+#   transcribe --health                  # service status
+#
+# Formats: txt (default), srt, vtt, json.
+# Endpoint override: TRANSCRIBER_URL (default https://transcribe.ts.peteches.co.uk).
+#
+# Note: first request after service idle loads whisper large-v3 + alignment
+# + pyannote models onto the GPU (~15-30s before real work starts); large
+# files can take minutes. Do not Ctrl-C early — the server keeps working.
+
+set -euo pipefail
+
+URL="${TRANSCRIBER_URL:-https://transcribe.ts.peteches.co.uk}"
+
+die() { echo "transcribe: $*" >&2; exit 1; }
+
+fmt=txt lang="" diarize=true file="" out=""
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    -f|--format)   fmt="${2:?missing format}"; shift 2 ;;
+    -l|--language) lang="${2:?missing language}"; shift 2 ;;
+    -o|--output)   out="${2:?missing output path}"; shift 2 ;;
+    --no-diarize)  diarize=false; shift ;;
+    --health)      curl -fsS "$URL/health"; echo; exit 0 ;;
+    -h|--help)     sed -n '2,20p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    -*)            die "unknown option: $1 (try --help)" ;;
+    *)             [[ -z "$file" ]] || die "only one input file supported"; file="$1"; shift ;;
+  esac
+done
+
+[[ -n "$file" ]] || die "no input file (try --help)"
+[[ -f "$file" ]] || die "not a file: $file"
+case "$fmt" in txt|srt|vtt|json) ;; *) die "format must be txt|srt|vtt|json" ;; esac
+
+args=(-F "file=@${file}" -F "format=${fmt}" -F "diarize=${diarize}")
+[[ -n "$lang" ]] && args+=(-F "language=${lang}")
+
+# No -f: on HTTP errors print the server's (plain-text) explanation, e.g.
+# the 503 telling you the HF token for diarization is missing.
+body=$(curl -sS --max-time 3600 -w $'\n%{http_code}' "${args[@]}" "$URL/transcribe")
+code="${body##*$'\n'}"
+body="${body%$'\n'*}"
+
+if [[ "$code" != 200 ]]; then
+  echo "$body" >&2
+  die "server returned HTTP $code"
+fi
+
+if [[ -n "$out" ]]; then
+  printf '%s\n' "$body" > "$out"
+  echo "transcribe: wrote $out ($(wc -c < "$out") bytes)" >&2
+else
+  printf '%s\n' "$body"
+fi

@@ -95,6 +95,7 @@
   #:use-module (peteches services koboldcpp)
   #:use-module (peteches services restic)
   #:use-module (peteches services strata)
+  #:use-module (peteches services transcriber)
   #:use-module (peteches services tailscale)
   #:use-module (peteches packages strata)
   #:use-module (gnu packages base)         ; glibc (for the /lib64 symlink)
@@ -698,6 +699,29 @@
                  ;; relative /audio/ URLs back from tts_server.py.
                  (api-public-url "https://alltalk.ts.peteches.co.uk")
                  (runtime-packages (list uv)))))
+      ;; WhisperX transcription + speaker diarization — answers "who said
+      ;; what", which AllTalk's Transcribe tab cannot (plain whisper,
+      ;; single-stream; its diarization toggle is wired to nothing).  Lazy
+      ;; model loading + 10-min idle unload: unlike AllTalk it does NOT
+      ;; squat VRAM between requests, so it coexists with ComfyUI+AllTalk
+      ;; (~4GB transient during a transcription).  API + upload UI on :8787,
+      ;; proxied by caddy as transcribe.ts.peteches.co.uk — single-origin
+      ;; FastAPI app, so none of AllTalk's two-port proxy problems apply.
+      ;; Diarization needs the gated pyannote/speaker-diarization-community-1
+      ;; model: create secrets/hosts/comfyui/hf-token.yaml (sops, key
+      ;; `token', owner transcriber) once the HF account has accepted its
+      ;; terms — until then diarize=false still transcribes.  First boot:
+      ;; `sudo herd start transcriber-sync' once (~10GB of cu128 wheels into
+      ;; /media/models/transcriber), then the daemon auto-starts on boot.
+      (service transcriber-service-type
+               (list
+                (transcriber-configuration
+                 (auto-start? #t)
+                 (project-dir "/media/models/transcriber")
+                 (cache-dir "/media/models/transcriber-cache")
+                 (container-extra-shares (list "/media/models"))
+                 (open-firewall? #t)
+                 (runtime-packages (list uv)))))
       ;; The LLM backend for every pi session on claude-workstation (all three
       ;; accounts, via configs/pi/defaults/models.json -> Caddy's
       ;; koboldcpp.ts.peteches.co.uk), but manual-start (reverted on 2026-11-07):
@@ -953,6 +977,9 @@
                                  ;; SillyTavern) — model-load failures and the
                                  ;; /api/ready startup window show up here.
                                  (cons "/var/log/alltalk/alltalk.log" "alltalk")
+                                 ;; WhisperX transcriber daemon log.
+                                 (cons "/var/log/transcriber/transcriber.log"
+                                       "transcriber")
                                  (cons "/var/log/comfyui/comfyui/update.log" "comfyui")))))
       ;; Strata — the SC117 abliterated Qwen3.8-Flash-Next (IQ2_XS) on the
       ;; Intel Arc B70 via its SYCL/Level Zero backend, run through the

@@ -296,7 +296,7 @@ Each module's header comment documents its keyword arguments — read
 | `critical-grind-outline.scm` | Outline wiki VM — Podman container + local PostgreSQL/Redis (192.168.51.203, :3000) |
 | `plane.scm` | Plane project management VM — Podman containers + PostgreSQL/Redis/RabbitMQ (192.168.51.204, :80) |
 | `claude-workstation.scm` | Jump-box VM — split-tunnel WireGuard + microsocks SOCKS5 (the desktops relay `ygo-server`/`ygoswiss1`/`ygoswiss2` ssh through it), tailscale, alloy; ONE home environment (`peteches`) + a plain `ygo` login account. Claude Code, the `criticalgrind` account and the Postgres/Podman dev-DB stack are gone. It is **not** a deploy origin any more: the automation SSH key it used to decrypt moved to `agents` on 2026-11-05 and its signing key was dropped from `%authorize-coordinator-key` (it had gone stale with the 2026-10-27 MinIO-image rebuild) (192.168.51.205) |
-| `comfyui.scm` | ComfyUI VM — RTX 4090 GPU passthrough with nonguix driver/CUDA; successor to nug's desktop-hosted comfyui. Also runs strata (Intel Arc B70) and AllTalk TTS (XTTS on the 4090) (192.168.51.206) |
+| `comfyui.scm` | ComfyUI VM — RTX 4090 GPU passthrough with nonguix driver/CUDA; successor to nug's desktop-hosted comfyui. Also runs strata (Intel Arc B70), AllTalk TTS (XTTS on the 4090) and the WhisperX transcriber (speaker-labelled transcripts, :8787) (192.168.51.206) |
 | `guix-build.scm` | Guix substitute server + build-offload target VM — successor to nug's guix-publish/offload role; signs with `guix-build-substitute-key.pub` (192.168.51.207). Holds BOTH offload trust lists: `guix-offload-authorized-keys` (ssh logins) and `guix-offload-signing-keys` (archive pushes). Until 2026-11-05 the second held one stale key; it now carries every offloader's live key, and `rustdesk` + `nyarlothotep` are the known gap (in the ssh list, no archive key, both unreachable when it was audited) |
 | `agents.scm` | "agents" VM — rules-lawyer Discord bot + SillyTavern + `pi` for the peteches account (home-environment from `peteches/home/configs/agents-peteches.scm`); LLM/stable-diffusion offloaded to other VMs; it also runs the **herdr server** — supervised by the
   system shepherd as `herdr-server-peteches` (`peteches/services/herdr.scm`) —
@@ -423,7 +423,7 @@ culminating package(s) — most of their content is transitive deps.
 | `tailscale.scm` | `tailscale` |
 | `terraform.scm` | `terragrunt` |
 | `vault.scm` | `vault` |
-| `desktop-scripts.scm` | `peteches-desktop-scripts` — packages `configs/bin/`. Scripts must be listed explicitly in `#:install-plan`. Already local (source lives in this repo) |
+| `desktop-scripts.scm` | `peteches-desktop-scripts` — packages `configs/bin/`, including `transcribe` (CLI for the fleet WhisperX service). Scripts must be listed explicitly in `#:install-plan`. Already local (source lives in this repo) |
 | `claude-completion.scm` | `claude-completion` — packages `configs/claude/claude-completion.bash` as `share/bash-completion/completions/claude`. **Unconsumed** — `base-packages` dropped it when Claude Code came off the desktops. Already local |
 | `emacs-anvil.scm` | `emacs-anvil` — packages anvil.el + `anvil-stdio.sh`; consumed only by `(peteches home modules base)` now (its other consumer, `(peteches home modules claude-workstation)`, was deleted). Already local |
 | `docker-compose.scm` | `docker-compose` plugin packaging. Already local |
@@ -468,6 +468,7 @@ System service *types*, folded in from the retired `peteches` channel.
 | `sops-key-generator.scm` | `sops-key-generator-service-type` — one-shot age keypair generation on first boot |
 | `strata.scm` | `strata-service-type` + `strata-configuration` — Strata MoE inference engine (Intel Arc SYCL, comfyui VM): native-pack models (`%native-models`), conversation parking, `sycl-engine` field serving the giridhart-fork engine binary directly (the #606 non-finite-logits fix), `firewall-sources` tailnet restriction |
 | `tailscale.scm` | `tailscale-service-type` |
+| `transcriber.scm` | `transcriber-service-type` + `transcriber-configuration` — WhisperX (faster-whisper ASR + wav2vec2 alignment + pyannote diarization) on the 4090, answering "who said what" where AllTalk's Transcribe tab cannot; FastAPI upload UI + `POST /transcribe` on :8787 (comfyui VM), lazy model load + idle unload so it does not squat VRAM. Diarization needs the gated pyannote model → `secrets/hosts/comfyui/hf-token.yaml` decrypted to `/run/secrets/hf-token`; `transcriber-sync` one-shot builds the venv on first boot |
 | `transmission.scm` | `transmission-service-type` |
 | `vault.scm` | `vault-service-type` |
 | `vllm.scm` | `vllm-service-type` |
