@@ -1,21 +1,56 @@
-"""LoadImageFromBase64OrUrl — tolerant avatar loader for SillyTavern's char_avatar token.
+"""LoadImageFromBase64OrUrl — tolerant avatar/reference loader for SillyTavern.
 
-SillyTavern's ComfyUI integration performs a *textual* substitution on the
-serialized workflow: it replaces the string token `"char_avatar"` (with its
-quotes) by `JSON.stringify(avatarBase64)` — i.e. the base64 of the character
-card avatar WITHOUT any `data:image/png;base64,` prefix. The widget value that
-arrives at ComfyUI is therefore one of:
+WHY THIS NODE EXISTS
+--------------------
+SillyTavern's ComfyUI integration performs a purely *textual* substitution on
+the serialized workflow JSON (verified against ST 1.19.0,
+public/scripts/extensions/stable-diffusion/index.js:4221-4290). It only ever
+replaces a token that appears as a COMPLETE, STANDALONE QUOTED STRING VALUE,
+and the pattern includes the percent signs and the quotes:
 
-  * bare base64 (ST injected a real avatar)       -> "iVBORw0KGgo..."
-  * the literal token string, unsubstituted        -> "char_avatar"
-    (e.g. testing the workflow directly in ComfyUI's Web UI)
+    workflow.replaceAll('"%prompt%"',        JSON.stringify(prompt))
+    workflow.replaceAll('"%char_avatar%"',   JSON.stringify(avatarBase64))
+    workflow.replaceAll('"%user_avatar%"',   JSON.stringify(avatarBase64))
+    workflow.replaceAll('"%<find>%"',        JSON.stringify(substituteParams(replace)))
 
-ArtVenture's LoadImageFromUrl cannot handle case 1: it requires a
-`data:image/...;base64,` prefix (it splits on "," and decodes part [1]), and
-falls through to a file/URL branch otherwise, raising "Invalid url" or
-binascii "Incorrect padding". This node accepts all of the above plus ordinary
-URLs, so no client-side concatenation is needed: set the widget value to
-exactly `char_avatar`.
+Two consequences that bit this repo before:
+
+  * The widget value must be exactly  %char_avatar%  — NOT  char_avatar.
+    ST gates the avatar fetch itself behind  /%char_avatar%/gi.test(workflow),
+    so a percent-less token means ST never even looks up an avatar and the
+    literal string reaches this node.
+  * A token embedded in a longer string (e.g. "moss_xvstyle %prompt%") is
+    NEVER substituted and arrives verbatim.
+
+The injected avatar is base64 with NO `data:image/png;base64,` prefix (ST takes
+`dataUrl.split(',')[1]`). ArtVenture's LoadImageFromUrl requires that prefix and
+therefore cannot consume ST's output — hence this node.
+
+WHAT THIS NODE ACCEPTS
+----------------------
+  * bare base64                       -> the SillyTavern case
+  * a full `data:image/...;base64,` URI
+  * an http(s) URL                    -> fetched server-side
+  * a filename in ComfyUI's input dir -> for Web-UI testing
+  * anything "missing" (see below)    -> handled per `on_missing`
+
+"MISSING" IS A NORMAL STATE, NOT AN ERROR
+-----------------------------------------
+ST substitutes PNG_PIXEL (a 1x1 white PNG) whenever it cannot fetch an avatar,
+and group-chat workflows deliberately leave extra reference slots unset. All of
+these mean "no reference here":
+
+  * empty / whitespace
+  * an unsubstituted built-in token: %char_avatar%, %user_avatar%, char_avatar
+  * an unsubstituted custom placeholder: %ref3%, %anything%
+  * an unexpanded ST macro: {{getvar::foo}}, {{char}}, ... (a custom
+    placeholder whose variable is unset expands to nothing or stays literal)
+  * the literal strings "undefined" / "null" (what an unset {{getvar::}} can
+    produce once JSON.stringify'd through a custom placeholder)
+  * ST's PNG_PIXEL, by VALUE — a 1x1 pure-white pixel
+
+The last one is deliberately a value check, not a size check: a real 1x1 avatar
+uploaded on purpose is legitimate, so size alone must never trigger this.
 
 Outputs match comfy's LoadImage (IMAGE + MASK) so it feeds ImageScale ->
 TextEncodeMOSSImageEdit unchanged.
@@ -23,6 +58,7 @@ TextEncodeMOSSImageEdit unchanged.
 
 import os
 import io
+import re
 import base64
 import torch
 import numpy as np
@@ -30,6 +66,38 @@ from PIL import Image, ImageOps
 
 import requests
 import folder_paths
+
+
+# ST's PNG_PIXEL constant, substituted for "%char_avatar%"/"%user_avatar%" when
+# the avatar cannot be fetched. MUST match ST's own constant verbatim
+# (public/scripts/extensions/stable-diffusion/index.js: `const PNG_PIXEL = ...`).
+PNG_PIXEL_B64 = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII="
+
+# An unsubstituted ST placeholder: anything wrapped in percent signs.
+# Deliberately ONLY the %-wrapped form — matching a bare "..._avatar" word would
+# false-positive on legitimate input-dir filenames such as `my_avatar.png`.
+_TOKEN_RE = re.compile(r"^%[^%\s]+%$")
+# The two bare (percent-less) spellings that appear in older workflow files and
+# in ComfyUI's own widget defaults. Exact match only.
+_BARE_TOKENS = {"char_avatar", "user_avatar"}
+# An unexpanded SillyTavern macro: {{getvar::x}}, {{char}}, {{// comment}}, ...
+_MACRO_RE = re.compile(r"\{\{.*?\}\}", re.DOTALL)
+# What an unset variable can serialize to.
+_NULLISH = {"", "undefined", "null", "none", "nan"}
+
+
+def _is_missing_token(text: str) -> bool:
+    """True when `text` is clearly an unsubstituted placeholder rather than data."""
+    t = text.strip()
+    if t.lower() in _NULLISH:
+        return True
+    if t in _BARE_TOKENS:
+        return True
+    # A macro that never expanded. (A data: URI / URL cannot contain one.)
+    if _MACRO_RE.search(t):
+        return True
+    # %prompt%, %char_avatar%, %ref3%, %any_custom_placeholder%, ...
+    return bool(_TOKEN_RE.match(t))
 
 
 def _pil_to_tensor(i: Image.Image):
@@ -48,14 +116,7 @@ def _pil_to_tensor(i: Image.Image):
 
 
 def _is_no_avatar(p: Image.Image) -> bool:
-    """True when p is ST's PNG_PIXEL placeholder (1x1 white).
-
-    Two ways to be 'no avatar': the base64 equals ST's PNG_PIXEL constant, or it
-    decodes to a single pixel whose RGB is white — which is what that constant is.
-    A 1x1 image is NOT sufficient evidence: real avatars can legitimately be 1x1
-    when the card author uploaded one deliberately (observed in the wild), so
-    size alone must never trigger this. The value check is what makes it safe.
-    """
+    """True when p is ST's PNG_PIXEL placeholder (1x1 pure white)."""
     return p.size == (1, 1) and p.convert("RGB").getpixel((0, 0)) == (255, 255, 255)
 
 
@@ -68,15 +129,6 @@ def _decode_b64(s: str) -> Image.Image:
     return Image.open(io.BytesIO(raw))
 
 
-# ST's PNG_PIXEL constant (1x1 px), used when a character/persona has no avatar.
-# MUST match ST's own constant (/srv/sillytavern/public/scripts/extensions/
-# stable-diffusion/index.js, `const PNG_PIXEL = ...`): that is the base64 ST
-# substitutes for "%char_avatar%" when it cannot fetch the avatar. It is also a
-# real 1x1 white pixel, so an unrelated character's avatar can be detected by
-# value rather than guessed at — see _is_no_avatar() below.
-PNG_PIXEL_B64 = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII="
-
-
 class LoadImageFromBase64OrUrl:
     def __init__(self):
         self.output_dir = folder_paths.get_input_directory()
@@ -86,7 +138,17 @@ class LoadImageFromBase64OrUrl:
         return {
             "required": {
                 "image": ("STRING", {"default": "", "multiline": True,
-                                     "tooltip": 'Paste base64, a data: URI, an http(s) URL, or use SillyTavern\'s char_avatar token'}),
+                                     "tooltip": 'Paste base64, a data: URI, an http(s) URL, or use SillyTavern\'s %char_avatar% / %user_avatar% token (percent signs required, and it must be the whole value).'}),
+            },
+            # OPTIONAL on purpose, and defaulted: a workflow that omits it stays
+            # valid against the previously-deployed revision of this node (which
+            # only had `image`), so the workflow-side %char_avatar% fix does not
+            # have to wait on a node redeploy. ComfyUI applies `default` when the
+            # key is absent from API-format JSON.
+            "optional": {
+                "on_missing": (["transparent_1px", "error"], {
+                    "default": "transparent_1px",
+                    "tooltip": "What to do when no usable reference arrived. 'transparent_1px' degrades gracefully (Web-UI testing, characters without avatars, unset group-chat slots); 'error' fails the prompt loudly so you notice a missing token."}),
             },
         }
 
@@ -95,37 +157,53 @@ class LoadImageFromBase64OrUrl:
     FUNCTION = "load"
     CATEGORY = "peteches/SillyTavern"
 
-    def load(self, image: str):
-        text = image.strip()
-        if not text or "char_avatar" in text or "user_avatar" in text:
-            # placeholder unsubstituted (Web-UI test) or empty -> inert 1x1 reference
-            i = _decode_b64(PNG_PIXEL_B64)
-        elif text.startswith("data:image/"):
-            i = _decode_b64(text.split(",", 1)[1])
+    def _missing(self, why: str, on_missing: str):
+        if on_missing == "error":
+            raise ValueError(f"No usable reference image: {why}")
+        # Inert 1x1 so the graph still executes. NOTE: a 1x1 reference must be
+        # upscaled before TextEncodeMOSSImageEdit or its VAE-encode dies with
+        # "Kernel size can't be greater than actual input size" — keep the
+        # ImageScale node in the workflow.
+        print(f"[peteches/SillyTavern] no reference ({why}); using inert 1x1")
+        return _pil_to_tensor(_decode_b64(PNG_PIXEL_B64))
+
+    def load(self, image: str, on_missing: str = "transparent_1px"):
+        text = (image or "").strip()
+
+        if not text or _is_missing_token(text):
+            return self._missing(f"placeholder not substituted or unset: {text[:60]!r}", on_missing)
+
+        if text.startswith("data:image/"):
+            try:
+                i = _decode_b64(text.split(",", 1)[1])
+            except Exception as e:
+                return self._missing(f"unparsable data: URI ({e})", on_missing)
             if _is_no_avatar(i):
-                raise ValueError(
-                    "Avatar is a 1x1 white pixel — SillyTavern sent its PNG_PIXEL "
-                    "placeholder, so this character has no usable avatar. Add one to "
-                    "the character card (Character > Avatar) or switch to a workflow "
-                    "without reference conditioning.")
-        elif text.startswith("data:image/"):
-            i = _decode_b64(text.split(",", 1)[1])
+                return self._missing("data: URI was ST's 1x1 PNG_PIXEL", on_missing)
+
         elif text.startswith("http://") or text.startswith("https://"):
             resp = requests.get(text, timeout=10)
             resp.raise_for_status()
             i = Image.open(io.BytesIO(resp.content))
+            if _is_no_avatar(i):
+                return self._missing("URL returned a 1x1 white pixel", on_missing)
+
         else:
-            # bare base64 (the ST case); if that fails treat as input-dir filename
+            # Bare base64 (the SillyTavern case); fall back to an input-dir filename.
             try:
                 i = _decode_b64(text)
             except Exception:
                 path = folder_paths.get_annotated_filepath(text)
                 if not path or not os.path.isfile(path):
-                    raise ValueError(f"Invalid avatar input: {text[:60]!r}")
+                    return self._missing(f"not base64, URL, data: URI or input file: {text[:60]!r}", on_missing)
                 i = Image.open(path)
+            # ST sends PNG_PIXEL bare (no data: prefix) when a character has no
+            # avatar — this is the branch that must catch it, and the one the
+            # previous revision missed.
+            if _is_no_avatar(i):
+                return self._missing("ST sent its 1x1 PNG_PIXEL (character has no avatar)", on_missing)
 
-        t, m = _pil_to_tensor(i)
-        return (t, m)
+        return _pil_to_tensor(i)
 
 
 NODE_CLASS_MAPPINGS = {"LoadImageFromBase64OrUrl": LoadImageFromBase64OrUrl}

@@ -1,8 +1,14 @@
-* SillyTavern ⇄ ComfyUI workflows (tiers A, C, F)
+* SillyTavern ⇄ ComfyUI workflows (tiers A, C, F, F', F'')
 
-Verified on the =comfyui= VM (RTX 4090 passthrough) with **ComfyUI 0.43.0** on
-2026-10-30. All three workflows were executed end-to-end on the real GPU and the
-output PNGs have the expected dimensions.
+Tiers A / C / F were executed end-to-end on the real GPU (RTX 4090 passthrough,
+**ComfyUI 0.43.0**) on 2026-10-30 and the output PNGs have the expected
+dimensions.
+
+Tiers F' / F'' (the character-reference ones) were **schema-validated against
+the live ComfyUI 0.43.0 =/object_info=** — every =class_type=, required input,
+link, output index and combo enum — with SillyTavern's substitution simulated in
+source order, and they pass clean. They have **not** been GPU-run since the
+fixes below; see "Test plan" at the end of this file.
 
 Files are **API-format** workflow JSON (the format SillyTavern's ComfyUI
 integration expects — ComfyUI's "Save (Format) → API"). Identical copies are also
@@ -97,97 +103,268 @@ bounding-box layout prompts (=MOSSImageLayoutPrompt= node) and multi-object
 composition; its LoRA ecosystem is far thinner than the 456 SDXL LoRAs already
 on disk, so treat it as an addition, not a replacement.
 
-* Tier F' — =sillytavern_moss_sft_4step_ref.json= (MOSS-Image + character reference)
+* Tier F' — =sillytavern_moss_sft_4step_ref.json= (MOSS-Image + ONE character reference)
 
-Same DiT / encoder / VAE / 4-step sampler as Tier F, plus an uploaded
-character reference. **There is no IPAdapter for MOSS-Image on this host** —
-ComfyUI 0.43.0 has =IPAdapterApply (SEGS)= only (Impact Pack, SD-era) and no
-InsightFace nodes at all (=InsightFaceAnalyzer= / =FaceAnalysis= absent), so the
-classic face-ID adapter path is unavailable for this architecture. The native
-equivalent that does exist is the **edit-model reference-latent** route:
+Same DiT / encoder / VAE as Tier F, plus the current character's avatar as an
+identity reference. This is the "consistent character across a story" tier: the
+model is told the reference image *is* the character, so red hair stays the same
+red and blue eyes stay the same blue from scene to scene instead of merely
+matching a text description.
 
-| Node | Role |
-|------|------|
-| =14 LoadImageFromBase64OrUrl= (=custom_nodes/peteches_sillytavern_nodes=) | character avatar — ST injects its raw base64 over the =char_avatar= token; widget value is exactly =char_avatar=, see "How the avatar arrives" below |
-| =14 LoadImageFromBase64OrUrl= (=custom_nodes/peteches_sillytavern_nodes=) | character avatar — ST injects its raw base64 over the =char_avatar= token; widget value is exactly =char_avatar=, see "How the avatar arrives" below |
-| =20 ImageScale= (lanczos, 1024×1024 center) | **mandatory** — upscales the tiny avatar before VAE-encode; a raw ST avatar (small square, or 1×1 when the character has none) crashes =TextEncodeMOSSImageEdit= with "Kernel size can't be greater than actual input size" |
-| =17 TextEncodeMOSSImageEdit= | positive conditioning from the edit instruction + =%prompt%= + the reference (=edit_format=ai-toolkit=, =vae=3=). Its =images= slot is a ComfyUI-v3 *Autogrow* input: in API format (what ST sends) it must be spelled as the flat dotted key ="images.image_0": ["20", 0]= — neither ="images": [link]= nor ="images": {"image_0": [link]}= validates |
-| =19 ConditioningCombine= | merges =17= with the existing trigger-phrase + prompt branch (=8=), so =moss_xvstyle= keeps working |
-| =4 LoraLoaderModelOnly= | **where a MOSS-Image edit LoRA goes** — see caveat 1 |
-| =19 ConditioningCombine= | merges =17= with the existing trigger-phrase + prompt branch (=8=), so =moss_xvstyle= keeps working |
-| =4 LoraLoaderModelOnly= | **where a MOSS-Image edit LoRA goes** — see caveat 1 |
+**Three things were broken in the previous revision of this file.** All three
+were verified against ST 1.19.0 source on =agents= and the live ComfyUI 0.43.0
+schema; they are the reason references appeared to do nothing:
 
-Caveats, in the order that matters:
+| # | Bug | Effect | Fix |
+|---+-----+--------+-----|
+| 1 | Node 14's widget was =char_avatar= — **no percent signs** | ST gates the avatar *fetch* behind =/%char_avatar%/gi.test(workflow)= and substitutes ='"%char_avatar%"'= (quotes and percents included). A percent-less token means ST never looks up an avatar at all; the literal string reached the node, which returned its inert 1×1. **The reference was always a white pixel.** | widget is now ="%char_avatar%"= |
+| 2 | Node 7 was ="moss_xvstyle %prompt%"= | A token *embedded in a longer string* is never substituted (ST's pattern is the whole quoted value). The literal text =moss_xvstyle %prompt%= was being fed to the CLIP encoder as conditioning. | Node removed; the prompt now enters via =StringConcatenate= (below) |
+| 3 | =steps: 4= but node 21 had **replaced** the speed LoRA with the edit LoRA | 4 steps with no =moss_image_sft_4step_v2.0= is badly underbaked; =cfg: 5.0= and a 512² latent were compensating for it. | Both LoRAs are **chained** (=1 → 4 → 21 → 11=), so 4 steps / cfg 1.0 / 1024² is the verified recipe again |
 
-1. **Identity transfer needs an edit-capable model or LoRA.** No MOSS-Image edit
-   LoRA is installed (=loras= has only =moss_image_sft_4step_v2.0.safetensors=;
-   no MOSS-Edit DiT in =diffusion_models=). Without one the reference latents are
-   encoded but the model is not trained to consume them — expect weak or nil face
-   fidelity. The reliable route to consistent characters is still a **trained
-   character LoRA** in node 4, or tier A/C where IPAdapter-style tooling exists.
-2. **CFG 1.0 makes the negative inert** — ComfyUI only evaluates the positive at
-   =cfg=1.0=, so =9= is decoration here; it matters if you raise CFG for the
-   50-step recipe. (A reference-conditioned negative node was tried and dropped:
-   =TextEncodeMOSSImageEdit= wants an edit instruction, not booru tags.)
-3. **The reference must be pre-scaled** — =TextEncodeMOSSImageEdit= does not
-   scale (its description says to scale first), and its VAE-encode of the
-   reference fails outright on small inputs. Node 20 (=ImageScale= → 1024²)
-   is therefore part of the graph, not an optimization. Raise =width=/=height=
-   only in step with what a MOSS edit LoRA expects (most ai-toolkit edit
-   trainers condition at ~512–1024).
+Also corrected: latent and reference scale are back to **1024×1024** (matching
+Tier F, which was GPU-verified) and the =_meta= titles no longer claim values
+the nodes don't have.
 
-How the avatar arrives — verified against ST 1.19.0 source on =agents=:
+**Caveat 1 in the old revision is stale** — =moss_image_edit_lora_bf16.safetensors=
+*is* installed now (confirmed in the live LoRA list, 459 entries). So identity
+transfer has a trained consumer; it is no longer "reference latents encoded into
+a model that ignores them".
 
-- **ST's ComfyUI integration never uploads images.**
-  =/srv/sillytavern/src/endpoints/stable-diffusion.js= =comfy.post('/generate')=
-  POSTs =request.body.prompt= straight to =<url>/prompt= and polls
-  =/history/<id>=; there is no =/upload/image= call in the server or in
-  =public/scripts/extensions/stable-diffusion/index.js=. An upload therefore has
-  to happen out of band — unless the workflow takes the avatar as data, which
-  this one now does.
-- **Built-in avatar token (the route this workflow uses):** ST's ComfyUI path
-  detects =char_avatar= anywhere in the serialized workflow and substitutes it
-  inline: =workflow.replaceAll('"char_avatar"', JSON.stringify(avatarBase64))=
-  where =avatarBase64= is the *character card* avatar, base64-encoded **without**
-  any =data:image/png;base64,= prefix (the =,split(',')[1]= of a data URL). It is
-  a purely textual swap on the JSON text, so:
-  - the token must appear as its **own quoted string value** in the workflow
-    file — =char_avatar= alone works; ="data:image/png;base64," + char_avatar=
-    or an embedded =\"char_avatar\"= do **not** match the pattern and would be
-    sent literally (this is what caused the earlier binascii "Incorrect padding"
-    failure);
-  - no client can concatenate the data-URI prefix onto it, so a loader that
-    wants the prefix (ArtVenture =LoadImageFromUrl=) cannot accept ST's output.
-- **The custom node fixes exactly that gap.**
-  =custom_nodes/peteches_sillytavern_nodes/moss_avatar_loader.py= registers
-  =LoadImageFromBase64OrUrl=, which accepts bare base64 (the ST case), a full
-  data: URI, an http(s) URL, or an input-directory filename, and treats the
-  unsubstituted token as "no avatar" by decoding ST's own 1×1 =PNG_PIXEL=
-  constant — so Web-UI testing and characters without avatars degrade
-  gracefully instead of crashing. Deployed on the comfyui host at
-  =/srv/comfyui/custom_nodes/peteches_sillytavern_nodes/= (restart the ComfyUI
-  service to pick up changes; it is a shepherd-managed =guix shell --container=
-  process, =pkill -f "python3 main.py --listen"= triggers its auto-restart).
-- **Gotcha:** the =char_avatar= substitution happens in the *browser* only on
-  the ST generation path. Testing this workflow directly in ComfyUI's Web UI
-  leaves =char_avatar= literal; the custom node then substitutes an inert 1×1
-  reference (or put a real URL / data: URI there for manual tests).
-- **Custom placeholder route (fallback):** =comfy_placeholders=
-  =[{find, replace}]= entries replace ="<find>"= with =replace= run through
-  ST's macro engine — still useful for per-character LoRA names etc., but not
-  needed for the avatar any more.
-- =LoadImageFromUrl= also accepts plain =https://= URLs and =/view?= ComfyUI
-  file links, so an agents-served avatar URL would work too if you ever prefer
-  that (needs a TS/Caddy endpoint in front of ST's =/characters/*= static route).
+** How the prompt references the image
 
-Validated at runtime on the live ComfyUI 0.43.0 host (2026-10-31): enqueued
-with a real 1×1 base64 PNG substituted for =%char_avatar%= and concrete model
-names, the graph executed end-to-end (=success=, ~7 s) — proving both the
-="images.image_0"= API-format key and the mandatory ImageScale. An earlier
-build without node 20 passed validation but died executing node 17; a build
-with ="images": {"image_0": …}= (nested dict) failed validation again with
-=required_input_missing / images.image_0=. ST sends exactly this API format,
-so the workflow file ships with the dotted key.
+=TextEncodeMOSSImageEdit= takes an **edit instruction**, not a tag soup, and its
+own description says: "Encodes an edit instruction with reference images … The
+references are used at the size they come in, **scale them first**."
+
+But ST only substitutes ="%prompt%"= when it is a *standalone quoted value*, so
+the instruction and the scene prompt cannot share one string. The graph
+therefore joins them with the native =StringConcatenate= node
+(=comfy_extras.nodes_string=, inputs =string_a= / =delimiter= / =string_b=):
+
+| Node | Slot | Content |
+|------+------+---------|
+| =22 StringConcatenate= | =string_a= | the **fixed edit instruction** — "the provided reference image is the single source of truth for this character's identity; keep face, hair colour, eye colour, skin tone, build unchanged; only pose/framing/expression/clothing/lighting/setting may differ" |
+| | =delimiter= | newline |
+| | =string_b= | ="%prompt%"= — ST's scene text, substituted correctly because it is the whole value |
+| =17 TextEncodeMOSSImageEdit= | =prompt= | ← =22= (a link, not a literal) |
+
+Put any LoRA trigger token at the **start of =string_a=** — that is where ST's
+=prompt_prefix= and per-character prompt also land, and it is the only place a
+trigger can live without breaking the =%prompt%= substitution.
+
+** Mandatory =ImageScale=
+
+Node 20 (lanczos → 1024², center crop) is part of the graph, not an
+optimization. ST avatars are small squares — and 1×1 when a character has no
+avatar — and =TextEncodeMOSSImageEdit='s VAE-encode of the reference dies with
+"Kernel size can't be greater than actual input size". Keep the scale target
+equal to =EmptyLatentImage='s size.
+
+** Autogrow =images= input — API-format spelling
+
+=images= is a ComfyUI-v3 *Autogrow* input (verified from =/object_info=:
+prefix =image_=, **min 1, max 10**). In API format — which is what ST sends —
+each slot must be a **flat dotted key**:
+
+#+begin_src json
+"images.image_0": ["20", 0]
+#+end_src
+
+Neither ="images": [link]= nor ="images": {"image_0": [link]}= validates
+(=required_input_missing / images.image_0=).
+
+** Deploy status
+
+This file works against the **currently deployed** node revision: ST substitutes
+=%char_avatar%= into bare base64, which the old loader already decodes. No node
+redeploy is needed for Tier F'.
+
+* Tier F'' — =sillytavern_moss_sft_4step_ref_group.json= (up to FOUR references, group chats)
+
+For group scenes where more than one character must stay consistent. Identical
+model chain to Tier F'; the only differences are four reference slots and an
+instruction that keeps the identities from bleeding into each other.
+
+| Slot | Loader node | Token | Source |
+|------+-------------+-------+--------|
+| =images.image_0= | 14 | ="%char_avatar%"= | **built-in** |
+| =images.image_1= | 30 | ="%ref2%"= | custom placeholder |
+| =images.image_2= | 32 | ="%ref3%"= | custom placeholder |
+| =images.image_3= | 34 | ="%ref4%"= | custom placeholder |
+
+Each loader has its own =ImageScale= (20 / 31 / 33 / 35) feeding its slot.
+
+** Why not just use =%char_avatar%= four times
+
+ST has exactly **two** built-in image tokens, =%char_avatar%= and =%user_avatar%=,
+and =%char_avatar%= is **non-deterministic in group chats**. From
+=getCharacterAvatarUrl()= (=index.js:3269=):
+
+#+begin_src js
+if (context.groupId) {
+    const lastMessageAvatar = /* last non-user, non-system message */ ?.original_avatar;
+    const randomMemberAvatar = groupMembers[Math.floor(Math.random() * groupMembers.length)];
+    return formatCharacterAvatar(lastMessageAvatar || randomMemberAvatar);
+}
+#+end_src
+
+So in a group it is whoever spoke last, else a **random member**. That is fine
+for a single-character insert; it is useless for "render Amy on the left and
+Beth on the right". Deterministic casting has to come from custom placeholders.
+
+** Custom placeholders can carry base64 — and can alias the built-ins
+
+=comfy_placeholders= entries are =[{find, replace}]=; ST applies
+=replaceAll('"%<find>%"', JSON.stringify(substituteParams(replace)))=. Two
+properties make this sufficient:
+
+1. =substituteParams= is ST's full macro engine, and ={{getvar::name}}= /
+   ={{getglobalvar::name}}= are registered macros (=public/scripts/variables.js:249,259=).
+   So a chat variable holding raw base64 can be injected as an image reference.
+2. **Custom placeholders run BEFORE the avatar substitutions.** The order in
+   =generateComfyImageCommon= is: built-in scalars (=model/vae/sampler/…=) →
+   =comfy_placeholders= → =%user_avatar%= → =%char_avatar%=. A custom
+   placeholder whose =replace= is literally =%user_avatar%= therefore still gets
+   resolved by the later avatar pass — you can **alias** a slot to either
+   built-in, and per-slot ordering becomes fully controllable.
+
+Recipe for deterministic group casting:
+
+| find | replace | Effect |
+|------+---------+--------|
+| =ref2= | =%user_avatar%= | slot 2 = your persona's avatar |
+| =ref2= | ={{getvar::beth_b64}}= | slot 2 = whatever b64 an STscript put in =beth_b64= |
+| =ref3= | ={{getglobalvar::cast_beth}}= | global (cross-chat) variant |
+
+Set these in Settings → Image Generation → the ComfyUI workflow editor's
+"Add placeholder" rows.
+
+** Unused slots must be DELETED, not left unset
+
+There is no way to remove a JSON key by textual substitution, so an unset slot
+still feeds *something* to the encoder. With the **updated** loader an unset
+slot decodes to the inert 1×1 and node 22's instruction tells the model to
+ignore blank/solid-colour squares; with the **old** loader it hard-fails
+(=%ref3%= base64-decodes to 3 garbage bytes, =Image.open= raises, the input-dir
+fallback misses, =ValueError=). Either way it is wasted conditioning.
+
+To run with fewer references, delete the loader + its =ImageScale= + the
+matching ="images.image_N"= key in node 17 (ST's workflow editor is a plain JSON
+textarea, so this is a 10-second edit). Slots need not be contiguous — Autogrow
+keys are named, so =image_0= + =image_2= is legal.
+
+** Adding more slots
+
+Autogrow allows **10**. Duplicate a loader+=ImageScale= pair and add
+="images.image_4": ["<scale_id>", 0]= etc. Each extra reference is one more
+1024² VAE encode, so if it gets slow drop the latent *and every* =ImageScale=
+target to 512 together.
+
+** Deploy status — needs the updated node
+
+Unlike Tier F', this file **requires** the revised
+=custom_nodes/moss_avatar_loader.py= if any custom placeholder is left unset
+(see above). If all four slots always receive real base64, the old node also
+works.
+
+* The custom node — =custom_nodes/moss_avatar_loader.py=
+
+Registers =LoadImageFromBase64OrUrl= ("Load Image From Base64/URL/char_avatar",
+category =peteches/SillyTavern=), outputs =IMAGE= + =MASK= like comfy's
+=LoadImage= so it feeds =ImageScale → TextEncodeMOSSImageEdit= unchanged.
+
+Accepts bare base64 (the ST case), a =data:image/...;base64,= URI, an =http(s)=
+URL, or a filename in ComfyUI's input directory (Web-UI testing).
+
+Revised to treat "no reference" as a *normal state* rather than an error. All of
+these mean "nothing here": empty/whitespace; an unsubstituted built-in
+(=%char_avatar%=, =char_avatar=); an unsubstituted custom placeholder (=%ref3%=,
+=%anything%=); an unexpanded macro (={{getvar::foo}}=); the literal strings
+=undefined= / =null=; and ST's =PNG_PIXEL= **by value** (1×1 pure white). The
+value check matters — a deliberate 1×1 avatar is legitimate, so size alone must
+never trigger it.
+
+Two real defects fixed:
+
+- A **duplicated** =elif text.startswith("data:image/")= branch made the second
+  one dead code, and the first *raised* on a 1×1 white pixel while the =else=
+  branch (bare base64 — the actual ST path) did **not** check at all. So ST's
+  own =PNG_PIXEL= fallback silently became a white reference instead of being
+  detected. Detection is now in one place, on every path.
+- Token matching was a substring test (="char_avatar" in text=), which also
+  misfires on legitimate filenames such as =my_avatar.png=. It is now an exact
+  =^%[^%\s]+%$= match plus an explicit allow-list of the two bare spellings.
+
+New **optional** =on_missing= widget (default =transparent_1px=, alternative
+=error=). Optional on purpose: workflows that omit it stay valid against the
+previously deployed revision, so the workflow-side =%char_avatar%= fix did not
+have to wait on a node redeploy. Set it to =error= while debugging to make a
+missing token fail loudly instead of rendering a white square.
+
+Deployed at =/srv/comfyui/custom_nodes/peteches_sillytavern_nodes/= on the
+=comfyui= VM. It is a shepherd-managed =guix shell --container= process: copy
+the file in and =pkill -f "python3 main.py --listen"= triggers auto-restart.
+
+**Gotcha:** substitution happens in the *browser* on ST's generation path only.
+Opening these workflows in ComfyUI's Web UI leaves the tokens literal — the node
+then yields an inert 1×1 reference. For manual tests put a real =https://= URL
+or a =data:= URI in the widget.
+
+* Verified ST 1.19.0 substitution rules
+
+Everything below was read out of
+=/srv/sillytavern/public/scripts/extensions/stable-diffusion/index.js=
+(=generateComfyImageCommon=, lines 4221–4290) rather than inferred.
+
+** The one rule that causes most failures
+
+A token is replaced **only when it is a complete, standalone quoted JSON string
+value**. =replaceAll('"%prompt%"', …)= — the pattern includes both percent signs
+*and* both quote characters. Embedding a token in a longer string
+(="moss_xvstyle %prompt%"=) or prefixing it
+(="data:image/png;base64,%char_avatar%"=) silently does nothing.
+
+** Substitution order
+
+| Step | Tokens | Value |
+|------+--------+-------|
+| 1 | =%prompt%=, =%negative_prompt%=, =%seed%=, =%denoise%=, =%clip_skip%= | from Image-Gen settings (seed =-1= → random) |
+| 2 | =%model%=, =%vae%=, =%sampler%=, =%scheduler%=, =%steps%=, =%scale%=, =%width%=, =%height%= | =extension_settings.sd[ph]= |
+| 3 | =%<find>%= for each =comfy_placeholders= entry | =JSON.stringify(substituteParams(replace))= — **full macro engine** |
+| 4 | =%user_avatar%= | persona avatar base64, else =PNG_PIXEL= |
+| 5 | =%char_avatar%= | character avatar base64, else =PNG_PIXEL= |
+
+Steps 4–5 are gated: ST only fetches an avatar if =/%char_avatar%/gi= matches the
+workflow text. Steps 3–5 matter in that order — a custom placeholder can alias
+=%char_avatar%= or =%user_avatar%= and still be resolved by the later pass.
+
+** Avatar encoding
+
+Base64 **without** any =data:image/png;base64,= prefix (ST takes
+=dataUrl.split(',')[1]=). That is exactly why ArtVenture's =LoadImageFromUrl=
+cannot be used: it requires the prefix and splits on =,=. No client can
+concatenate the prefix on, so the custom node is not optional.
+
+Fallback when an avatar cannot be fetched is =PNG_PIXEL= — a 1×1 white PNG,
+hard-coded at =index.js:71= and mirrored as =PNG_PIXEL_B64= in the node. If you
+change ST, check that constant still matches.
+
+** ST never uploads images
+
+=/srv/sillytavern/src/endpoints/stable-diffusion.js= =comfy.post('/generate')=
+POSTs =request.body.prompt= straight to =<url>/prompt= and polls =/history/<id>=.
+There is no =/upload/image= call anywhere in the server or the extension, so the
+=LoadImage= (filename) pattern from ordinary ComfyUI workflows is unavailable —
+references must travel **as data** inside the workflow JSON.
+
+** Avatars are behind auth
+
+Character avatars are served by =router.use('/characters/*', …)= in
+=src/users.js:1214=, mounted under =/api/users= with =req.user= resolution. A
+server-side fetch of some *other* character's avatar from ComfyUI would need
+credentials, which is why the custom-placeholder + ={{getvar::}}= route is
+preferable to pointing the node at an ST URL.
+
 
 * SillyTavern-side settings (verified against ST 1.19.0 on =agents=)
 
@@ -195,7 +372,7 @@ ST's ComfyUI workflow library is **its own folder**, not ComfyUI's:
 =$=/var/lib/sillytavern/sillytavern/data/default-user/user/workflows/= (the
 =ComfyUI Workflow= dropdown is a server-side =readdir= of that dir —
 =/srv/sillytavern/src/endpoints/stable-diffusion.js=, =getComfyWorkflows=).
-The three files were installed there directly (owned =sillytavern:sillytavern=,
+The A / C / F files were installed there directly (owned =sillytavern:sillytavern=,
 mode 664), so no upload is needed — just pick one in the dropdown. The copies in
 **ComfyUI's** library are Web-UI format (canvas-editable); the copies in ST's
 folder are API format, which is what ST sends verbatim to =/prompt=.
@@ -208,7 +385,7 @@ already correct, listed so the diff is obvious):
 | =source=                    | ="comfy"=                               | OK |
 | =comfy_url=                 | =https://comfyui.ts.peteches.co.uk=     | OK |
 | =comfy_type=                | ="standard"=                            | OK |
-| =comfy_workflow=            | =sillytavern_krea2_turbo.json= (live profile; =Default_Comfy_Workflow.json= in an older probe copy) | **switch per scene: =sillytavern_moss_sft_4step_ref.json= for tier F'** |
+| =comfy_workflow=            | =sillytavern_krea2_turbo.json= (live profile; =Default_Comfy_Workflow.json= in an older probe copy) | **switch per scene: =sillytavern_moss_sft_4step_ref.json= for tier F', =sillytavern_moss_sft_4step_ref_group.json= for tier F''** — and copy both into ST's workflows dir first (see above) |
 | =seed=                      | =-1= (random)                           | OK |
 | =prompt_prefix=             | =best quality, absurdres, masterpiece,= | **clear it for tiers C/F** |
 | =minimal_prompt_processing= | =false=                                 | **tick for C/F**, leave off for A |
@@ -279,3 +456,73 @@ pretty" pass, F when you need on-image text or a specific layout.
   set to =latent2rgb= to avoid VAE-decoding every preview.
 - Nothing in this directory is referenced by the Guix build; the files are
   assets to upload into SillyTavern (kept in the repo for versioning).
+
+* Test plan for tiers F' / F''
+
+Schema validation is done and passes; what remains is GPU/runtime verification,
+in this order. Steps 1–3 need no node redeploy.
+
+1. **Confirm the avatar actually arrives.** In ST pick
+   =sillytavern_moss_sft_4step_ref.json=, open the browser devtools console and
+   generate once. =generateComfyImageCommon= logs the final serialized prompt
+   (=console.log= at =index.js:4283=). Search it for the node-14 value: it must
+   be a long base64 string, **not** =char_avatar= and **not** the 68-char
+   =PNG_PIXEL=. If it is =PNG_PIXEL=, the character card has no avatar — set one
+   (Character → Avatar).
+2. **Confirm identity hold.** Give a character a distinctive card avatar (red
+   hair, blue eyes) and generate the same scene three times with =seed= =-1=.
+   Before the fix every run drifted; after it the three should share hair/eye
+   colour and face shape. This is the actual acceptance criterion.
+3. **Confirm the prompt references the image.** Temporarily set node 22's
+   =string_a= to something contradicting the reference (e.g. "the character has
+   green hair"). If the output obeys =string_a= over the reference, the
+   instruction is reaching the encoder; revert afterwards.
+4. **Deploy the updated node**, then re-run 1. Required for tier F'' with unset
+   slots, and for the =PNG_PIXEL=-detection and =on_missing= fixes:
+   #+begin_src sh
+   scp configs/sillytavern/comfy/custom_nodes/moss_avatar_loader.py \
+       comfyui:/srv/comfyui/custom_nodes/peteches_sillytavern_nodes/
+   ssh comfyui 'pkill -f "python3 main.py --listen"'   # shepherd auto-restarts
+   #+end_src
+   Verify the new widget landed: =/object_info/LoadImageFromBase64OrUrl= should
+   now list an =optional.on_missing= enum.
+5. **Confirm multi-slot Autogrow.** The schema says =images= takes =image_0=…
+   =image_9=, but only =image_0= has ever been executed on this host. Enqueue
+   tier F'' with all four slots set to *distinct* real images (any =https://=
+   URLs will do for a bench test) and confirm (a) validation passes and (b) four
+   distinguishable identities appear. If =image_1+= is rejected, fall back to
+   one =ImageBatch= chain into =image_0= and re-test.
+6. **Group casting.** Add the =ref2= / =ref3= / =ref4= custom placeholders
+   (start with =ref2= → =%user_avatar%=, the zero-setup case that exercises the
+   ordering discovery). Then move to ={{getvar::…}}= with an STscript that
+   populates the variable from the intended character's avatar.
+
+* Known gaps
+
+- **=%char_avatar%= is random in group chats.** Not fixable from the workflow —
+  it is ST's =getCharacterAvatarUrl()= behaviour. Tier F'' sidesteps it by
+  driving slots from custom placeholders; slot 0 keeps the built-in only as a
+  convenience default.
+- **No IPAdapter / InsightFace / PuLID / InstantID path.** Verified absent from
+  the live =/object_info= (1845 nodes): the only IPAdapter node is
+  =ImpactIPAdapterApplySEGS= (Impact Pack, SD-era), and there are no
+  face-embedding nodes at all. MOSS-Image's edit-LoRA reference latents are the
+  available mechanism here. For SDXL (tier A) the classic face-ID route is also
+  unavailable, so a **trained per-character LoRA** in node 4 remains the
+  strongest consistency option; the reference workflow is what you use when no
+  LoRA has been trained.
+- **=edit_format= is a guess.** The node offers =ai-toolkit=, =ai-toolkit
+  (kv_cache off)= and =Moss-Image-Edit=, and the right value is whichever layout
+  =moss_image_edit_lora_bf16.safetensors= was trained with. The files ship
+  =Moss-Image-Edit=; if identity transfer is weak, try =ai-toolkit= before
+  concluding the LoRA is at fault. =(kv_cache off)= recomputes references every
+  step — slower, but the references also attend to the image being generated.
+- **CFG 1.0 makes the negative inert**, so node 9 is decoration in both files.
+  It matters only for the 50-step quality recipe (=steps 50= / =cfg 3= /
+  =sgm_uniform=, drop the speed LoRA), where =TextEncodeMOSSImageEdit='s own
+  description advises using the edit node for the negative too.
+- **Nothing here is wired into the Guix build.** =configs/sillytavern/comfy/= is
+  assets-only: the JSONs must be copied into ST's workflow directory and the
+  node into ComfyUI's =custom_nodes=. Neither =peteches/services/sillytavern.scm=
+  nor =peteches/services/comfyui.scm= references this directory, so a redeploy
+  does not ship these changes.
