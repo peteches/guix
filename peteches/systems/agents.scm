@@ -139,6 +139,11 @@
        (file (local-file "../../secrets/hosts/agents/rules-lawyer.yaml"))
        (path "/run/secrets/rules-lawyer-discord-token")
        (permissions #o400))
+      ;; SillyTavern compares this string verbatim, so whatever SOPS decrypts
+      ;; to IS the login password -- quote characters included.  Rotated on
+      ;; 2026-11-12 because the old value began with a literal '"', which made
+      ;; SOPS emit it as a block scalar and made the quote part of the secret.
+      ;; Keep it a plain scalar that does not start with a YAML indicator.
       (sops-secret
        (key '("basic-auth-password"))
        (file (local-file "../../secrets/hosts/agents/sillytavern.yaml"))
