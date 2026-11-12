@@ -25,7 +25,7 @@
       "vae_name": "flux2-vae.safetensors"
     },
     "_meta": {
-      "title": "FLUX.2 VAE (also encodes the character reference)"
+      "title": "FLUX.2 VAE (also encodes the reference sheet)"
     }
   },
   "4": {
@@ -33,10 +33,90 @@
     "inputs": {
       "model": ["1", 0],
       "lora_name": "moss_image_sft_4step_v2.0.safetensors",
-      "strength_model": 1
+      "strength_model": 1.0
     },
     "_meta": {
-      "title": "4-STEP SPEED LoRA - REQUIRED at steps:4. Do not replace it with the edit LoRA; chain them (4 -> 21)."
+      "title": "4-STEP SPEED LoRA - REQUIRED at steps:4. The old revision dropped this in favour of the edit LoRA, which is why 4-step output looked underbaked. Chain them: 1 -> 4 -> 21."
+    }
+  },
+  "21": {
+    "class_type": "LoraLoaderModelOnly",
+    "inputs": {
+      "model": ["4", 0],
+      "lora_name": "moss_image_edit_lora_bf16.safetensors",
+      "strength_model": 1.0
+    },
+    "_meta": {
+      "title": "EDIT LoRA - required for the reference to bind at all. A/B THIS FIRST if quality regresses vs the no-ref workflow: drop strength to 0.5, or delete this node and reconnect 4 -> 11 to see the base quality with no reference."
+    }
+  },
+
+  "14": {
+    "class_type": "LoadImageFromBase64OrUrl",
+    "inputs": { "image": "%char_avatar%" },
+    "_meta": {
+      "title": "REF 1 - built-in. ST substitutes \"%char_avatar%\" with bare base64. PERCENT SIGNS MANDATORY and it must be the whole value. NB: in GROUP chats ST picks the last speaker else a RANDOM member - drive slots 2-4 from custom placeholders for deterministic casting."
+    }
+  },
+  "30": {
+    "class_type": "LoadImageFromBase64OrUrl",
+    "inputs": { "image": "%ref2%" },
+    "_meta": {
+      "title": "REF 2 - custom placeholder {find:'ref2'}. Leave unset for a solo scene: the sheet node DROPS it, so no blank conditioning. Set replace to '%user_avatar%' to use your persona, or '{{getvar::name_b64}}'."
+    }
+  },
+  "32": {
+    "class_type": "LoadImageFromBase64OrUrl",
+    "inputs": { "image": "%ref3%" },
+    "_meta": {
+      "title": "REF 3 - custom placeholder {find:'ref3'}. Dropped automatically when unset."
+    }
+  },
+  "34": {
+    "class_type": "LoadImageFromBase64OrUrl",
+    "inputs": { "image": "%ref4%" },
+    "_meta": {
+      "title": "REF 4 - custom placeholder {find:'ref4'}. Dropped automatically when unset."
+    }
+  },
+
+  "40": {
+    "class_type": "SillyTavernReferenceSheet",
+    "inputs": {
+      "target_size": 1024,
+      "image_1": ["14", 0],
+      "image_2": ["30", 0],
+      "image_3": ["32", 0],
+      "image_4": ["34", 0]
+    },
+    "_meta": {
+      "title": "Drops blank/unset slots and tiles the rest into ONE 1024^2 sheet: 1 ref -> full frame (identical to a dedicated single-ref graph), 2 -> side by side, 3-4 -> 2x2. THIS is what lets one workflow serve solo and group scenes. target_size MUST equal node 10's latent size. Replaces the old per-slot ImageScale nodes."
+    }
+  },
+
+  "22": {
+    "class_type": "StringConcatenate",
+    "inputs": {
+      "string_a": "Keep the character in the reference image exactly as shown: same face, hair colour and style, eye colour, skin tone and build. Reference panels read left-to-right then top-to-bottom; ignore any blank panel. Scene:",
+      "delimiter": " ",
+      "string_b": "%prompt%"
+    },
+    "_meta": {
+      "title": "Edit instruction + scene. KEEP string_a SHORT - MOSS edit wants a concise instruction, not a paragraph. string_b must stay exactly \"%prompt%\" (ST only substitutes a standalone quoted value). LoRA trigger tokens go at the START of string_a."
+    }
+  },
+  "17": {
+    "class_type": "TextEncodeMOSSImageEdit",
+    "inputs": {
+      "clip": ["2", 0],
+      "prompt": ["22", 0],
+      "edit_format": "Moss-Image-Edit",
+      "image_strength": 1.0,
+      "vae": ["3", 0],
+      "images.image_0": ["40", 0]
+    },
+    "_meta": {
+      "title": "Reference-conditioned positive. `images` is a v3 Autogrow input (min 1 / max 10) - in API format each slot is a FLAT DOTTED KEY images.image_N. Only image_0 is used here because node 40 already collapsed the references into one sheet. If identity fidelity is too weak for multi-character scenes, switch to one full-res slot per reference (see README 'Native Autogrow alternative'). edit_format is a GUESS - try 'ai-toolkit' if transfer is weak."
     }
   },
   "9": {
@@ -46,7 +126,7 @@
       "text": "%negative_prompt%"
     },
     "_meta": {
-      "title": "Negative - inert at cfg 1.0 (only the positive is evaluated). Matters if you raise cfg for the 50-step recipe."
+      "title": "Negative. Live at cfg 3 (inert only at cfg 1.0)."
     }
   },
   "10": {
@@ -57,7 +137,7 @@
       "batch_size": 1
     },
     "_meta": {
-      "title": "Latent 1024x1024 (MOSS-Image is trained square; portrait ratios are weaker). Must match node 20's scale target."
+      "title": "Latent 1024x1024 (MOSS-Image trained square). MUST match node 40's target_size. The old revision used 512 here, halving detail."
     }
   },
   "11": {
@@ -69,13 +149,13 @@
       "latent_image": ["10", 0],
       "seed": "%seed%",
       "steps": 4,
-      "cfg": 1,
+      "cfg": 3.0,
       "sampler_name": "euler",
-      "scheduler": "simple",
-      "denoise": 1
+      "scheduler": "sgm_uniform",
+      "denoise": 1.0
     },
     "_meta": {
-      "title": "4-step / cfg 1.0 / euler+simple = the GPU-verified recipe. Only valid because node 4 supplies the speed LoRA. Official quality recipe: drop node 4, 50 steps, cfg 3, sgm_uniform."
+      "title": "steps 4 / cfg 3.0 / euler / sgm_uniform - matches the LIVE settings that produced the good no-ref images (read back out of ComfyUI /history). The repo previously said cfg 1.0 + simple, which had drifted from what was actually deployed. Only valid because node 4 supplies the speed LoRA."
     }
   },
   "12": {
@@ -84,9 +164,7 @@
       "samples": ["11", 0],
       "vae": ["3", 0]
     },
-    "_meta": {
-      "title": "Decode"
-    }
+    "_meta": { "title": "Decode" }
   },
   "13": {
     "class_type": "SaveImage",
@@ -96,64 +174,6 @@
     },
     "_meta": {
       "title": "Save"
-    }
-  },
-  "14": {
-    "class_type": "LoadImageFromBase64OrUrl",
-    "inputs": {
-      "image": "%char_avatar%"
-    },
-    "_meta": {
-      "title": "Character reference - ST substitutes \"%char_avatar%\" with bare base64. PERCENT SIGNS ARE MANDATORY and the token must be the whole value."
-    }
-  },
-  "17": {
-    "class_type": "TextEncodeMOSSImageEdit",
-    "inputs": {
-      "clip": ["2", 0],
-      "prompt": ["22", 0],
-      "edit_format": "Moss-Image-Edit",
-      "image_strength": 1,
-      "vae": ["3", 0],
-      "images.image_0": ["20", 0]
-    },
-    "_meta": {
-      "title": "Reference-conditioned positive. images.* is a v3 Autogrow input (min 1, max 10): in API format each slot is a FLAT DOTTED KEY images.image_N, not a nested dict."
-    }
-  },
-  "20": {
-    "class_type": "ImageScale",
-    "inputs": {
-      "image": ["14", 0],
-      "upscale_method": "lanczos",
-      "width": 1024,
-      "height": 1024,
-      "crop": "center"
-    },
-    "_meta": {
-      "title": "MANDATORY pre-scale - TextEncodeMOSSImageEdit uses references at the size they arrive and its VAE-encode dies on a tiny ST avatar."
-    }
-  },
-  "21": {
-    "class_type": "LoraLoaderModelOnly",
-    "inputs": {
-      "model": ["4", 0],
-      "lora_name": "moss_image_edit_lora_bf16.safetensors",
-      "strength_model": 1
-    },
-    "_meta": {
-      "title": "EDIT LoRA - what makes the reference image actually bind. Chained AFTER the speed LoRA."
-    }
-  },
-  "22": {
-    "class_type": "StringConcatenate",
-    "inputs": {
-      "string_a": "Using the provided reference image as the single source of truth for this character's identity: keep their exact face shape, features, hair colour and style, eye colour, skin tone and build unchanged. Treat the reference as the character; only the pose, framing, expression, clothing, lighting and setting described below may differ. Do not invent a different person who merely resembles them.",
-      "delimiter": "\n",
-      "string_b": "%prompt%"
-    },
-    "_meta": {
-      "title": "Edit instruction + scene. string_a is what makes the prompt REFERENCE the image; string_b must stay exactly \"%prompt%\" (ST only substitutes a standalone quoted value). Put any LoRA trigger token at the START of string_a."
     }
   }
 }

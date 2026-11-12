@@ -53,12 +53,12 @@
       "latent_image": ["10", 0],
       "seed": "%seed%",
       "steps": 4,
-      "cfg": 1.0,
+      "cfg": 3.0,
       "sampler_name": "euler",
-      "scheduler": "simple",
+      "scheduler": "sgm_uniform",
       "denoise": 1.0
     },
-    "_meta": { "title": "Sampler (4-step recipe; official SFT recipe = 50 steps / CFG 3 / sgm_uniform)" }
+    "_meta": { "title": "Sampler: 4 steps / cfg 3.0 / euler+sgm_uniform -- reconciled to the LIVE settings that produced the good images (read back from ComfyUI /history); this file had drifted to cfg 1.0 + simple. Official quality recipe: drop node 4, 50 steps / cfg 3 / sgm_uniform." }
   },
   "12": {
     "class_type": "VAEDecode",

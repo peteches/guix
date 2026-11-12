@@ -36,9 +36,9 @@ WHAT THIS NODE ACCEPTS
 
 "MISSING" IS A NORMAL STATE, NOT AN ERROR
 -----------------------------------------
-ST substitutes PNG_PIXEL (a 1x1 white PNG) whenever it cannot fetch an avatar,
-and group-chat workflows deliberately leave extra reference slots unset. All of
-these mean "no reference here":
+ST substitutes PNG_PIXEL whenever it cannot fetch an avatar, and group-chat
+workflows deliberately leave extra reference slots unset. All of these mean "no
+reference here":
 
   * empty / whitespace
   * an unsubstituted built-in token: %char_avatar%, %user_avatar%, char_avatar
@@ -47,12 +47,18 @@ these mean "no reference here":
     placeholder whose variable is unset expands to nothing or stays literal)
   * the literal strings "undefined" / "null" (what an unset {{getvar::}} can
     produce once JSON.stringify'd through a custom placeholder)
-  * ST's PNG_PIXEL, by VALUE — a 1x1 pure-white pixel
+  * ST's PNG_PIXEL — a 1x1 image (see the warning below)
 
-The last one is deliberately a value check, not a size check: a real 1x1 avatar
-uploaded on purpose is legitimate, so size alone must never trigger this.
+WARNING — PNG_PIXEL IS TRANSPARENT *BLACK*, NOT WHITE. ST's constant decodes to
+mode LA, value (0, 0). An earlier revision of this file asserted it was "a real
+1x1 white pixel" and tested == (255, 255, 255); that test NEVER matched, so the
+"character has no avatar" path silently produced a black reference instead of
+being detected. Detection is therefore by SIZE: any 1x1 image carries no
+identity information and is treated as missing. That is safe here because the
+default on_missing=transparent_1px drops it rather than raising, so a deliberate
+1x1 avatar costs nothing but its (nonexistent) detail.
 
-Outputs match comfy's LoadImage (IMAGE + MASK) so it feeds ImageScale ->
+Outputs match comfy's LoadImage (IMAGE + MASK) so it feeds the reference sheet /
 TextEncodeMOSSImageEdit unchanged.
 """
 
@@ -116,8 +122,15 @@ def _pil_to_tensor(i: Image.Image):
 
 
 def _is_no_avatar(p: Image.Image) -> bool:
-    """True when p is ST's PNG_PIXEL placeholder (1x1 pure white)."""
-    return p.size == (1, 1) and p.convert("RGB").getpixel((0, 0)) == (255, 255, 255)
+    """True when p carries no avatar information.
+
+    Any 1x1 image qualifies, regardless of colour. ST's PNG_PIXEL is a 1x1 fully
+    TRANSPARENT BLACK pixel (mode LA, value (0, 0)) -- NOT white. Testing
+    == (255, 255, 255) as an earlier revision did never matched it, which is why
+    a missing avatar used to sail through as a black reference. Size is the
+    reliable signal: one pixel cannot describe a character.
+    """
+    return p.size == (1, 1)
 
 
 def _decode_b64(s: str) -> Image.Image:
@@ -160,10 +173,13 @@ class LoadImageFromBase64OrUrl:
     def _missing(self, why: str, on_missing: str):
         if on_missing == "error":
             raise ValueError(f"No usable reference image: {why}")
-        # Inert 1x1 so the graph still executes. NOTE: a 1x1 reference must be
-        # upscaled before TextEncodeMOSSImageEdit or its VAE-encode dies with
-        # "Kernel size can't be greater than actual input size" — keep the
-        # ImageScale node in the workflow.
+        # Emit the same 1x1 placeholder ST uses, so downstream can recognise
+        # "nothing here". SillyTavernReferenceSheet drops any 1x1 by size, which
+        # is what makes one workflow serve a variable number of references.
+        # If you wire this loader straight into TextEncodeMOSSImageEdit instead,
+        # you MUST put an ImageScale in between: the edit encoder uses
+        # references at the size they arrive and its VAE-encode dies on a 1x1
+        # with "Kernel size can't be greater than actual input size".
         print(f"[peteches/SillyTavern] no reference ({why}); using inert 1x1")
         return _pil_to_tensor(_decode_b64(PNG_PIXEL_B64))
 
@@ -186,7 +202,7 @@ class LoadImageFromBase64OrUrl:
             resp.raise_for_status()
             i = Image.open(io.BytesIO(resp.content))
             if _is_no_avatar(i):
-                return self._missing("URL returned a 1x1 white pixel", on_missing)
+                return self._missing("URL returned a 1x1 placeholder image", on_missing)
 
         else:
             # Bare base64 (the SillyTavern case); fall back to an input-dir filename.
