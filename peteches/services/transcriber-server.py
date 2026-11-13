@@ -101,24 +101,47 @@ class ModelCache:
     # -- lifecycle -----------------------------------------------------------
     def touch(self):
         self._last_use = time.monotonic()
-        if self._timer is None and ARGS.idle_unload_minutes > 0:
-            self._timer = threading.Timer(
-                ARGS.idle_unload_minutes * 60, self._unload_if_idle
-            )
-            self._timer.daemon = True
-            self._timer.start()
+        self._arm_timer()
+
+    def _arm_timer(self):
+        """Ensure an unload timer is pending, sized to the remaining idle time.
+
+        Callers may hold self._lock; this never takes it (the timer thread calls
+        it from inside the lock).
+        """
+        if ARGS.idle_unload_minutes <= 0 or self._timer is not None:
+            return
+        delay = max(1.0, ARGS.idle_unload_minutes * 60
+                    - (time.monotonic() - self._last_use))
+        timer = threading.Timer(delay, self._unload_if_idle)
+        timer.daemon = True
+        self._timer = timer
+        timer.start()
 
     def _unload_if_idle(self):
         with self._lock:
             self._timer = None
-            if time.monotonic() - self._last_use >= ARGS.idle_unload_minutes * 60:
-                self._asr = None
-                self._align = {}
-                self._diarize = None
-                if DEVICE == "cuda":
+            if time.monotonic() - self._last_use < ARGS.idle_unload_minutes * 60:
+                # Woke early: a request touched after this timer was armed (a
+                # single request touches twice, so arming at the first touch puts
+                # the deadline before the second one).  Sleep out the remainder
+                # instead of dropping the timer -- nothing else would re-arm it
+                # while the service stays idle, and VRAM would never be freed.
+                self._arm_timer()
+                return
+            if self._asr is None and not self._align and self._diarize is None:
+                return                                  # already unloaded
+            self._asr = None
+            self._align = {}
+            self._diarize = None
+            if DEVICE == "cuda":
+                try:
                     torch.cuda.empty_cache()
-                print("[transcriber] idle timeout: models unloaded, VRAM freed",
-                      flush=True)
+                except Exception as exc:      # context gone: nothing to free
+                    print(f"[transcriber] idle timeout: empty_cache failed {exc!r}",
+                          flush=True)
+            print("[transcriber] idle timeout: models unloaded, VRAM freed",
+                  flush=True)
 
     def loaded(self):
         return self._asr is not None

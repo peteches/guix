@@ -18,7 +18,12 @@
 ;; store via local-file — editing that file + redeploying is the whole
 ;; release process, and there is nothing to `git pull', so there is no
 ;; update service (version bumps = edit the pip pins here, redeploy, re-run
-;; the sync one-shot).
+;; the sync one-shot).  Editing transcriber-server.py DOES need a manual
+;; restart: deploying gen 118 switched the generation and shipped the new
+;; runner but left the daemon gen 117 had started still running, so the change
+;; only took effect after `sudo herd restart transcriber'.  Confirm with
+;; `pgrep -f transcriber-server.py' plus /proc/<pid>/cmdline — the store hash
+;; there must match the current generation's.
 ;;
 ;; Shepherd services:
 ;;   <name>-sync   one-shot, manual (`herd start transcriber-sync'): creates
