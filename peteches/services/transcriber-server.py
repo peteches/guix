@@ -16,11 +16,16 @@ Endpoints:
                     `language` (ISO code, default auto-detect), `diarize`
                     (bool, default true), `summarize` (bool, default false:
                     ask the local strata LLM for minutes + task allocation),
-                    `save` (bool, default false: write transcript and summary
-                    under --summary-dir), `speaker_labels` (comma-separated
-                    names for the voices, in order of first speech).
-                    Saved files come back as X-Transcript-Path /
-                    X-Summary-Path headers.
+                    `speaker_labels` (comma-separated names for the voices, in
+                    order of first speech).  Minutes ride along in the body: a
+                    `summary_markdown' field for json, a `---'-separated section
+                    for txt; srt/vtt get the transcript only plus an
+                    X-Summary-Note header.
+                    Nothing is written to disk server-side.  This box is a
+                    processor, not a store: persistence is the client's job
+                    (configs/bin/transcribe saves to -o, $TRANSCRIBE_OUT_DIR or
+                    stdout), so the machine that holds the recording is also the
+                    machine that decides where its transcript lives.
   GET  /health      liveness + which models are resident + what diarization
                     and summarization are wired to
 
@@ -136,7 +141,6 @@ parser.add_argument("--utterance-gap", type=float, default=2.0,
 parser.add_argument("--summarizer-base-url", default="http://127.0.0.1:8000")
 parser.add_argument("--summarizer-model", default="",
                     help="model id; empty = ask the server (/v1/models)")
-parser.add_argument("--summary-dir", default="/var/lib/transcriber/meetings")
 ARGS = parser.parse_args()
 
 UPLOADS = Path(ARGS.uploads_dir)
@@ -525,13 +529,16 @@ def transcript_text(result):
 
 
 def render(result, fmt, diar=None, summary=None, summary_error=None,
-           saved=None, headers=None):
+           embed_summary=True, headers=None):
     items = display_items(result)
+    # Subtitle formats carry prose badly — a markdown section glued after the last
+    # cue makes the file unparseable for anything that reads subtitles.  json gets
+    # the minutes as its own field and txt as a clearly delimited tail; srt/vtt
+    # leave them out and say so in a header instead of silently dropping work.
     tail = None
-    if summary is not None:
-        tail = summary
-    elif summary_error:
-        tail = f"*(summary failed: {summary_error})*"
+    if embed_summary:
+        tail = summary if summary is not None else (
+            f"*(summary failed: {summary_error})*" if summary_error else None)
 
     if fmt == "json":
         payload = {
@@ -559,8 +566,6 @@ def render(result, fmt, diar=None, summary=None, summary_error=None,
             payload["summary_markdown"] = summary
         if summary_error:
             payload["summary_error"] = summary_error
-        if saved:
-            payload["saved"] = saved
         return JSONResponse(payload, headers=headers)
 
     lines = []
@@ -693,48 +698,7 @@ async def health():
         "diarization_model_path": sortformer_model_path(),
         "diarization_resident": CACHE.diarizer_loaded(),
         "summarizer_url": ARGS.summarizer_base_url,
-        "summary_dir": ARGS.summary_dir,
     }
-
-
-def save_outputs(result, summary, diar, lang, stem):
-    """Write the labelled transcript (+ minutes) under --summary-dir.
-
-    Names are `<upload-stem>-<stamp>-transcript.txt' / `-minutes.md', so a
-    recurring meeting's files sort chronologically by name.  The provenance
-    comment in the minutes records the diarizer and who was on it, because a
-    label like SPEAKER_01 is only meaningful next to its evidence.
-    """
-    os.makedirs(ARGS.summary_dir, exist_ok=True)
-    # The state dir belongs to the service user and defaults to 0700, which
-    # would leave the saved minutes readable only by root on that box.  Minutes
-    # are meant to be collected (scp/git), so make the drop-off point traversable
-    # and the files world-readable; contents stay inside a tailnet-only VM.
-    try:
-        os.chmod(ARGS.summary_dir, 0o755)
-    except OSError:
-        pass
-    stamp = time.strftime("%Y%m%d-%H%M%S")
-    base = re.sub(r"[^A-Za-z0-9._-]+", "-", stem).strip("-") or "meeting"
-    paths = {}
-
-    txt = Path(ARGS.summary_dir) / f"{base}-{stamp}-transcript.txt"
-    txt.write_text(transcript_text(result) + "\n", encoding="utf-8")
-    os.chmod(txt, 0o644)
-    paths["transcript"] = str(txt)
-
-    if summary is not None:
-        who = ""
-        if diar:
-            who = "\n<!-- speakers: " + ", ".join(
-                f"{s['label']} {s['seconds']:.0f}s" for s in diar["speakers"]) + " -->"
-        md = Path(ARGS.summary_dir) / f"{base}-{stamp}-minutes.md"
-        md.write_text(f"<!-- transcript: {txt} | language={lang} "
-                      f"| diarizer={SORTFORMER_NAME}{who} -->\n\n"
-                      f"{summary}\n", encoding="utf-8")
-        os.chmod(md, 0o644)
-        paths["summary"] = str(md)
-    return paths
 
 
 @app.post("/transcribe")
@@ -744,7 +708,6 @@ async def transcribe(
     language: str = Form(None),
     diarize: bool = Form(True),
     summarize: bool = Form(False),
-    save: bool = Form(False),
     speaker_labels: str = Form(None),
 ):
     if format not in ("json", "srt", "vtt", "txt"):
@@ -792,22 +755,21 @@ async def transcribe(
                 except Exception as exc:
                     summary_error = repr(exc)
 
-        saved = {}
-        if save:
-            stem = Path(file.filename or "audio").stem
-            try:
-                saved = save_outputs(result, summary, diar, lang, stem)
-            except OSError as exc:
-                raise HTTPException(500, f"could not save outputs: {exc!r}")
-
-        headers = {f"X-{k.title()}-Path": v for k, v in saved.items()}
+        # json carries the minutes in its own field and txt gets them as a tail;
+        # subtitles cannot hold prose, so they say so out loud rather than shipping
+        # a file that mixes formats (or silently losing the LLM's work).
+        embed = format in ("txt", "json")
+        headers = None
+        if summarize and not embed:
+            headers = {"X-Summary-Note":
+                       "minutes omitted: srt/vtt cannot carry prose; "
+                       "use -f txt or -f json to get them"}
         print(f"[transcriber] {file.filename}: {size/1e6:.1f} MB in "
-              f"{gpu_time:.1f}s (lang={lang}, diarize={diarize}, "
-              f"summarize={bool(summary)}, saved={list(saved) or '-'})",
-              flush=True)
+              f"{gpu_time:.1f}s (lang={lang}, fmt={format}, diarize={diarize}, "
+              f"summarize={bool(summary)})", flush=True)
         return render(result, format, diar=diar, summary=summary,
-                      summary_error=summary_error, saved=saved or None,
-                      headers=headers or None)
+                      summary_error=summary_error, embed_summary=embed,
+                      headers=headers)
     finally:
         tmp.unlink(missing_ok=True)
 
@@ -817,7 +779,7 @@ def main():
           f"compute={ARGS.compute_type} port={ARGS.port} "
           f"diarizer={sortformer_model_path()} "
           f"(present={'yes' if Path(sortformer_model_path()).is_file() else 'will-download'}) "
-          f"summarizer={ARGS.summarizer_base_url} summary_dir={ARGS.summary_dir}",
+          f"summarizer={ARGS.summarizer_base_url}",
           flush=True)
     uvicorn.run(app, host=ARGS.host, port=ARGS.port, log_level="info")
 

@@ -1,25 +1,35 @@
 #!/usr/bin/env bash
 # transcribe — send an audio/video file to the fleet WhisperX service
-# (comfyui VM's 4090, proxied by caddy) and print/save a transcript with
-# speaker labels, optionally with LLM minutes that say who was assigned what.
+# (comfyui VM's 4090, proxied by caddy) and produce a transcript with speaker
+# labels, optionally with LLM minutes that say who was assigned what.
 #
 # Usage:
-#   transcribe FILE                       # labelled txt transcript to stdout
-#   transcribe FILE -o meeting.txt        # ...written to a file here
-#   transcribe FILE --summarize           # + strata minutes (summary,
-#                                         #   decisions, agreed tasks with
-#                                         #   owners, open questions)
-#   transcribe FILE --summarize --save    # + keep copies on the server too
-#                                         #   (paths printed to stderr)
+#   transcribe FILE                       # labelled transcript to stdout
+#   transcribe FILE -o meeting.txt        # ...written here instead
+#   transcribe FILE                       # + $TRANSCRIBE_OUT_DIR set -> file there
+#   transcribe FILE --summarize           # + strata minutes (summary, decisions,
+#                                         #   agreed tasks with owners, open
+#                                         #   questions) appended after "---"
 #   transcribe FILE --labels "Gareth,Pete"  # name the voices (order of first
 #                                         #   speech; default SPEAKER_01, ...)
-#   transcribe FILE -f srt -o out.srt     # SRT with speaker labels
+#   transcribe FILE -f srt -o out.srt     # SRT with [SPEAKER_xx] labels
 #   transcribe FILE -f json | jq .utterances
 #   transcribe FILE -l de                 # force language (default: auto)
 #   transcribe FILE --no-diarize          # plain transcript, no speakers
 #   transcribe --health                   # service status
 #
-# Formats: txt (default), srt, vtt, json.
+# Where the output goes — in order:
+#   1. -o/--output PATH       writes there (parents created)
+#   2. $TRANSCRIBE_OUT_DIR    writes <stem>-<stamp>.<ext> in that directory
+#                             (created if missing; point it at something backed
+#                             up, because the server deliberately keeps nothing)
+#   3. neither                stdout
+# The service NEVER stores anything: comfyui is a processor, not a storage, so
+# the machine holding the recording decides where its transcript lives.
+#
+# Formats: txt (default), srt, vtt, json.  Minutes ride along as markdown for
+# txt and as the `summary_markdown' field for json; subtitles cannot hold prose,
+# so -f srt/vtt --summarize returns cues only and says so on stderr.
 # Endpoint override: TRANSCRIBER_URL (default https://transcribe.ts.peteches.co.uk).
 #
 # Speaker labels come from NVIDIA SortFormer v2.1 running on the service's CPU —
@@ -52,7 +62,7 @@ fi
 
 die() { echo "transcribe: $*" >&2; exit 1; }
 
-fmt=txt lang="" diarize=true summarize=false save=false labels="" file="" out=""
+fmt=txt lang="" diarize=true summarize=false labels="" file="" out=""
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -61,10 +71,10 @@ while [[ $# -gt 0 ]]; do
     -o|--output)   out="${2:?missing output path}"; shift 2 ;;
     --labels|--speaker-labels) labels="${2:?missing speaker names}"; shift 2 ;;
     --summarize|-s) summarize=true; shift ;;
-    --save)        save=true; shift ;;
     --no-diarize)  diarize=false; shift ;;
     --health)      curl -fsS "${ca[@]}" "$URL/health"; echo; exit 0 ;;
-    -h|--help)     sed -n '2,31p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    -h|--help)     awk 'NR>1 && /^set -euo/{exit} NR>1{sub(/^# ?/,""); print}' "$0"
+                   exit 0 ;;
     -*)            die "unknown option: $1 (try --help)" ;;
     *)             [[ -z "$file" ]] || die "only one input file supported"; file="$1"; shift ;;
   esac
@@ -81,35 +91,42 @@ fi
 args=(-F "file=@${file}" -F "format=${fmt}" -F "diarize=${diarize}")
 [[ -n "$lang" ]] && args+=(-F "language=${lang}")
 [[ "$summarize" == true ]] && args+=(-F "summarize=true")
-[[ "$save" == true ]] && args+=(-F "save=true")
 [[ -n "$labels" ]] && args+=(-F "speaker_labels=${labels}")
 
 hdr=$(mktemp)
-trap 'rm -f "$hdr"' EXIT
+body=$(mktemp)
+trap 'rm -f "$hdr" "$body"' EXIT
 
-# No -f: on HTTP errors print the server's (plain-text) explanation.
-body=$(curl -sS --max-time 7200 -D "$hdr" -w $'\n%{http_code}' "${ca[@]}" \
-           "${args[@]}" "$URL/transcribe")
-code="${body##*$'\n'}"
-body="${body%$'\n'*}"
+# Response body and status are fetched separately: a failure's plain-text reason
+# must reach stderr, not the transcript pipeline.
+code=$(curl -sS --max-time 7200 -D "$hdr" -o "$body" -w '%{http_code}' \
+           "${ca[@]}" "${args[@]}" "$URL/transcribe") || die "upload failed (network?)"
 
 if [[ "$code" != 200 ]]; then
-  echo "$body" >&2
+  cat "$body" >&2
   die "server returned HTTP $code"
 fi
 
-if [[ -n "$out" ]]; then
-  printf '%s\n' "$body" > "$out"
-  echo "transcribe: wrote $out ($(wc -c < "$out") bytes)" >&2
-else
-  printf '%s\n' "$body"
+# The server drops minutes for subtitle formats rather than corrupting them; it
+# says so in a header, and saying so here is the difference between an operator
+# wondering where the summary went and knowing.
+awk 'tolower($0) ~ /^x-summary-note:/ { sub(/^[^:]*:[ \t]*/, ""); print }' "$hdr" >&2
+
+if [[ -z "$out" && -n "${TRANSCRIBE_OUT_DIR:-}" ]]; then
+  # No explicit path but a declared drop-off directory: name the file after the
+  # recording and its time, so a recurring meeting accumulates chronologically.
+  stem=$(basename -- "$file"); stem="${stem%.*}"
+  stem=$(printf '%s' "$stem" | tr -c 'A-Za-z0-9._-' '-' \
+           | sed -E 's/-+/-/g; s/^-+//; s/-+$//')
+  [[ -n "$stem" ]] || stem=meeting
+  mkdir -p -- "$TRANSCRIBE_OUT_DIR"
+  out="$TRANSCRIBE_OUT_DIR/${stem}-$(date +%Y%m%d-%H%M%S).${fmt}"
 fi
 
-# --save keeps copies server-side; the paths come back as response headers so
-# the transcript body itself stays pipeable.
-if [[ "$save" == true ]]; then
-  grep -i '^x-transcript-path:\|^x-summary-path:' "$hdr" 2>/dev/null \
-    | sed 's/^[^:]*:[[:space:]]*//' | while read -r p; do
-      echo "transcribe: saved on server: $p" >&2
-    done || true
+if [[ -n "$out" ]]; then
+  mkdir -p -- "$(dirname -- "$out")"
+  cat "$body" > "$out"
+  echo "transcribe: wrote $out ($(wc -c < "$out") bytes)" >&2
+else
+  cat "$body"
 fi

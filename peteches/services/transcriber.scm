@@ -49,8 +49,9 @@
 ;;
 ;; Minutes: `summarize=true' posts the speaker-labelled transcript to an
 ;; OpenAI-compatible endpoint (default strata on loopback) for meeting minutes
-;; plus task allocation — who was assigned what.  `save=1' writes the transcript
-;; and those markdown minutes under summary-dir.
+;; plus task allocation — who was assigned what.  The server writes nothing:
+;; this is a processor, not a store, so configs/bin/transcribe decides where the
+;; text lands (-o, $TRANSCRIBE_OUT_DIR, or stdout).
 ;;
 ;; First request after boot downloads the model zoo into HF_HOME (~4 GB:
 ;; faster-whisper large-v3 + wav2vec2 align model) and, on the first *diarized*
@@ -218,12 +219,6 @@
                        (default "http://127.0.0.1:8000"))
   (summarizer-model transcriber-configuration-summarizer-model
                     (default ""))
-  ;; Where `save=1' writes <stem>-<stamp>-transcript.txt and -minutes.md.
-  ;; #f = <state-dir>/meetings.  On comfyui nothing under /media/models is in a
-  ;; backup (see the restic note in systems/comfyui.scm), so treat this as a
-  ;; drop-off point rather than an archive.
-  (summary-dir transcriber-configuration-summary-dir
-               (default #f))
 
   ;; Paths.  Defaults are derived from service-name when #f.
   (state-dir transcriber-configuration-state-dir
@@ -311,10 +306,6 @@
   (or (transcriber-configuration-sortformer-model-file config)
       (string-append (transcriber-onnx-dir config) "/"
                      "diar_streaming_sortformer_4spk-v2.1.onnx")))
-
-(define (transcriber-resolved-summary-dir config)
-  (or (transcriber-configuration-summary-dir config)
-      (string-append (transcriber-resolved-state-dir config) "/meetings")))
 
 (define (transcriber-diarization-extra-args config)
   ;; Only pass flags that are actually configured: an absent flag means "use the
@@ -542,8 +533,6 @@
                                config)
                               "--summarizer-model"
                               (transcriber-configuration-summarizer-model config)
-                              "--summary-dir"
-                              (transcriber-resolved-summary-dir config)
                               "--uploads-dir"
                               (transcriber-uploads-dir config)))
          (inner-command (append inner-base
@@ -615,11 +604,10 @@
                      (string-append cache-dir "/uv")
                      (string-append cache-dir "/xdg")
                      (string-append cache-dir "/nltk")
-                     ;; The SortFormer checkpoint and the saved minutes: both
-                     ;; created lazily by the daemon, but the parent directory
-                     ;; has to exist and be owned by it.
+                     ;; The SortFormer checkpoint is fetched lazily by the
+                     ;; daemon, but its parent directory has to exist and be
+                     ;; owned by it.
                      (transcriber-onnx-dir config)
-                     (transcriber-resolved-summary-dir config)
                      log-dir
                      project-dir)))
     #~(let* ((pw (getpwnam #$user))
@@ -628,14 +616,7 @@
         (for-each (lambda (dir)
                     (mkdir-p dir)
                     (chown dir uid gid))
-                  (list #$@dirs))
-        ;; The state dir doubles as the service account's home, so it lands 0700 —
-        ;; which would make the saved minutes reachable only by root on a box where
-        ;; the operator collects them over ssh.  Open the traverse bit (the summary
-        ;; dir and its files are then what carry the read bits); this exposes no new
-        ;; secret: uploads/ was already 0755 with world-readable temp audio in it.
-        (chmod #$(transcriber-resolved-state-dir config) #o755)
-        (chmod #$(transcriber-resolved-summary-dir config) #o755))))
+                  (list #$@dirs)))))
 
 (define (transcriber-activation configs)
   #~(begin

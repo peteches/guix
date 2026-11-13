@@ -714,9 +714,11 @@
       ;; request.  Threads are capped below the box's 16 because this CPU work
       ;; shares the machine with strata inference and ComfyUI.
       ;; `summarize=true' sends the labelled transcript to strata on loopback
-      ;; (auto-start? #t below, so it is up) for minutes + task allocation; saved
-      ;; files land in /var/lib/transcriber/transcriber/meetings, which like the
-      ;; rest of this VM is NOT backed up — pull them off, don't trust them to stay.
+      ;; (auto-start? #t below, so it is up) for minutes + task allocation.  The
+      ;; service writes no output files at all — this VM is a processor, not a
+      ;; store, and nothing on it is restic-backed — so transcripts and minutes
+      ;; live wherever the client put them (`transcribe' uses -o,
+      ;; $TRANSCRIBE_OUT_DIR or stdout).
       ;; First boot: `sudo herd start transcriber-sync' once (~10GB of cu128
       ;; wheels into /media/models/transcriber), then the daemon auto-starts on
       ;; boot.
