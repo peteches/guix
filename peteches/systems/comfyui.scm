@@ -707,18 +707,26 @@
       ;; (~4GB transient during a transcription).  API + upload UI on :8787,
       ;; proxied by caddy as transcribe.ts.peteches.co.uk — single-origin
       ;; FastAPI app, so none of AllTalk's two-port proxy problems apply.
-      ;; Diarization needs the gated pyannote/speaker-diarization-community-1
-      ;; model: create secrets/hosts/comfyui/hf-token.yaml (sops, key
-      ;; `token', owner transcriber) once the HF account has accepted its
-      ;; terms — until then diarize=false still transcribes.  First boot:
-      ;; `sudo herd start transcriber-sync' once (~10GB of cu128 wheels into
-      ;; /media/models/transcriber), then the daemon auto-starts on boot.
+      ;; Diarization is NVIDIA SortFormer v2.1 in ONNX on CPU (see
+      ;; (peteches services transcriber)): ungated, so no HF account/token and
+      ;; no browser terms-acceptance step — the checkpoint downloads itself into
+      ;; /media/models/transcriber-cache/onnx (~470 MB) on the first diarized
+      ;; request.  Threads are capped below the box's 16 because this CPU work
+      ;; shares the machine with strata inference and ComfyUI.
+      ;; `summarize=true' sends the labelled transcript to strata on loopback
+      ;; (auto-start? #t below, so it is up) for minutes + task allocation; saved
+      ;; files land in /var/lib/transcriber/transcriber/meetings, which like the
+      ;; rest of this VM is NOT backed up — pull them off, don't trust them to stay.
+      ;; First boot: `sudo herd start transcriber-sync' once (~10GB of cu128
+      ;; wheels into /media/models/transcriber), then the daemon auto-starts on
+      ;; boot.
       (service transcriber-service-type
                (list
                 (transcriber-configuration
                  (auto-start? #t)
                  (project-dir "/media/models/transcriber")
                  (cache-dir "/media/models/transcriber-cache")
+                 (diarizer-threads 8)
                  (container-extra-shares (list "/media/models"))
                  (open-firewall? #t)
                  (runtime-packages (list uv)))))

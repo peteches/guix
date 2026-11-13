@@ -36,17 +36,26 @@
 ;;                 loading + idle unload — the 4090 is shared with ComfyUI
 ;;                 and AllTalk, so it must not squat VRAM between requests).
 ;;
-;; HF token: diarization uses pyannote/speaker-diarization-community-1, a
-;; GATED HuggingFace model.  The operator must (once, in a browser) accept
-;; its terms and create an HF read token, which lands on the VM as a
-;; sops-secret at hf-token-file (owner = the service user, #o400) — see
-;; docs/secrets-management.org.  The server re-reads the file per request, so
-;; no restart is needed after the secret appears.  Plain transcription
-;; (diarize=false) needs no token.
+;; Diarization: NVIDIA SortFormer v2.1 in ONNX, run on CPU by the sibling file
+;; transcriber-diarizer.py through onnxruntime.  No secret, no license gate:
+;; whisperx's own diarization pipeline is pyannote/speaker-diarization-
+;; community-1, which HuggingFace marks `gated=auto' — an anonymous weight fetch
+;; 401s, so diarizing would need the operator to accept that model's terms in a
+;; browser and ship an HF read token as a sops-secret.  SortFormer's export is
+;; ungated under the NVIDIA Open Model License, downloads anonymously, and its
+;; runtime (onnxruntime) already ships in whisperx's dependency set — so this
+;; backend adds no pip pin, no secret and no terms-acceptance step.  It also
+;; keeps diarization off the GPU, which is shared with ComfyUI and AllTalk.
+;;
+;; Minutes: `summarize=true' posts the speaker-labelled transcript to an
+;; OpenAI-compatible endpoint (default strata on loopback) for meeting minutes
+;; plus task allocation — who was assigned what.  `save=1' writes the transcript
+;; and those markdown minutes under summary-dir.
 ;;
 ;; First request after boot downloads the model zoo into HF_HOME (~4 GB:
-;; faster-whisper large-v3, wav2vec2 align model, pyannote pipeline) — put
-;; cache-dir on the data volume, not the root disk.
+;; faster-whisper large-v3 + wav2vec2 align model) and, on the first *diarized*
+;; request, the ~470 MB SortFormer ONNX into cache-dir/onnx — put cache-dir on
+;; the data volume, not the root disk.
 
 (define-module (peteches services transcriber)
   #:use-module (guix gexp)
@@ -162,10 +171,59 @@
                        (default 10))
   (max-upload-mb transcriber-configuration-max-upload-mb
                  (default 500))
-  ;; SOPS-decrypted HF read token (owner must be the service user).  Read at
-  ;; REQUEST time by the server, so creating the secret needs no restart.
-  (hf-token-file transcriber-configuration-hf-token-file
-                 (default "/run/secrets/hf-token"))
+  ;; Diarization backend.  Deliberately not pyannote: see the module header —
+  ;; gated weights would mean a browser terms-acceptance step plus an HF token
+  ;; secret on every box that wants speaker labels.
+  (diarizer-file transcriber-configuration-diarizer-file
+                 (default (local-file
+                           (source-path
+                            "peteches/services/transcriber-diarizer.py"))))
+  ;; Where the ~470 MB SortFormer ONNX lives; #f = <cache-dir>/onnx/<name>.  It
+  ;; must be writable by the service user, because the daemon fetches it on the
+  ;; first diarized request (SHA-256 verified before it is put in place).
+  (sortformer-model-file transcriber-configuration-sortformer-model-file
+                         (default #f))
+  (sortformer-model-url transcriber-configuration-sortformer-model-url
+                        (default "https://huggingface.co/cgus/diar_streaming_sortformer_4spk-v2.1-onnx/resolve/main/diar_streaming_sortformer_4spk-v2.1.onnx"))
+  ;; Pinned digest of the file this backend was validated against; "" disables
+  ;; the check (e.g. after re-exporting with a different converter).
+  (sortformer-model-sha256 transcriber-configuration-sortformer-model-sha256
+                           (default "82b9c735e1cfc6b36b4ff8a994d9a0573e922d0e80a58a8553b2c58f7aff0c00"))
+  ;; Cosine similarity above which two diarization slots count as ONE voice.
+  ;; SortFormer keeps one slot per voice (arrival-order speaker cache), so an
+  ;; extra slot is either a real third person or the same person under changed
+  ;; mic conditions.  Measured on a real two-person meeting: the split voice
+  ;; scored 0.985 against itself and 0.771 against the other participant, so the
+  ;; default sits in a wide empty band.  #f defers to the diarizer module's own
+  ;; DEFAULT_MERGE_SIM; passing 0 disables merging entirely.
+  (diarization-merge-sim transcriber-configuration-diarization-merge-sim
+                         (default #f))
+  ;; Diarization slots quieter than this over the whole file are reported as
+  ;; ignored rather than labelled: a 1-second slot is laughter, a door or a
+  ;; hallucinated fourth voice, and putting it in the transcript adds a phantom
+  ;; participant.  #f defers to the diarizer module's DEFAULT_MIN_SPEAKER_SECONDS.
+  (diarization-min-speaker-seconds
+   transcriber-configuration-diarization-min-speaker-seconds
+   (default #f))
+  ;; onnxruntime intra-op threads for diarization (CPU work).  0 = the runtime's
+  ;; own default; cap it when the box is busy serving GPU jobs.
+  (diarizer-threads transcriber-configuration-diarizer-threads
+                    (default 0))
+
+  ;; Minutes backend: any OpenAI-compatible chat endpoint.  The default is strata
+  ;; on the same VM — the container runner passes `--network', which shares the
+  ;; host's network namespace, so loopback reaches it without another firewall
+  ;; hole or tailnet hop.  An empty model id means "ask /v1/models".
+  (summarizer-base-url transcriber-configuration-summarizer-base-url
+                       (default "http://127.0.0.1:8000"))
+  (summarizer-model transcriber-configuration-summarizer-model
+                    (default ""))
+  ;; Where `save=1' writes <stem>-<stamp>-transcript.txt and -minutes.md.
+  ;; #f = <state-dir>/meetings.  On comfyui nothing under /media/models is in a
+  ;; backup (see the restic note in systems/comfyui.scm), so treat this as a
+  ;; drop-off point rather than an archive.
+  (summary-dir transcriber-configuration-summary-dir
+               (default #f))
 
   ;; Paths.  Defaults are derived from service-name when #f.
   (state-dir transcriber-configuration-state-dir
@@ -243,6 +301,39 @@
 
 (define (transcriber-uploads-dir config)
   (string-append (transcriber-resolved-state-dir config) "/uploads"))
+
+(define (transcriber-onnx-dir config)
+  (string-append (transcriber-resolved-cache-dir config) "/onnx"))
+
+(define (transcriber-sortformer-model-file config)
+  ;; The file is named exactly as upstream publishes it, so a directory listing
+  ;; of onnx-dir identifies the artifact without opening it.
+  (or (transcriber-configuration-sortformer-model-file config)
+      (string-append (transcriber-onnx-dir config) "/"
+                     "diar_streaming_sortformer_4spk-v2.1.onnx")))
+
+(define (transcriber-resolved-summary-dir config)
+  (or (transcriber-configuration-summary-dir config)
+      (string-append (transcriber-resolved-state-dir config) "/meetings")))
+
+(define (transcriber-diarization-extra-args config)
+  ;; Only pass flags that are actually configured: an absent flag means "use the
+  ;; Python module's own default", which keeps tuning in one place instead of
+  ;; duplicating it here.
+  (append
+   (let ((merge-sim (transcriber-configuration-diarization-merge-sim config)))
+     (if merge-sim
+         (list "--merge-sim" (number->string merge-sim))
+         '()))
+   (let ((min-spk (transcriber-configuration-diarization-min-speaker-seconds
+                   config)))
+     (if min-spk
+         (list "--min-speaker-seconds" (number->string min-spk))
+         '()))
+   (let ((threads (transcriber-configuration-diarizer-threads config)))
+     (if (> threads 0)
+         (list "--diarizer-threads" (number->string threads))
+         '()))))
 
 ;;; ── Environment rendering ────────────────────────────────────────────────
 
@@ -418,7 +509,7 @@
          (venv-dir (transcriber-venv-dir config))
          (server-file (transcriber-configuration-server-file config))
          (env (transcriber-environment config))
-         (inner-command (list (string-append venv-dir "/bin/python")
+         (inner-base (list (string-append venv-dir "/bin/python")
                               server-file
                               "--port"
                               (number->string
@@ -436,10 +527,27 @@
                               "--max-upload-mb"
                               (number->string
                                (transcriber-configuration-max-upload-mb config))
-                              "--hf-token-file"
-                              (transcriber-configuration-hf-token-file config)
+                              "--diarizer-file"
+                              (transcriber-configuration-diarizer-file config)
+                              "--sortformer-model"
+                              (transcriber-sortformer-model-file config)
+                              "--sortformer-url"
+                              (transcriber-configuration-sortformer-model-url
+                               config)
+                              "--sortformer-sha256"
+                              (transcriber-configuration-sortformer-model-sha256
+                               config)
+                              "--summarizer-base-url"
+                              (transcriber-configuration-summarizer-base-url
+                               config)
+                              "--summarizer-model"
+                              (transcriber-configuration-summarizer-model config)
+                              "--summary-dir"
+                              (transcriber-resolved-summary-dir config)
                               "--uploads-dir"
                               (transcriber-uploads-dir config)))
+         (inner-command (append inner-base
+                                (transcriber-diarization-extra-args config)))
          (container-runner (transcriber-container-runner-file config "" env
                                                                inner-command)))
     (shepherd-service (provision (list provision-name))
@@ -507,6 +615,11 @@
                      (string-append cache-dir "/uv")
                      (string-append cache-dir "/xdg")
                      (string-append cache-dir "/nltk")
+                     ;; The SortFormer checkpoint and the saved minutes: both
+                     ;; created lazily by the daemon, but the parent directory
+                     ;; has to exist and be owned by it.
+                     (transcriber-onnx-dir config)
+                     (transcriber-resolved-summary-dir config)
                      log-dir
                      project-dir)))
     #~(let* ((pw (getpwnam #$user))
@@ -515,7 +628,11 @@
         (for-each (lambda (dir)
                     (mkdir-p dir)
                     (chown dir uid gid))
-                  (list #$@dirs)))))
+                  (list #$@dirs))
+        ;; Minutes are meant to be collected over ssh / by git, so the drop-off
+        ;; directory gets its traverse+read bits back; everything else here is
+        ;; scratch space and stays private to the service user.
+        (chmod #$(transcriber-resolved-summary-dir config) #o755))))
 
 (define (transcriber-activation configs)
   #~(begin

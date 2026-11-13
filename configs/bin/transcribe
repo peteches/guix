@@ -1,23 +1,36 @@
 #!/usr/bin/env bash
 # transcribe — send an audio/video file to the fleet WhisperX service
 # (comfyui VM's 4090, proxied by caddy) and print/save a transcript with
-# speaker labels ([SPEAKER_00], [SPEAKER_01], ...).
+# speaker labels, optionally with LLM minutes that say who was assigned what.
 #
 # Usage:
-#   transcribe FILE                      # txt transcript to stdout
-#   transcribe FILE -f srt -o out.srt    # SRT with speaker prefixes
-#   transcribe FILE -f json | jq         # segments with start/end/speaker
-#   transcribe FILE -l de                # force language (default: auto)
-#   transcribe FILE --no-diarize         # plain transcript (no HF token /
-#                                        #   fewer VRAM cycles)
-#   transcribe --health                  # service status
+#   transcribe FILE                       # labelled txt transcript to stdout
+#   transcribe FILE -o meeting.txt        # ...written to a file here
+#   transcribe FILE --summarize           # + strata minutes (summary,
+#                                         #   decisions, agreed tasks with
+#                                         #   owners, open questions)
+#   transcribe FILE --summarize --save    # + keep copies on the server too
+#                                         #   (paths printed to stderr)
+#   transcribe FILE --labels "Gareth,Pete"  # name the voices (order of first
+#                                         #   speech; default SPEAKER_01, ...)
+#   transcribe FILE -f srt -o out.srt     # SRT with speaker labels
+#   transcribe FILE -f json | jq .utterances
+#   transcribe FILE -l de                 # force language (default: auto)
+#   transcribe FILE --no-diarize          # plain transcript, no speakers
+#   transcribe --health                   # service status
 #
 # Formats: txt (default), srt, vtt, json.
 # Endpoint override: TRANSCRIBER_URL (default https://transcribe.ts.peteches.co.uk).
 #
-# Note: first request after service idle loads whisper large-v3 + alignment
-# + pyannote models onto the GPU (~15-30s before real work starts); large
-# files can take minutes. Do not Ctrl-C early — the server keeps working.
+# Speaker labels come from NVIDIA SortFormer v2.1 running on the service's CPU —
+# not pyannote — so diarization needs no HuggingFace account, token or accepted
+# terms.  The model itself is ungated and is downloaded once into the server's
+# cache on the first diarized request (~470 MB).
+#
+# Timings: the first request after an idle period loads whisper large-v3 + the
+# alignment model onto the GPU (~15-30s before real work starts), and minutes add
+# a further LLM round-trip.  A 47-minute meeting costs roughly 40s of GPU plus
+# ~1 minute of CPU diarization; do not Ctrl-C early — the server keeps working.
 
 set -euo pipefail
 
@@ -39,16 +52,19 @@ fi
 
 die() { echo "transcribe: $*" >&2; exit 1; }
 
-fmt=txt lang="" diarize=true file="" out=""
+fmt=txt lang="" diarize=true summarize=false save=false labels="" file="" out=""
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
     -f|--format)   fmt="${2:?missing format}"; shift 2 ;;
     -l|--language) lang="${2:?missing language}"; shift 2 ;;
     -o|--output)   out="${2:?missing output path}"; shift 2 ;;
+    --labels|--speaker-labels) labels="${2:?missing speaker names}"; shift 2 ;;
+    --summarize|-s) summarize=true; shift ;;
+    --save)        save=true; shift ;;
     --no-diarize)  diarize=false; shift ;;
     --health)      curl -fsS "${ca[@]}" "$URL/health"; echo; exit 0 ;;
-    -h|--help)     sed -n '2,20p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    -h|--help)     sed -n '2,31p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
     -*)            die "unknown option: $1 (try --help)" ;;
     *)             [[ -z "$file" ]] || die "only one input file supported"; file="$1"; shift ;;
   esac
@@ -57,13 +73,23 @@ done
 [[ -n "$file" ]] || die "no input file (try --help)"
 [[ -f "$file" ]] || die "not a file: $file"
 case "$fmt" in txt|srt|vtt|json) ;; *) die "format must be txt|srt|vtt|json" ;; esac
+# Minutes are an allocation of tasks to people, so they need the labels.
+if [[ "$summarize" == true && "$diarize" != true ]]; then
+  die "--summarize needs diarization (owners come from the speaker labels); drop --no-diarize"
+fi
 
 args=(-F "file=@${file}" -F "format=${fmt}" -F "diarize=${diarize}")
 [[ -n "$lang" ]] && args+=(-F "language=${lang}")
+[[ "$summarize" == true ]] && args+=(-F "summarize=true")
+[[ "$save" == true ]] && args+=(-F "save=true")
+[[ -n "$labels" ]] && args+=(-F "speaker_labels=${labels}")
 
-# No -f: on HTTP errors print the server's (plain-text) explanation, e.g.
-# the 503 telling you the HF token for diarization is missing.
-body=$(curl -sS --max-time 3600 -w $'\n%{http_code}' "${ca[@]}" "${args[@]}" "$URL/transcribe")
+hdr=$(mktemp)
+trap 'rm -f "$hdr"' EXIT
+
+# No -f: on HTTP errors print the server's (plain-text) explanation.
+body=$(curl -sS --max-time 7200 -D "$hdr" -w $'\n%{http_code}' "${ca[@]}" \
+           "${args[@]}" "$URL/transcribe")
 code="${body##*$'\n'}"
 body="${body%$'\n'*}"
 
@@ -77,4 +103,13 @@ if [[ -n "$out" ]]; then
   echo "transcribe: wrote $out ($(wc -c < "$out") bytes)" >&2
 else
   printf '%s\n' "$body"
+fi
+
+# --save keeps copies server-side; the paths come back as response headers so
+# the transcript body itself stays pipeable.
+if [[ "$save" == true ]]; then
+  grep -i '^x-transcript-path:\|^x-summary-path:' "$hdr" 2>/dev/null \
+    | sed 's/^[^:]*:[[:space:]]*//' | while read -r p; do
+      echo "transcribe: saved on server: $p" >&2
+    done || true
 fi
