@@ -629,9 +629,12 @@
                     (mkdir-p dir)
                     (chown dir uid gid))
                   (list #$@dirs))
-        ;; Minutes are meant to be collected over ssh / by git, so the drop-off
-        ;; directory gets its traverse+read bits back; everything else here is
-        ;; scratch space and stays private to the service user.
+        ;; The state dir doubles as the service account's home, so it lands 0700 —
+        ;; which would make the saved minutes reachable only by root on a box where
+        ;; the operator collects them over ssh.  Open the traverse bit (the summary
+        ;; dir and its files are then what carry the read bits); this exposes no new
+        ;; secret: uploads/ was already 0755 with world-readable temp audio in it.
+        (chmod #$(transcriber-resolved-state-dir config) #o755)
         (chmod #$(transcriber-resolved-summary-dir config) #o755))))
 
 (define (transcriber-activation configs)

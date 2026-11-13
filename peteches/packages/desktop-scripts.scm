@@ -18,6 +18,7 @@
   #:use-module (guix gexp)
   #:use-module (guix packages)
   #:use-module (guix build-system copy)
+  #:use-module (gnu packages curl)
   #:use-module ((guix licenses) #:prefix license:)
   #:use-module (peteches repository)
   #:export (peteches-desktop-scripts))
@@ -50,6 +51,12 @@
                    (chmod file #o555))
                  (find-files bin)))
               #t)))))
+    ;; `transcribe' shells out to curl, and these scripts get installed into
+    ;; profiles that do not otherwise carry curl — running the script with no curl
+    ;; on PATH fails with "curl: command not found" (hit live on a headless box).
+    ;; Propagating, not merely inputting, is what matters here: the consumer is the
+    ;; profile, and only propagated inputs land in it.
+    (propagated-inputs (list curl))
     (home-page "https://peteches.co.uk")
     (synopsis "Peteches desktop helper scripts")
     (description
