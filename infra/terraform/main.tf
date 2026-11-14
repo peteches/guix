@@ -575,7 +575,15 @@ module "agents" {
     interface    = "virtio0"
     # Must be >= the 25G qcow2 the image build pipeline produces, plus
     # headroom for the media the harnesses generate locally.
-    size = 75
+    #
+    # Recorded as it runs live (`qm config 121`), grown by hand on 2026-11-07:
+    # the disk was 75G allocated but the guest's GPT partition and ext4 fs were
+    # still the original 25G image, so the box hit 100% full.  See
+    # proxmox-vms.org "resize the disk after import" for the recipe.
+    # This value does NOT resize anything: ./modules/proxmox-vm ignores the
+    # whole disk block post-create, so changing it here only documents live
+    # state — the growth has to be done with `qm resize` + sfdisk + resize2fs.
+    size = 150
   }
 
   network_device = {
