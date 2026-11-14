@@ -62,13 +62,14 @@
        ;; Placeholder: replace with the hash Guix reports for the commit above.
        (sha256 (base32 "0000000000000000000000000000000000000000000000000000"))))
     (build-system copy-build-system)
-    (inputs (list ffmpeg))
+    ;; Nothing is compiled: node and ffmpeg are wanted at run time by the installed bots, so they
+    ;; propagate instead of being build-only inputs.
     (propagated-inputs (list node ffmpeg))
     (arguments
      (list
-      ;; tests/ is fast and network-free, but it assumes a writable checkout (it writes fake
+      ;; tests/ is fast and network-free but assumes a writable checkout (it drops fake
       ;; executables into a temp dir and resolves ffmpeg through the store).  Run the suites in
-      ;; the repo; here we syntax-check every module, which is what catches a typo before deploy.
+      ;; the repo — see `npm test` — rather than inside this build.
       #:tests? #f
       #:install-plan
       #~'(("src/" "share/aibots/src/")
@@ -80,7 +81,9 @@
       #~(modify-phases %standard-phases
           (add-after 'install 'strip-state-and-generate-launchers
             (lambda _
-              (use-modules (guix build utils) (ice-9 ftw))
+              ;; (ice-9 format) is not re-exported by (guix build utils), and this phase writes
+              ;; the launchers with format; ftw was never used.
+              (use-modules (guix build utils) (ice-9 format))
               (let ((share (string-append #$output "/share/aibots"))
                     (bindir (string-append #$output "/bin")))
                 ;; Anything a running bot writes must not come out of the store.
@@ -101,9 +104,7 @@
                       (format #t "writing launcher ~a for bots/~a~%" launcher bot-dir-name)
                       (call-with-output-file launcher
                         (lambda (port)
-                          (format port "#!/bin/sh~@
-# @(~a~) — see peteches/services/ai-bots.scm for how this is run as a service.~@
-exec ~a/bin/node \"~a/bots/~a/index.mjs\" \"$@\"~n"
+                          (format port "#!/bin/sh\n# launcher for bots/~a — run as a service (see peteches/services/ai-bots.scm)\nexec ~a/bin/node \"~a/bots/~a/index.mjs\" \"$@\"\n"
                                   bot-dir-name #$node share bot-dir-name)))
                       (chmod launcher #o755)
                       ;; The index.mjs files carry shebangs; keep them executable so
