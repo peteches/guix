@@ -204,7 +204,11 @@
          ;; #:environment-variables below).
          (static-env
           (append
-           (list (string-append prefix "_DATA_DIR=" (%bot-data-dir b)))
+           ;; Shepherd does not add HOME when we hand it #:environment-variables (it only does
+           ;; that through user-environment-variables, which nothing in this chain calls), so set
+           ;; it to the account's home — the same directory activation creates as data-dir.
+           (list (string-append prefix "_DATA_DIR=" (%bot-data-dir b))
+                 (string-append "HOME=" (%bot-data-dir b)))
            (let ((chats (ai-bot-allowed-chats b)))
              (if (null? chats)
                  '()
@@ -217,9 +221,16 @@
      (requirement (ai-bot-requirement b))
      (start
       ;; A lambda and not a bare constructor, so the secret reads happen at start.  Note the two
-      ;; quotes on '#$static-env: they emit (quote ("PATH=..." ...)), a list literal.  Unquoted,
-      ;; those strings land in call position and blow up with "Wrong type to apply".
+      ;; quotes on '#$static-env: they emit (quote ("TIFFANY_DATA_DIR=..." ...)), a list literal.
+      ;; Unquoted, those strings land in call position and blow up with "Wrong type to apply".
       #~(lambda _
+          ;; This body is written into the generated shepherd service file, whose module scope is
+          ;; Guix's %default-modules: (shepherd service), (guix build utils) and (guix build
+          ;; syscalls).  fold/first/second come from SRFI-1 and string-trim-both from SRFI-13; they
+          ;; are not guaranteed to be visible there, so declare them — upstream does the same in
+          ;; its gexps (e.g. gnu/services/guix.scm).  Without this the service dies at start with
+          ;; "Unbound variable: fold", long after any syntax check would have noticed.
+          (use-modules (srfi srfi-1) (srfi srfi-13))
           (let ((secret-env
                  (fold (lambda (pair acc)
                          (let ((var (first pair))
@@ -242,8 +253,9 @@
               ;; cons* splices the quoted list of extra arguments onto the launcher path.
               (cons* #$(%bot-launcher b) '#$command-args)
               #:directory #$(file-append pkg "/share/aibots")
-              ;; HOME comes from the account's home-directory, which activation just made and
-              ;; chowned; node wants a writable HOME for its temp files.
+              ;; HOME is set explicitly in the environment list above: shepherd only injects it via
+              ;; user-environment-variables, which this chain does not call.  The directory itself
+              ;; comes from the account's home-directory, which activation just made and chowned.
               #:user #$(%bot-user b)
               #:group #$(%bot-group b)
               ;; PATH is assembled here, inside the gexp.  #$node and #$ffmpeg are store
