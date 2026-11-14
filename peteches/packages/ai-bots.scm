@@ -84,9 +84,10 @@
               (let ((share (string-append #$output "/share/aibots"))
                     (bindir (string-append #$output "/bin")))
                 ;; Anything a running bot writes must not come out of the store.
+                ;; Generated media is pruned by extension below, so bots/<Bot>/avatar/*.png goes
+                ;; while the script that produced it stays in the store.
                 (for-each delete-file-recursively
-                          (find-files share "/data$" type-directory))
-                (delete-file-recursively (string-append share "/bots/Tiffany/avatar"))
+                          (find-files share "/data$" #:directories? #t))
                 (for-each delete-file
                           (append (find-files share "\\.(sqlite3?|sqlite3?-wal|sqlite3?-shm|png|jpg|jpeg|wav|ogg|opus)$")
                                   (find-files share "telegram-offset\\.json$")))
@@ -103,13 +104,13 @@
                           (format port "#!/bin/sh~@
 # @(~a~) — see peteches/services/ai-bots.scm for how this is run as a service.~@
 exec ~a/bin/node \"~a/bots/~a/index.mjs\" \"$@\"~n"
-                                  bot-dir-name #+node share bot-dir-name)))
+                                  bot-dir-name #$node share bot-dir-name)))
                       (chmod launcher #o755)
                       ;; The index.mjs files carry shebangs; keep them executable so
                       ;; ./bots/Tiffany/index.mjs works straight out of the store too.
                       (for-each (lambda (mjs) (chmod mjs #o755))
                                 (find-files (string-append share "/bots/" bot-dir-name) "\\.mjs$"))))
-                  (sort (find-files share "index\\.mjs$") string<)))))))
+                  (sort (find-files share "index\\.mjs$") string<))))))))
     (synopsis "Telegram-connected AI assistants for the area_51 fleet")
     (description
      "Node.js assistant bots written for Peteches' area_51 machines.  Each bot is a directory

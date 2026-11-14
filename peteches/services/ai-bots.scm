@@ -81,8 +81,8 @@
   ai-bot make-ai-bot ai-bot?
   (name ai-bot-name                       ; "tiffany": launcher name, service tag, account stem
          (default "tiffany"))
-  (dir ai-bot-dir                         ; bots/<Dir> in the store; defaults to capitalized name
-        (default #f))
+  (dir ai-bot-dir                         ; which bots/<Dir> this refers to; the package derives
+        (default #f))                     ; bin/<name> from whatever is actually installed
   (package ai-bot-package (default ai-bots))
   (user ai-bot-user (default #f))         ; defaults to the bot's name
   (group ai-bot-group (default #f))       ; defaults to the bot's name
@@ -111,7 +111,6 @@
 ;;; field — so they stay #f in the record and are resolved here.
 
 (define (%bot-id b) (string-downcase (ai-bot-name b)))
-(define (%bot-store-dir b) (or (ai-bot-dir b) (string-titlecase (ai-bot-name b))))
 (define (%bot-user b) (or (ai-bot-user b) (%bot-id b)))
 (define (%bot-group b) (or (ai-bot-group b) (%bot-id b)))
 (define (%bot-data-dir b) (or (ai-bot-data-dir b) (string-append "/var/lib/" (%bot-id b))))
@@ -195,6 +194,7 @@
 (define (ai-bot-shepherd-service b)
   (let* ((pkg (ai-bot-package b))
          (prefix (%bot-env-prefix b))
+         (command-args (ai-bot-command-args b))
          (secret-pairs (map %parse-secret-spec (ai-bot-secrets b)))
          ;; Configure-time values go in as strings; the secrets are read at start instead.
          (static-env
@@ -246,7 +246,7 @@
               #:group #$(%bot-group b)
               #:environment-variables (append secret-env '#$static-env)
               #:log-file #$(%bot-log-file b)))))
-     (stop #~(make-kill-destructor)))))
+     (stop #~(make-kill-destructor))))))
 
 ;; ── Profile: enabling the service installs the bots ──────────────────────────────────────────
 
