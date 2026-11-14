@@ -1,5 +1,6 @@
 (define-module (peteches services ai-bots)
   #:use-module (guix gexp)
+  #:use-module (guix records)
   #:use-module (gnu services)
   #:use-module (gnu services shepherd)
   #:use-module (gnu services base)
@@ -144,7 +145,9 @@
                           out)))))))
 
 (define (ai-bots-accounts config)
-  (append (map (lambda (g) (group (name g) (system? #t) (comment "ai-bots service group")))
+  ;; Guix's group record is `user-group' and its fields are name, password, id and system? only
+  ;; — there is no comment field to fill in here.
+  (append (map (lambda (g) (user-group (name g) (system? #t)))
                (delete-duplicates (map %bot-group (ai-bots-configuration-bots config)) string=))
           (%bot-users config)))
 
@@ -196,19 +199,18 @@
          (prefix (%bot-env-prefix b))
          (command-args (ai-bot-command-args b))
          (secret-pairs (map %parse-secret-spec (ai-bot-secrets b)))
-         ;; Configure-time values go in as strings; the secrets are read at start instead.
+         ;; Configure-time values go in as plain strings; the secrets are read at start instead.
+         ;; PATH is NOT here — it needs store references, and those only work inside a gexp (see
+         ;; #:environment-variables below).
          (static-env
           (append
-           (list (string-append prefix "_DATA_DIR=" (%bot-data-dir b))
-                 (string-append "PATH=" #$node "/bin:" #$ffmpeg "/bin"
-                                ":/run/current-system/profile/bin"
-                                ":/run/current-system/profile/sbin:/run/setuid-programs"))
+           (list (string-append prefix "_DATA_DIR=" (%bot-data-dir b)))
            (let ((chats (ai-bot-allowed-chats b)))
              (if (null? chats)
                  '()
                  (list (string-append prefix "_ALLOWED_CHATS="
                                       (string-join (map %chat-id-string chats) " ")))))
-           (map string (ai-bot-environment b)))))
+           (ai-bot-environment b))))
     (shepherd-service
      (provision (list (symbol-append 'aibots- (string->symbol (%bot-id b)))))
      (documentation (ai-bot-documentation b))
@@ -244,9 +246,16 @@
               ;; chowned; node wants a writable HOME for its temp files.
               #:user #$(%bot-user b)
               #:group #$(%bot-group b)
-              #:environment-variables (append secret-env '#$static-env)
-              #:log-file #$(%bot-log-file b)))))
-     (stop #~(make-kill-destructor))))))
+              ;; PATH is assembled here, inside the gexp.  #$node and #$ffmpeg are store
+              ;; references; outside a #~ the reader produces (ungexp node), which Guile reports as
+              ;; an unbound variable at configure time.
+              #:environment-variables
+              (cons* (string-append "PATH=" #$node "/bin:" #$ffmpeg "/bin"
+                                    ":/run/current-system/profile/bin"
+                                    ":/run/current-system/profile/sbin:/run/setuid-programs")
+                     secret-env '#$static-env)
+              #:log-file #$(%bot-log-file b))))))
+     (stop #~(make-kill-destructor)))))
 
 ;; ── Profile: enabling the service installs the bots ──────────────────────────────────────────
 
@@ -281,7 +290,7 @@ profile.")
    (name "tiffany")
    (dir "Tiffany")
    (documentation
-    "Tiffany — Peteches' Telegram assistant (@peteches_pa_bot): keeps his calendar with DST-safe
+    "Tiffany - Peteches' Telegram assistant (@peteches_pa_bot): keeps his calendar with DST-safe
 reminders and prep nudges, remembers facts about him, researches on the web, speaks through
 AllTalk, draws herself in ComfyUI, and drives herdr and pi sessions on this box.")
    ;; Read at service start.  Decrypt it to a file this bot's account can read — see commentary.
