@@ -90,12 +90,16 @@
                 ;; Generated media is pruned by extension below, so bots/<Bot>/avatar/*.png goes
                 ;; while the script that produced it stays in the store.
                 (for-each delete-file-recursively
-                          (find-files share "/data$" #:directories? #t))
+                          (find-files share "^data$" #:directories? #t))
                 (for-each delete-file
                           (append (find-files share "\\.(sqlite3?|sqlite3?-wal|sqlite3?-shm|png|jpg|jpeg|wav|ogg|opus)$")
                                   (find-files share "telegram-offset\\.json$")))
-                ;; Launchers: one per directory under bots/ that has an index.mjs.  The store
-                ;; path of node is baked in so the wrapper works from any PATH.
+                ;; Launchers: one per bot, i.e. per directory under bots/ that ships an index.mjs.
+                ;; Scan bots/ itself rather than the whole store output — find-files matches its
+                ;; pattern against the BASE name (guix/build/utils.scm's file-name-predicate), so a
+                ;; path-shaped pattern silently matches nothing, and scanning from `share` also
+                ;; picked up src/index.mjs, which is the shared library entry point and not a bot.
+                ;; The store path of node is baked into each wrapper so it runs under any PATH.
                 (mkdir-p bindir)
                 (for-each
                   (lambda (entry)
@@ -111,7 +115,7 @@
                       ;; ./bots/Tiffany/index.mjs works straight out of the store too.
                       (for-each (lambda (mjs) (chmod mjs #o755))
                                 (find-files (string-append share "/bots/" bot-dir-name) "\\.mjs$"))))
-                  (sort (find-files share "bots/[^/]+/index\\.mjs$") string<))))))))
+                  (sort (find-files (string-append share "/bots") "^index\\.mjs$") string<))))))))
     (synopsis "Telegram-connected AI assistants for the area_51 fleet")
     (description
      "Node.js assistant bots written for Peteches' area_51 machines.  Each bot is a directory
