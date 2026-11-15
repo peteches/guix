@@ -48,7 +48,7 @@
 (define-public ai-bots-repo-url "https://git.ts.peteches.co.uk/ai-bots.git/")
 
 ;; Pinned commit of the aiBots repository.  Replace the placeholder below together with this.
-(define-public ai-bots-commit "REPLACE-WITH-THE-PUSHED-COMMIT-HASH")
+(define-public ai-bots-commit "98c58406d98b5bf3c5b185b3d64929c72717d84c")
 
 (define-public ai-bots
   (package
@@ -60,7 +60,7 @@
        (uri (git-reference (url ai-bots-repo-url) (commit ai-bots-commit)))
        (file-name (git-file-name name version))
        ;; Placeholder: replace with the hash Guix reports for the commit above.
-       (sha256 (base32 "0000000000000000000000000000000000000000000000000000"))))
+       (sha256 (base32 "1jrynflgn0lnp9gr9jqyabg2bsk80bf87l0p7aqgi8imxyrvr61p"))))
     (build-system copy-build-system)
     ;; Nothing is compiled: node and ffmpeg are wanted at run time by the installed bots, so they
     ;; propagate instead of being build-only inputs.
@@ -111,7 +111,7 @@
                       ;; ./bots/Tiffany/index.mjs works straight out of the store too.
                       (for-each (lambda (mjs) (chmod mjs #o755))
                                 (find-files (string-append share "/bots/" bot-dir-name) "\\.mjs$"))))
-                  (sort (find-files share "index\\.mjs$") string<))))))))
+                  (sort (find-files share "bots/[^/]+/index\\.mjs$") string<))))))))
     (synopsis "Telegram-connected AI assistants for the area_51 fleet")
     (description
      "Node.js assistant bots written for Peteches' area_51 machines.  Each bot is a directory
