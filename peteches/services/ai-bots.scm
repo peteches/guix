@@ -261,11 +261,16 @@
               ;; PATH is assembled here, inside the gexp.  #$node and #$ffmpeg are store
               ;; references; outside a #~ the reader produces (ungexp node), which Guile reports as
               ;; an unbound variable at configure time.
+              ;; cons* splices only its LAST argument: (cons* "PATH=…" secret-env '("A=2")) puts
+              ;; the whole secret list into the environment as ONE element, and shepherd's
+              ;; list-of-strings? guard then rejects the lot —
+              ;;   value (...) of argument 'environment-variables has the wrong type
+              ;; — so the service never spawns anything.  cons + append is flat.
               #:environment-variables
-              (cons* (string-append "PATH=" #$node "/bin:" #$ffmpeg "/bin"
-                                    ":/run/current-system/profile/bin"
-                                    ":/run/current-system/profile/sbin:/run/setuid-programs")
-                     secret-env '#$static-env)
+              (cons (string-append "PATH=" #$node "/bin:" #$ffmpeg "/bin"
+                                   ":/run/current-system/profile/bin"
+                                   ":/run/current-system/profile/sbin:/run/setuid-programs")
+                    (append secret-env '#$static-env))
               #:log-file #$(%bot-log-file b))))))
      (stop #~(make-kill-destructor)))))
 
