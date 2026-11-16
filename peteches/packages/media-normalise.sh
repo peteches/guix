@@ -66,6 +66,8 @@ source "$CONF"
 # Which subtitle languages become sidecar files (space/comma separated, three-letter
 # tags).  Empty means every text subtitle track — true to the intent but ruinous on
 # this library's Blu-ray rips, which carry up to 38 of them.  Set it in the config.
+# The deployed value is the service record's sub-langs field (peteches/services/
+# media-normalise.scm), currently "eng spa"; empty below only means "unset here".
 : "${SUB_LANGS:=}"
 # parsed   = hand back whatever quality the app read off the release name (honest:
 #            a stream copy cannot change resolution).

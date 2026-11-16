@@ -65,7 +65,12 @@ ROOTS=()                                               # default set after parsi
 APPLY=0 LIST_ONLY=0 LIMIT=0 ORDER=large ONLY=
 STAGING=/media/import
 QUALITY=Bluray-2160p PROFILE=Normalised-2160p MAXRATE=25000000 CQ=27
-QUALITY_MODE=parsed SUB_LANGS=
+QUALITY_MODE=parsed
+# Must agree with the deployed default in peteches/services/media-normalise.scm
+# (sub-langs), because this script writes its own config and a runner that quietly
+# defaults differently re-exports every subtitle track.  "" still means "every text
+# track"; --sub-langs overrides.
+SUB_LANGS='eng spa'
 LOG_ON_HOST=/var/log/media-normalise.log
 RADARR_URL=http://192.168.51.195:7878/api/v3
 SONARR_URL=http://192.168.51.195:8989/api/v3
@@ -96,8 +101,9 @@ Usage: scripts/media-normalise-library [options]
   --quality-mode MODE  parsed (default) leaves the registered quality alone; override
                        patches --quality onto it afterwards
   --sub-langs LANGS    comma/space-separated subtitle languages to keep as sidecar
-                       .srt files (empty = every text track, which on a Blu-ray rip
-                       here means up to 38 files beside one video)
+                       .srt files (default "eng spa", matching the deployed service;
+                       pass "" for every text track, which on a Blu-ray rip here means
+                       up to 38 files beside one video)
   --radarr-key FILE    Radarr API key file ON THE TARGET (default
                        /etc/media-normalise/radarr-api-key; the deployed service
                        decrypts its copy to /run/secrets/radarr-api-key, so pass that
@@ -128,7 +134,10 @@ while [[ $# -gt 0 ]]; do
     --staging) STAGING=${2:?--staging needs a path}; shift ;;
     --quality) QUALITY=${2:?--quality needs a name}; shift ;;
     --quality-mode) QUALITY_MODE=${2:?--quality-mode needs parsed|override}; shift ;;
-    --sub-langs) SUB_LANGS=${2:?--sub-langs needs language tags}; shift ;;
+    # Empty is a legitimate value here ("every text track"), so this checks that an
+    # argument was supplied rather than that it is non-empty — ${2:?} would reject "".
+    --sub-langs) [[ $# -ge 2 ]] || { echo "media-normalise-library: --sub-langs needs language tags (\"\" for every text track)" >&2; exit 2; }
+               SUB_LANGS=$2 ;;
     --radarr-key) RADARR_KEY=${2:?--radarr-key needs a path}; shift ;;
     --sonarr-key) SONARR_KEY=${2:?--sonarr-key needs a path}; shift ;;
     --profile) PROFILE=${2:?--profile needs a name}; shift ;;

@@ -105,15 +105,18 @@
   (standup-app media-normalise-configuration-standup-app
                (default "radarr"))
   ;; Which subtitle languages become sidecar .srt files, as three-letter tags in a
-  ;; space- or comma-separated list.  "" means EVERY text subtitle track, which is
-  ;; faithful to the intent but costly here: this library's Blu-ray rips carry up to
-  ;; 38 text tracks and each one becomes a file beside the video.  It is left empty
-  ;; because neither app has any subtitle language configured (/config/mediamanagement
-  ;; answers with an empty list on both), so nothing in the fleet says which tags are
-  ;; wanted — name them ("eng spa" is what was verified playable on this client) and
-  ;; the folders stay readable.
+  ;; space- or comma-separated list.  "" means EVERY text subtitle track — the old
+  ;; behaviour — and on this library that is ruinous, measured over the 25 largest
+  ;; films-root folders (796 GiB, 24 of them rewrite-needed): exporting every text
+  ;; track there would write 118 sidecars, worst single title 33, where "eng spa"
+  ;; needs 14 — and only one of those titles has any non-eng/spa prose worth keeping.
+  ;; So the policy is named here rather than left to "" (measured, not guessed: see
+  ;; media-normalise.sh probe_facts for how SUB_LANGS is applied).  Neither app has a
+  ;; subtitle language configured — /config/mediamanagement answers with an empty list
+  ;; on both — so this field, not the apps, is the source of truth.  It stays
+  ;; overridable per machine; eng+spa is what was verified playable on this client.
   (sub-langs media-normalise-configuration-sub-langs
-             (default ""))
+             (default "eng spa"))
   ;; "parsed" (the default) lets the app keep whatever quality it reads off the file
   ;; name of the rewrite — under a rescan that is the whole story, and it is honest
   ;; because a stream copy cannot change resolution.  "override" patches QUALITY-NAME
