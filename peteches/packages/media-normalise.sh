@@ -580,6 +580,81 @@ item_id_for_path() {  # app library-folder -> id of the movie/series that owns i
   esac
 }
 
+# ── naming: the quality token a rewrite is allowed to claim ─────────────────
+# A rewrite is a stream copy, so it cannot change resolution or origin: the only quality
+# token that is true of it is the one the app already records for the file being replaced.
+# Both apps store that as the exact string their own file-name parser reads back — measured
+# live on Radarr 6.3.0 and Sonarr 4.0.20, where movieFile / episodeFile .quality.quality.name
+# is "Bluray-720p" for 'Aliens (1986) Bluray-720p.mp4' and "SDTV" for a '... SDTV.mp4'
+# episode file.  Echoing it back means the app reads off the new name exactly what it had
+# already decided, instead of Unknown — which is what today's bare <stem>.mp4 lands as.
+# Revision is echoed with the apps' own words only (-REPACK / -PROPER from revision.isRepack /
+# real == 2); a bare version number has no spelling in either app's naming convention, so we
+# do not invent one (measured: 0 of 40 sampled Radarr movie files carry any revision at all).
+# Empty output means NO token — unregistered file, an item that reports no quality, "Unknown"
+# (the app admitting it did not work out), or a reply we could not parse.  In every one of
+# those the rewrite lands under today's bare <stem>.mp4: naming it after a quality nobody
+# measured is the exact lie this replaces.
+# Both helpers below RETURN their value on stdout, so every message they log must go to the
+# log FILE only: log()'s second printf echoes to stdout, and command substitution would fold
+# that sentence into the returned name (measured live — the first apply staged a file named
+# after the whole log line because of nothing else).
+quality_token_for() {  # app library-file -> the quality token that app records for it, else empty
+  local app=$1 f=$2 mid rows tok try
+  case $app in radarr|sonarr) : ;; *) return 0 ;; esac
+  mid=$(item_id_for_path "$app" "$(dirname "$f")") || true
+  if [[ -z ${mid:-} || $mid == null ]]; then
+    log "name: no $app item owns $(dirname "$f"), so $(basename "$f") lands untokened" >/dev/null
+    return 0
+  fi
+  # The UNTRIMMED file list.  file_rows_for() drops .quality on purpose — the import loops
+  # only need ids — and this is the one reader that wants the meaning.  Retried like every
+  # other read here (see item_json): a garbage reply must not be mistaken for "no quality",
+  # so it is retried until it actually parses as an array or the tries run out.
+  tok=
+  for try in $(seq 1 "$API_TRIES"); do
+    rows=$( case $app in
+              radarr) api radarr GET "/moviefile?movieId=$mid" ;;
+              sonarr) api sonarr GET "/episodefile?seriesId=$mid" ;;
+            esac ) || true
+    if [[ -n ${rows:-} ]] && jq -e 'type == "array"' >/dev/null 2>&1 <<<"$rows"; then
+      tok=$(jq -r --arg p "$f" '
+              [ .[] | select(.path == $p) ] | last // empty
+              | (.quality.quality.name // "") as $n
+              | (if ((.quality.revision.isRepack // false)) then "-REPACK"
+                 elif ((.quality.revision.real // 0) == 2) then "-PROPER" else "" end) as $rev
+              | if ($n == "" or ($n | ascii_downcase) == "unknown") then "" else $n + $rev end
+            ' <<<"$rows" 2>/dev/null) || tok=
+      [[ -z $tok || $tok == null ]] && tok=
+      break
+    fi
+    (( try < API_TRIES )) && sleep "$API_RETRY_SLEEP"
+  done
+  if [[ -z $tok ]]; then
+    log "name: $app records no readable quality for $(basename "$f") (item $mid); landing it untokened rather than inventing one" >/dev/null
+    return 0
+  fi
+  printf '%s' "$tok"
+}
+
+# The stem the rewrite lands under: the original's own stem, plus that token, separated by a
+# space — which is how both apps name files themselves.  When the stem already carries the
+# token (most library files do; that is where the app read it from) appending it again would
+# be noise rather than honesty, so the stem goes through unchanged.
+name_stem_for() {  # app original-file -> the stem the rewrite should land under
+  local app=$1 f=$2 base tok
+  base=$(basename "$f"); base=${base%.*}
+  tok=$(quality_token_for "$app" "$f") || tok=
+  if [[ -z $tok ]]; then printf '%s' "$base"; return 0; fi
+  if [[ ${base,,} == *"${tok,,}"* ]]; then
+    log "name: $app records $tok for $(basename "$f") and its name already says so — stem kept as is" >/dev/null
+    printf '%s' "$base"
+  else
+    log "name: landing \"$base $tok\" because $tok is the quality $app already records for $(basename "$f")" >/dev/null
+    printf '%s %s' "$base" "$tok"
+  fi
+}
+
 # Telling the app to rescan its folder is what imports a file.  Both apps answer HTTP 201
 # with a command record and do the scan a few seconds later in their own queue, so this
 # only reports whether the request was accepted — callers poll for the result.
@@ -862,7 +937,7 @@ import_item() {  # app staged-file staging-dir original -> 0 once the rewrite is
 
 # ── per-file driver ─────────────────────────────────────────────────────────
 process_file() {
-  local src=$1 app dir staged base tag
+  local src=$1 app dir stem base staged tag
   app=$(route "$src"); [[ $app == none ]] && return 0
   N_SEEN=$(( N_SEEN + 1 ))
   SRC_CURRENT=$src           # set before any branch: verify() always has a reference
@@ -874,7 +949,11 @@ process_file() {
     while IFS= read -r l; do [[ -n $l ]] && log "  why: $l"; done <<<"$(conformity_failures "$src")"
     return 0
   fi
-  base=$(basename "$src"); base=${base%.*}
+  # The staging DIRECTORY keeps the source's own stem plus a hash of its full path (see
+  # below), so a resume still finds it whatever the app records; only the FILE inside — and
+  # therefore the library name, which import_item takes from it — carries the quality token.
+  stem=$(basename "$src"); stem=${stem%.*}
+  base=$(name_stem_for "$app" "$src")
   # Staging is keyed on the source path, not just the file stem.  Two different
   # titles can easily share a stem (Sample.mp4, trailer.mp4, or generic episode
   # names across shows), and with a shared staging directory one title's finished
@@ -883,7 +962,9 @@ process_file() {
   # apart.  The hash keeps each source its own folder while staying deterministic,
   # so a staged encode is still reusable across runs.
   tag=$(printf '%s' "$src" | md5sum | cut -c1-8)
-  dir="$STAGING_ROOT/$(split_of "$src")/$base-$tag"
+  # Keyed on the ORIGINAL stem ($stem), not the tokened one: a resume must find the cached
+  # rewrite even if the app's recorded quality — and so the file name inside — changed since.
+  dir="$STAGING_ROOT/$(split_of "$src")/$stem-$tag"
   staged="$dir/$base.mp4"
   mkdir -p "$dir"
   # Cache: reuse a previously-staged rewrite rather than remuxing from scratch.
