@@ -411,10 +411,18 @@ main() {
         "$pkg/bin/media-normalise" "${args[@]}" 2>&1 | sed "s|^|[$dir] |"
     ' "$PKG" "$REMOTE_DIR/config" "$d" "$APPLY" "$NVIDIA_LIB" "$LOG_ON_HOST" \
       | tee "$tmp" -a "$LOCAL_LOG" >&2 || rc=$?
+    # grep must never receive a trailing backslash.  Inside single quotes a backslash-newline is
+    # LITERAL (no line continuation), so the old multi-line alternation ended its first branch with
+    # an unmatched '\' and GNU grep died: "grep: Trailing backslash", exit 2.  Verified live on
+    # jellyfin and here (both GNU grep 3.11).  One -e per alternative keeps every continuation in
+    # unquoted shell text, where a trailing backslash IS a continuation and never reaches the regex.
+    # The || true matters for the same reason: with pipefail, a folder that produces no marker line
+    # makes grep exit 1 (not an error), which as a bare assignment would abort main under set -e.
     verdict=$(grep -m14 -E \
-        'import: ok|rewrite needed|skip \(conforming\)|skip \(unsupported container\)| \
-         skip \(ambiguous disc titles\)|selected playlist|^ *candidate:|why:|^WARNING|summary:' "$tmp" \
-        | sed "s|^|  · |")
+        -e 'import: ok' -e 'rewrite needed' -e 'skip \(conforming\)' \
+        -e 'skip \(unsupported container\)' -e 'skip \(ambiguous disc titles\)' \
+        -e 'selected playlist' -e '^ *candidate:' -e 'why:' -e '^WARNING' -e 'summary:' \
+        "$tmp" | sed "s|^|  · |") || true
     [[ -n $verdict ]] || printf '  · no marker lines (folder has nothing to do?)\n' >&2
     printf '%s\n' "$verdict" >&2
     if (( rc )); then note "folder exited $rc — partial output kept in staging, source untouched"; fi
