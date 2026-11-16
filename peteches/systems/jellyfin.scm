@@ -79,6 +79,20 @@
        (key '("ssh-private-key"))
        (file (local-file "../../secrets/hosts/jellyfin/guix-build.yaml"))
        (path "/run/secrets/guix-offload-key")
+       (permissions #o400))
+      ;; Arr API keys for the nightly media normaliser.  The arr apps themselves
+      ;; read theirs on the arr VM; these are jellyfin's copies, used only to call
+      ;; the APIs (find the item that owns a folder, ask it to rescan, register and
+      ;; remove files).  Age-only recipients (no pgp), so only this VM can decrypt them.
+      (sops-secret
+       (key '("radarr-api-key"))
+       (file (local-file "../../secrets/hosts/jellyfin/arr-api-keys.yaml"))
+       (path "/run/secrets/radarr-api-key")
+       (permissions #o400))
+      (sops-secret
+       (key '("sonarr-api-key"))
+       (file (local-file "../../secrets/hosts/jellyfin/arr-api-keys.yaml"))
+       (path "/run/secrets/sonarr-api-key")
        (permissions #o400)))
      #:with-nvidia? #t
      ;; RTX 2060 (Turing) is well clear of the 590+ pre-Turing GPU cutoff
@@ -96,8 +110,9 @@
                (jellyfin-configuration
                 (hardware-accel 'nvenc)))
       ;; Nightly offline re-encode + Radarr/Sonarr re-import so clients
-      ;; direct-play instead of transcoding on the fly.  Inert until the
-      ;; radarr/sonarr API key sops secrets exist (preflight aborts).
+      ;; direct-play instead of transcoding on the fly.  Runs as root, which is
+      ;; what writing to the /media CIFS share requires (the mount maps everything
+      ;; to uid=0); the API keys come from the sops secrets added above.
       (service media-normalise-service-type
                (media-normalise-configuration))
       (service alloy-service-type

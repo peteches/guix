@@ -1,0 +1,365 @@
+#!/usr/bin/env bash
+# media-normalise-library — run peteches/packages/media-normalise.sh across a
+# whole media library on a remote VM (default: jellyfin), one item folder at a
+# time, and report what it did.
+#
+# WHY A SEPARATE RUNNER, AND WHY ONE INVOKE PER FOLDER
+# ----------------------------------------------------
+# The nightly service (`herd start media-normalise' / mcron) walks every root in
+# a single process: an abort half-way stops the whole run, and a multi-day
+# backfill cannot be checkpointed or interrupted.  This driver enumerates the
+# leaf folders under each root and invokes media-normalise once per folder with
+# that folder as its only library root:
+#
+#   * resumable — re-running is cheap; normalised files are skipped by the
+#     script's own conforming() test, and unfinished rewrites are reused from
+#     staging rather than redone (its cache path);
+#   * checkpointed — Ctrl-C costs at most the folder in flight, never the run;
+#   * ordered — biggest folders first, so the items that were forcing on-the-fly
+#     transcodes become direct-playable soonest and a stopped session did the
+#     most good (--order small flips it);
+#   * bounded — --limit N caps a session.  Rewrites are stream COPIES now, so the
+#     cost is disk I/O plus the Arr import, not GPU time: budget for copying much
+#     of a ~2.4 TB library across the CIFS share rather than for days of encoding.
+#
+# It builds the package from THIS repo on the target, so what runs is the script
+# you are editing, not whatever generation happens to be deployed there.
+#
+# ENVIRONMENT THE PACKAGE DOES NOT SUPPLY (so this script does)
+# ------------------------------------------------------------
+#   LD_LIBRARY_PATH=/run/current-system/profile/lib
+#       jellyfin-ffmpeg is a portable build that dlopen()s the NVIDIA driver;
+#       without this every NVENC run dies with "Cannot load libcuda.so.1".
+#       Rewrites are stream copies, so this only matters for the rare fallback
+#       that re-encodes — but preflight still proves it, because that fallback is
+#       exactly where a silent CPU build would take days instead of hours.
+#   RADARR_URL / SONARR_URL carry the API prefix
+#       Radarr 6.x and Sonarr 4.x serve only under /api/v3 (verified live: with no
+#       prefix the app 404s), so the bare host:port in the deployed config could not
+#       reach /command, /moviefile or anything else either.
+#   LIBRARY_ROOTS is written newline-separated — one root per invoke here, which
+#       also dodges main() reading line-by-line a value media-normalise-etc-file
+#       writes space-joined into a single line.
+#
+# Dry-run by default; --apply is what touches the library.  Nothing is deleted until
+# the app has registered the rewrite (a rescan adds files rather than swapping them, so
+# removing the original is this tool's job and it happens last).  What a rewrite does to the content is decided by media-normalise.sh's
+# house definition: exactly ONE video track (bonus/best-picture tracks are
+# dropped), only WebOS-decodable audio (TrueHD/DTS/FLAC dropped, or one AC-3 mix
+# when nothing decodable exists), and NO embedded subtitles — text subs become
+# sidecar <stem>.<lang>.srt files beside the video, bitmap subs are gone.  Read
+# media-normalise.sh's header before applying.
+#
+# Run from the repo root.  Needs ssh + passwordless sudo on the target, and a
+# guix daemon there for the package build.  No secret ever crosses ssh: only key
+# *file paths* are passed, and the target reads the keys itself.
+
+set -euo pipefail
+
+HOST=${MEDIA_NORMALISE_HOST:-jellyfin.peteches.co.uk}
+SSH_USER=peteches
+REMOTE_DIR=/var/lib/media-normalise-runner
+NVIDIA_LIB=/run/current-system/profile/lib
+
+ROOTS=()                                               # default set after parsing
+APPLY=0 LIST_ONLY=0 LIMIT=0 ORDER=large ONLY=
+STAGING=/media/import
+QUALITY=Bluray-2160p PROFILE=Normalised-2160p MAXRATE=25000000 CQ=27
+QUALITY_MODE=parsed SUB_LANGS=
+LOG_ON_HOST=/var/log/media-normalise.log
+RADARR_URL=http://192.168.51.195:7878/api/v3
+SONARR_URL=http://192.168.51.195:8989/api/v3
+RADARR_KEY=/etc/media-normalise/radarr-api-key
+SONARR_KEY=/etc/media-normalise/sonarr-api-key
+LOCAL_LOG=${MEDIA_NORMALISE_LOCAL_LOG:-}
+
+usage() {
+  cat <<'EOF'
+Usage: scripts/media-normalise-library [options]
+
+  --apply              actually encode + import (default is dry-run)
+  --list-only          print the ordered folder list and exit
+  --limit N            process at most N folders this session (0 = all)
+  --order large|small  which folders first, by bytes of video (default large)
+  --only PATTERN       restrict to folders whose path contains PATTERN (literal)
+  --root PATH          replace the walked roots (repeatable; default: films, tv
+                       and standup-comedy under /media/library)
+  --host HOST          target VM (default jellyfin.peteches.co.uk)
+  --staging DIR        staging root on the target (default /media/import)
+  --quality NAME       quality name to patch onto a registered file when
+                       --quality-mode override asks for one (default Bluray-2160p).
+                       Ignored under the default parsed mode, where the app keeps its
+                       own reading of the rewrite's file name — which is honest, since
+                       a stream copy cannot change resolution.  Stamping a ceiling it
+                       cannot support makes the app chase an upgrade: Radarr did exactly
+                       that during testing and re-downloaded a film as 1080p.
+  --quality-mode MODE  parsed (default) leaves the registered quality alone; override
+                       patches --quality onto it afterwards
+  --sub-langs LANGS    comma/space-separated subtitle languages to keep as sidecar
+                       .srt files (empty = every text track, which on a Blu-ray rip
+                       here means up to 38 files beside one video)
+  --profile NAME       Arr profile pinned onto normalised items (default
+                       Normalised-2160p; a missing profile only warns, so check
+                       it exists in each app before relying on it — verified live:
+                       Radarr has no profile of that name today)
+  --maxrate N          video max bitrate for the rare re-encode fallback, bits/s
+  --cq N               hevc_nvenc constant-quality target for that fallback
+  --radarr-url URL     Radarr API base incl. /api/v3 (default :7878/api/v3)
+  --sonarr-url URL     Sonarr API base incl. /api/v3 (default :8989/api/v3)
+  --log FILE           log path on the target (default /var/log/media-normalise.log)
+  -h, --help           this help
+EOF
+}
+
+while [[ $# -gt 0 ]]; do
+  case $1 in
+    --apply) APPLY=1 ;;
+    --list-only) LIST_ONLY=1 ;;
+    --limit) LIMIT=${2:?--limit needs a number}; shift ;;
+    --order) ORDER=${2:?--order needs large|small}; shift ;;
+    --only) ONLY=${2:?--only needs a pattern}; shift ;;
+    --root) ROOTS+=("$2"); shift ;;
+    --host) HOST=${2:?--host needs a host}; shift ;;
+    --staging) STAGING=${2:?--staging needs a path}; shift ;;
+    --quality) QUALITY=${2:?--quality needs a name}; shift ;;
+    --quality-mode) QUALITY_MODE=${2:?--quality-mode needs parsed|override}; shift ;;
+    --sub-langs) SUB_LANGS=${2:?--sub-langs needs language tags}; shift ;;
+    --profile) PROFILE=${2:?--profile needs a name}; shift ;;
+    --maxrate) MAXRATE=${2:?--maxrate needs a number}; shift ;;
+    --cq) CQ=${2:?--cq needs a number}; shift ;;
+    --radarr-url) RADARR_URL=${2:?--radarr-url needs a URL}; shift ;;
+    --sonarr-url) SONARR_URL=${2:?--sonarr-url needs a URL}; shift ;;
+    --log) LOG_ON_HOST=${2:?--log needs a path}; shift ;;
+    -h|--help) usage; exit 0 ;;
+    *) echo "media-normalise-library: unknown argument: $1" >&2; usage >&2; exit 2 ;;
+  esac
+  shift
+done
+
+(( ${#ROOTS[@]} )) || ROOTS=("/media/library/films" "/media/library/tv" \
+                            "/media/library/standup-comedy")
+for r in "${ROOTS[@]}"; do        # the conf is shell-sourced: keep every value quoteable
+  case $r in *[\"\'\$\`\\]*) echo "root contains shell metacharacters: $r" >&2; exit 1 ;; esac
+done
+case $ORDER in large) SORTKEY=1,1rn ;; small) SORTKEY=1,1n ;;
+             *) echo "--order must be large|small" >&2; exit 2 ;; esac
+[[ -n $LOCAL_LOG ]] || LOCAL_LOG=$(mktemp /tmp/media-normalise-library.XXXXXX.log)
+
+# ssh must be the first word, since "${SSH[@]}" is expanded as a command line.
+SSH=(ssh -T -o BatchMode=yes -o ConnectTimeout=10 -o ServerAliveInterval=30 \
+     "$SSH_USER@$HOST")
+
+# Guix's bash sources /etc/profile even non-interactively, and this VM's profile
+# mentions an extensions dir that does not exist — harmless noise on every ssh,
+# so it is filtered out here rather than repeated at each call site.
+ssh_run() { "${SSH[@]}" "$@" 2> >(grep -v '^/etc/profile' >&2); }
+
+note() { printf 'media-normalise-library: %s\n' "$*" >&2; }
+die()  { echo "media-normalise-library: ERROR: $*" >&2; exit 1; }
+report() {
+  local out=$1 rc=${2:-0} l
+  while IFS= read -r l; do [[ -n $l ]] && note "target: $l"; done <<<"$out"
+  if (( rc )); then die "remote step failed (exit $rc) — see the target: lines above"; fi
+  return 0
+}
+
+# Run a script on the target with local values as positional args.  ssh hands the
+# remote shell one command string, so every argument is re-quoted for that shell:
+# library folders contain spaces and parentheses ('$d' below) and would otherwise
+# be split or parsed.  Nothing passed or printed here is secret material.
+remote() {
+  local s=$1 a out=()
+  shift
+  for a in "$@"; do out+=("$(printf '%q' "$a")"); done
+  ssh_run "bash --noprofile -s -- ${out[*]-}" <<<"$s"
+}
+
+# ── package: build THIS repo's script on the target ─────────────────────────
+upload_and_build() {
+  [[ -f peteches/packages/media-normalise.sh ]] \
+    || die "run from the repo root (no peteches/packages/media-normalise.sh here)"
+  note "uploading media-normalise and its package chain to $HOST"
+  tar -cz peteches/packages/media-normalise.scm peteches/packages/media-normalise.sh \
+        peteches/packages/jellyfin.scm \
+    | ssh_run "sudo mkdir -p $REMOTE_DIR/upload \
+                   && cat > /tmp/mn-upload.tgz \
+                   && sudo tar -xz -f /tmp/mn-upload.tgz -C $REMOTE_DIR/upload \
+                   && rm -f /tmp/mn-upload.tgz" \
+    || die "upload to $HOST failed"
+  note "uploaded peteches/packages/{media-normalise,jellyfin}.scm + media-normalise.sh"
+  note "building the package on $HOST (copy-build-system: quick, inputs are in store)"
+  PKG=$(remote '
+    set -e
+    guix=$(command -v guix)                       # sudo(8) resets PATH; be explicit
+    sudo env PATH="$(dirname "$guix"):/run/privileged/bin:/bin:/usr/bin" \
+      guix build -L "$1/upload" media-normalise   # found by name via the module index
+  ' "$REMOTE_DIR" | tail -1) || true
+  [[ ${PKG:-} == /gnu/store/* ]] || die "package build returned no store path"
+  remote 'sudo test -x "$1/bin/media-normalise"' "$PKG" \
+    || die "built package has no runnable bin/media-normalise"
+  note "package: ${PKG##*/}"
+}
+
+# ── preflight: everything that would waste hours of GPU time ────────────────
+preflight() {
+  local out rc=0
+  out=$(remote '
+    set -e
+    pkg=$1 nvidia_lib=$2 radarr_url=$3 sonarr_url=$4 radarr_key=$5 sonarr_key=$6 \
+      staging=$7 log=$8
+    test -S /var/guix/daemon-socket/socket || { echo "no guix daemon socket"; exit 1; }
+    for k in "$radarr_key" "$sonarr_key"; do
+      sudo test -r "$k" || { echo "Arr API key file unreadable: $k (the service expects SOPS-decrypted keys under /run/secrets)"; exit 1; }
+    done
+    # Arr reachability *and* base path: a wrong prefix answers 404/HTML, which is
+    # what the service defaults hit.  Response body is consumed, never printed.
+    wget=$(command -v wget || echo /run/current-system/profile/bin/wget)
+    for pair in "$radarr_url|$radarr_key" "$sonarr_url|$sonarr_key"; do
+      u=${pair%%|*}; k=${pair##*|}
+      first=$("$wget" -q -O - --header="X-Api-Key: $(sudo cat "$k")" \
+                 "$u/system/status" 2>/dev/null | head -c 1) || true
+      [[ $first == "{" ]] || { echo "Arr API call failed at base $u (needs the /api/v3 prefix, and keys must match the app)"; exit 1; }
+    done
+    # Staging must exist, be writable, and have room for a copy of each item.
+    sudo mkdir -p "$staging" || { echo "cannot create $staging"; exit 1; }
+    avail=$(df --output=avail -BG "$staging" 2>/dev/null | tail -1 | tr -dc 0-9)
+    (( ${avail:-0} >= 50 )) || { echo "only ${avail:-0} GiB free at $staging"; exit 1; }
+    sudo test -e "$log" && ! sudo test -w "$log" && { echo "log not writable by root: $log"; exit 1; }
+    # NVENC is only needed by the rare fallback that re-encodes video, so a
+    # failure here warns instead of stopping: stream copies work without a GPU,
+    # and aborting the whole backfill over it would hide that.  PATH comes from
+    # the package wrapper (it owns ffmpeg/curl/jq); LD_LIBRARY_PATH is not in it.
+    pth=$(sudo sed -n "s/^export PATH=\"\(.*\)\"$/\1/p" "$pkg/bin/media-normalise")
+    nvenc_ok=0
+    sudo env LD_LIBRARY_PATH="$nvidia_lib" \
+         PATH="/run/current-system/profile/bin:$pth" \
+      jellyfin-ffmpeg -hide_banner -loglevel error -f lavfi \
+        -i testsrc=duration=1:size=640x360:rate=30 -c:v hevc_nvenc -preset p6 \
+        -profile:v main10 -y /tmp/media-normalise-smoke.mp4 2>&1 | head -4
+    sudo test -s /tmp/media-normalise-smoke.mp4 && nvenc_ok=1
+    sudo rm -f /tmp/media-normalise-smoke.mp4
+    if (( nvenc_ok )); then nvenc="NVENC working"
+    else nvenc="NVENC BROKEN — only the re-encode fallback needs it (DivX/Xvid/MPEG-1 sources will fail, everything else is a stream copy)"; fi
+    echo "preflight ok: API bases reachable, ${avail} GiB free at $staging, $nvenc"
+  ' "$PKG" "$NVIDIA_LIB" "$RADARR_URL" "$SONARR_URL" "$RADARR_KEY" "$SONARR_KEY" \
+      "$STAGING" "$LOG_ON_HOST") || rc=$?
+  report "$out" "$rc"
+}
+
+# ── work list: folders holding video, ordered by total bytes ────────────────
+# The target only has to emit "bytes<TAB>parent-dir" per candidate file; summing,
+# filtering and ordering happen here so this side owns the quoting (aggregating
+# with awk on the target meant escaping $1/$2 through two shells, which is how
+# the first version of this script broke).
+enumerate_raw() {
+  remote '
+    set -e
+    for r in "$@"; do
+      test -d "$r" || { echo "no such root on target: $r" >&2; exit 1; }
+      # Same pruning as media-normalise.sh: hidden dirs (.unwanted, .queries) and the
+      # Samba recycle bin (#recycle) hold files this library does not want, and listing
+      # them here would make this driver report work the tool then refuses to do.
+      find "$r" -type f -not -path "*/.*" -not -path "*/#*" \
+        \( -iname \*.mp4 -o -iname \*.mkv -o -iname \*.m2ts \
+             -o -iname \*.ts -o -iname \*.avi -o -iname \*.wmv \
+             -o -iname \*.mpg -o -iname \*.mpeg \) -printf "%s\t%h\n" 2>/dev/null
+    done
+  ' "${ROOTS[@]}"
+}
+
+enumerate() {
+  enumerate_raw | awk -F '\t' -v only="$ONLY" '
+    { if (only != "" && index($2, only) == 0) next; s[$2] += $1; n[$2]++ }
+    END { for (d in s) printf "%d\t%d\t%s\n", s[d], n[d], d }' \
+    | sort -k"$SORTKEY" -k3
+}
+
+# One conf per folder, installed where only root can read it (it holds key paths,
+# not keys).  media-normalise takes it through MEDIA_NORMALISE_CONF.
+write_conf_for() {
+  local root=$1 tmp
+  tmp=$(mktemp /tmp/media-normalise-conf.XXXXXX)
+  cat >"$tmp" <<EOF
+LIBRARY_ROOTS="$root"
+STAGING_ROOT="$STAGING"
+RADARR_URL="$RADARR_URL"
+SONARR_URL="$SONARR_URL"
+RADARR_API_KEY_FILE="$RADARR_KEY"
+SONARR_API_KEY_FILE="$SONARR_KEY"
+QUALITY_NAME="$QUALITY"
+QUALITY_MODE="$QUALITY_MODE"
+SUB_LANGS="$SUB_LANGS"
+PROFILE_NAME="$PROFILE"
+STANDUP_APP=radarr
+MAXRATE=$MAXRATE
+CQ=$CQ
+LOG="$LOG_ON_HOST"
+EOF
+  ssh_run "cat | sudo tee '$REMOTE_DIR/config' >/dev/null && sudo chmod 0600 '$REMOTE_DIR/config'" <"$tmp" \
+    || { rm -f "$tmp"; die "could not install $REMOTE_DIR/config on $HOST"; }
+  rm -f "$tmp"
+}
+
+# ── main ────────────────────────────────────────────────────────────────────
+main() {
+  note "host=$HOST mode=$( (( APPLY )) && echo APPLY || echo dry-run )"
+  note "roots=${ROOTS[*]} order=$ORDER quality=$QUALITY ($QUALITY_MODE) profile=$PROFILE sub-langs=${SUB_LANGS:-<every text track>}"
+  upload_and_build
+  preflight
+
+  local -a WORK=()
+  mapfile -t WORK < <(enumerate)
+  (( ${#WORK[@]} )) || die "no video folders found under the roots (or --only matched none)"
+  note "${#WORK[@]} folder(s) in scope"
+
+  if (( LIST_ONLY )); then
+    printf '%12s %6s  %s\n' BYTES FILES FOLDER
+    local b n d
+    for w in "${WORK[@]}"; do IFS=$'\t' read -r b n d <<<"$w"
+      printf '%12d %6d  %s\n' "$b" "$n" "$d"; done
+    return 0
+  fi
+
+  (( APPLY )) || note "dry-run: nothing is encoded or imported; pass --apply to change the library"
+  local i=0 processed=0 bytes=0 b n d rc verdict tmp
+  for w in "${WORK[@]}"; do
+    IFS=$'\t' read -r b n d <<<"$w"
+    if (( LIMIT > 0 && processed >= LIMIT )); then
+      note "--limit $LIMIT reached, stopping (re-run to continue)"; break
+    fi
+    write_conf_for "$d"
+    printf 'media-normalise-library: [%d/%d] %.1f GiB %d file(s): %s\n' \
+      "$(( ++processed ))" "${#WORK[@]}" "$(awk -v x="$b" 'BEGIN{print x/1073741824}')" "$n" "$d" >&2
+    # Exactly the invocation the nightly job makes; PATH comes from the package
+    # wrapper, LD_LIBRARY_PATH from here.  Output is kept per folder for triage.
+    rc=0; tmp=$(mktemp /tmp/media-normalise-item.XXXXXX)
+    # shellcheck disable=SC2016  # the target evaluates these, not this shell
+    remote '
+      set -e
+      pkg=$1 conf=$2 dir=$3 apply=$4 nvidia_lib=$5 log=$6
+      (( apply )) && args=() || args=(--dry-run)
+      sudo env LD_LIBRARY_PATH="$nvidia_lib" MEDIA_NORMALISE_CONF="$conf" \
+        "$pkg/bin/media-normalise" "${args[@]}" 2>&1 | sed "s|^|[$dir] |"
+    ' "$PKG" "$REMOTE_DIR/config" "$d" "$APPLY" "$NVIDIA_LIB" "$LOG_ON_HOST" \
+      | tee "$tmp" -a "$LOCAL_LOG" >&2 || rc=$?
+    verdict=$(grep -m8 -E \
+        'import: ok|rewrite needed|skip \(conforming\)|why:|^WARNING|summary:' "$tmp" \
+        | sed "s|^|  · |")
+    [[ -n $verdict ]] || printf '  · no marker lines (folder has nothing to do?)\n' >&2
+    printf '%s\n' "$verdict" >&2
+    if (( rc )); then note "folder exited $rc — partial output kept in staging, source untouched"; fi
+    rm -f "$tmp"; bytes=$(( bytes + b ))
+  done
+  note "folders processed: $processed ($(awk -v x="$bytes" 'BEGIN{printf "%.1f GiB", x/1073741824}') of video)"
+  local pat c
+  for pat in 'skip (conforming)' 'rewrite needed' 'reusing cached rewrite' \
+             'subtitles: wrote' 'subtitle:' 'subtitle: placed' 'import: ok' \
+             'verify FAILED' 'rewrite FAILED' 'import FAILED' \
+             'registered as file' 'WARNING profile'; do
+    c=$(grep -c -F -- "$pat" "$LOCAL_LOG" 2>/dev/null || true)
+    printf '%-26s %s\n' "$pat" "${c:-0}" >&2
+  done
+  note "local log: $LOCAL_LOG   on-target log: $LOG_ON_HOST"
+}
+
+main
