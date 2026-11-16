@@ -44,7 +44,13 @@ SRC_CURRENT=
 
 # Run tallies, logged at the end: this job runs for hours, and "what did it
 # actually do" should not require grepping the whole log.
+# Pin/leftover counters are deliberately NOT folded into failed=: an import can be fully
+# complete — rewrite registered, original unregistered and removed — and still leave the item
+# on the wrong Arr profile, or its old bytes on disk.  Those get their own fields so that
+# failed=0 cannot hide them (that is the same dishonesty verify() was fixed for) while
+# failed=N keeps meaning "this title did not make it into the library".
 N_SEEN=0 N_SKIP=0 N_REWRITTEN=0 N_SIDE=0 N_IMPORTED=0 N_FAILED=0
+N_PIN_FAILED=0 N_ORIG_LEFT=0
 
 CONF=${MEDIA_NORMALISE_CONF:-/etc/media-normalise/config}
 [[ -r $CONF ]] || { echo "media-normalise: cannot read $CONF" >&2; exit 1; }
@@ -586,6 +592,12 @@ rescan_command() {  # app item-id -> 0 if the rescan was accepted
 
 size_of() { wc -c <"$1" | tr -dc 0-9; }   # no stat on this PATH, and the file is local
 
+# How long to wait for the apps to be coherent.  While a rescan or a delete is still running
+# they answer with something that is not JSON at all (see item_json), so every read that gets
+# believed is retried.  API_RETRY_SLEEP doubles as the knob a test harness sets to 0.
+API_TRIES=${API_TRIES:-3} PIN_TRIES=${PIN_TRIES:-3} PIN_VERIFY_TRIES=${PIN_VERIFY_TRIES:-3}
+API_RETRY_SLEEP=${API_RETRY_SLEEP:-5}
+
 # IMPORT BY RESCAN, NOT BY MANUAL IMPORT.  Both halves established against the live apps.
 #
 # Manual Import (POST /manualimport) accepts the request and then does nothing:
@@ -617,9 +629,66 @@ size_of() { wc -c <"$1" | tr -dc 0-9; }   # no stat on this PATH, and the file i
 #     import request (see below).
 IMPORT_TRIES=${IMPORT_TRIES:-36}      # 5s apart: three minutes for a rescan to land it
 
+# GET one item, retried until the reply actually parses as JSON.  The apps do answer with
+# something unparseable while they churn — measured live on Radarr 6.3.0: GET /movie/128 came
+# back such that jq died with "Invalid numeric literal at line 1, column 31", and the same
+# call moments later parsed fine.  One read is therefore not evidence in either direction.
+item_json() {  # app collection id -> that item's JSON, retried until it parses as an object
+  local app=$1 coll=$2 id=$3 body try
+  for try in $(seq 1 "$API_TRIES"); do
+    if body=$(api "$app" GET "/$coll/$id") && [[ -n $body ]] \
+       && jq -e 'type == "object"' >/dev/null 2>&1 <<<"$body"; then
+      printf '%s' "$body"
+      return 0
+    fi
+    sleep "$API_RETRY_SLEEP"
+  done
+  return 1
+}
+
+# Pin an item to PROFILE_NAME, say out loud what happened, and count it when it did not take.
+# Two faults this replaces: one unverified PUT whose "profile set" line printed even when the
+# reply had been garbage (live evidence — Radarr movie 128 still reports profile 1 "Any" after
+# a run that logged "import: profile set to Normalised-2160p"), and no tolerance at all for
+# that transient garbage, which turned a momentary bad reply into a permanent-looking one.
+# The PUT body is the item as the app currently holds it, with only qualityProfileId changed;
+# success is decided by reading the item back, never by the PUT's own status code.  This runs
+# after the rewrite is registered and the original removed, so failure here is reported and
+# counted (N_PIN_FAILED) rather than fatal: an imported title still sitting on the wrong profile
+# is not a success, but it is also not something we can undo by refusing to return 0.
+PIN_READ=
+pin_item_to_profile() {  # app movie/series-id -> 0 once the item reports PROFILE_NAME's id
+  local app=$1 mid=$2 coll pid body got try seen
+  PIN_READ=
+  case $app in radarr) coll=movie ;; sonarr) coll=series ;; esac
+  pid=$(profile_id "$app" "$PROFILE_NAME") || true
+  if [[ -z $pid || $pid == null ]]; then
+    N_PIN_FAILED=$(( N_PIN_FAILED + 1 ))
+    log "import: WARNING profile $PROFILE_NAME is not known to $app, so nothing could be pinned (counted as pin-failed)"
+    return 1
+  fi
+  for try in $(seq 1 "$PIN_TRIES"); do
+    if body=$(item_json "$app" "$coll" "$mid") &&
+       api "$app" PUT "/$coll/$mid" \
+          "$(jq -c --argjson pid "$pid" '.qualityProfileId = $pid' <<<"$body")" >/dev/null; then
+      for seen in $(seq 1 "$PIN_VERIFY_TRIES"); do
+        sleep "$API_RETRY_SLEEP"
+        got=$(item_json "$app" "$coll" "$mid" | jq -r '.qualityProfileId // empty' 2>/dev/null) || got=
+        PIN_READ=$got
+        [[ $got == "$pid" ]] \
+          && { log "import: profile set to $PROFILE_NAME (#$pid) on item $mid, confirmed by reading it back from $app"; return 0; }
+      done
+    fi
+    (( try < PIN_TRIES )) && sleep "$API_RETRY_SLEEP"
+  done
+  N_PIN_FAILED=$(( N_PIN_FAILED + 1 ))
+  log "import: WARNING profile $PROFILE_NAME could not be pinned on item $mid of $app (it still reads ${PIN_READ:-no parsable reply}); counted as pin-failed, the import itself completed"
+  return 1
+}
+
 import_item() {  # app staged-file staging-dir original -> 0 once the rewrite is registered and the original is not
   local app=$1 staged=$2 dir=$3 orig=$4 mid dest rows before after newid try oldid rc=0
-  local n_in still sfx stem vsfx langpart newpath vdir pid qid srcdir
+  local n_in still sfx stem vsfx langpart newpath vdir qid srcdir fcoll got need_move
   srcdir=$(dirname "$orig")
 
   # The only handle a rescan needs is the item id.  If no movie or series claims this
@@ -629,13 +698,14 @@ import_item() {  # app staged-file staging-dir original -> 0 once the rewrite is
     || { log "import: no $app item owns $srcdir; leaving $staged in staging"; return 1; }
 
   dest="$srcdir/$(basename "$staged")"
+  need_move=1
   if [[ -e $dest ]]; then
     # A previous run got this far and stopped before the rescan.  Same size means it is
     # the same rewrite, so carry on from here rather than fail on our own leftovers; a
     # different size is somebody else's file, which we are not going to overwrite.
     if [[ $(size_of "$dest") == $(size_of "$staged") ]]; then
       log "import: rewrite already in place at $dest, continuing to the rescan"
-      rm -f -- "$staged"
+      rm -f -- "$staged"; need_move=0
     else
       log "import FAILED: $dest already exists with a different size; staging kept for inspection"
       return 1
@@ -648,11 +718,19 @@ import_item() {  # app staged-file staging-dir original -> 0 once the rewrite is
     return 0
   fi
 
-  mv -- "$staged" "$dest" \
-    || { log "import FAILED: could not move the rewrite into $srcdir"; return 1; }
-  log "import: moved the rewrite to $dest and asked $app to rescan item $mid"
+  # The resume path above already moved it (and dropped the staging copy), so do not try to
+  # move a file that is no longer there: measured against the old code, that meant every
+  # resumed run died here with "could not move the rewrite" instead of finishing the import.
+  if (( need_move )); then
+    mv -- "$staged" "$dest" \
+      || { log "import FAILED: could not move the rewrite into $srcdir"; return 1; }
+    log "import: moved the rewrite to $dest"
+  fi
   rescan_command "$app" "$mid" \
     || { log "import FAILED: $app would not accept the rescan; the rewrite is in place at $dest"; return 1; }
+  # Logged after the request was accepted, not before it: the old line claimed we had asked
+  # for the rescan one command before asking, so a refusal still read as if we had asked.
+  log "import: asked $app to rescan item $mid"
 
   # Wait for it to be registered.  Deleting anything before this happens is how one run
   # left a movie with no file at all.  Registered means either an id we had not seen, or —
@@ -683,8 +761,17 @@ import_item() {  # app staged-file staging-dir original -> 0 once the rewrite is
       radarr) api radarr DELETE "/moviefile/$oldid?deleteFiles=true&addDeletedHistory=true" >/dev/null ;;
       sonarr) api sonarr DELETE "/episodefile/$oldid?deleteFiles=true&addDeletedHistory=true" >/dev/null ;;
     esac || log "import: WARNING $app would not remove file #$oldid; removing it directly"
-    [[ -e $orig ]] && rm -f -- "$orig"
+    # An accepted DELETE and the bytes disappearing are separate events — deleteFiles=true can
+    # be refused, or honoured for the record while the file survives.  Fall back to rm (never
+    # let it abort: a leftover is something to report, not a reason to stop mid-import), then
+    # believe our own eyes rather than either call: a leftover original means duplicate bytes
+    # in the folder and an item the next run sees as work again.
+    if [[ -e $orig ]]; then rm -f -- "$orig" || true; fi
     rescan_command "$app" "$mid" || true          # so the app forgets the removed record too
+    if [[ -e $orig ]]; then
+      N_ORIG_LEFT=$(( N_ORIG_LEFT + 1 ))
+      log "import: WARNING original still on disk after both removal attempts: $orig"
+    fi
   else
     log "import: note: $orig is not registered, so there is no file to remove"
   fi
@@ -716,13 +803,19 @@ import_item() {  # app staged-file staging-dir original -> 0 once the rewrite is
   if [[ $QUALITY_MODE == override ]]; then
     qid=$(quality_id "$app" "$QUALITY_NAME") || true
     if [[ -n $qid && $qid != null ]]; then
-      case $app in
-        radarr) api radarr PUT "/moviefile/$newid" \
-                  "$(jq -nc --argjson q "$qid" --arg n "$QUALITY_NAME" '{quality: {quality: {id: $q, name: $n}, revision: 1}}')" >/dev/null ;;
-        sonarr) api sonarr PUT "/episodefile/$newid" \
-                  "$(jq -nc --argjson q "$qid" --arg n "$QUALITY_NAME" '{quality: {quality: {id: $q, name: $n}, revision: 1}}')" >/dev/null ;;
-      esac || log "import: WARNING quality $QUALITY_NAME could not be set on file #$newid"
-      log "import: stamped $QUALITY_NAME on file #$newid because QUALITY_MODE=override"
+      fcoll= ; case $app in radarr) fcoll=moviefile ;; sonarr) fcoll=episodefile ;; esac
+      got=
+      # Same rule as the profile pin: an accepted PUT is not the file carrying that quality.
+      # Used to log "stamped" unconditionally, i.e. a refusal printed its WARNING *and* the
+      # success line right underneath it.  Read the record back and report what it reads.
+      api "$app" PUT "/$fcoll/$newid" \
+        "$(jq -nc --argjson q "$qid" --arg n "$QUALITY_NAME" '{quality: {quality: {id: $q, name: $n}, revision: 1}}')" >/dev/null \
+        && got=$(item_json "$app" "$fcoll" "$newid" | jq -r '.quality.quality.name // empty' 2>/dev/null || true)
+      if [[ $got == "$QUALITY_NAME" ]]; then
+        log "import: stamped $QUALITY_NAME on file #$newid because QUALITY_MODE=override (the app reports it)"
+      else
+        log "import: WARNING quality $QUALITY_NAME could not be set on file #$newid (it reads ${got:-nothing})"
+      fi
     else
       log "import: WARNING QUALITY_NAME '$QUALITY_NAME' is unknown to $app; left its own parse alone"
     fi
@@ -739,26 +832,30 @@ import_item() {  # app staged-file staging-dir original -> 0 once the rewrite is
   for sfx in "$dir/$stem."*.srt; do
     [[ -f $sfx ]] || continue
     langpart=${sfx##*"$stem."}
-    [[ -e "$vdir/$vsfx.$langpart" ]] \
-      || { cp -p -- "$sfx" "$vdir/$vsfx.$langpart" && log "subtitle: placed sidecar $vsfx.$langpart beside the imported file"; }
+    if [[ ! -e "$vdir/$vsfx.$langpart" ]]; then
+      # A sidecar that would not copy used to be silent: success logged itself, failure logged
+      # nothing at all, and the tally still counted it because extraction had written it in
+      # staging.  Say which sidecars actually moved beside the imported file.
+      cp -p -- "$sfx" "$vdir/$vsfx.$langpart" \
+        && log "subtitle: placed sidecar $vsfx.$langpart beside the imported file" \
+        || log "import: WARNING subtitle: sidecar $vsfx.$langpart would not copy beside the imported file"
+    fi
   done
 
-  # Pin the item to the Normalised profile so the app never "upgrades" it back.
-  pid=$(profile_id "$app" "$PROFILE_NAME") || true
-  if [[ -n $pid && $pid != null ]]; then
-    case $app in
-      radarr) api radarr PUT "/movie/$mid" \
-                "$(jq -c --argjson pid "$pid" '.qualityProfileId = $pid'
-                      <<<"$(api radarr GET "/movie/$mid")")" >/dev/null ;;
-      sonarr) api sonarr PUT "/series/$mid" \
-                "$(jq -c --argjson pid "$pid" '.qualityProfileId = $pid'
-                      <<<"$(api sonarr GET "/series/$mid")")" >/dev/null ;;
-    esac || log "import: WARNING profile $PROFILE_NAME could not be set on the item"
-    log "import: profile set to $PROFILE_NAME"
+  # Pin the item to the Normalised profile so the app never "upgrades" it back.  Best effort,
+  # and deliberately last: by now the rewrite is registered and the original is gone, so this
+  # cannot undo anything.  It logs its own verdict and counts N_PIN_FAILED itself — see
+  # pin_item_to_profile for why it must never claim success on the strength of a PUT alone.
+  pin_item_to_profile "$app" "$mid" || true
+
+  # The last claim has to be a measured one.  What the poll above proved is that $app lists our
+  # file and no longer lists the original; whether the original's bytes are off the disk is a
+  # separate fact, checked separately.
+  if [[ -e $orig ]]; then
+    log "import: ok, $dest is registered as #$newid; $(basename "$orig") is unregistered but still on disk"
   else
-    log "import: WARNING profile $PROFILE_NAME not found in $app; leaving profile untouched"
+    log "import: ok, $dest is registered as #$newid and $(basename "$orig") is gone"
   fi
-  log "import: ok, $dest is registered as #$newid and $(basename "$orig") is gone"
 }
 
 # ── per-file driver ─────────────────────────────────────────────────────────
@@ -862,7 +959,7 @@ main() {
       esac
     done < <(find "$root" -type f -not -path '*/.*' -not -path '*/#*' -print0 | sort -z)
   done <<<"$LIBRARY_ROOTS"
-  log "summary: $nroots root(s) walked; seen=$N_SEEN conforming=$N_SKIP rewritten=$N_REWRITTEN sidecars=$N_SIDE imported=$N_IMPORTED failed=$N_FAILED"
+  log "summary: $nroots root(s) walked; seen=$N_SEEN conforming=$N_SKIP rewritten=$N_REWRITTEN sidecars=$N_SIDE imported=$N_IMPORTED failed=$N_FAILED pin-failed=$N_PIN_FAILED original-left=$N_ORIG_LEFT"
   log "=== media-normalise run end ==="
 }
 
