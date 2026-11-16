@@ -113,8 +113,14 @@
       ;; direct-play instead of transcoding on the fly.  Runs as root, which is
       ;; what writing to the /media CIFS share requires (the mount maps everything
       ;; to uid=0); the API keys come from the sops secrets added above.
+      ;; TEMPORARY: the nightly is parked while the apply path is piloted by hand
+      ;; on operator-selected titles.  "0 0 1 1 *" fires once a year and the next
+      ;; occurrence (2027-01-01) is well past the pilot, so nothing unattended runs
+      ;; in between.  RESTORE the default schedule ("17 4 * * *") — i.e. drop this
+      ;; override — once the pilot reports back.
       (service media-normalise-service-type
-               (media-normalise-configuration))
+               (media-normalise-configuration
+                (schedule "0 0 1 1 *")))
       (service alloy-service-type
                (alloy-configuration
                 (hostname "jellyfin.peteches.co.uk")
