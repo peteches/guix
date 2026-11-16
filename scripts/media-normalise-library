@@ -74,8 +74,16 @@ SUB_LANGS='eng spa'
 LOG_ON_HOST=/var/log/media-normalise.log
 RADARR_URL=http://192.168.51.195:7878/api/v3
 SONARR_URL=http://192.168.51.195:8989/api/v3
-RADARR_KEY=/etc/media-normalise/radarr-api-key
-SONARR_KEY=/etc/media-normalise/sonarr-api-key
+# Key FILE paths on the target — paths, never key material.  These used to be hard-coded to
+# /etc/media-normalise/{radarr,sonarr}-api-key, which no longer exist on jellyfin at all: the service
+# decrypts its keys with SOPS and reads them from wherever RADARR_API_KEY_FILE / SONARR_API_KEY_FILE
+# point in ITS generated config (/run/current-system/etc/media-normalise/config).  Hard-coding a copy
+# of an old answer here is what made preflight fail with "Arr API key file unreadable:
+# /etc/media-normalise/radarr-api-key" on a box whose keys were perfectly readable elsewhere, so the
+# deployed config is now the default and this script stops guessing about it.
+# Empty means "ask the target" (see resolve_key_defaults); --radarr-key/--sonarr-key still win outright.
+RADARR_KEY= SONARR_KEY= RADARR_KEY_SET=0 SONARR_KEY_SET=0
+DEPLOYED_CONF=/run/current-system/etc/media-normalise/config
 LOCAL_LOG=${MEDIA_NORMALISE_LOCAL_LOG:-}
 
 usage() {
@@ -104,11 +112,11 @@ Usage: scripts/media-normalise-library [options]
                        .srt files (default "eng spa", matching the deployed service;
                        pass "" for every text track, which on a Blu-ray rip here means
                        up to 38 files beside one video)
-  --radarr-key FILE    Radarr API key file ON THE TARGET (default
-                       /etc/media-normalise/radarr-api-key; the deployed service
-                       decrypts its copy to /run/secrets/radarr-api-key, so pass that
-                       unless something has put a copy at the default path)
-  --sonarr-key FILE    Sonarr API key file on the target (same caveat)
+  --radarr-key FILE    Radarr API key file ON THE TARGET.  Default: whatever
+                       RADARR_API_KEY_FILE says in the target's deployed config
+                       (/run/current-system/etc/media-normalise/config), because that is
+                       the file the nightly service actually reads.  Pass this to override.
+  --sonarr-key FILE    Sonarr API key file on the target (same default, same caveat)
   --profile NAME       Arr profile pinned onto normalised items (default
                        Normalised-2160p; a missing profile only warns, so check
                        it exists in each app before relying on it — verified live:
@@ -138,8 +146,8 @@ while [[ $# -gt 0 ]]; do
     # argument was supplied rather than that it is non-empty — ${2:?} would reject "".
     --sub-langs) [[ $# -ge 2 ]] || { echo "media-normalise-library: --sub-langs needs language tags (\"\" for every text track)" >&2; exit 2; }
                SUB_LANGS=$2 ;;
-    --radarr-key) RADARR_KEY=${2:?--radarr-key needs a path}; shift ;;
-    --sonarr-key) SONARR_KEY=${2:?--sonarr-key needs a path}; shift ;;
+    --radarr-key) RADARR_KEY=${2:?--radarr-key needs a path}; RADARR_KEY_SET=1; shift ;;
+    --sonarr-key) SONARR_KEY=${2:?--sonarr-key needs a path}; SONARR_KEY_SET=1; shift ;;
     --profile) PROFILE=${2:?--profile needs a name}; shift ;;
     --maxrate) MAXRATE=${2:?--maxrate needs a number}; shift ;;
     --cq) CQ=${2:?--cq needs a number}; shift ;;
@@ -188,6 +196,44 @@ remote() {
   shift
   for a in "$@"; do out+=("$(printf '%q' "$a")"); done
   ssh_run "bash --noprofile -s -- ${out[*]-}" <<<"$s"
+}
+
+# ── deployed key paths: read them from the target, do not remember them ─────
+# Only two PATHS are ever fetched; no key content crosses ssh in either direction.
+# A host whose generated config cannot be read falls back to the service record's own defaults
+# (peteches/services/media-normalise.scm: radarr/sonarr-api-key-file default to
+# /run/secrets/<app>-api-key) and SAYS it fell back, rather than failing later on a path nobody chose.
+resolve_key_defaults() {
+  local out rc=0 line k v got_r='' got_s=''
+  (( RADARR_KEY_SET && SONARR_KEY_SET )) && return 0
+  out=$(remote '
+    set -e
+    conf=$1
+    test -r "$conf" || { echo "UNREADABLE $conf"; exit 0; }
+    # One line per assignment, one layer of double quotes stripped — which is exactly how
+    # media-normalise-etc-file writes them (peteches/services/media-normalise.scm).
+    get() {   # VARNAME -> value, or nothing
+      local line v
+      line=$(grep -m1 "^$1=" "$conf" 2>/dev/null) || return 0
+      v=${line#*=}; v=${v%\"}; v=${v#\"}
+      printf %s "$v"
+    }
+    printf "RADARR=%s\n"  "$(get RADARR_API_KEY_FILE)"
+    printf "SONARR=%s\n"  "$(get SONARR_API_KEY_FILE)"
+  ' "$DEPLOYED_CONF") || rc=$?
+  (( rc )) && note "WARNING could not read $DEPLOYED_CONF on $HOST (exit $rc): using the service record's defaults for any key path not given on the command line"
+  while IFS= read -r line; do
+    k=${line%%=*}; v=${line#*=}
+    case $k in RADARR) got_r=$v ;; SONARR) got_s=$v ;; esac
+  done <<<"${out:-}"
+  if (( ! RADARR_KEY_SET )); then
+    if [[ -n $got_r ]]; then RADARR_KEY=$got_r; note "radarr key path: $RADARR_KEY (read from the deployed config on $HOST)"
+    else RADARR_KEY=/run/secrets/radarr-api-key; note "radarr key path: $RADARR_KEY (deployed config unreadable, using service default)"; fi
+  fi
+  if (( ! SONARR_KEY_SET )); then
+    if [[ -n $got_s ]]; then SONARR_KEY=$got_s; note "sonarr key path: $SONARR_KEY (read from the deployed config on $HOST)"
+    else SONARR_KEY=/run/secrets/sonarr-api-key; note "sonarr key path: $SONARR_KEY (deployed config unreadable, using service default)"; fi
+  fi
 }
 
 # ── package: build THIS repo's script on the target ─────────────────────────
@@ -275,10 +321,16 @@ enumerate_raw() {
       # Same pruning as media-normalise.sh: hidden dirs (.unwanted, .queries) and the
       # Samba recycle bin (#recycle) hold files this library does not want, and listing
       # them here would make this driver report work the tool then refuses to do.
+      # The set of extensions this driver calls video has to agree with the accepted set in
+      # media-normalise.sh, or a folder whose only media is one of these never reaches the tool at
+      # all — which is exactly how two disc-image folders and two odd-container folders sat here
+      # invisible for years.  (No apostrophes inside this block: it travels to the target as one
+      # single-quoted ssh command string, where an apostrophe closes the quote.)
       find "$r" -type f -not -path "*/.*" -not -path "*/#*" \
         \( -iname \*.mp4 -o -iname \*.mkv -o -iname \*.m2ts \
              -o -iname \*.ts -o -iname \*.avi -o -iname \*.wmv \
-             -o -iname \*.mpg -o -iname \*.mpeg \) -printf "%s\t%h\n" 2>/dev/null
+             -o -iname \*.mpg -o -iname \*.mpeg -o -iname \*.mov -o -iname \*.flv \
+             -o -iname \*.iso -o -iname \*.img \) -printf "%s\t%h\n" 2>/dev/null
     done
   ' "${ROOTS[@]}"
 }
@@ -319,6 +371,7 @@ EOF
 # ── main ────────────────────────────────────────────────────────────────────
 main() {
   note "host=$HOST mode=$( (( APPLY )) && echo APPLY || echo dry-run )"
+  resolve_key_defaults
   note "roots=${ROOTS[*]} order=$ORDER quality=$QUALITY ($QUALITY_MODE) profile=$PROFILE sub-langs=${SUB_LANGS:-<every text track>}"
   upload_and_build
   preflight
@@ -358,8 +411,9 @@ main() {
         "$pkg/bin/media-normalise" "${args[@]}" 2>&1 | sed "s|^|[$dir] |"
     ' "$PKG" "$REMOTE_DIR/config" "$d" "$APPLY" "$NVIDIA_LIB" "$LOG_ON_HOST" \
       | tee "$tmp" -a "$LOCAL_LOG" >&2 || rc=$?
-    verdict=$(grep -m8 -E \
-        'import: ok|rewrite needed|skip \(conforming\)|why:|^WARNING|summary:' "$tmp" \
+    verdict=$(grep -m14 -E \
+        'import: ok|rewrite needed|skip \(conforming\)|skip \(unsupported container\)| \
+         skip \(ambiguous disc titles\)|selected playlist|^ *candidate:|why:|^WARNING|summary:' "$tmp" \
         | sed "s|^|  · |")
     [[ -n $verdict ]] || printf '  · no marker lines (folder has nothing to do?)\n' >&2
     printf '%s\n' "$verdict" >&2
@@ -371,7 +425,8 @@ main() {
   for pat in 'skip (conforming)' 'rewrite needed' 'reusing cached rewrite' \
              'subtitles: wrote' 'subtitle:' 'subtitle: placed' 'import: ok' \
              'verify FAILED' 'rewrite FAILED' 'import FAILED' \
-             'registered as file' 'WARNING profile'; do
+             'registered as file' 'WARNING profile' \
+             'skip (unsupported container)' 'skip (ambiguous disc titles)' 'selected playlist'; do
     c=$(grep -c -F -- "$pat" "$LOCAL_LOG" 2>/dev/null || true)
     printf '%-26s %s\n' "$pat" "${c:-0}" >&2
   done
