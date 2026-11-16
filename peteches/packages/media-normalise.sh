@@ -857,11 +857,21 @@ API_RETRY_SLEEP=${API_RETRY_SLEEP:-5}
 #
 # Two consequences that matter:
 #   * A rescan ADDS files rather than swapping them, so the original stays registered next
-#     to the rewrite until WE delete it.  Deleting is therefore our job, has to happen
-#     after the new file is confirmed registered, and must be scoped to the one file this
-#     rewrite replaced — a season folder holds other episodes that are nobody else's
-#     business.  The DELETE calls carry deleteFiles=true because without it the endpoint
-#     forgets the record and leaves the bytes on disk.
+#     to the rewrite until WE deal with it — and "then delete the original" only works if the
+#     app was ever going to register the rewrite.  It was not: measured live on Radarr 6.3.0
+#     movie 140 ("Loop Track"), whose profile is Any (#1) and whose quality order puts
+#     bluray-1080p-brdisk ahead of bluray-1080p-none, bluray-1080p-remux and the Bluray-2160p
+#     tiers, a conforming 17,565,978,130 B rewrite sat in the folder UNREGISTERED for over 40
+#     minutes while file #784 (the ISO) kept the movie's file slot.  A rescan imports a
+#     candidate the app rates as an upgrade, and under that profile a stream copy of the same
+#     picture is not one while the original holds the slot.  So the order is: ask for the
+#     rewrite; if it will not register and the original still does, UNREGISTER the original —
+#     DELETE with deleteFiles=false, which drops the record and keeps every byte — rescan
+#     again, and only once OUR file is registered let anything touch those bytes.  Nothing is
+#     ever deleted before our own file is in the library.  Deleting by id is still scoped to
+#     the one file this rewrite replaced (a season folder holds other episodes that are nobody
+#     else's business), deleteFiles=true is used only while the app still knows that id, and
+#     after an unregister it does not, so those bytes come off with rm.
 #   * The app parses OUR FILE NAME when it registers, which is the honest quality reading
 #     for a stream copy; there is no candidate object to argue with any more.  That makes
 #     QUALITY_MODE=override a post-hoc patch of the registered file rather than part of an
@@ -925,8 +935,72 @@ pin_item_to_profile() {  # app movie/series-id -> 0 once the item reports PROFIL
   return 1
 }
 
+# IMPORT_POLL_SLEEP spaces out one registration poll.  A full window is spent on each of the
+# two phases import_item runs (ask for it, then ask again after unregistering the original),
+# so an item that needs both takes twice as long and says so in its own log lines.
+IMPORT_POLL_SLEEP=${IMPORT_POLL_SLEEP:-5}
+LAST_ROWS='[]'          # the listing that settled the last poll, for whoever reports it
+
+# One read of a file listing against the "is this ours?" rules below; no sleeping, so both the
+# resume check and the polls can use it.  Prints the id, or fails without printing anything.
+registration_id_in() {  # rows-json dest orig before-ids -> our file id if that listing has it registered
+  local rows=$1 dest=$2 orig=$3 before=$4 got i p dstdir
+  dstdir=$(dirname "$dest")
+  got=$(jq -r --arg p "$dest" '[.[] | select(.path == $p)] | last // empty | .id' <<<"$rows" 2>/dev/null) || true
+  [[ $got =~ ^[0-9]+$ ]] && { printf '%s' "$got"; return 0; }
+  while IFS=$'\t' read -r i p; do
+    case " $before " in *" $i "*) continue ;; esac     # already registered when we started
+    [[ $p == "$orig" ]] && continue                    # the original re-registering is not us
+    [[ $(dirname "$p") == "$dstdir" ]] || continue     # another item's folder is none of our business
+    [[ ${p,,} == *.mp4 ]] || continue                  # our rewrite is an mp4; a re-registered disc is not
+    printf '%s' "$i"; return 0
+  done < <(jq -r '.[] | "\(.id)\t\(.path)"' <<<"$rows" 2>/dev/null)
+  return 1
+}
+
+# Has $app registered OUR rewrite yet?  Returns 0 with OUTVAR set to our file id, and leaves
+# LAST_ROWS holding the listing that proved it; otherwise it fails after the whole window.
+# The result travels through a nameref instead of stdout on purpose: command substitution runs
+# in a subshell, which would throw LAST_ROWS away — measured live, and it is exactly how an
+# earlier version of this code took the "nobody is registered" branch on movie 140 while file
+# #784 was sitting there registered.  "Ours" means either the exact path we placed (the normal
+# case), or a file id that was not registered when we started AND is not the original's own
+# path: the app renames files on import whenever its naming settings say so, so matching only
+# our own path false-fails a successful import.  Excluding the original by PATH is what makes
+# this safe after an unregister — those bytes are still in the folder, so the next rescan can
+# hand back their old id (or a brand-new one for the same file) as a "newly registered" entry,
+# and a plain ids-diff would report that as our rewrite landing.
+rewrite_registration() {  # app item-id dest orig before-ids OUTVAR -> 0 once ours is registered
+  local app=$1 mid=$2 dest=$3 orig=$4 before=$5 out=$6 rows t found
+  local -n _ret=$out
+  LAST_ROWS='[]'
+  for t in $(seq 1 "$IMPORT_TRIES"); do
+    sleep "$IMPORT_POLL_SLEEP"
+    rows=$(file_rows_for "$app" "$mid") || continue
+    LAST_ROWS=$rows
+    found=$(registration_id_in "$rows" "$dest" "$orig" "$before") || true
+    [[ $found =~ ^[0-9]+$ ]] && { _ret=$found; return 0; }
+  done
+  return 1
+}
+
+# The quality token this rewrite claims, read off the name it is landing under: name_stem_for
+# built that stem out of the original's own stem plus exactly this suffix, so stripping the
+# stem back off recovers the claim.  Only ever used to complete a log sentence.
+rewrite_token_of() {  # orig-file dest -> the quality token in dest's name, else its whole name
+  local base want tok
+  want=$(basename "${2%.mp4}")
+  for base in "$(disc_stem_base "$1")" "$(basename "$1")"; do
+    base=${base%.*}
+    [[ -n $base && $want == "$base"* ]] || continue
+    tok=${want#"$base"}; tok=${tok# }; tok=${tok#.}
+    printf '%s' "${tok:-no quality token}"; return 0
+  done
+  printf '%s' "$want"
+}
+
 import_item() {  # app staged-file staging-dir original -> 0 once the rewrite is registered and the original is not
-  local app=$1 staged=$2 dir=$3 orig=$4 mid dest rows before after newid try oldid rc=0
+  local app=$1 staged=$2 dir=$3 orig=$4 mid dest rows before newid try oldid rc=0 already=0
   local n_in still sfx stem vsfx langpart newpath vdir qid srcdir fcoll got need_move
   srcdir=$(dirname "$orig")
 
@@ -937,8 +1011,14 @@ import_item() {  # app staged-file staging-dir original -> 0 once the rewrite is
     || { log "import: no $app item owns $srcdir; leaving $staged in staging"; return 1; }
 
   dest="$srcdir/$(basename "$staged")"
-  need_move=1
-  if [[ -e $dest ]]; then
+  # A landed-but-unregistered rewrite is handed to us already sitting at $dest (see the disc
+  # branch in process_file), so "the staging copy" and "the file in the library folder" are the
+  # same inode.  Deleting one deletes the rewrite itself — that rm below has to know when it is
+  # looking at its own tail.
+  if [[ $staged == "$dest" ]]; then
+    log "import: $(basename "$dest") already sits in the library folder unregistered; nothing to move"
+    need_move=0
+  elif [[ -e $dest ]]; then
     # A previous run got this far and stopped before the rescan.  Same size means it is
     # the same rewrite, so carry on from here rather than fail on our own leftovers; a
     # different size is somebody else's file, which we are not going to overwrite.
@@ -971,48 +1051,92 @@ import_item() {  # app staged-file staging-dir original -> 0 once the rewrite is
   # for the rescan one command before asking, so a refusal still read as if we had asked.
   log "import: asked $app to rescan item $mid"
 
-  # Wait for it to be registered.  Deleting anything before this happens is how one run
-  # left a movie with no file at all.  Registered means either an id we had not seen, or —
-  # on a resumed run — our own path appearing in the list.
-  newid= ; rows='[]'
-  for try in $(seq 1 "$IMPORT_TRIES"); do
-    sleep 5
-    rows=$(file_rows_for "$app" "$mid") || continue
-    after=$(jq -r '.[].id' <<<"$rows" | tr '\n' ' ')
-    newid=$(comm -13 <(tr ' ' '\n' <<<"$before" | sort) <(tr ' ' '\n' <<<"$after" | sort) | head -1)
-    [[ -n $newid ]] && break
-    newid=$(jq -r --arg p "$dest" '.[] | select(.path == $p) | .id' <<<"$rows" | head -1)
-    [[ -n $newid ]] && break
-  done
-  if [[ -z $newid ]]; then
-    log "import FAILED: $app did not register $dest within $(( IMPORT_TRIES * 5 ))s"
-    log "  the rewrite sits in the library folder and the original is untouched: $orig"
+  # ── phase 1: OUR rewrite has to be registered before anything may touch a byte. ──
+  # Deleting first is what used to leave a movie with no file at all; asking and assuming is
+  # what left movie 140 with an unregistered 21 GB rewrite beside a registered ISO.
+  newid= ; already=0
+  if [[ $need_move -eq 0 ]] && rows=$(file_rows_for "$app" "$mid") \
+     && newid=$(registration_id_in "$rows" "$dest" "$orig" ""); then
+    # Resume case (a): an earlier run got the rewrite registered and something after that
+    # failed.  The title is already in the library under exactly the name we would have given
+    # it, so no rescan is asked for; phase 2 still gets its chance at any original left behind.
+    already=1
+    log "import: $dest is already registered with $app as file #$newid (a previous run imported it)"
+  else
+    if rewrite_registration "$app" "$mid" "$dest" "$orig" "$before" newid; then
+      rows=$LAST_ROWS
+      log "import: registered as file #$newid"
+    else
+      rows=$LAST_ROWS
+      oldid=$(jq -r --arg p "$orig" '[.[] | select(.path == $p)] | last // empty | .id' <<<"$rows")
+      if [[ $oldid =~ ^[0-9]+$ ]]; then
+        # The other half of the ordering problem, and the only way to get our file in under a
+        # profile that prefers what is already there: give up the slot, do not delete it.
+        # deleteFiles=false means Radarr/Sonarr drop the RECORD and keep every byte, so the
+        # source is still intact if anything below this fails.  Loud on purpose — a run that
+        # had to unregister must be visible in the log even when it then succeeds.
+        log "import: $app did not register $dest within $(( IMPORT_TRIES * IMPORT_POLL_SLEEP ))s while file #$oldid is registered"
+        log "import: the profile ranks $(quality_token_for "$app" "$orig") — what $(basename "$orig") is registered as — above $(rewrite_token_of "$orig" "$dest"), what $(basename "$dest") reads as, so the replacement is not an upgrade while the original holds the slot"
+        log "import: unregistering file #$oldid WITHOUT deleting its bytes (DELETE deleteFiles=false), then rescanning so $app can register $(basename "$dest"); $(basename "$orig") stays on disk either way"
+        case $app in
+          radarr) api radarr DELETE "/moviefile/$oldid?deleteFiles=false&addDeletedHistory=true" >/dev/null ;;
+          sonarr) api sonarr DELETE "/episodefile/$oldid?deleteFiles=false&addDeletedHistory=true" >/dev/null ;;
+        esac || log "import: WARNING $app would not unregister file #$oldid; the rewrite stays unregistered and nothing is deleted"
+        rescan_command "$app" "$mid" \
+          || log "import: WARNING $app would not accept the second rescan; $(basename "$dest") sits in the folder, $(basename "$orig") still on disk"
+        rewrite_registration "$app" "$mid" "$dest" "$orig" "$before" newid || true
+        rows=$LAST_ROWS
+      else
+        # Resume case (c): a previous run already unregistered the original — or it was never
+        # registered at all — and our file is still not.  There is no record left to remove,
+        # so this asks for another look and waits, changing nothing.
+        log "import: $app has not registered $dest and does not list $(basename "$orig") either; rescanning item $mid again (no delete of any kind)"
+        rescan_command "$app" "$mid" || true
+        rewrite_registration "$app" "$mid" "$dest" "$orig" "$before" newid || true
+        rows=$LAST_ROWS
+      fi
+    fi
+  fi
+  if [[ -z ${newid:-} ]]; then
+    log "import FAILED: $app did not register $dest within $(( IMPORT_TRIES * IMPORT_POLL_SLEEP ))s, with and without the unregister path"
+    log "  the rewrite sits in the library folder and $(basename "$orig") is untouched: $orig"
     return 1
   fi
-  log "import: registered as file #$newid"
+  [[ $already -eq 1 ]] || log "import: registered as file #$newid"
 
-  # Now drop the file this rewrite replaced, by id, through the app, so its database goes
-  # with the bytes.  Only that file: see the note above about season folders.
-  oldid=$(jq -r --arg p "$orig" '.[] | select(.path == $p) | .id' <<<"$rows" | head -1)
-  if [[ -n $oldid ]]; then
-    log "import: removing replaced file #$oldid $orig"
+  # ── phase 2: only now may the original's BYTES go. ───────────────────────
+  # Ask the app again rather than trusting a listing from before the rescan: after an
+  # unregister it no longer knows that id at all, and asking for deleteFiles=true on an id it
+  # dropped is how this call used to look like it had removed something while it removed
+  # nothing.  Where the app still holds the record, deleting through it takes the database row
+  # with the bytes; where it does not, rm has to do it and the final rescan forgets the stub.
+  oldid=$(jq -r --arg p "$orig" '[.[] | select(.path == $p)] | last // empty | .id' <<<"$rows")
+  if [[ ! $oldid =~ ^[0-9]+$ ]]; then
+    rows=$(file_rows_for "$app" "$mid") || rows='[]'
+    oldid=$(jq -r --arg p "$orig" '[.[] | select(.path == $p)] | last // empty | .id' <<<"$rows")
+  fi
+  if [[ $oldid =~ ^[0-9]+$ ]]; then
+    log "import: removing replaced file #$oldid $orig (deleteFiles=true: $app still has that record)"
     case $app in
       radarr) api radarr DELETE "/moviefile/$oldid?deleteFiles=true&addDeletedHistory=true" >/dev/null ;;
       sonarr) api sonarr DELETE "/episodefile/$oldid?deleteFiles=true&addDeletedHistory=true" >/dev/null ;;
     esac || log "import: WARNING $app would not remove file #$oldid; removing it directly"
-    # An accepted DELETE and the bytes disappearing are separate events — deleteFiles=true can
-    # be refused, or honoured for the record while the file survives.  Fall back to rm (never
-    # let it abort: a leftover is something to report, not a reason to stop mid-import), then
-    # believe our own eyes rather than either call: a leftover original means duplicate bytes
-    # in the folder and an item the next run sees as work again.
-    if [[ -e $orig ]]; then rm -f -- "$orig" || true; fi
-    rescan_command "$app" "$mid" || true          # so the app forgets the removed record too
-    if [[ -e $orig ]]; then
-      N_ORIG_LEFT=$(( N_ORIG_LEFT + 1 ))
-      log "import: WARNING original still on disk after both removal attempts: $orig"
-    fi
+  elif [[ -e $orig ]]; then
+    # After an unregister (or on a resumed run where the app already forgot it) there is no id
+    # left to ask with, so the bytes have to come off by hand and the rescan below clears the record.
+    log "import: $(basename "$orig") is no longer registered with $app, so its bytes come off with rm"
   else
-    log "import: note: $orig is not registered, so there is no file to remove"
+    log "import: note: $(basename "$orig") is neither registered nor on disk, so there is nothing to remove"
+  fi
+  # An accepted DELETE and the bytes disappearing are separate events — deleteFiles=true can
+  # be refused, or honoured for the record while the file survives.  Fall back to rm (never
+  # let it abort: a leftover is something to report, not a reason to stop mid-import), then
+  # believe our own eyes rather than either call.
+  if [[ -e $orig ]]; then rm -f -- "$orig" || true; fi
+  rescan_command "$app" "$mid" || true          # so the app forgets the removed record too
+  if [[ -e $orig ]]; then
+    N_ORIG_LEFT=$(( N_ORIG_LEFT + 1 ))
+    log "import: WARNING original still on disk after both removal attempts: $orig"
   fi
 
   # Confirm OUR rewrite is registered and that no trace of the original remains.  Deliberately
@@ -1099,7 +1223,7 @@ import_item() {  # app staged-file staging-dir original -> 0 once the rewrite is
 
 # ── per-file driver ─────────────────────────────────────────────────────────
 process_file() {
-  local src=$1 app dir stem base staged tag discrc mate
+  local src=$1 app dir stem base staged tag discrc mate landed lmid lid
   app=$(route "$src"); [[ $app == none ]] && return 0
   N_SEEN=$(( N_SEEN + 1 ))
   SRC_CURRENT=$src           # set before any branch: verify() always has a reference
@@ -1108,14 +1232,49 @@ process_file() {
   if is_disc "$src"; then
     # Has this disc's feature already landed beside it?  Checked BEFORE anything tries to open the
     # image, so a converted disc still reads as done even when libbluray cannot re-open it — and a
-    # 21 GB copy is never repeated just to prove the last one worked.
+    # 21 GB copy is never repeated just to prove the last one worked.  "Landed" is only HALF of
+    # done, though: what counts is the file $app actually lists, not one that merely sits there.
+    # Presence alone is what made movie 140 look finished forever — a conforming rewrite sat
+    # unregistered while its own profile ranked the ISO above it, so every later run skipped the
+    # folder, the disc stayed the library's copy of the film, and the job reported itself done.
+    landed=
+    lmid=$(item_id_for_path "$app" "$(dirname "$src")") || true
     while IFS= read -r mate; do
       [[ -n $mate ]] || continue
-      if conforming "$mate"; then
-        log "skip (conforming): $src (main feature already landed as $(basename "$mate"))"
+      conforming "$mate" || continue
+      lid=
+      if [[ -n ${lmid:-} && $lmid != null ]]; then
+        lid=$(file_rows_for "$app" "$lmid" | jq -r --arg p "$mate" '[.[] | select(.path == $p)] | last // empty | .id' 2>/dev/null) || lid=
+      fi
+      if [[ $lid =~ ^[0-9]+$ ]]; then
+        log "skip (conforming): $src (main feature already landed as $(basename "$mate"), registered with $app as file #$lid)"
         N_SKIP=$(( N_SKIP + 1 )); return 0
       fi
+      # Conforming and on disk, but unregistered: this item is mid-import, not finished.
+      landed=$mate
     done < <(disc_landed_mates "$src")
+    if [[ -n ${landed:-} ]]; then
+      log "import needed: $src — $(basename "$landed") is a conforming rewrite in the folder that $app does not list, so the disc still holds the slot; going straight to the import path with no new copy"
+      if [[ $DRY_RUN -eq 1 ]]; then return 0; fi
+      # A file that was never staged has no staging directory to clean up — and the folder it
+      # sits in is the film's own, not ours to delete.
+      if import_item "$app" "$landed" "" "$src"; then
+        N_IMPORTED=$(( N_IMPORTED + 1 )); log "done: $src"
+        # The staging directory the earlier run left behind is now provably redundant — the
+        # rewrite it was made from is registered in the library — so it goes, keyed exactly the
+        # way process_file keys it below.  Nothing else lives in there for this source.
+        stem=$(basename "$src"); stem=${stem%.*}
+        tag=$(printf '%s' "$src" | md5sum | cut -c1-8)
+        if [[ -d "$STAGING_ROOT/$(split_of "$src")/$stem-$tag" ]]; then
+          rm -rf -- "$STAGING_ROOT/$(split_of "$src")/$stem-$tag"
+          log "staging: removed the leftover staging directory for $(basename "$src") now that its rewrite is registered"
+        fi
+      else
+        N_FAILED=$(( N_FAILED + 1 ))
+        log "import FAILED: $landed (in the library folder, still unregistered; nothing was deleted)"
+      fi
+      return 0
+    fi
     disc_select "$src" || discrc=$?
     if (( discrc == 2 )); then   # no libbluray, no mount: an image nobody can open is not "non-conforming"
       log "skip (unsupported container): $src"; N_UNREADABLE=$(( N_UNREADABLE + 1 )); return 0
@@ -1192,7 +1351,7 @@ process_file() {
     return 0
   fi
   if import_item "$app" "$staged" "$dir" "$src"; then
-    rm -rf -- "$dir"
+    [[ -n $dir ]] && rm -rf -- "$dir"
     N_IMPORTED=$(( N_IMPORTED + 1 ))
     log "done: $src"
   else
