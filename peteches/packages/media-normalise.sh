@@ -1011,6 +1011,11 @@ import_item() {  # app staged-file staging-dir original -> 0 once the rewrite is
     || { log "import: no $app item owns $srcdir; leaving $staged in staging"; return 1; }
 
   dest="$srcdir/$(basename "$staged")"
+  # The ordinary case — a fresh rewrite in staging, nothing at dest yet — moves it below.
+  # need_move has to start at 1: both branches that clear it are the two *resume* cases, so on
+  # the normal path it used to stay unset and `if (( need_move ))` died under set -u with
+  # "need_move: unbound variable", killing the run right after a successful encode.
+  need_move=1
   # A landed-but-unregistered rewrite is handed to us already sitting at $dest (see the disc
   # branch in process_file), so "the staging copy" and "the file in the library folder" are the
   # same inode.  Deleting one deletes the rewrite itself — that rm below has to know when it is
