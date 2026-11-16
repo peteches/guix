@@ -21,6 +21,15 @@
 #   mux     MP4 with +faststart, so Jellyfin direct-plays it instead of running
 #           ffmpeg at all — the fragmented-MP4 HLS path that remux forces is what
 #           made the LG browser player tear down every ~23s.
+#   disc    a Blu-ray .iso/.img is not a container: ffprobe on the raw file answers
+#           "Invalid data found when processing input", and forcing -f mpegts gives
+#           garbage ("max resync size reached"), because a disc is a playback chain —
+#           BDMV/PLAYLIST/*.mpls naming which BDMV/STREAM/*.m2ts clips make the feature,
+#           in what order.  Disc images are therefore read through ffmpeg's libbluray
+#           protocol as bluray://<path>, with the LONGEST relevant playlist selected and
+#           then pinned (see disc_select, which refuses to guess when two titles are
+#           within 5 % of each other).  A rewritten disc is no longer a disc, so it does
+#           not keep the BR-DISK token: see disc_quality_token for the replacement.
 #
 # The script is idempotent: files already conforming are skipped, so re-runs
 # are no-ops.  Nothing is ever deleted until the import has been verified.
@@ -49,8 +58,12 @@ SRC_CURRENT=
 # on the wrong Arr profile, or its old bytes on disk.  Those get their own fields so that
 # failed=0 cannot hide them (that is the same dishonesty verify() was fixed for) while
 # failed=N keeps meaning "this title did not make it into the library".
+# unreadable=/ambiguous= count files the walk FOUND but this tool could not judge: a container
+# nothing here accepts (or that ffprobe cannot read at all), and a disc whose two longest titles
+# are too close to call.  They get their own fields rather than being folded into conforming= —
+# "conforming" is a claim about the file, and neither of these is one.
 N_SEEN=0 N_SKIP=0 N_REWRITTEN=0 N_SIDE=0 N_IMPORTED=0 N_FAILED=0
-N_PIN_FAILED=0 N_ORIG_LEFT=0
+N_PIN_FAILED=0 N_ORIG_LEFT=0 N_UNREADABLE=0 N_AMBIGUOUS=0
 
 CONF=${MEDIA_NORMALISE_CONF:-/etc/media-normalise/config}
 [[ -r $CONF ]] || { echo "media-normalise: cannot read $CONF" >&2; exit 1; }
@@ -133,14 +146,144 @@ FACTS_FILE= FACTS=
 # What counts as decodable by the WebOS client, per Jellyfin's own device
 # profile for it: AC-3, E-AC-3 and AAC pass; TrueHD/DTS/FLAC/PCM/Opus do not.
 #
+# ── optical disc images (.iso / .img) ───────────────────────────────────────
+# A disc is not a container ffmpeg can open: ffprobe on a raw .iso answers "Invalid data found
+# when processing input" and forcing -f mpegts dies with "max resync size reached", because the
+# file holds a playback chain (BDMV/PLAYLIST/*.mpls playlists naming which BDMV/STREAM/*.m2ts
+# clips, in what order) rather than one MPEG-TS.  jellyfin-ffmpeg carries libbluray — its
+# protocol list names bluray — so the disc is reachable as `bluray://<path>`: ffmpeg's own
+# protocol hands the path to bd_open(), whose internal UDF reader understands an ISO image
+# directly.  That means no loop mount and no bsdtar/7z/isoinfo/xorriso/mtools, all of which are
+# absent on this wrapper PATH anyway (checked live on jellyfin: every one of them MISS), so
+# nothing new has to be added to the package for disc support.
+#
+# Title selection is not invented here either.  ffmpeg's bluray protocol asks libbluray for the
+# disc's RELEVANT playlists (bd_get_titles with TITLES_RELEVANT and MIN_PLAYLIST_LENGTH = 180 s,
+# so menu segments never compete) and, when no playlist option is given, picks the LONGEST one —
+# which is exactly the house rule "the feature is the longest title".  It logs every candidate
+# with its duration plus which one it chose; disc_select reads that verdict off ffmpeg's own
+# output and pins it with `-playlist <mpls-id>` for every later probe and mux of the same disc,
+# so facts(), remux() and verify() all judge ONE title instead of each re-picking.  There is no
+# `title` option to pass: a ?title=N query in a bluray URL reaches libbluray as part of the FILENAME
+# it tries to open (measured live: "disc.c:333: failed opening UDF image ?title=1"), so query-string
+# selection would fail on every disc, quietly.
+DISC_PATH= DISC_URL= DISC_PLAYLIST= DISC_TOKEN= SRC_OPTS=()
+
+disc_reset() {  # one disc at a time: never let the previous item's pseudo-URL leak into this one
+  DISC_PATH= DISC_URL= DISC_PLAYLIST= DISC_TOKEN=; SRC_OPTS=()
+}
+is_disc() {  # path -> 0 when the extension means an optical-disc image
+  case ${1,,} in *.iso|*.img) return 0 ;; *) return 1 ;; esac
+}
+# Everything that reads media resolves its input through here.  For an ordinary file that is the
+# path itself with no extra options, so every ffmpeg/ffprobe command line this script has always
+# built — including the ones verify() measures with — stays byte-for-byte what it was.
+media_input() {  # library path -> what ffprobe/ffmpeg must be given to see this item's content
+  if [[ ${DISC_PATH:-} == "$1" ]]; then printf '%s' "${DISC_URL:-$1}"; else printf '%s' "$1"; fi
+}
+
+# Playlist durations come from libbluray's own log, because nothing else on this box can ask a
+# disc (no mount, no isoinfo):
+#   [bluray @ 0x…] 8 usable playlists: / playlist 00000.mpls (1:36:04) / selected 00000.mpls
+# Return codes are the caller's contract: 0 = a title was chosen, 1 = ambiguous (do NOT guess),
+# 2 = libbluray cannot open this image at all.
+disc_select() {  # disc path -> DISC_URL / DISC_PLAYLIST / SRC_OPTS set, and says what it picked
+  local iso=$1 err rc=0 map sel line id d hms rid rd rhms bylen nrel why cid csec chms
+  disc_reset
+  err=$(mktemp "${TMPDIR:-/tmp}/media-normalise-disc.XXXXXX") || return 2
+  # No -playlist here on purpose: this is the pass that ASKS ffmpeg what it would pick.
+  $FP -hide_banner -v info -probesize 30M -show_entries format=duration \
+      -of default=noprint_wrappers=1:nokey=1 "bluray://$iso" >/dev/null 2>"$err" || rc=$?
+  map=$(sed -n 's/.*playlist \([0-9]\{5\}\)\.mpls (\([0-9]\{1,4\}\):\([0-9]\{2\}\):\([0-9]\{2\}\)).*/\1 \2 \3 \4/p' "$err")
+  sel=$(sed -n 's/.*selected \([0-9]\{5\}\)\.mpls.*/\1/p' "$err" | head -1)
+  nrel=0; nrel=$(printf '%s\n' "$map" | grep -c '[0-9]') || nrel=0
+  if [[ -z $map ]]; then
+    why=$(grep -m1 -iE 'bluray|udf|bd_open|not detected|aacs|bdplus' "$err" | head -c 200)
+    log "disc: libbluray cannot open $(basename "$iso"): ${why:-ffmpeg reported no playlists at all (exit $rc)}"
+    rm -f -- "$err"; return 2
+  fi
+  # hh:mm:ss -> seconds, longest first.  The human time is kept alongside so the log quotes the
+  # disc's own numbers rather than a re-formatted guess at them.
+  bylen=$(printf '%s\n' "$map" | awk '{ printf "%s %d %02d:%02d:%02d\n", $1, $2*3600+$3*60+$4, $2,$3,$4 }' | sort -k2,2rn)
+  line=$(head -1 <<<"$bylen"); read -r id d hms <<<"$line" || true
+  line=$(sed -n '2p' <<<"$bylen"); read -r rid rd rhms <<<"$line" || true
+  # The ambiguity guard: two titles this close are a feature and an extended/cut version, or a
+  # film and a nearly-equal bonus reel, and nothing here can tell which.  Guessing would import
+  # the wrong cut as "the" movie and then delete the disc that held the right one.
+  if [[ -n ${rid:-} ]] && awk -v a="$rd" -v b="$d" 'BEGIN{ exit ((b-a) <= 0.05*b) ? 0 : 1 }'; then
+    log "disc: $(basename "$iso"): ambiguous titles — refusing to guess which is the feature"
+    while IFS=' ' read -r cid csec chms; do [[ -n $cid ]] && log "  candidate: playlist $cid.mpls ($chms = ${csec}s)"; done <<<"$bylen"
+    log "  rule: apply skips this disc until one title is more than 5 % longer than the runner-up"
+    rm -f -- "$err"; return 1
+  fi
+  # ffmpeg's own pick wins where it reported one (it is what an unpinned mux would use anyway);
+  # the measured longest is the fallback when a build logs candidates but not its choice.
+  DISC_PLAYLIST=${sel:-$id}
+  DISC_PATH=$iso; DISC_URL="bluray://$iso"; SRC_OPTS=(-playlist "$DISC_PLAYLIST")
+  rm -f -- "$err"
+  log "disc: $(basename "$iso"): selected playlist $DISC_PLAYLIST.mpls (${hms} = ${d}s), the longest of $nrel relevant title(s) libbluray reports"
+  return 0
+}
+
+# The stem a rewritten disc lands under, with any disc-origin token taken out.  BR-DISK is the Arr
+# apps' own word for the whole disc — a full remux/ISO — and Normalised-2160p (the profile this tool
+# pins items to) deliberately lists no Remux/BR-DISK ceiling at all, so carrying that token into the
+# name of one MP4 with one video track would keep claiming something the file is not.  Stripping it
+# here is also what lets disc_landed_mates find an already-landed rewrite by the same rule.
+disc_stem_base() {  # disc path -> stem without disc-origin tokens
+  local b; b=$(basename "$1"); b=${b%.*}
+  printf '%s\n' "$b" | sed -e 's/[[:space:]]*[-_ .]*BR-DISK\b//Ig' -e 's/[[:space:]]*[-_ .]*HD-DVD\b//Ig' \
+                       -e 's/[[:space:]][[:space:]]*/ /g' -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//'
+}
+
+# What a copied disc IS, in the apps' own vocabulary.  Neither Radarr nor Sonarr has custom
+# qualities, so the only honest claim is the string their file-name parser produces for this exact
+# picture: bluray origin + measured height reads back as Bluray-<height>p (Radarr's naming convention,
+# same family as the Bluray-720p it reports for 'Aliens (1986) Bluray-720p.mp4').  The height comes
+# from probe_facts on this disc's own SELECTED title — never off the old file name, which is how a
+# BR-DISK rip could sit beside a name that lied about it.  An unmeasurable or sub-720 picture gets
+# NO token: there is no Bluray-SD spelling in either app to fall back on, and inventing one is the
+# exact lie quality_token_for was written to stop.
+disc_quality_token() {  # current facts -> the token an Arr app reads off a copied disc, else empty
+  local h; h=$(fact vheight)
+  case $h in ''|0|*[!0-9]*) printf ''; return 0 ;; esac
+  if   (( h >= 2160 )); then printf 'Bluray-2160p'
+  elif (( h >= 1080 )); then printf 'Bluray-1080p'
+  elif (( h >=  720 )); then printf 'Bluray-720p'
+  else printf '';
+  fi
+}
+
+# "Already converted", for a disc: a conforming video sits beside it under the name this tool would
+# have produced.  The DISC can never look conforming itself — its container is MPEG-TS playlists by
+# definition — so without this an ISO whose rewrite already landed would be copied again, 21 GB at a
+# time, on every single run.  Both stem shapes are tried: today's bare "<stem>.mp4" (what earlier
+# versions landed, BR-DISK token and all) and "<stripped stem> <token>.mp4".  Every candidate still
+# has to pass conforming(), so an unrelated or half-written file beside the disc never counts as one.
+disc_landed_mates() {  # disc path -> one sibling video path per line, if any claims this disc
+  local d stem stripped pat esc
+  d=$(dirname "$1"); stem=$(basename "$1"); stem=${stem%.*}
+  stripped=$(disc_stem_base "$1")
+  for pat in "$stem" "$stripped"; do
+    [[ -n $pat ]] || continue
+    esc=$(printf '%s' "$pat" | sed -e 's/[][?*\\]/\\&/g')
+    find "$d" -maxdepth 1 -type f -iname "$esc*.mp4" 2>/dev/null
+  done | sort -u
+}
+
 # SUB_LANGS is the subtitle allow-list (space, comma or semicolon separated,
 # three-letter tags).  Empty means "every text subtitle", which a Blu-ray disc
 # takes literally: this library has rips with 38 subtitle languages, and one
 # sidecar each would bury the two anyone here actually reads.
-probe_facts() {  # file -> one line of key=value facts
+probe_facts() {  # file (or resolved media input) -> one line of key=value facts
+  # -show_entries is a WHITELIST: a field that is not listed simply never appears in the JSON, and
+  # a fact read off an absent field comes back empty without ever failing.  height was missing from
+  # the list until a converted disc image landed with no quality token at all, because
+  # disc_quality_token had nothing to measure — on disk ffprobe had reported 1920x1080 quite happily.
   $FP -v error \
-      -show_entries stream=codec_type,codec_name,profile,pix_fmt,color_transfer,channels,duration,start_time \
-      -show_entries stream_tags=language -show_entries format=format_name,duration -of json "$1" 2>/dev/null |
+      -show_entries stream=codec_type,codec_name,profile,pix_fmt,color_transfer,height,channels,duration,start_time \
+      -show_entries stream_tags=language -show_entries format=format_name,duration \
+      -of json "${SRC_OPTS[@]}" "$1" 2>/dev/null |
   jq -r --arg allow "${SUB_LANGS:-}" '
    # ffprobe says "N/A" when it has no measurement.  Facts spell that "-" so a reader
    # can never confuse "not measured" with a number — verify() depends on the
@@ -196,6 +339,10 @@ probe_facts() {  # file -> one line of key=value facts
        "audio_durs=\([$a[] | num(.duration)] | join(","))",
        "audio_starts=\([$a[] | num(.start_time)] | join(","))",
        "vcodec=\($v.codec_name // "-")",
+       # height is what a copied disc image needs in order to claim a quality token
+       # (disc_quality_token); nothing else here reads it, so this adds a fact without
+       # touching any verdict line.
+       "vheight=\($v.height // 0)",
        # spaces would break the token parser below, so profile stays underscored
        "vprofile=\(($v.profile // "-") | gsub(" "; "_"))",
        "vpix=\($v.pix_fmt // "-")", "vtrc=\($v.color_transfer // "unknown")",
@@ -221,7 +368,10 @@ probe_facts() {  # file -> one line of key=value facts
        "sidecar_specs=\([$pick[] | "\(.i):\(.l)"] | join(","))" ] | join(" ")'
 }
 facts() {  # file -> facts, probed once and reused while the file is current
-  if [[ $FACTS_FILE != "$1" ]]; then FACTS=$(probe_facts "$1"); FACTS_FILE=$1; fi
+  # Cached on the RESOLVED input, not the path: a disc's facts are facts about one playlist of
+  # that disc, and they must not be handed to some other item that happens to share a stem.
+  local in; in=$(media_input "$1")
+  if [[ $FACTS_FILE != "$in" ]]; then FACTS=$(probe_facts "$in"); FACTS_FILE=$in; fi
 }
 fact() {  # key -> value from the cached facts (empty when absent; always succeeds)
   # Values must never contain whitespace, or they cannot be read back here — hence
@@ -308,8 +458,9 @@ video_copyable() {  # current facts: can this codec go into MP4 untouched?
 # as sidecars), data streams are dropped, and moov goes up front so the client can
 # seek without Jellyfin ever needing to run ffmpeg for it.
 run_mux() {  # src dst <maps and codec args>
-  local src=$1 dst=$2; shift 2
-  "$FF" -hide_banner -nostdin -loglevel error -y -i "$src" "$@" \
+  local src=$1 dst=$2 in; shift 2
+  in=$(media_input "$src")
+  "$FF" -hide_banner -nostdin -loglevel error -y "${SRC_OPTS[@]}" -i "$in" "$@" \
       -sn -dn -map_chapters -1 -map_metadata -1 \
       -movflags +faststart -f mp4 "$dst"
 }
@@ -385,7 +536,7 @@ extract_sidecars() {  # src out-dir base
   facts "$src"
   sidecar_specs
   (( ${#SPECS[@]} )) || return 0
-  args=(-hide_banner -nostdin -loglevel error -y -i "$src")
+  args=(-hide_banner -nostdin -loglevel error -y "${SRC_OPTS[@]}" -i "$(media_input "$src")")
   langs=(); idxs=()
   for spec in "${SPECS[@]}"; do
     idx=${spec%%:*}; lang=${spec##*:}
@@ -516,7 +667,10 @@ verify() {  # staged file [expected sidecar count] -> a valid house-format rewri
   src=${SRC_CURRENT:-$f}
   # Fresh probe of the SOURCE: conformity_failures() above already swapped the facts
   # cache to the staged file, so fact() would silently answer about the wrong file here.
-  sfacts=$(probe_facts "$src") || sfacts=''
+  # A disc's source is its bluray:// pseudo-URL with the pinned playlist — probing the raw .iso
+  # would measure nothing at all ("Invalid data found"), and verify() would then be comparing the
+  # rewrite against an unmeasured source instead of against the title it was copied from.
+  sfacts=$(probe_facts "$(media_input "$src")") || sfacts=''
   sdur=$(facts_get "$sfacts" fmt_dur); is_num "$sdur" || sdur=0
   exp=$(kept_span_expect "$sfacts") || exp=''
   if [[ -z $exp ]]; then
@@ -643,8 +797,16 @@ quality_token_for() {  # app library-file -> the quality token that app records 
 # be noise rather than honesty, so the stem goes through unchanged.
 name_stem_for() {  # app original-file -> the stem the rewrite should land under
   local app=$1 f=$2 base tok
-  base=$(basename "$f"); base=${base%.*}
-  tok=$(quality_token_for "$app" "$f") || tok=
+  if is_disc "$f"; then
+    # A disc image gets neither the token the app recorded nor its own file name as-is: BR-DISK is
+    # the word for the DISC, and this rewrite is one MP4 with one video track.  The stem drops that
+    # token (disc_stem_base) and the claim comes from what was MEASURED on the selected title
+    # (disc_quality_token) — the same evidence an Arr app would use to name the file itself.
+    base=$(disc_stem_base "$f"); tok=${DISC_TOKEN:-}
+  else
+    base=$(basename "$f"); base=${base%.*}
+    tok=$(quality_token_for "$app" "$f") || tok=
+  fi
   if [[ -z $tok ]]; then printf '%s' "$base"; return 0; fi
   if [[ ${base,,} == *"${tok,,}"* ]]; then
     log "name: $app records $tok for $(basename "$f") and its name already says so — stem kept as is" >/dev/null
@@ -937,10 +1099,37 @@ import_item() {  # app staged-file staging-dir original -> 0 once the rewrite is
 
 # ── per-file driver ─────────────────────────────────────────────────────────
 process_file() {
-  local src=$1 app dir stem base staged tag
+  local src=$1 app dir stem base staged tag discrc mate
   app=$(route "$src"); [[ $app == none ]] && return 0
   N_SEEN=$(( N_SEEN + 1 ))
   SRC_CURRENT=$src           # set before any branch: verify() always has a reference
+  # ── discs first, because for them the file on disk is not the thing being measured
+  disc_reset; discrc=0
+  if is_disc "$src"; then
+    # Has this disc's feature already landed beside it?  Checked BEFORE anything tries to open the
+    # image, so a converted disc still reads as done even when libbluray cannot re-open it — and a
+    # 21 GB copy is never repeated just to prove the last one worked.
+    while IFS= read -r mate; do
+      [[ -n $mate ]] || continue
+      if conforming "$mate"; then
+        log "skip (conforming): $src (main feature already landed as $(basename "$mate"))"
+        N_SKIP=$(( N_SKIP + 1 )); return 0
+      fi
+    done < <(disc_landed_mates "$src")
+    disc_select "$src" || discrc=$?
+    if (( discrc == 2 )); then   # no libbluray, no mount: an image nobody can open is not "non-conforming"
+      log "skip (unsupported container): $src"; N_UNREADABLE=$(( N_UNREADABLE + 1 )); return 0
+    elif (( discrc == 1 )); then
+      log "skip (ambiguous disc titles): $src"; N_AMBIGUOUS=$(( N_AMBIGUOUS + 1 )); return 0
+    fi
+    # Measure the token BEFORE conforming() on a sibling swaps the facts cache, and from THIS
+    # disc's selected title rather than from its file name: see disc_quality_token.
+    facts "$src"; DISC_TOKEN=$(disc_quality_token)
+    case $DISC_TOKEN in
+      '') log "name: $(basename "$src") reports no usable picture height, so its rewrite lands with no quality token at all" >/dev/null ;;
+      *)  log "name: $(basename "$src") is a disc IMAGE, not a disc: BR-DISK would claim a full remux this file is not, so it lands as $DISC_TOKEN — the token an Arr app reads off a stream-copied $(fact vheight)p bluray picture" >/dev/null ;;
+    esac
+  fi
   if conforming "$src"; then log "skip (conforming): $src"; N_SKIP=$(( N_SKIP + 1 )); return 0; fi
   if [[ $DRY_RUN -eq 1 ]]; then
     # A dry run that only says "would rewrite" is not actionable: name the reason,
@@ -1038,11 +1227,32 @@ main() {
     # nobody asked for, and it makes junk look intentional to Jellyfin.
     while IFS= read -r -d '' f; do
       case $f in
-        *.mp4|*.mkv|*.m2ts|*.ts|*.avi|*.wmv|*.mpg|*.mpeg) process_file "$f" ;;
+        # The containers this tool has always taken, plus .mov and .flv — measured live on this box,
+        # ffprobe reads both (Steal This Film II.720p.mov is h264 1280x720 + aac; Drop Dead Gorgeous
+        # SDTV.flv is h264 528x384 + aac), so those two were never unreadable here, merely invisible
+        # to this filter.  Two whole film folders sat in the library with no log line about them at
+        # all, which is the real cost of an extension list nobody audits.
+        *.mp4|*.mkv|*.m2ts|*.ts|*.avi|*.wmv|*.mpg|*.mpeg|*.mov|*.flv) process_file "$f" ;;
+        # Optical disc images: read through libbluray, see disc_select.
+        *.iso|*.img) process_file "$f" ;;
+        # Extensions that look like video but nothing here has ever looked at.  Whatever ffprobe
+        # makes of one, it gets SAID: a library that quietly holds titles nobody considered is the
+        # failure mode this branch exists to kill.  The probe result is reported so the next reader
+        # can decide whether to accept the container instead of re-probing by hand.
+        *.webm|*.m4v|*.ogm|*.mk3d|*.divx|*.f4v|*.vob|*.evo|*.rec|*.3gp|*.asf|*.rm|*.rmvb|*.mp2|*.mpv|*.dat|*.ogv|*.swf)
+          saw=''; saw=$($FP -v error -select_streams v:0 -show_entries stream=codec_name,width,height \
+                           -of csv=p=0 "$f" 2>/dev/null | head -1) || saw=
+          log "skip (unsupported container): $f"
+          if [[ -n $saw ]]; then
+            log "  why: ffprobe reads it as $saw but this extension is not in the accepted set, so nothing here rewrites it"
+          else
+            log "  why: ffprobe finds no video stream in it at all (not a container ffmpeg knows)"
+          fi
+          N_UNREADABLE=$(( N_UNREADABLE + 1 )) ;;
       esac
     done < <(find "$root" -type f -not -path '*/.*' -not -path '*/#*' -print0 | sort -z)
   done <<<"$LIBRARY_ROOTS"
-  log "summary: $nroots root(s) walked; seen=$N_SEEN conforming=$N_SKIP rewritten=$N_REWRITTEN sidecars=$N_SIDE imported=$N_IMPORTED failed=$N_FAILED pin-failed=$N_PIN_FAILED original-left=$N_ORIG_LEFT"
+  log "summary: $nroots root(s) walked; seen=$N_SEEN conforming=$N_SKIP rewritten=$N_REWRITTEN sidecars=$N_SIDE imported=$N_IMPORTED failed=$N_FAILED pin-failed=$N_PIN_FAILED original-left=$N_ORIG_LEFT unreadable=$N_UNREADABLE ambiguous=$N_AMBIGUOUS"
   log "=== media-normalise run end ==="
 }
 
