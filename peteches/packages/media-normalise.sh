@@ -131,9 +131,14 @@ FACTS_FILE= FACTS=
 # sidecar each would bury the two anyone here actually reads.
 probe_facts() {  # file -> one line of key=value facts
   $FP -v error \
-      -show_entries stream=codec_type,codec_name,profile,pix_fmt,color_transfer,channels \
-      -show_entries stream_tags=language -show_entries format=format_name -of json "$1" 2>/dev/null |
-  jq -r --arg allow "${SUB_LANGS:-}" '(.streams // []) as $s
+      -show_entries stream=codec_type,codec_name,profile,pix_fmt,color_transfer,channels,duration,start_time \
+      -show_entries stream_tags=language -show_entries format=format_name,duration -of json "$1" 2>/dev/null |
+  jq -r --arg allow "${SUB_LANGS:-}" '
+   # ffprobe says "N/A" when it has no measurement.  Facts spell that "-" so a reader
+   # can never confuse "not measured" with a number — verify() depends on the
+   # difference, since an unmeasured duration must fall back, not count as zero.
+   def num(x): (x | tostring) as $s | if ($s | test("^-?[0-9]+([.][0-9]+)?$")) then $s else "-" end;
+   (.streams // []) as $s
    | (($allow | ascii_downcase) | [ splits("[ ;,]+") ] | map(select(. != ""))) as $langs
    | ([ $s[] | select(.codec_type == "video") ][0] // {}) as $v
    | [ $s[] | select(.codec_type == "video") ] as $vid
@@ -173,6 +178,15 @@ probe_facts() {  # file -> one line of key=value facts
    # ARRAY with .i, jq dies printing nothing, and every fact downstream is empty.
    | ([ ($kept | group_by(.l))[] | sort_by(.i)[0] ] | sort_by(.i)) as $pick
    | [ "fmt=\(.format.format_name // "-")",
+       # Timeline length plus the per-stream measurements verify() needs.  Matroska
+       # stores no per-track duration at all (ffprobe answers N/A for video and audio),
+       # so start_time is often the only real number here — kept_span_expect pairs it
+       # with fmt_dur to get the span of a track.  Audio lists are audio-relative-indexed,
+       # exactly like audio_ok_idx, so the two line up.
+       "fmt_dur=\(num(.format.duration))",
+       "v_dur=\(num($v.duration))", "v_start=\(num($v.start_time))",
+       "audio_durs=\([$a[] | num(.duration)] | join(","))",
+       "audio_starts=\([$a[] | num(.start_time)] | join(","))",
        "vcodec=\($v.codec_name // "-")",
        # spaces would break the token parser below, so profile stays underscored
        "vprofile=\(($v.profile // "-") | gsub(" "; "_"))",
@@ -206,6 +220,13 @@ fact() {  # key -> value from the cached facts (empty when absent; always succee
   # comma-separated lists in probe_facts.
   local t
   for t in $FACTS; do [[ $t == "$1="* ]] && { printf '%s' "${t#*=}"; return 0; }; done
+  return 0
+}
+facts_get() {  # facts-string key -> value.  verify() judges TWO files, and the cache
+  # behind fact() always describes whichever was probed last (the staged one, by then),
+  # so the source's own facts are held in a local string and read through this.
+  local fs=$1 k=$2 t
+  for t in $fs; do [[ $t == "$k="* ]] && { printf '%s' "${t#*=}"; return 0; }; done
   return 0
 }
 
@@ -285,36 +306,48 @@ run_mux() {  # src dst <maps and codec args>
       -movflags +faststart -f mp4 "$dst"
 }
 
-remux() {  # src dst
-  local src=$1 dst=$2 maps=(-map 0:v:0) aopts=() i
-  local -a idxs
-  facts "$src"
+# What the house format keeps, worked out in ONE place so remux() writes exactly what
+# verify() measures: until now both spelled out -map 0:v:0 and the decodable-audio rule
+# separately, which is how a change to one could silently disagree with the other and
+# make verify judge the rewrite against streams nobody asked for.
+KEPT_MAPS=() KEEP_AOPTS=() KEEP_AUDIO_ENCODE=0 DROP_VIDEO=0 DROP_AUDIO=0 DROP_SUBS=0
+kept_streams() {  # current facts -> KEPT_MAPS, KEEP_AOPTS, KEEP_AUDIO_ENCODE, DROP_*
+  local -a idxs; local i n bad subs
+  KEPT_MAPS=(-map 0:v:0)                 # exactly one video track: see the header note
+  KEEP_AOPTS=(-c:a copy); KEEP_AUDIO_ENCODE=0
   if [[ -n $(fact audio_ok_idx) ]]; then
     # Copy every decodable track in stream order and drop the rest, so language
     # options survive and nothing unplayable is left behind.
     IFS=, read -r -a idxs <<<"$(fact audio_ok_idx)"
-    for i in "${idxs[@]}"; do maps+=(-map "0:a:$i"); done
-    aopts=(-c:a copy)
+    for i in "${idxs[@]}"; do KEPT_MAPS+=(-map "0:a:$i"); done
   elif [[ $(fact audio_n) != 0 ]]; then
     # Nothing the client can decode at all (a TrueHD/DTS-only disc): one AC-3 mix.
-    maps+=(-map "0:a:$(fact best_audio)")
-    aopts=(-c:a ac3 -b:a 448k -ac "$(fact best_channels)")
-    log "audio: no WebOS-decodable track among [$(fact audio_codecs)] -> encoding an AC-3 $(fact best_channels)-channel mix from stream $(fact best_audio)"
-  else
-    aopts=(-c:a copy)
+    KEPT_MAPS+=(-map "0:a:$(fact best_audio)")
+    KEEP_AOPTS=(-c:a ac3 -b:a 448k -ac "$(fact best_channels)"); KEEP_AUDIO_ENCODE=1
   fi
+  n=$(fact video_n); case $n in ''|*[!0-9]*) n=0 ;; esac
+  if (( n > 1 )); then DROP_VIDEO=$(( n - 1 )); else DROP_VIDEO=0; fi
+  bad=$(fact audio_bad_n); case $bad in ''|*[!0-9]*) bad=0 ;; esac; DROP_AUDIO=$bad
+  subs=$(fact sub_n); case $subs in ''|*[!0-9]*) subs=0 ;; esac; DROP_SUBS=$subs
+}
 
+remux() {  # src dst
+  local src=$1 dst=$2
+  facts "$src"; kept_streams
+  if (( KEEP_AUDIO_ENCODE )); then
+    log "audio: no WebOS-decodable track among [$(fact audio_codecs)] -> encoding an AC-3 $(fact best_channels)-channel mix from stream $(fact best_audio)"
+  fi
   if video_copyable; then
-    run_mux "$src" "$dst" "${maps[@]}" -c:v copy "${aopts[@]}"
+    run_mux "$src" "$dst" "${KEPT_MAPS[@]}" -c:v copy "${KEEP_AOPTS[@]}"
   else
     # Rare: DivX/Xvid/MPEG-1/… that MP4 will not carry.  Re-encode, and let ffmpeg
     # pass the source colour metadata through with no -color_* flags of ours:
     # hevc_nvenc silently ignores primaries/trc, so stamping them used to produce
     # files whose tags contradicted each other.
     log "video: $(fact vcodec) cannot be stream-copied into MP4 -> re-encoding to HEVC Main 10, colour metadata passed through"
-    run_mux "$src" "$dst" "${maps[@]}" -c:v hevc_nvenc -preset p6 -profile:v main10 \
+    run_mux "$src" "$dst" "${KEPT_MAPS[@]}" -c:v hevc_nvenc -preset p6 -profile:v main10 \
             -rc vbr -cq "$CQ" -maxrate "$MAXRATE" -bufsize $((MAXRATE * 2)) \
-            -g 96 -keyint_min 96 "${aopts[@]}"
+            -g 96 -keyint_min 96 "${KEEP_AOPTS[@]}"
   fi
 }
 
@@ -369,8 +402,98 @@ extract_sidecars() {  # src out-dir base
   log "subtitles: wrote $SIDE_WRITTEN sidecar(s) for $base in one pass ($missing not written)"
 }
 
+# ── how long the rewrite is ALLOWED to be ───────────────────────────────
+# WHY THIS IS NOT JUST "the source's container duration".  A multi-version title — two
+# video tracks, a DTS mix next to an AC-3, PGS subs — has ONE timeline whose end is set
+# by whichever stream runs longest, INCLUDING the streams the house format throws away on
+# purpose.  The rewrite keeps one video track plus the WebOS-decodable audio, so its own
+# container duration is legitimately shorter: judging it against the source's container
+# duration punishes a title for exactly the conformity the Arr app demanded, and it can
+# never pass, so the rewrite sits in staging forever.  Measured live on
+# /media/library/films/Backrooms (2026): every stream there starts at 4200s of a
+# 10836.768s timeline and Matroska records no per-track duration, so the source tag reads
+# 10836.768s while the honest span of what we keep is 6636.768s — which is exactly what
+# the rewrite measured, to the millisecond.
+#
+# So the expectation comes from the KEPT streams: their own reported duration when ffprobe
+# has one, else (Matroska writes none) timeline end minus that stream's start_time.  With
+# one video track starting at 0 — every ordinary file — both reduce to today's comparison,
+# so normal behaviour is unchanged.  When even that cannot explain the staged length, a
+# dropped stream may be the reason, so MEASURE what the kept streams span instead of
+# guessing; that extra read is paid for only by titles that would otherwise false-fail.
+is_num() { [[ ${1:-} =~ ^-?[0-9]+([.][0-9]+)?$ ]]; }   # "-" / "N/A" / "" are not numbers
+dur_close() { awk -v a="$1" -v b="$2" 'BEGIN{d=a-b; if(d<0)d=-d; exit (d>2)?1:0}'; }
+drops_of() {  # source-facts -> "<video> <audio> <subs>" streams the house format throws away
+  awk -v v="$(facts_get "$1" video_n)" -v a="$(facts_get "$1" audio_bad_n)" \
+      -v s="$(facts_get "$1" sub_n)" '
+    function n(x) { return (x ~ /^-?[0-9]+$/) ? x+0 : 0 }
+    BEGIN { v=n(v); printf "%d %d %d", (v>1 ? v-1 : 0), n(a), n(s) }'
+}
+
+kept_span_expect() {  # source-facts -> "<seconds> <how it was measured>"; 1 if unmeasurable
+  local fs=$1 max='' how='' fdur d st i cand na
+  local -a ad as ok
+  fdur=$(facts_get "$fs" fmt_dur)
+  # Video: the house format keeps exactly v:0, so that is the only track to measure here.
+  d=$(facts_get "$fs" v_dur); st=$(facts_get "$fs" v_start)
+  if is_num "$d"; then max=$d; how="its reported stream duration"
+  elif is_num "$fdur" && is_num "$st"; then
+    max=$(awk -v a="$fdur" -v b="$st" 'BEGIN{printf "%.6f", a-b}')
+    how="the source timeline end minus that stream's start_time"
+  fi
+  IFS=, read -r -a ad <<<"$(facts_get "$fs" audio_durs)"
+  IFS=, read -r -a as <<<"$(facts_get "$fs" audio_starts)"
+  ok=$(facts_get "$fs" audio_ok_idx)
+  if [[ -z $ok ]]; then
+    # Nothing decodable is still a kept stream: the rewrite encodes its one AC-3 mix from
+    # best_audio, so that track's span bounds the output just as much as any copied one.
+    na=$(facts_get "$fs" audio_n)
+    case $na in ''|0|*[!0-9]*) ok= ;; *) ok=$(facts_get "$fs" best_audio) ;; esac
+  fi
+  IFS=, read -r -a ok <<<"$ok"
+  for i in "${ok[@]}"; do
+    case $i in ''|*[!0-9]*) continue ;; esac
+    st="${as[$i]:-}"
+    if is_num "${ad[$i]:-}"; then cand=${ad[$i]}
+    elif is_num "$fdur" && is_num "$st";
+    then cand=$(awk -v a="$fdur" -v b="$st" 'BEGIN{printf "%.6f", a-b}')
+    else continue; fi
+    if ! is_num "$max" || awk -v a="$cand" -v b="$max" 'BEGIN{exit !(a>b)}'; then
+      max=$cand; how="the longest kept stream's span"
+    fi
+  done
+  is_num "$max" && awk -v x="$max" 'BEGIN{exit !(x>0)}' \
+    || { printf '%s %s' "$max" "$how"; return 1; }
+  printf '%s %s' "$max" "$how"; return 0
+}
+
+# Measure the kept streams by muxing them on their own: this is the only ruler that can
+# tell "we dropped a longer track" from "the mux stopped early", because both shorten the
+# file.  Not circular — it re-derives the answer from the SOURCE, so a rewrite truncated
+# mid-file still fails.  Costs one more read of the source plus a copy of what is kept,
+# which is why verify() only reaches for it when a drop could be the explanation.
+# The result lands in MEASURED_SPAN rather than stdout: remux() logs through log(), and
+# log() writes to stdout too, so a command substitution would have swallowed those lines
+# into the measurement (awk then reads them as 0 and every file "drifts").
+MEASURED_SPAN=
+kept_span_measured() {  # src dir -> sets MEASURED_SPAN; returns 1 when unmeasurable
+  local src=$1 dir=$2 probe d rc=0
+  MEASURED_SPAN=''
+  probe=$(mktemp "$dir/.kept-span-XXXXXX") || return 1
+  remux "$src" "$probe" || rc=$?
+  if (( rc == 0 )); then
+    d=$($FP -v error -show_entries format=duration -of csv=p=0 "$probe" 2>/dev/null || echo '')
+    rm -f -- "$probe"
+    is_num "$d" && { MEASURED_SPAN=$d; return 0; }
+  else
+    log "verify: could not re-mux the kept streams to measure them (source left as the only evidence)"
+    rm -f -- "$probe"
+  fi
+  return 1
+}
+
 verify() {  # staged file [expected sidecar count] -> a valid house-format rewrite?
-  local f=$1 want=${2:-0} fails l dur sdur side stem esc
+  local f=$1 want=${2:-0} fails l dur side stem esc src sfacts sdur exp expv how got dv da ds
   fails=$(conformity_failures "$f")
   if [[ -n $fails ]]; then
     while IFS= read -r l; do log "verify: $l"; done <<<"$fails"
@@ -382,10 +505,36 @@ verify() {  # staged file [expected sidecar count] -> a valid house-format rewri
   side=$(find "$(dirname "$f")" -maxdepth 1 -type f -name "$esc.*.srt" 2>/dev/null | wc -l)
   [[ $side -eq $want ]] || { log "verify: expected $want subtitle sidecar(s) beside $(basename "$f"), found $side"; return 1; }
   dur=$($FP -v error -show_entries format=duration -of csv=p=0 "$f" 2>/dev/null || echo 0)
-  sdur=$($FP -v error -show_entries format=duration -of csv=p=0 "${SRC_CURRENT:-$f}" 2>/dev/null || echo 0)
-  awk -v a="$dur" -v b="$sdur" 'BEGIN{d=a-b; if(d<0)d=-d; exit (d>2)?1:0}' \
-    || { log "verify: duration drift ${dur}s vs ${sdur}s"; return 1; }
-  return 0
+  src=${SRC_CURRENT:-$f}
+  # Fresh probe of the SOURCE: conformity_failures() above already swapped the facts
+  # cache to the staged file, so fact() would silently answer about the wrong file here.
+  sfacts=$(probe_facts "$src") || sfacts=''
+  sdur=$(facts_get "$sfacts" fmt_dur); is_num "$sdur" || sdur=0
+  exp=$(kept_span_expect "$sfacts") || exp=''
+  if [[ -z $exp ]]; then
+    # Nothing measurable about the source's streams at all: fall back to comparing whole
+    # file durations — today's rule — rather than passing a file nobody measured.
+    dur_close "$dur" "$sdur" \
+      || { log "verify: duration drift ${dur}s vs source container ${sdur}s (no per-stream duration measurable)"
+           return 1; }
+    return 0
+  fi
+  expv=${exp%% *}; how=${exp#* }
+  dur_close "$dur" "$expv" && return 0
+  dv=0; da=0; ds=0; got=''; read -r dv da ds <<<"$(drops_of "$sfacts")"
+  MEASURED_SPAN=''
+  if (( dv + da + ds > 0 )); then
+    log "verify: staged ${dur}s vs expected ${expv}s (${how}); the source drops video=$dv audio=$da subs=$ds, so measuring what the kept streams actually span"
+    if kept_span_measured "$src" "$(dirname "$f")"; then
+      got=$MEASURED_SPAN
+      dur_close "$dur" "$got" \
+        && { log "verify: ok — the kept streams span ${got}s and the staged file matches them (source container reads ${sdur}s because of those dropped streams)"
+             return 0; }
+    fi
+  fi
+  log "verify: duration drift ${dur}s vs expected ${expv}s (${how}); source container ${sdur}s, dropped video=$dv audio=$da subs=$ds"
+  [[ -n $got ]] && log "  kept streams measured at ${got}s — the rewrite is shorter/longer than what we asked to keep"
+  return 1
 }
 
 # ── import ──────────────────────────────────────────────────────────────────
@@ -665,7 +814,12 @@ process_file() {
     N_SIDE=$(( N_SIDE + SIDE_WRITTEN ))
   fi
   if ! verify "$staged" "$want_side"; then
-    log "verify FAILED: $staged (kept in staging; source untouched)"
+    # A rewrite nobody verified is not a success: counting it as one made the summary say
+    # "rewritten=1 failed=0" for a title stuck in staging, which hides every stuck title
+    # in an unattended run.  N_REWRITTEN keeps meaning "rewrites produced"; this is what
+    # makes the difference visible.
+    N_FAILED=$(( N_FAILED + 1 ))
+    log "verify FAILED: $staged (rewrite left in staging UNIMPORTED, source untouched; counted as failed)"
     return 0
   fi
   if import_item "$app" "$staged" "$dir" "$src"; then
