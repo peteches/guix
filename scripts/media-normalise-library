@@ -98,6 +98,11 @@ Usage: scripts/media-normalise-library [options]
   --sub-langs LANGS    comma/space-separated subtitle languages to keep as sidecar
                        .srt files (empty = every text track, which on a Blu-ray rip
                        here means up to 38 files beside one video)
+  --radarr-key FILE    Radarr API key file ON THE TARGET (default
+                       /etc/media-normalise/radarr-api-key; the deployed service
+                       decrypts its copy to /run/secrets/radarr-api-key, so pass that
+                       unless something has put a copy at the default path)
+  --sonarr-key FILE    Sonarr API key file on the target (same caveat)
   --profile NAME       Arr profile pinned onto normalised items (default
                        Normalised-2160p; a missing profile only warns, so check
                        it exists in each app before relying on it — verified live:
@@ -124,6 +129,8 @@ while [[ $# -gt 0 ]]; do
     --quality) QUALITY=${2:?--quality needs a name}; shift ;;
     --quality-mode) QUALITY_MODE=${2:?--quality-mode needs parsed|override}; shift ;;
     --sub-langs) SUB_LANGS=${2:?--sub-langs needs language tags}; shift ;;
+    --radarr-key) RADARR_KEY=${2:?--radarr-key needs a path}; shift ;;
+    --sonarr-key) SONARR_KEY=${2:?--sonarr-key needs a path}; shift ;;
     --profile) PROFILE=${2:?--profile needs a name}; shift ;;
     --maxrate) MAXRATE=${2:?--maxrate needs a number}; shift ;;
     --cq) CQ=${2:?--cq needs a number}; shift ;;
