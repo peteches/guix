@@ -179,6 +179,17 @@ regardless of what =/etc= or =guix system describe= say — run
 time is *after* the generation switch is it safe to trust the port/health
 check below as evidence the *new* config is what's actually serving.
 
+The same trap has a quieter variant for daemons that read a *generated job
+table* rather than a config file — =mcron= above all. Its service definition
+does not change when only its schedule does, so shepherd leaves the daemon
+running on the OLD in-memory table while =/etc/mcron/jobs= is already correct;
+=guix deploy= never notices. A schedule change therefore needs an explicit
+=sudo herd restart mcron= after the deploy, and proof from the live daemon
+(its =It is running since …= time plus the new cron expression in its job
+file, or =mcron='s next-fire time) — not from the store file alone. Measured
+case: jellyfin's media-normalise schedule was parked and re-armed across
+generations 39→40 with a ~22-hour-old mcron still holding the old table.
+
 ** 3. The service itself answers
 
 Once §2 confirms the service restarted into the current generation, check
