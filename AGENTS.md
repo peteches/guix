@@ -515,6 +515,7 @@ Home service *types*, folded in from the retired `peteches` channel.
 | `docs/secrets-management.org` | SOPS + age keys workflow |
 | `docs/infrastructure.org` | Terraform + Concourse CI overview |
 | `docs/fleet-deployment.org` | Fleet deploy rules: when to deploy, `deploy-vms` skill usage, per-host success verification, rollback, consistency audit |
+| `docs/media-normalisation.org` | Media-pipeline operations runbook: the payload that actually grabs a release through Radarr 6.3's API (and the shapes that don't), clearing NZBGet's duplicate history for a re-grab, and where Radarr's exceptions really land (`logs.db`, not `/api/v3/log`) |
 | `docs/rules-lawyer-loop-plan.org` | **Unimplemented plan** — fix for the rules-lawyer bot's "Stopped after N tool iterations" failure (missing `systems/**/AGENTS.md` in the package + no forced final answer in the bot harness) |
 | `.claude/skills/update-channels/` | Claude Code skill for updating pinned channel commits across all `peteches/channels/*.scm` files |
 | `.claude/skills/deploy-vms/` | The fleet-deploy skill `docs/fleet-deployment.org` mandates for anything touching more than one host |

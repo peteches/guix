@@ -1,0 +1,46 @@
+* Grabbing a specific release through Radarr 6.3's API
+
+Radarr is on =arr= (192.168.51.195:7878); its key is in =/run/secrets/radarr-api-key= on the calling
+box — keep it in a shell variable, never print it.  wget needs =--header='Content-Type: application/json'=
+with no quotes inside the header value.
+
+#+BEGIN_EXAMPLE
+  W=http://192.168.51.195:7878/api/v3; K=$(cat /run/secrets/radarr-api-key)
+  wget -q -O- --header="X-Api-Key: $K" "$W/release?movieId=140" \
+    | jq -c '[.[] | select((.title//"")|test("MULTI[.]COMPLETE[.]BLURAY-FULLBRUTALiTY";"i")))][0]' > rel.json
+  wget -S -q -O body --method=POST --header="X-Api-Key: $K" \
+       --header='Content-Type: application/json' --body-file=rel.json "$W/release?movieId=140"   # -> 200
+#+END_EXAMPLE
+
+- The grab is =POST /api/v3/release?movieId=<n>= with the **whole release resource** as body. Proof it
+  landed: Radarr's log gains =Nzbget | Adding report [...] to the queue= plus a
+  =DownloadService| … sent to NZBGet from indexer <idx>= line, and =/queue?movieIds=<n>= shows
+  =status=downloading=.  Downloader: *NZBGet* (the only enabled Usenet client).
+- Dead ends, so nobody re-tries them: =POST /command {"name":"Download","releaseIds":[guid],"force":true}=
+  gives HTTP 500 with an empty body and is logged as =System.InvalidOperationException: Sequence contains
+  no matching element= at =CommandController.cs:line 56= — "Download" is not an available command in this
+  Radarr (=GET /command= lists only =RefreshMonitoredDownloads=/=ProcessMonitoredDownloads=).
+  =POST= *and* =PUT= on =/release/<guid>= are 405 and =OPTIONS= is unsupported, so there is no =Allow:= to
+  read.  A Usenet release's =downloadClients[]= is empty and its =guid= IS the indexer details URL — treat
+  both as opaque.
+- Re-grabbing something NZBGet already completed is skipped within seconds (history shows =grabbed= then
+  =downloadFailed=, no per-job log file created).  Move its duplicate history aside first, on downloads:
+  =herd stop nzbget; mv /var/lib/nzbget/queue/history /var/lib/nzbget/queue/history.pre-grab-$(date +%FT%H%M); herd start nzbget= — and restore it byte-for-byte afterwards.
+  If a grab stalls instead, read =/var/lib/nzbget/queue/n<jobid>.log=: an old post can have lost *whole RAR
+  volumes* ("652 of 652 article downloads failed for …/r29"), which parity cannot fix.
+
+** Where Radarr's exceptions actually land
+
+=/api/v3/log= can return nothing while the exception sits in Radarr's own log database:
+
+#+BEGIN_EXAMPLE
+  cp /var/lib/radarr/logs.db* /tmp/mnlogs/ && chmod 644 /tmp/mnlogs/*       # db + -wal + -shm
+  SQ=$(ls -d /gnu/store/*/bin/sqlite3 | head -1)
+  "$SQ" -readonly /tmp/mnlogs/logs.db "select group_concat(name,', ') from pragma_table_info('Logs')"
+  "$SQ" -readonly /tmp/mnlogs/logs.db "select Id,Time,Level,Logger,substr(coalesce(Message,''),1,120),
+     substr(coalesce(Exception,''),1,300) from Logs where Time>='2026-11-17 13:00' order by Id"
+#+END_EXAMPLE
+
+Columns are =Id, Message, Time, Logger, Exception, ExceptionType, Level= (the stack trace is in
+=Exception=).  *Time values are space-separated* (=2026-11-17 14:49:31.19Z=), so a filter written
+='2026-11-17T13:00'= silently matches nothing — that is why an exception hunt looks empty.
