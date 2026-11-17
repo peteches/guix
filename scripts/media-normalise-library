@@ -361,6 +361,10 @@ PROFILE_NAME="$PROFILE"
 STANDUP_APP=radarr
 MAXRATE=$MAXRATE
 CQ=$CQ
+# Passed through, not invented here: one folder per media-normalise invocation means the per-run
+# budget can only ever bind a whole-library run (the nightly), and an operator who does want to cap
+# a session by bytes rather than by folder count sets it in the environment of this script.
+MAX_VIDEO_GIB=${MAX_VIDEO_GIB:-120}
 LOG="$LOG_ON_HOST"
 EOF
   ssh_run "cat | sudo tee '$REMOTE_DIR/config' >/dev/null && sudo chmod 0600 '$REMOTE_DIR/config'" <"$tmp" \
@@ -421,7 +425,8 @@ main() {
     verdict=$(grep -m14 -E \
         -e 'import: ok' -e 'rewrite needed' -e 'skip \(conforming\)' \
         -e 'skip \(unsupported container\)' -e 'skip \(ambiguous disc titles\)' \
-        -e 'selected playlist' -e '^ *candidate:' -e 'why:' -e '^WARNING' -e 'summary:' \
+        -e 'selected playlist' -e '^ *candidate:' -e 'why:' -e '^WARNING' -e 'warning:' \
+        -e 'budget:' -e 'summary:' \
         "$tmp" | sed "s|^|  · |") || true
     [[ -n $verdict ]] || printf '  · no marker lines (folder has nothing to do?)\n' >&2
     printf '%s\n' "$verdict" >&2
@@ -433,7 +438,7 @@ main() {
   for pat in 'skip (conforming)' 'rewrite needed' 'reusing cached rewrite' \
              'subtitles: wrote' 'subtitle:' 'subtitle: placed' 'import: ok' \
              'verify FAILED' 'rewrite FAILED' 'import FAILED' \
-             'registered as file' 'WARNING profile' \
+             'registered as file' 'WARNING profile' 'warning: tolerated duration drift' \
              'skip (unsupported container)' 'skip (ambiguous disc titles)' 'selected playlist'; do
     c=$(grep -c -F -- "$pat" "$LOCAL_LOG" 2>/dev/null || true)
     printf '%-26s %s\n' "$pat" "${c:-0}" >&2

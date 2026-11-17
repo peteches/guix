@@ -64,6 +64,9 @@ SRC_CURRENT=
 # "conforming" is a claim about the file, and neither of these is one.
 N_SEEN=0 N_SKIP=0 N_REWRITTEN=0 N_SIDE=0 N_IMPORTED=0 N_FAILED=0
 N_PIN_FAILED=0 N_ORIG_LEFT=0 N_UNREADABLE=0 N_AMBIGUOUS=0
+# Rewrites that only barely matched their expected span: they pass (see dur_close) but each one is
+# counted here so a run of near-misses cannot read as clean.  Not folded into failed= — these DID land.
+N_DRIFT=0
 
 CONF=${MEDIA_NORMALISE_CONF:-/etc/media-normalise/config}
 [[ -r $CONF ]] || { echo "media-normalise: cannot read $CONF" >&2; exit 1; }
@@ -75,6 +78,21 @@ source "$CONF"
 # Only the rare fallback needs rate control — a source whose video codec cannot
 # be stream-copied into MP4 at all (DivX/Xvid/MPEG-1/realvideo …).
 : "${MAXRATE:=25000000}" "${CQ:=27}"
+# How much SOURCE video one run may attempt, in GiB.  The nightly gets this from the service
+# record (peteches/services/media-normalise.scm #:max-video-gib); unset here means an operator
+# or a test harness is driving, and 120 GiB is what fits a night on this box (~7.5 GB of rewrites
+# per 27 min measured, so the cap binds long before the clock does).
+#
+# WHY NO CURSOR FILE IS NEEDED: resume does not read state, it re-derives it. A finished title is
+# skipped by conforming() once the app registers its rewrite; a staged-but-unimported rewrite is
+# re-measured and reused (ccbcd3a); an interrupted one fails that measurement and rebuilds;
+# originals only ever go after registration, so a killed run leaves at worst a registered rewrite
+# beside a still-registered original.  "What is left" therefore IS the library plus our staging
+# tree — exactly what a cursor file would have to duplicate, in a form that can lie (folder renamed,
+# release re-grabbed, machine rebuilt) and that pins one processing order.  Taking the biggest
+# remaining items first makes every run re-derive the same list and spend its budget on the most
+# valuable work, which is what makes truncating a run safe.
+: "${MAX_VIDEO_GIB:=120}"
 : "${STANDUP_APP:=radarr}"
 # Which subtitle languages become sidecar files (space/comma separated, three-letter
 # tags).  Empty means every text subtitle track — true to the intent but ruinous on
@@ -666,7 +684,37 @@ extract_sidecars() {  # src out-dir base
 # dropped stream may be the reason, so MEASURE what the kept streams span instead of
 # guessing; that extra read is paid for only by titles that would otherwise false-fail.
 is_num() { [[ ${1:-} =~ ^-?[0-9]+([.][0-9]+)?$ ]]; }   # "-" / "N/A" / "" are not numbers
-dur_close() { awk -v a="$1" -v b="$2" 'BEGIN{d=a-b; if(d<0)d=-d; exit (d>2)?1:0}'; }
+# TOLERANCE, AND WHY IT IS A WARNING BAND NOT JUST A PASS/FAIL LINE.  The old rule was a flat
+# 2 s and it vetoed good work: /films/Bugsy Malone (1976) re-encoded to 5344.72 s against a source
+# container reading 5346.84 s — 2.12 s, i.e. 0.04 % of the film — and that is encoder priming and
+# padding, not truncation.  A real truncation loses tens of seconds or more (Backrooms lost 4200 s).
+# So: |drift| up to max(0.5 % of the expected span, 3 s) passes; beyond it fails exactly as before;
+# and anything inside the band that is not essentially zero gets a `warning:` line naming both
+# durations and the delta, plus drift-warned= in the summary.  Never a silent pass.
+DUR_TOL_PCT=${DUR_TOL_PCT:-0.5}
+DUR_TOL_MIN_S=${DUR_TOL_MIN_S:-3}            # the floor: sub-second padding must never fail a file
+DUR_EPS=0.01                                 # below this we call it exact and say nothing
+DUR_DRIFT=''; DUR_TOL=''
+dur_close() {  # actual expected -> 0 when |drift| <= max(0.5 %, 3 s), 1 beyond it or unmeasurable
+  local a=$1 b=$2 ad
+  DUR_DRIFT=''; DUR_TOL=''
+  is_num "$a" && is_num "$b" || return 1     # "-" / "N/A" / "" never pass — as before
+  DUR_DRIFT=$(awk -v x="$a" -v y="$b" 'BEGIN{printf "%.3f", x-y}')
+  DUR_TOL=$(awk -v e="$b" -v p="$DUR_TOL_PCT" -v m="$DUR_TOL_MIN_S" \
+             'BEGIN{t=e*p/100; if(t<0)t=-t; if(t<m)t=m; printf "%.3f", t}')
+  ad=${DUR_DRIFT#-}
+  awk -v d="$ad" -v t="$DUR_TOL" 'BEGIN{exit !(d<=t)}' || return 1
+  return 0
+}
+dur_note_drift() {  # actual expected "how the expectation was measured" -> LOUD about a tolerated drift
+  local a=$1 b=$2 how=$3 d=${DUR_DRIFT:-} ad pct
+  is_num "$d" || return 0
+  ad=${d#-}
+  awk -v x="$ad" -v e="$DUR_EPS" 'BEGIN{exit !(x>e)}' || return 0   # close enough to call it exact
+  N_DRIFT=$(( N_DRIFT + 1 ))
+  pct=$(awk -v b="$b" -v p="$DUR_TOL_PCT" 'BEGIN{printf "%.2f", b*p/100}')
+  log "warning: tolerated duration drift — staged ${a}s vs expected ${b}s (${how}) = delta ${d}s, inside tolerance max(${DUR_TOL_PCT} % of expected = ${pct}s, ${DUR_TOL_MIN_S}s) = ${DUR_TOL}s; it passes, but a rewrite that only barely matches its source is reported (drift-warned=$N_DRIFT)"
+}
 drops_of() {  # source-facts -> "<video> <audio> <subs>" streams the house format throws away
   awk -v v="$(facts_get "$1" video_n)" -v a="$(facts_get "$1" audio_bad_n)" \
       -v s="$(facts_get "$1" sub_n)" '
@@ -764,22 +812,28 @@ verify() {  # staged file [expected sidecar count] -> a valid house-format rewri
     dur_close "$dur" "$sdur" \
       || { log "verify: duration drift ${dur}s vs source container ${sdur}s (no per-stream duration measurable)"
            return 1; }
+    dur_note_drift "$dur" "$sdur" "the source container, no per-stream duration being measurable"
     return 0
   fi
   expv=${exp%% *}; how=${exp#* }
-  dur_close "$dur" "$expv" && return 0
+  if dur_close "$dur" "$expv"; then
+    dur_note_drift "$dur" "$expv" "$how"
+    return 0
+  fi
   dv=0; da=0; ds=0; got=''; read -r dv da ds <<<"$(drops_of "$sfacts")"
   MEASURED_SPAN=''
   if (( dv + da + ds > 0 )); then
     log "verify: staged ${dur}s vs expected ${expv}s (${how}); the source drops video=$dv audio=$da subs=$ds, so measuring what the kept streams actually span"
     if kept_span_measured "$src" "$(dirname "$f")"; then
       got=$MEASURED_SPAN
-      dur_close "$dur" "$got" \
-        && { log "verify: ok — the kept streams span ${got}s and the staged file matches them (source container reads ${sdur}s because of those dropped streams)"
-             return 0; }
+      if dur_close "$dur" "$got"; then
+        log "verify: ok — the kept streams span ${got}s and the staged file matches them (source container reads ${sdur}s because of those dropped streams)"
+        dur_note_drift "$dur" "$got" "the measured span of the kept streams"
+        return 0
+      fi
     fi
   fi
-  log "verify: duration drift ${dur}s vs expected ${expv}s (${how}); source container ${sdur}s, dropped video=$dv audio=$da subs=$ds"
+  log "verify: duration drift ${dur}s vs expected ${expv}s (${how}) = delta $(awk -v x="$dur" -v y="$expv" 'BEGIN{printf "%.3f", x-y}')s, beyond tolerance max(${DUR_TOL_PCT} %, ${DUR_TOL_MIN_S}s) = ${DUR_TOL:-?}s; source container ${sdur}s, dropped video=$dv audio=$da subs=$ds"
   [[ -n $got ]] && log "  kept streams measured at ${got}s — the rewrite is shorter/longer than what we asked to keep"
   return 1
 }
@@ -1077,12 +1131,21 @@ rewrite_registration() {  # app item-id dest orig before-ids OUTVAR -> 0 once ou
   return 1
 }
 
+# The marker a provisional landing name carries.  A rewrite whose honest name is byte-identical to
+# the path the Arr app already records lands under "<honest stem>.$PROV_SUFFIX.mp4" instead: same
+# folder, same extension, same quality token, and one short stable token that makes the PATH
+# different, because that is what an Arr scan keys on (see the collision branch in import_item).
+# Keep it out of Arr's vocabulary — no resolution, codec or release-group shape — so a name read
+# back off our own landing never confuses the marker for a quality.
+PROV_SUFFIX=${PROV_SUFFIX:-nrm}
+
 # The quality token this rewrite claims, read off the name it is landing under: name_stem_for
 # built that stem out of the original's own stem plus exactly this suffix, so stripping the
 # stem back off recovers the claim.  Only ever used to complete a log sentence.
 rewrite_token_of() {  # orig-file dest -> the quality token in dest's name, else its whole name
   local base want tok
   want=$(basename "${2%.mp4}")
+  want=${want%".$PROV_SUFFIX"}   # a provisional landing keeps the honest token; strip our marker first
   for base in "$(disc_stem_base "$1")" "$(basename "$1")"; do
     base=${base%.*}
     [[ -n $base && $want == "$base"* ]] || continue
@@ -1095,6 +1158,7 @@ rewrite_token_of() {  # orig-file dest -> the quality token in dest's name, else
 import_item() {  # app staged-file staging-dir original -> 0 once the rewrite is registered and the original is not
   local app=$1 staged=$2 dir=$3 orig=$4 mid dest rows before newid try oldid rc=0 already=0
   local n_in still sfx stem vsfx langpart newpath vdir qid srcdir fcoll got need_move aside=''
+  local prov regpath ours_at_orig=0
   srcdir=$(dirname "$orig")
 
   # The only handle a rescan needs is the item id.  If no movie or series claims this
@@ -1116,7 +1180,24 @@ import_item() {  # app staged-file staging-dir original -> 0 once the rewrite is
   if [[ $staged == "$dest" ]]; then
     log "import: $(basename "$dest") already sits in the library folder unregistered; nothing to move"
     need_move=0
-  elif [[ -e $dest && $dest == "$orig" && -n ${dir:-} ]]; then
+  elif [[ -e $dest && $dest == "$orig" ]]; then
+    prov="${dest%.mp4}.$PROV_SUFFIX.mp4"
+    if [[ ! -e $prov ]]; then
+      # The honest name this rewrite deserves IS the very path the app records for the original — what
+      # 0eb613d produced for Housebound (2014), and why it failed to land twice.  Measured cause (the
+      # recover run, movie 18): a folder scan will not import bytes sitting at a path some existing
+      # movieFile record already owns — they are invisible to it — and once we unregister that record
+      # the app's own file handling then removes whatever is parked there, so our rewrite was eaten
+      # while the original survived only because its bytes had been moved aside.  A DIFFERENT path is
+      # exactly what did register beside a still-registered original (Ghostbusters II landed under a
+      # new name and became #842), so we land one marker over instead: same folder, same extension,
+      # the honest quality token intact, one short token making the PATH distinct.  The original keeps
+      # its path AND its record until OUR file registers; renameMovies=true (measured via
+      # /config/naming) may normalise the provisional name on import, and we do not force a name — we
+      # read back whatever $app reports.  Nothing moves here and nothing is deleted.
+      log "import: $(basename "$dest") is exactly the path $app records for $(basename "$orig"), so landing there would be invisible to its scan; landing at $(basename "$prov") instead — same folder, same extension, quality token intact, marker '$PROV_SUFFIX' makes it a path nobody holds.  $(basename "$orig") keeps its bytes and its record until ours is registered"
+      dest=$prov
+    elif [[ -n ${dir:-} ]]; then
     # The honest name this rewrite deserves IS the original's own path — what 0eb613d produced for
     # Housebound (2014), and why it could never land.  Refusing to overwrite a different-size file at
     # dest is right when that file is somebody else's; here it is our OWN source, so its bytes move
@@ -1129,6 +1210,10 @@ import_item() {  # app staged-file staging-dir original -> 0 once the rewrite is
       || { log "import FAILED: $dest is the source's own path and its bytes would not move aside; nothing was changed"; return 1; }
     log "import: $(basename "$dest") is the original's OWN path, so $(basename "$orig") moved aside to $aside (rename within one filesystem, nothing deleted)"
     log "import: if anything below fails, put it back with: mv '$aside' '$orig'"
+    else
+      log "import FAILED: $dest is the original's own path and $(basename "$prov") exists too, with no staging directory to park the original in; nothing was changed"
+      return 1
+    fi
   elif [[ -e $dest ]]; then
     # A previous run got this far and stopped before the rescan.  Same size means it is
     # the same rewrite, so carry on from here rather than fail on our own leftovers; a
@@ -1250,10 +1335,20 @@ import_item() {  # app staged-file staging-dir original -> 0 once the rewrite is
   # dropped is how this call used to look like it had removed something while it removed
   # nothing.  Where the app still holds the record, deleting through it takes the database row
   # with the bytes; where it does not, rm has to do it and the final rescan forgets the stub.
-  oldid=$(jq -r --arg p "$orig" '[.[] | select(.path == $p)] | last // empty | .id' <<<"$rows")
+  # Where OUR file actually ended up is not necessarily $dest: renameMovies=true can rename a
+  # provisional landing onto the app's own naming, and in the collision case that name IS $(basename
+  # "$orig").  From here on "$orig" may therefore be our OWN registered file, so nothing below may key
+  # a deletion off its path alone — every removal is checked against what #$newid points at.
+  regpath=$(jq -r --argjson i "$newid" '.[] | select(.id == $i) | .path // empty' <<<"$rows" 2>/dev/null || true)
+  [[ -n $regpath && $regpath != null ]] || regpath=$dest
+  if [[ $regpath == "$orig" ]]; then
+    ours_at_orig=1
+    log "import: $(basename "$orig") IS our own registered file #$newid — $app renamed the provisional landing to its own naming, and no other record holds that path (the poll above required none) — so there is no original left here to remove"
+  fi
+  oldid=$(jq -r --arg p "$orig" --argjson i "$newid" '[.[] | select(.path == $p && .id != $i)] | last // empty | .id' <<<"$rows")
   if [[ ! $oldid =~ ^[0-9]+$ ]]; then
     rows=$(file_rows_for "$app" "$mid") || rows='[]'
-    oldid=$(jq -r --arg p "$orig" '[.[] | select(.path == $p)] | last // empty | .id' <<<"$rows")
+    oldid=$(jq -r --arg p "$orig" --argjson i "$newid" '[.[] | select(.path == $p && .id != $i)] | last // empty | .id' <<<"$rows")
   fi
   if [[ $oldid =~ ^[0-9]+$ ]]; then
     log "import: removing replaced file #$oldid $orig (deleteFiles=true: $app still has that record)"
@@ -1261,20 +1356,24 @@ import_item() {  # app staged-file staging-dir original -> 0 once the rewrite is
       radarr) api radarr DELETE "/moviefile/$oldid?deleteFiles=true&addDeletedHistory=true" >/dev/null ;;
       sonarr) api sonarr DELETE "/episodefile/$oldid?deleteFiles=true&addDeletedHistory=true" >/dev/null ;;
     esac || log "import: WARNING $app would not remove file #$oldid; removing it directly"
-  elif [[ -e $orig ]]; then
+  elif [[ $ours_at_orig -eq 0 && -e $orig ]]; then
     # After an unregister (or on a resumed run where the app already forgot it) there is no id
     # left to ask with, so the bytes have to come off by hand and the rescan below clears the record.
     log "import: $(basename "$orig") is no longer registered with $app, so its bytes come off with rm"
   else
-    log "import: note: $(basename "$orig") is neither registered nor on disk, so there is nothing to remove"
+    if (( ours_at_orig )); then
+      log "import: note: $(basename "$orig") carries no record of its own any more — the only one at that path is #$newid, our file"
+    else
+      log "import: note: $(basename "$orig") is neither registered nor on disk, so there is nothing to remove"
+    fi
   fi
   # An accepted DELETE and the bytes disappearing are separate events — deleteFiles=true can
   # be refused, or honoured for the record while the file survives.  Fall back to rm (never
   # let it abort: a leftover is something to report, not a reason to stop mid-import), then
   # believe our own eyes rather than either call.
-  if [[ -e $orig ]]; then rm -f -- "$orig" || true; fi
+  if [[ $ours_at_orig -eq 0 && -e $orig ]]; then rm -f -- "$orig" || true; fi
   rescan_command "$app" "$mid" || true          # so the app forgets the removed record too
-  if [[ -e $orig ]]; then
+  if (( ! ours_at_orig )) && [[ -e $orig ]]; then
     N_ORIG_LEFT=$(( N_ORIG_LEFT + 1 ))
     log "import: WARNING original still on disk after both removal attempts: $orig"
   fi
@@ -1356,7 +1455,9 @@ import_item() {  # app staged-file staging-dir original -> 0 once the rewrite is
   # The last claim has to be a measured one.  What the poll above proved is that $app lists our
   # file and no longer lists the original; whether the original's bytes are off the disk is a
   # separate fact, checked separately.
-  if [[ -e $orig ]]; then
+  if [[ $ours_at_orig -eq 1 ]]; then
+    log "import: ok, $dest is registered as #$newid (the app renamed it to $(basename "$regpath"); the original's path now holds OUR bytes and nothing was deleted twice)"
+  elif [[ -e $orig ]]; then
     log "import: ok, $dest is registered as #$newid; $(basename "$orig") is unregistered but still on disk"
   else
     log "import: ok, $dest is registered as #$newid and $(basename "$orig") is gone"
@@ -1397,6 +1498,7 @@ process_file() {
     done < <(disc_landed_mates "$src")
     if [[ -n ${landed:-} ]]; then
       log "import needed: $src — $(basename "$landed") is a conforming rewrite in the folder that $app does not list, so the disc still holds the slot; going straight to the import path with no new copy"
+      ATTEMPTED=1                      # its bytes count against the run's budget, dry-run or not
       if [[ $DRY_RUN -eq 1 ]]; then return 0; fi
       # A file that was never staged has no staging directory to clean up — and the folder it
       # sits in is the film's own, not ours to delete.
@@ -1431,7 +1533,26 @@ process_file() {
       *)  log "name: $(basename "$src") is a disc IMAGE, not a disc: BR-DISK would claim a full remux this file is not, so it lands as $DISC_TOKEN — the token an Arr app reads off a stream-copied $(fact vheight)p bluray picture" >/dev/null ;;
     esac
   fi
+  # An unparseable source is NOT a non-conforming one, and calling it that burned two whole encode
+  # attempts for nothing: Friday IV XviD and Friday VII XviD (.avi, still registered as DVD) pass the
+  # extension gate, get "rewrite needed", then die in ffmpeg with "Invalid data found when processing
+  # input" — the very message ffprobe already gave us.  Classify instead of attempting: nothing is
+  # opened for writing, so a corrupt rip costs one cheap probe and is named under unreadable= every
+  # run until somebody re-grabs it.  Discs are exempt — their facts come from a libbluray title, and
+  # disc_select already returns its own "nobody can open this" verdict (rc 2 above).
+  if ! is_disc "$src"; then
+    facts "$src"
+    if [[ -z $(fact vcodec) || $(fact vcodec) == - ]]; then
+      log "skip (unsupported container): $src"
+      log "  why: unreadable source — ffprobe gets no usable video stream out of it (video_n=$(fact video_n) vcodec=$(fact vcodec) format=$(fact fmt)), so ffmpeg would fail on the same bytes; nothing is attempted, nothing can be lost, and this needs a re-grab rather than a rewrite"
+      N_UNREADABLE=$(( N_UNREADABLE + 1 )); return 0
+    fi
+  fi
   if conforming "$src"; then log "skip (conforming): $src"; N_SKIP=$(( N_SKIP + 1 )); return 0; fi
+  # From here this item is WORK, so its SOURCE bytes count against the run's budget.  Charged before
+  # the dry-run branch on purpose: a rehearsal must spend the budget exactly like an apply does, or a
+  # bounded dry run proves nothing about the nightly it is rehearsing.
+  ATTEMPTED=1
   if [[ $DRY_RUN -eq 1 ]]; then
     # A dry run that only says "would rewrite" is not actionable: name the reason,
     # because these are the numbers the whole policy is judged by.
@@ -1529,21 +1650,59 @@ main() {
   for app in radarr sonarr; do
     [[ -r $(key_file "$app") ]] || die "API key for $app missing at $(key_file "$app")"
   done
-  local root nroots=0
-  # LIBRARY_ROOTS is newline-separated (roots contain spaces, e.g. film titles);
-  # iterate over the lines and quote each root so find does not word-split it.
-  # A missing root used to fail inside the process substitution, whose status
-  # nothing checked: the run looked fine and did nothing at all.
+  local root nroots=0 list sz f dir used=0 taken=0 stopped=0 n_def=0 bytes_def=0 budget gib
+  declare -A def_dirs=()
+  case $MAX_VIDEO_GIB in ''|*[!0-9]*)
+    log "WARNING MAX_VIDEO_GIB '$MAX_VIDEO_GIB' is not a number; bounding this run at 120 GiB instead"
+    MAX_VIDEO_GIB=120 ;; esac
+  budget=$(( MAX_VIDEO_GIB * 1024 * 1024 * 1024 ))
+  gib() { awk -v x="$1" 'BEGIN{printf "%.1f", x/1073741824}'; }
+
+  # ORDER AND BUDGET, computed together.  Sizes come from find's own directory metadata (%s), NOT
+  # from ffprobe: the whole films root enumerates in about a second this way, while probing every
+  # candidate to decide an order is exactly the cost the budget exists to avoid (and a disc cannot
+  # be sized by probe at all without opening the image).
+  #
+  # The walk used to be ALPHABETICAL (`find … | sort -z`), which is fine when nothing bounds a run
+  # and fatal when something does: a capped nightly would spend its whole budget on whatever sorts
+  # near "A" and starve the tail forever.  Size-descending means the cap falls off the end of the
+  # list, so every run takes the most valuable outstanding work — which is also why no cursor file
+  # is needed (see MAX_VIDEO_GIB above: finished work is recognised by conforming(), staged work by
+  # re-measuring it, and nothing under the library moves before the app registers it).
+  #
+  # LIBRARY_ROOTS stays newline-separated (roots contain spaces, e.g. film titles): iterate the
+  # lines and quote each root so find never word-splits one.  A missing root used to fail inside a
+  # process substitution whose status nothing checked, so the run looked fine and did nothing.
+  list=$(mktemp) || die "could not create a work list"
   while IFS= read -r root; do
     [[ -z $root ]] && continue
     if [[ ! -d $root ]]; then log "WARNING library root missing, skipped: $root"; continue; fi
     nroots=$(( nroots + 1 ))
-    # Hidden directories are pruned: that is where this library keeps the files it
-    # deliberately does not want — Radarr parks rejects in <movie folder>/.unwanted,
-    # Jellyfin keeps its database in .queries, Samba recycles into #recycle.  Normalising
-    # one of those means decoding a rejected rip into a brand-new MP4 beside it: work
-    # nobody asked for, and it makes junk look intentional to Jellyfin.
-    while IFS= read -r -d '' f; do
+    # Hidden directories are pruned: that is where this library keeps the files it deliberately does
+    # not want — Radarr parks rejects in <movie folder>/.unwanted, Jellyfin keeps its database in
+    # .queries, Samba recycles into #recycle.  Normalising one of those means decoding a rejected rip
+    # into a brand-new MP4 beside it: work nobody asked for, and it makes junk look intentional.
+    find "$root" -type f -not -path '*/.*' -not -path '*/#*' -printf '%s\t%p\0' >>"$list" \
+      || log "WARNING could not enumerate $root"
+  done <<<"$LIBRARY_ROOTS"
+
+  # Records are "<bytes>\t<path>\0", sorted by bytes descending (ties by path, so two runs over the
+  # same library pick the same order and a rehearsal predicts what the nightly will really do).
+  while IFS=$'\t' read -r -d '' sz f; do
+    case $sz in ''|*[!0-9]*) continue ;; esac     # find said nothing about this one: not ours to guess
+    if (( stopped == 0 && taken > 0 && used + sz > budget )); then
+      # The first item that does not fit ENDS the run rather than being stepped over: taking a smaller
+      # one instead would make the night's work depend on which sizes happened to sort luckily, and
+      # "the biggest outstanding things, until the budget is spent" is a rule a reader can predict.
+      stopped=1
+      log "budget: MAX_VIDEO_GIB=$MAX_VIDEO_GIB cannot take $(basename "$f") ($(gib "$sz") GiB) on top of $(gib "$used") GiB already attempted — stopping here, everything smaller waits for the next run"
+    fi
+    if (( stopped )); then
+      n_def=$(( n_def + 1 )); bytes_def=$(( bytes_def + sz ))
+      dir=${f%/*}; def_dirs[$dir]=1
+      continue                                   # not probed, not attempted, not touched at all
+    fi
+      ATTEMPTED=0
       case $f in
         # The containers this tool has always taken, plus .mov and .flv — measured live on this box,
         # ffprobe reads both (Steal This Film II.720p.mov is h264 1280x720 + aac; Drop Dead Gorgeous
@@ -1568,9 +1727,14 @@ main() {
           fi
           N_UNREADABLE=$(( N_UNREADABLE + 1 )) ;;
       esac
-    done < <(find "$root" -type f -not -path '*/.*' -not -path '*/#*' -print0 | sort -z)
-  done <<<"$LIBRARY_ROOTS"
-  log "summary: $nroots root(s) walked; seen=$N_SEEN conforming=$N_SKIP rewritten=$N_REWRITTEN sidecars=$N_SIDE imported=$N_IMPORTED failed=$N_FAILED pin-failed=$N_PIN_FAILED original-left=$N_ORIG_LEFT unreadable=$N_UNREADABLE ambiguous=$N_AMBIGUOUS"
+      # The budget counts SOURCE bytes of what this run actually tried (process_file sets ATTEMPTED
+      # only on items it rewrites or imports): a conforming title, an unreadable one and a file in a
+      # container nobody accepts cost a probe and no work, so they do not eat the night.
+      if (( ATTEMPTED )); then used=$(( used + sz )); taken=$(( taken + 1 )); fi
+    done < <(sort -z -t$'\t' -k1,1nr -k2,2 "$list")
+  rm -f -- "$list"
+  log "budget: MAX_VIDEO_GIB=$MAX_VIDEO_GIB ($(gib "$budget") GiB of source video per run); attempted $taken item(s), $(gib "$used") GiB; deferred to the next run: $n_def file(s) in ${#def_dirs[@]} folder(s), $bytes_def B ($(gib "$bytes_def") GiB) left unexamined because they are smaller than what fit — self-balancing resume re-enumerates them biggest-first, so a capped run costs nothing but time and no cursor file is needed"
+  log "summary: $nroots root(s) walked; seen=$N_SEEN conforming=$N_SKIP rewritten=$N_REWRITTEN sidecars=$N_SIDE imported=$N_IMPORTED failed=$N_FAILED pin-failed=$N_PIN_FAILED original-left=$N_ORIG_LEFT unreadable=$N_UNREADABLE ambiguous=$N_AMBIGUOUS drift-warned=$N_DRIFT"
   log "=== media-normalise run end ==="
 }
 

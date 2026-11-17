@@ -119,8 +119,12 @@
       ;; in between.  RESTORE the default schedule ("17 4 * * *") — i.e. drop this
       ;; override — once the pilot reports back.
       (service media-normalise-service-type
+               ;; Live nightly again since the run bounds itself: MAX_VIDEO_GIB in the generated
+               ;; config caps one invocation at a fixed amount of source video, biggest items first,
+               ;; and the rest is picked up by later runs (self-balancing resume — no cursor).  The
+               ;; one-shot below stays stopped-on-boot exactly as before.
                (media-normalise-configuration
-                (schedule "0 0 1 1 *")))
+                (schedule "17 4 * * *")))
       (service alloy-service-type
                (alloy-configuration
                 (hostname "jellyfin.peteches.co.uk")

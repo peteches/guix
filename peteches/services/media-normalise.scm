@@ -129,6 +129,13 @@
   ;; source codec cannot be stream-copied into MP4 at all (DivX/Xvid/MPEG-1/…).
   (maxrate media-normalise-configuration-maxrate (default 25000000))
   (cq media-normalise-configuration-cq (default 27))
+  ;; How much SOURCE video one run may attempt, in GiB.  The nightly takes the biggest outstanding
+  ;; items until this is spent and then exits 0 saying how many folders and bytes it deferred; see
+  ;; main() in media-normalise.sh for why that needs no cursor file (conformity recognises finished
+  ;; titles, a re-measure recognises staged ones, and nothing under the library moves before the app
+  ;; registers it).  120 GiB is roughly what one night on this box can actually finish — 7.5 GB of
+  ;; rewrites in 27 min measured — so this is what bounds the job now, not the clock.
+  (max-video-gib media-normalise-configuration-max-video-gib (default 120))
   ;; Nightly schedule (crontab format).  Deliberately late-night: the job may
   ;; remove a replaced original, which must not happen mid-playback.
   (schedule media-normalise-configuration-schedule
@@ -162,6 +169,9 @@
      "QUALITY_MODE=\"" (media-normalise-configuration-quality-mode config) "\"\n"
      "MAXRATE=" (number->string (media-normalise-configuration-maxrate config)) "\n"
      "CQ=" (number->string (media-normalise-configuration-cq config)) "\n"
+     ;; Unquoted on purpose, like MAXRATE and CQ: it is a number this record produced, and every
+     ;; numeric line in this file has to stay bare or the shell reads it as part of the previous one.
+     "MAX_VIDEO_GIB=" (number->string (media-normalise-configuration-max-video-gib config)) "\n"
      "LOG=\"" (media-normalise-configuration-log-file config) "\"\n")))
 
 (define (media-normalise-shepherd-services config)
