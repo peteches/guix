@@ -306,7 +306,7 @@ probe_facts() {  # file (or resolved media input) -> one line of key=value facts
    # header (incorrect codec parameters ?): Invalid argument") — so one kept mp3 candidate cost the
    # whole 86 GB rewrite. On a disc source mp3 is therefore no candidate; ordinary files keep it,
    # where it does parse, and remux() routes around any that still proves unproducible.
-   (if $disc == "disc" then ["ac3", "eac3", "aac"] else ["ac3", "eac3", "aac", "mp3"] end) as $okc
+   | (if $disc == "disc" then ["ac3", "eac3", "aac"] else ["ac3", "eac3", "aac", "mp3"] end) as $okc
    | ([ $a | to_entries[]
        | select(.value.codec_name | IN($okc[])) | .key ] | join(",")) as $okidx
    | ([ $a | to_entries[]
