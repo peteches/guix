@@ -1492,10 +1492,13 @@ import_item() {  # app staged-file staging-dir original -> 0 once the rewrite is
     ours_at_orig=1
     log "import: $(basename "$orig") IS our own registered file #$newid — $app renamed the provisional landing to its own naming, and no other record holds that path (the poll above required none) — so there is no original left here to remove"
   fi
-  oldid=$(jq -r --arg p "$orig" --argjson i "$newid" '[.[] | select(.path == $p && .id != $i)] | last // empty | .id' <<<"$rows")
+  # jq has no `&&`: with it the program does not run at all, jq exits with a compile
+  # error, and oldid comes back EMPTY — which this path reads as "no stale record",
+  # so the unregister-first dance silently skipped its lookup every time.
+  oldid=$(jq -r --arg p "$orig" --argjson i "$newid" '[.[] | select(.path == $p and .id != $i)] | last // empty | .id' <<<"$rows")
   if [[ ! $oldid =~ ^[0-9]+$ ]]; then
     rows=$(file_rows_for "$app" "$mid") || rows='[]'
-    oldid=$(jq -r --arg p "$orig" --argjson i "$newid" '[.[] | select(.path == $p && .id != $i)] | last // empty | .id' <<<"$rows")
+    oldid=$(jq -r --arg p "$orig" --argjson i "$newid" '[.[] | select(.path == $p and .id != $i)] | last // empty | .id' <<<"$rows")
   fi
   if [[ $oldid =~ ^[0-9]+$ ]]; then
     log "import: removing replaced file #$oldid $orig (deleteFiles=true: $app still has that record)"
