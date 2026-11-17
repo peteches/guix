@@ -1029,13 +1029,21 @@ LAST_ROWS='[]'          # the listing that settled the last poll, for whoever re
 # One read of a file listing against the "is this ours?" rules below; no sleeping, so both the
 # resume check and the polls can use it.  Prints the id, or fails without printing anything.
 registration_id_in() {  # rows-json dest orig before-ids -> our file id if that listing has it registered
-  local rows=$1 dest=$2 orig=$3 before=$4 got i p dstdir
+  local rows=$1 dest=$2 orig=$3 before=$4 got i p dstdir same=0
+  # A SAME-PATH replacement (the honest rewrite name IS the original's own path — what happened to
+  # Housebound (2014)) makes "a record exists at dest" worthless on its own: the ORIGINAL's own record
+  # sits on exactly that path, and taking it for our registration would delete the original's bytes on
+  # the strength of a record describing a different file.  There only an id that was NOT registered
+  # when we started can possibly be ours.
+  [[ $dest == "$orig" ]] && same=1
   dstdir=$(dirname "$dest")
   got=$(jq -r --arg p "$dest" '[.[] | select(.path == $p)] | last // empty | .id' <<<"$rows" 2>/dev/null) || true
-  [[ $got =~ ^[0-9]+$ ]] && { printf '%s' "$got"; return 0; }
+  if [[ $got =~ ^[0-9]+$ ]] && { (( ! same )) || [[ " $before " != *" $got "* ]]; }; then printf '%s' "$got"; return 0; fi
   while IFS=$'\t' read -r i p; do
     case " $before " in *" $i "*) continue ;; esac     # already registered when we started
-    [[ $p == "$orig" ]] && continue                    # the original re-registering is not us
+    if (( same )); then [[ $p == "$dest" ]] || continue   # only our own path can be ours, under a new id
+    else [[ $p == "$orig" ]] && continue               # the original re-registering is not us
+    fi
     [[ $(dirname "$p") == "$dstdir" ]] || continue     # another item's folder is none of our business
     [[ ${p,,} == *.mp4 ]] || continue                  # our rewrite is an mp4; a re-registered disc is not
     printf '%s' "$i"; return 0
@@ -1086,7 +1094,7 @@ rewrite_token_of() {  # orig-file dest -> the quality token in dest's name, else
 
 import_item() {  # app staged-file staging-dir original -> 0 once the rewrite is registered and the original is not
   local app=$1 staged=$2 dir=$3 orig=$4 mid dest rows before newid try oldid rc=0 already=0
-  local n_in still sfx stem vsfx langpart newpath vdir qid srcdir fcoll got need_move
+  local n_in still sfx stem vsfx langpart newpath vdir qid srcdir fcoll got need_move aside=''
   srcdir=$(dirname "$orig")
 
   # The only handle a rescan needs is the item id.  If no movie or series claims this
@@ -1108,6 +1116,19 @@ import_item() {  # app staged-file staging-dir original -> 0 once the rewrite is
   if [[ $staged == "$dest" ]]; then
     log "import: $(basename "$dest") already sits in the library folder unregistered; nothing to move"
     need_move=0
+  elif [[ -e $dest && $dest == "$orig" && -n ${dir:-} ]]; then
+    # The honest name this rewrite deserves IS the original's own path — what 0eb613d produced for
+    # Housebound (2014), and why it could never land.  Refusing to overwrite a different-size file at
+    # dest is right when that file is somebody else's; here it is our OWN source, so its bytes move
+    # aside into this item's staging directory — a rename on one filesystem, not a delete — the rewrite
+    # takes dest, and nothing under /media/library loses a byte before OUR file is registered.  If
+    # anything below fails the original stays parked at $aside (logged, with the mv that puts it back);
+    # its bytes are only ever removed in phase 2, after registration.
+    aside="$dir/$(basename "$orig").original-bytes"
+    mv -- "$orig" "$aside" \
+      || { log "import FAILED: $dest is the source's own path and its bytes would not move aside; nothing was changed"; return 1; }
+    log "import: $(basename "$dest") is the original's OWN path, so $(basename "$orig") moved aside to $aside (rename within one filesystem, nothing deleted)"
+    log "import: if anything below fails, put it back with: mv '$aside' '$orig'"
   elif [[ -e $dest ]]; then
     # A previous run got this far and stopped before the rescan.  Same size means it is
     # the same rewrite, so carry on from here rather than fail on our own leftovers; a
@@ -1136,7 +1157,7 @@ import_item() {  # app staged-file staging-dir original -> 0 once the rewrite is
     log "import: moved the rewrite to $dest"
   fi
   rescan_command "$app" "$mid" \
-    || { log "import FAILED: $app would not accept the rescan; the rewrite is in place at $dest"; return 1; }
+    || { log "import FAILED: $app would not accept the rescan; the rewrite is in place at $dest${aside:+, and the original is parked at $aside}"; return 1; }
   # Logged after the request was accepted, not before it: the old line claimed we had asked
   # for the rescan one command before asking, so a refusal still read as if we had asked.
   log "import: asked $app to rescan item $mid"
@@ -1189,12 +1210,41 @@ import_item() {  # app staged-file staging-dir original -> 0 once the rewrite is
   fi
   if [[ -z ${newid:-} ]]; then
     log "import FAILED: $app did not register $dest within $(( IMPORT_TRIES * IMPORT_POLL_SLEEP ))s, with and without the unregister path"
-    log "  the rewrite sits in the library folder and $(basename "$orig") is untouched: $orig"
+    if [[ -n $aside ]]; then
+      log "  our rewrite sits unregistered at $dest; $(basename "$orig")'s bytes are NOT deleted, they are parked at $aside — mv them back to $orig to restore the item exactly"
+    else
+      log "  the rewrite sits in the library folder and $(basename "$orig") is untouched: $orig"
+    fi
     return 1
   fi
   [[ $already -eq 1 ]] || log "import: registered as file #$newid"
 
   # ── phase 2: only now may the original's BYTES go. ───────────────────────
+  if [[ -n $aside ]]; then
+    # Same-path replacement: $dest IS our registered rewrite, and the original's bytes are parked at
+    # $aside in OUR staging directory.  The generic path below looks records up BY PATH, which here is
+    # our own path — asking the app to delete that would delete OUR file — so this case ends here:
+    # drop any leftover record of the original (deleteFiles=false: no byte outside the parked file can
+    # go), then remove the parked bytes, then rescan so the app forgets the record it lost.
+    oldid=$(jq -r --arg p "$orig" --argjson i "$newid" '[.[] | select(.path == $p and .id != $i)] | last // empty | .id' <<<"$rows")
+    if [[ $oldid =~ ^[0-9]+$ ]]; then
+      log "import: dropping the original's leftover record #$oldid for $orig (deleteFiles=false — its bytes are already parked at $aside)"
+      case $app in
+        radarr) api radarr DELETE "/moviefile/$oldid?deleteFiles=false&addDeletedHistory=true" >/dev/null ;;
+        sonarr) api sonarr DELETE "/episodefile/$oldid?deleteFiles=false&addDeletedHistory=true" >/dev/null ;;
+      esac || log "import: WARNING $app would not drop record #$oldid; the parked bytes still come off and the rescan below is asked to forget it"
+    fi
+    if [[ -e $aside ]]; then rm -f -- "$aside" || true; fi
+    if [[ -e $aside ]]; then
+      N_ORIG_LEFT=$(( N_ORIG_LEFT + 1 ))
+      log "import: WARNING the parked original would not come off, and it is NOT at its library path either: $aside"
+    else
+      log "import: removed the moved-aside bytes at $aside now that file #$newid ($dest) is registered"
+    fi
+    rescan_command "$app" "$mid" || true          # so the app forgets the removed record too
+    log "import: ok, $dest is registered as #$newid (same-path replacement: $(basename "$orig") was replaced only after registration, its bytes went from $aside)"
+    return 0
+  fi
   # Ask the app again rather than trusting a listing from before the rescan: after an
   # unregister it no longer knows that id at all, and asking for deleteFiles=true on an id it
   # dropped is how this call used to look like it had removed something while it removed
@@ -1238,8 +1288,10 @@ import_item() {  # app staged-file staging-dir original -> 0 once the rewrite is
   for try in $(seq 1 6); do
     sleep 5
     rows=$(file_rows_for "$app" "$mid") || continue
-    mine=$(jq -r --arg p "$dest" '[.[] | select(.path == $p)] | length' <<<"$rows")
-    still=$(jq -r --arg p "$orig" '[.[] | select(.path == $p)] | length' <<<"$rows")
+    mine=$(jq -r --arg p "$dest" --argjson i "${newid:-0}" '[.[] | select(.path == $p and .id == $i)] | length' <<<"$rows")
+    # "no trace of the original" must not be satisfied — or falsified — by OUR OWN record when dest
+    # and orig are the same path: there only a record that is not ours counts as a leftover.
+    still=$(jq -r --arg p "$orig" --argjson i "${newid:-0}" '[.[] | select(.path == $p and .id != $i)] | length' <<<"$rows")
     [[ $mine != 0 && $still == 0 ]] && break
   done
   if [[ ! $mine =~ ^[0-9]+$ || $mine -lt 1 || $still != 0 ]]; then
@@ -1408,7 +1460,32 @@ process_file() {
   # Cache: reuse a previously-staged rewrite rather than remuxing from scratch.
   # A file left by an earlier run (a verify or import failure) is already a
   # complete copy, so we only re-verify it.  This makes verify fixes cheap.
-  want_side=0
+  # Cache: reuse a previously-staged rewrite rather than remuxing from scratch — but EARN it.
+  # Ghostbusters II (1989) sat wedged forever on a truncated staged file a killed run had left behind,
+  # because "reuse" used to mean nothing more than "the staging file is non-empty", and verify() then
+  # rejected it on every later run.  A cached copy is now measured before it is believed, with the
+  # same tests a fresh rewrite has to pass (a real video stream in a codec MP4 carries by copy, the
+  # faststart moov actually ahead of mdat, and a duration consistent with its sidecar facts); an
+  # invalid one is deleted — it is OUR artifact under $STAGING_ROOT, not library data — and rebuilt
+  # once in this run instead of failing the item.
+  want_side=0; cached_ok=0
+  if [[ -s $staged ]]; then
+    log "reusing cached rewrite: $staged"
+    # The cached copy carries no record of how many sidecars it was meant to have,
+    # so re-derive that from the source before verify() swaps the facts cache, and
+    # make sure they exist — extract_sidecars skips ones already written, so a run
+    # interrupted between remux and import resumes instead of failing forever.
+    facts "$src"; sidecar_specs; want_side=${#SPECS[@]}
+    log "subtitles: ${#SPECS[@]} text subtitle track(s) expected beside the cached rewrite (${SPECS[*]:-none})"
+    extract_sidecars "$src" "$dir" "$base"
+    N_SIDE=$(( N_SIDE + SIDE_WRITTEN ))
+    if verify "$staged" "$want_side"; then
+      cached_ok=1
+    else
+      log "cached rewrite invalid — rebuilding: $staged is our own staging copy, so it comes off and this run encodes it again (nothing under the library changed)"
+      rm -f -- "$staged"
+    fi
+  fi
   if [[ ! -s $staged ]]; then
     log "rewrite: $src -> $staged"
     if ! remux "$src" "$staged"; then
@@ -1420,18 +1497,10 @@ process_file() {
     log "subtitles: ${#SPECS[@]} text subtitle track(s) to export (${SPECS[*]:-none})"
     extract_sidecars "$src" "$dir" "$base"
     N_SIDE=$(( N_SIDE + SIDE_WRITTEN ))
-  else
-    log "reusing cached rewrite: $staged"
-    # The cached copy carries no record of how many sidecars it was meant to have,
-    # so re-derive that from the source before verify() swaps the facts cache, and
-    # make sure they exist — extract_sidecars skips ones already written, so a run
-    # interrupted between remux and import resumes instead of failing forever.
-    facts "$src"; sidecar_specs; want_side=${#SPECS[@]}
-    log "subtitles: ${#SPECS[@]} text subtitle track(s) expected beside the cached rewrite (${SPECS[*]:-none})"
-    extract_sidecars "$src" "$dir" "$base"
-    N_SIDE=$(( N_SIDE + SIDE_WRITTEN ))
   fi
-  if ! verify "$staged" "$want_side"; then
+  # A cached rewrite that already passed verify() above is not measured twice: the second pass costs a
+  # fresh probe of the SOURCE, which on a disc means opening the image again.
+  if (( ! cached_ok )) && ! verify "$staged" "$want_side"; then
     # A rewrite nobody verified is not a success: counting it as one made the summary say
     # "rewritten=1 failed=0" for a title stuck in staging, which hides every stuck title
     # in an unattended run.  N_REWRITTEN keeps meaning "rewrites produced"; this is what
