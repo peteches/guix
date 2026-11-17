@@ -45,6 +45,8 @@
 # the app has registered the rewrite (a rescan adds files rather than swapping them, so
 # removing the original is this tool's job and it happens last).  What a rewrite does to the content is decided by media-normalise.sh's
 # house definition: exactly ONE video track (bonus/best-picture tracks are
+#                        (as of 2026-11-17 EVERY source audio track up to MAX_AUDIO_TRACKS is kept as its own stream: decodable ones
+#                        decodable ones copied, the rest each re-encoded as its own AC-3 carrying its own tag) are
 # dropped), only WebOS-decodable audio (TrueHD/DTS/FLAC dropped, or one AC-3 mix
 # when nothing decodable exists), and NO embedded subtitles — text subs become
 # sidecar <stem>.<lang>.srt files beside the video, bitmap subs are gone.  Read

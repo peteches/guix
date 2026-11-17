@@ -10,10 +10,16 @@
 #           everything to BT.709" rule bought nothing and cost days of GPU.
 #           Exactly ONE video stream: remuxes with a bonus 1080p track confuse
 #           this player, so extra video tracks are dropped by -map 0:v:0.
-#   audio   every WebOS-decodable track copied (AC-3 / E-AC-3 / AAC / MP3), and
-#           the incompatible ones (TrueHD, DTS, FLAC, PCM, Opus) dropped — they
-#           are what used to force a transcode.  If a file has NO decodable
-#           track at all, its loudest mix is encoded to AC-3 on CPU.
+#   audio   EVERY source audio track is kept, as its own output stream in the order
+#           the source had them (up to MAX_AUDIO_TRACKS of them), each one carrying
+#           its own language tag when the source has one.  A WebOS-decodable track
+#           (AC-3 / E-AC-3 / AAC / MP3) is copied unchanged; every kept track the
+#           player CANNOT decode (TrueHD, DTS, FLAC, PCM, Opus) gets its OWN AC-3
+#           encode, so two untagged DTS mixes land as two AC-3 tracks instead of one
+#           guess about which language mattered.  Until now this kept only the
+#           decodable ones and threw the rest away: Loop Track (2023)'s BR-DISK had
+#           exactly that shape — two untagged DTS 5.1 tracks, mixed down to a single
+#           AC-3 made from stream 0, so neither language survived intact.
 #   subs    nothing embedded.  Text subtitles are exported as sidecar
 #           <stem>.<lang>.srt files beside the video; bitmap PGS/DVD tracks are
 #           dropped (MP4 cannot carry them).  Measured on this client:
@@ -94,6 +100,18 @@ source "$CONF"
 # valuable work, which is what makes truncating a run safe.
 : "${MAX_VIDEO_GIB:=120}"
 : "${STANDUP_APP:=radarr}"
+# How many source AUDIO tracks one rewrite may keep.  Tracks are kept in source order and the
+# list is truncated at the tail, so a 12-language rip keeps its first MAX_AUDIO_TRACKS rather
+# than an arbitrary selection — an arbitrary selection would be a guess about which language the
+# viewer wanted, which is exactly the mistake this replaces.
+# WHY AN ENVIRONMENT DEFAULT AND NOT A SIXTEENTH /etc ASSIGNMENT: /etc/media-normalise/config is
+# generated from the service record's fields (media-normalise-etc-file in peteches/services/
+# media-normalise.scm), and today it writes exactly fifteen.  A sixteenth knob means a new field,
+# its docstring, every system that instantiates the service, and a redeploy of all of them for a
+# number nobody tunes.  The config file is SOURCED before this default (see CONF above), so an
+# operator who does want to tune it can drop MAX_AUDIO_TRACKS= into a host's config or its mcron
+# environment and it takes effect with no new field, no service change and no re-pin.
+: "${MAX_AUDIO_TRACKS:=4}"
 # Which subtitle languages become sidecar files (space/comma separated, three-letter
 # tags).  Empty means every text subtitle track — true to the intent but ruinous on
 # this library's Blu-ray rips, which carry up to 38 of them.  Set it in the config.
@@ -329,6 +347,14 @@ probe_facts() {  # file (or resolved media input) -> one line of key=value facts
        | select(.value.codec_name | IN($okc[])) | .key ] | join(",")) as $okidx
    | ([ $a | to_entries[]
        | select((.value.codec_name | IN($okc[])) | not) ] | length) as $badn
+   # The language tag each track carries, lowercased and stripped to safe characters ("-" when a
+   # track has none), positionally parallel to audio_codecs and audio_channels so one index means
+   # the same stream in all three lists.  This is what lets a re-encoded track keep the label it
+   # arrived with: an untagged DTS mix stays untagged honestly, but a tagged track is no longer
+   # thrown away just because its codec happens to be inconvenient.  Whitespace would break fact
+   # parsing, so it is stripped here.
+   | ([ $a[] | (((.tags.language // "") | tostring | ascii_downcase | gsub("[^a-z0-9]"; ""))
+                 | if . == "" then "-" else . end) ] | join(",")) as $alangs
    | ([ $a[] | (.channels // 0) ] | max // 0) as $maxch
    | ([ $a | to_entries[] | select((.value.channels // 0) == $maxch) | .key ][0] // 0) as $best
    # subtitles: text codecs can be exported to SRT, bitmap ones cannot be kept at all.
@@ -380,6 +406,8 @@ probe_facts() {  # file (or resolved media input) -> one line of key=value facts
        "audio_codecs=\([$a[] | .codec_name] | join(","))",
        "audio_channels=\([$a[] | (.channels // 0)] | join(","))",
        "audio_ok_idx=\($okidx)", "audio_bad_n=\($badn)",
+       # positional partner of audio_codecs: the language we stamp on each kept track
+       "audio_langs=\($alangs)",
        # the main surround mix: most channels wins, and its position varies by
        # disc (on some the first track is a stereo downmix or a commentary)
        "best_audio=\($best)", "best_channels=\($maxch)",
@@ -432,6 +460,13 @@ check_video() {  # exactly one video track, in a codec MP4 can carry by copy
   [[ $(fact video_n) == 1 ]] || return 1
   case $(fact vcodec) in hevc|h264) return 0 ;; *) return 1 ;; esac
 }
+# Conformity is a claim about which CODECS are present, never about how MANY tracks there are.
+# That distinction is deliberate and load-bearing: this tool now keeps more audio streams than it
+# used to, and if conformity demanded track-count parity with the source, every title it already
+# converted — Backrooms (2026) went 3 tracks to 1, Frozen Empire and Loop Track did the same —
+# would suddenly read as non-conforming and ~60 GB of finished work would re-copy from scratch.
+# A file whose audio is wholly WebOS-decodable is playable on the client whatever its track count,
+# so it stays conforming: FINISHED WORK STAYS FINISHED BY DESIGN, and a re-run costs nothing.
 check_audio() {  # every track decodable, and at least one whenever audio exists
   facts "$1"
   local n bad ok
@@ -503,19 +538,88 @@ AC3_MAX_CHANNELS=6
 # remux() shaves one audio candidate off and retries, but only while the failure still looks like a
 # stream-setup problem; see the attempt loop for what that window is for.
 MUX_SETUP_WINDOW=120 MUX_MAX_TRIES=8
-KEPT_AIDX=() KEPT_MAPS=() KEEP_AOPTS=() KEEP_AUDIO_ENCODE=0 DOWNMIX_FROM=0
+# PLAN_AIDX / PLAN_AMODE are the kept-audio plan: parallel arrays holding an audio-relative
+# SOURCE index and what we do with it ("copy" or "ac3").  Everything downstream — remux()'s -map
+# list, its codec options, verify()'s expected span and drops_of()'s count — is derived from these
+# two arrays so the four cannot disagree about what "kept" means.
+PLAN_AIDX=() PLAN_AMODE=()
+KEPT_MAPS=() KEEP_AOPTS=() KEEP_AUDIO_ENCODE=0 DOWNMIX_FROM=0
+N_KEPT_COPY=0 N_KEPT_ENCODE=0 P_DROPPED=0 KEPT_COPY_LIST='' KEPT_ENC_LIST=''
 DROP_VIDEO=0 DROP_AUDIO=0 DROP_SUBS=0
 
 # The codec name of one AUDIO-relative stream index, so a log line can say WHICH track it dropped.
 audio_codec_of() {  # audio-relative idx -> that stream's codec name from the current facts
   local n=$(( ${1:-0} + 1 )); printf '%s' "$(fact audio_codecs)" | cut -d, -f"$n"
 }
+audio_channels_of() {  # audio-relative idx -> that track's own channel count ("" when unmeasured)
+  local n=$(( ${1:-0} + 1 )); printf '%s' "$(fact audio_channels)" | cut -d, -f"$n"
+}
+audio_lang_of() {  # audio-relative idx -> that track's language tag as probed ("-" when untagged)
+  local n=$(( ${1:-0} + 1 )); printf '%s' "$(fact audio_langs)" | cut -d, -f"$n"
+}
 
-# Map exactly one video track plus whatever audio KEPT_AIDX currently lists.  This is the only place
-# that spells out -map 0:v:0, so remux() and verify() cannot drift apart about what was kept.
-build_kept_maps() {
-  local i; KEPT_MAPS=(-map 0:v:0)
-  for i in "${KEPT_AIDX[@]}"; do KEPT_MAPS+=(-map "0:a:$i"); done
+# The kept-audio plan for a set of facts, in ONE place so remux(), verify() and drops_of() cannot
+# drift apart about it.  Every source audio track is a candidate, taken in stream order, until the
+# cap; each one keeps its own output stream, copied if the player can decode its codec (per
+# probe_facts' $okc — which already excludes mp3 on a disc, where libbluray hands ffmpeg a header
+# it cannot parse) and re-encoded as its own AC-3 otherwise.  Nothing is dropped for being hard to
+# decode any more; only the cap drops anything, and it drops from the tail.
+plan_audio() {  # facts-string -> PLAN_AIDX/PLAN_AMODE (source order, capped), P_DROPPED
+  local fs=$1 n i ok left; PLAN_AIDX=(); PLAN_AMODE=(); P_DROPPED=0
+  n=$(facts_get "$fs" audio_n); case $n in ''|*[!0-9]*) n=0 ;; esac
+  (( n )) || return 0
+  # ",0,1," style membership test: audio_ok_idx holds audio-relative positions.
+  ok=",$(facts_get "$fs" audio_ok_idx),"
+  left=$MAX_AUDIO_TRACKS
+  for (( i = 0; i < n && left > 0; i++ )); do
+    PLAN_AIDX+=("$i")
+    [[ $ok == *",$i,"* ]] && PLAN_AMODE+=(copy) || PLAN_AMODE+=(ac3)
+    left=$(( left - 1 ))
+  done
+  P_DROPPED=$(( n - ${#PLAN_AIDX[@]} ))
+}
+kept_copy_list() { local a=() i; for (( i = 0; i < ${#PLAN_AMODE[@]}; i++ )); do [[ ${PLAN_AMODE[$i]} == copy ]] && a+=("${PLAN_AIDX[$i]}"); done; printf '%s' "${a[*]:-}"; }
+kept_enc_list()  { local a=() i; for (( i = 0; i < ${#PLAN_AMODE[@]}; i++ )); do [[ ${PLAN_AMODE[$i]} == ac3   ]] && a+=("${PLAN_AIDX[$i]}"); done; printf '%s' "${a[*]:-}"; }
+
+# Map exactly one video track plus the audio PLAN_AIDX lists, and give each mapped stream its OWN
+# codec options.  -map order is output-stream order, so OUTPUT audio index k is plan entry k —
+# which is what makes the per-stream -c:a:k / -b:a:k / -ar:a:k / -ac:a:k / -metadata:s:a:k indices
+# below unambiguous, and is why a file can now hold one copied track next to two encoded ones.
+# This is also the only place that spells out -map 0:v:0, so remux() and verify() cannot drift
+# apart about what was kept.
+build_kept_opts() {  # current facts + PLAN -> KEPT_MAPS, KEEP_AOPTS, N_KEPT_*
+  local k i ch lang; KEPT_MAPS=(-map 0:v:0); KEEP_AOPTS=()
+  N_KEPT_COPY=0; N_KEPT_ENCODE=0
+  for (( k = 0; k < ${#PLAN_AIDX[@]}; k++ )); do
+    i=${PLAN_AIDX[$k]}
+    KEPT_MAPS+=(-map "0:a:$i")
+    if [[ ${PLAN_AMODE[$k]} == copy ]]; then
+      KEEP_AOPTS+=("-c:a:$k" copy); N_KEPT_COPY=$(( N_KEPT_COPY + 1 ))
+    else
+      # AC-3 at 48 kHz / 448k, clamped per track to what the encoder can carry (see the note on
+      # ac3_fallback_opts for why an over-wide source has to be folded down BEFORE it is asked).
+      KEEP_AOPTS+=("-c:a:$k" ac3 -b:a:$k 448k -ar:a:$k 48000)
+      ch=$(audio_channels_of "$i"); case $ch in ''|*[!0-9]*) ch=0 ;; esac
+      if (( ch > AC3_MAX_CHANNELS )); then
+        KEEP_AOPTS+=("-ac:a:$k" "$AC3_MAX_CHANNELS" "-channel_layout:a:$k" 5.1)
+      elif (( ch > 0 )); then
+        # An unmeasured channel count gets no -ac at all: ffmpeg derives the layout from what it
+        # decoded, and a made-up number here is how "7.1 is not supported by the ac3 encoder"
+        # happened once already.
+        KEEP_AOPTS+=("-ac:a:$k" "$ch")
+      fi
+      N_KEPT_ENCODE=$(( N_KEPT_ENCODE + 1 ))
+    fi
+    lang=$(audio_lang_of "$i")
+    # Stamp the source's own tag on this stream.  Copied streams already carry theirs, but an
+    # ENCODED track gets a fresh codec context and should not be trusted to inherit it; saying it
+    # explicitly is also what makes "the language survived" verifiable afterwards with ffprobe.
+    # Only a three-letter tag goes in: that is all the MP4 muxer can store, so a longer or oddball
+    # tag stays untouched rather than being silently truncated to something else.
+    [[ $lang =~ ^[a-z]{3}$ ]] && KEEP_AOPTS+=("-metadata:s:a:$k" "language=$lang")
+  done
+  KEEP_AUDIO_ENCODE=$(( N_KEPT_ENCODE > 0 ? 1 : 0 ))
+  KEPT_COPY_LIST=$(kept_copy_list); KEPT_ENC_LIST=$(kept_enc_list)
 }
 
 # Encode the loudest mix to AC-3, clamped to what the encoder can carry.  Measured live on
@@ -525,43 +629,74 @@ build_kept_maps() {
 # the whole item.  Both "-ac 6" alone and "-ac 6 -channel_layout 5.1" produced codec=ac3 channels=6
 # channel_layout=5.1(side) from that same track; the layout is named explicitly here so the result
 # does not depend on which default layout this build happens to infer.
-ac3_fallback_opts() {  # current facts -> KEPT_AIDX/KEEP_AOPTS encoding the loudest mix as AC-3
+# The never-land-silent plan: ONE track, the loudest mix in the file, re-encoded as AC-3.  Reached
+# only when every kept candidate has already failed to produce (remux()'s retry loop) or a source
+# has a single unplayable track — which is today's common case and behaves exactly as before.
+ac3_fallback_opts() {  # current facts -> PLAN_AIDX/PLAN_AMODE for the loudest mix as AC-3
   local bc; bc=$(fact best_channels); case $bc in ''|*[!0-9]*) bc=0 ;; esac
-  DOWNMIX_FROM=$bc; KEPT_AIDX=("$(fact best_audio)"); KEEP_AUDIO_ENCODE=1
-  if (( bc > AC3_MAX_CHANNELS )); then
-    KEEP_AOPTS=(-c:a ac3 -b:a 448k -ac "$AC3_MAX_CHANNELS" -channel_layout 5.1)
-  else
-    KEEP_AOPTS=(-c:a ac3 -b:a 448k -ac "$bc")
-  fi
+  DOWNMIX_FROM=$bc; PLAN_AIDX=("$(fact best_audio)"); PLAN_AMODE=(ac3)
 }
 
-kept_streams() {  # current facts -> KEPT_AIDX, KEEP_AOPTS, KEEP_AUDIO_ENCODE, DROP_*
-  local -a idxs; local i n bad subs
-  KEPT_AIDX=(); KEEP_AOPTS=(-c:a copy); KEEP_AUDIO_ENCODE=0; DOWNMIX_FROM=0
-  if [[ -n $(fact audio_ok_idx) ]]; then
-    # Copy every decodable track in stream order and drop the rest, so language
-    # options survive and nothing unplayable is left behind.
-    IFS=, read -r -a idxs <<<"$(fact audio_ok_idx)"
-    for i in "${idxs[@]}"; do KEPT_AIDX+=("$i"); done
-  elif [[ $(fact audio_n) != 0 ]]; then
-    # Nothing the client can decode at all (a TrueHD/DTS-only disc, or a 7.1 Opus rip): one AC-3 mix.
+kept_streams() {  # current facts -> PLAN_AIDX/PLAN_AMODE (+ options via build_kept_opts), DROP_*
+  local n subs na
+  DOWNMIX_FROM=0
+  plan_audio "$FACTS"
+  if [[ -z ${PLAN_AIDX[*]:-} ]] && [[ $(fact audio_n) != 0 ]]; then
+    # Cap set to zero or something silly: the loudest mix still becomes one AC-3, because a rewrite
+    # with no audio at all is worse than a rewrite with one language in it.
     ac3_fallback_opts
   fi
   n=$(fact video_n); case $n in ''|*[!0-9]*) n=0 ;; esac
   if (( n > 1 )); then DROP_VIDEO=$(( n - 1 )); else DROP_VIDEO=0; fi
-  bad=$(fact audio_bad_n); case $bad in ''|*[!0-9]*) bad=0 ;; esac; DROP_AUDIO=$bad
+  # "Dropped" now means "beyond the cap", not "had an inconvenient codec": every track the plan
+  # holds survives as a stream, copied or re-encoded.  The audio_bad_n fact is still what conformity
+  # messages quote, but it no longer describes anything this tool throws away.
+  na=$(fact audio_n); case $na in ''|*[!0-9]*) na=0 ;; esac
+  DROP_AUDIO=$(( na > ${#PLAN_AIDX[@]} ? na - ${#PLAN_AIDX[@]} : 0 ))
   subs=$(fact sub_n); case $subs in ''|*[!0-9]*) subs=0 ;; esac; DROP_SUBS=$subs
 }
 
-remux() {  # src dst
-  local src=$1 dst=$2 rc dt l dropped try errf t0
-  facts "$src"; kept_streams; build_kept_maps
-  if (( KEEP_AUDIO_ENCODE )); then
-    log "audio: no WebOS-decodable track among [$(fact audio_codecs)] -> encoding an AC-3 $(fact best_channels)-channel mix from stream $(fact best_audio)"
-    if (( DOWNMIX_FROM > AC3_MAX_CHANNELS )); then
-      log "downmixed stream $(fact best_audio) ch=$DOWNMIX_FROM -> ac3 5.1 (the source mix is wider than the AC-3 encoder can carry, so it is folded down instead of failing the item)"
+# Say what the plan IS, out loud, before ffmpeg starts: a Blu-ray read takes an hour, and "which
+# languages will this file have?" is the exact question this change exists to answer.  It also makes
+# the retry loop's later "dropped stream N" lines legible — you can see what N was going to be.
+log_audio_plan() {  # src -> plan lines in the log (never stdout-only: log() does both)
+  local k i ch nch lang an clamped rest
+  an=$(fact audio_n); case $an in ''|*[!0-9]*) an=0 ;; esac
+  (( an )) || return 0
+  log "audio plan for $(basename "$src"): keeping ${#PLAN_AIDX[@]} of $an source track(s) [$(fact audio_codecs)] as separate output streams — copied unchanged: ${KEPT_COPY_LIST:-none}; re-encoded to AC-3 because WebOS cannot decode them: ${KEPT_ENC_LIST:-none}"
+  for (( k = 0; k < ${#PLAN_AIDX[@]}; k++ )); do
+    i=${PLAN_AIDX[$k]}; ch=$(audio_channels_of "$i"); lang=$(audio_lang_of "$i")
+    nch=$ch; case $nch in ''|*[!0-9]*) nch=0 ;; esac
+    clamped=''
+    if (( nch > AC3_MAX_CHANNELS )); then
+      clamped=" folded down from ${nch} ch to ac3 5.1 (wider than the encoder can be asked for)"
+    elif (( nch > 0 )); then
+      clamped=" ac3 ${nch} ch"
+    else
+      clamped=' ac3, layout taken from what ffmpeg decodes (channel count not measured)'
     fi
+    if [[ ${PLAN_AMODE[$k]} == copy ]]; then
+      log "  out audio $k <- source stream $i ($(audio_codec_of "$i"), ch=${ch:-?}, lang=$lang): copied unchanged"
+    else
+      log "  out audio $k <- source stream $i ($(audio_codec_of "$i"), ch=${ch:-?}, lang=$lang): own AC-3 encode, 48kHz 448k,$clamped"
+      [[ $lang =~ ^[a-z]{3}$ ]] \
+        && log "    language tag '$lang' stamped on the encoded stream (it is what the source said)" \
+        || log "    source stream $i carries no usable language tag, so this track lands untagged and Jellyfin will offer it as Undetermined — that is the truth, not a lost label"
+    fi
+  done
+  if (( P_DROPPED > 0 )); then
+    rest=''
+    for (( i = ${#PLAN_AIDX[@]}; i < an; i++ )); do rest="$rest$i:$(audio_codec_of "$i") "; done
+    log "audio: $P_DROPPED track(s) beyond MAX_AUDIO_TRACKS=$MAX_AUDIO_TRACKS dropped from the tail ($rest) — kept in source order, so a rip with more languages than the cap loses the LAST ones, not an arbitrary pick"
   fi
+  # Explicit success: the last real statement is often a false `if` (a file with no tracks over the
+  # cap), and remux() calls this from a context where a failing status silently ends the whole run.
+  return 0
+}
+
+remux() {  # src dst
+  local src=$1 dst=$2 rc dt l dropped dmode try errf t0
+  facts "$src"; kept_streams; build_kept_opts; log_audio_plan "$src"
   # ffmpeg notices some audio streams only when it tries to WRITE the output header, which means one
   # unmappable track aborted rewrites that had already spent minutes reading the file: Ghostbusters -
   # Frozen Empire (2024) lost its whole 86 GB rewrite over a single kept mp3 candidate.  A failure
@@ -596,12 +731,13 @@ remux() {  # src dst
       log "mux: giving up (exit $rc after ${dt}s) — a failure this late, or one that never names a stream, is not something dropping an audio track can fix"
       rm -f -- "$errf"; return 1
     fi
-    if (( ${#KEPT_AIDX[@]} > 1 )); then
-      dropped=${KEPT_AIDX[${#KEPT_AIDX[@]}-1]}
-      KEPT_AIDX=("${KEPT_AIDX[@]:0:${#KEPT_AIDX[@]}-1}"); build_kept_maps
-      log "mux: audio stream $dropped ($(audio_codec_of "$dropped")) could not be produced from $(basename "$src") — dropped it alone, ${#KEPT_AIDX[@]} kept-audio candidate(s) left, retrying (attempt $try of $MUX_MAX_TRIES)"
-    elif (( ! KEEP_AUDIO_ENCODE )) && [[ $(fact audio_n) != 0 ]]; then
-      ac3_fallback_opts; build_kept_maps
+    if (( ${#PLAN_AIDX[@]} > 1 )); then
+      dropped=${PLAN_AIDX[${#PLAN_AIDX[@]}-1]}; dmode=${PLAN_AMODE[${#PLAN_AMODE[@]}-1]}
+      PLAN_AIDX=("${PLAN_AIDX[@]:0:${#PLAN_AIDX[@]}-1}"); PLAN_AMODE=("${PLAN_AMODE[@]:0:${#PLAN_AMODE[@]}-1}")
+      build_kept_opts
+      log "mux: audio stream $dropped ($(audio_codec_of "$dropped"), was planned as $dmode) could not be produced from $(basename "$src") — dropped it alone, ${#PLAN_AIDX[@]} kept-audio candidate(s) left, retrying (attempt $try of $MUX_MAX_TRIES)"
+    elif (( ! N_KEPT_ENCODE )) && [[ $(fact audio_n) != 0 ]]; then
+      ac3_fallback_opts; build_kept_opts
       log "mux: every copied audio candidate failed on $(basename "$src") -> encoding stream $(fact best_audio) to AC-3 instead, so this rewrite cannot land with no audio at all"
     else
       log "mux: giving up (exit $rc after ${dt}s) — there is no audio candidate left to drop"
@@ -715,11 +851,17 @@ dur_note_drift() {  # actual expected "how the expectation was measured" -> LOUD
   pct=$(awk -v b="$b" -v p="$DUR_TOL_PCT" 'BEGIN{printf "%.2f", b*p/100}')
   log "warning: tolerated duration drift — staged ${a}s vs expected ${b}s (${how}) = delta ${d}s, inside tolerance max(${DUR_TOL_PCT} % of expected = ${pct}s, ${DUR_TOL_MIN_S}s) = ${DUR_TOL}s; it passes, but a rewrite that only barely matches its source is reported (drift-warned=$N_DRIFT)"
 }
+# "What the house format throws away" is now a function of the PLAN, not of which codecs happen
+# to be inconvenient: only video tracks beyond the first and audio tracks beyond MAX_AUDIO_TRACKS
+# are discarded any more (subtitles always become sidecars or get dropped).  Called through
+# $(...) in verify(), so it must stay silent — no log() in here or in plan_audio().
 drops_of() {  # source-facts -> "<video> <audio> <subs>" streams the house format throws away
-  awk -v v="$(facts_get "$1" video_n)" -v a="$(facts_get "$1" audio_bad_n)" \
-      -v s="$(facts_get "$1" sub_n)" '
-    function n(x) { return (x ~ /^-?[0-9]+$/) ? x+0 : 0 }
-    BEGIN { v=n(v); printf "%d %d %d", (v>1 ? v-1 : 0), n(a), n(s) }'
+  local fs=$1 n na ns
+  plan_audio "$fs"
+  n=$(facts_get "$fs" video_n);   case $n in ''|*[!0-9]*) n=0 ;; esac
+  na=$(facts_get "$fs" audio_n);  case $na in ''|*[!0-9]*) na=0 ;; esac
+  ns=$(facts_get "$fs" sub_n);    case $ns in ''|*[!0-9]*) ns=0 ;; esac
+  printf '%d %d %d' "$(( n > 1 ? n - 1 : 0 ))" "$(( na - ${#PLAN_AIDX[@]} > 0 ? na - ${#PLAN_AIDX[@]} : 0 ))" "$ns"
 }
 
 kept_span_expect() {  # source-facts -> "<seconds> <how it was measured>"; 1 if unmeasurable
@@ -735,14 +877,19 @@ kept_span_expect() {  # source-facts -> "<seconds> <how it was measured>"; 1 if 
   fi
   IFS=, read -r -a ad <<<"$(facts_get "$fs" audio_durs)"
   IFS=, read -r -a as <<<"$(facts_get "$fs" audio_starts)"
-  ok=$(facts_get "$fs" audio_ok_idx)
+  # The ruler is the KEPT set, whatever that turns out to be — which is now every track up to the
+  # cap, copied or re-encoded alike.  A re-encoded track bounds the output span exactly as much as
+  # a copied one (an AC-3 encode of a stream ends where that stream ends), so asking plan_audio()
+  # is both more honest and simpler than the old decodable-or-best guess: if it says a kept stream
+  # spans longer than the staged file does, the rewrite really did come up short.
+  plan_audio "$fs"
+  ok="${PLAN_AIDX[*]:-}"
   if [[ -z $ok ]]; then
-    # Nothing decodable is still a kept stream: the rewrite encodes its one AC-3 mix from
-    # best_audio, so that track's span bounds the output just as much as any copied one.
+    # No audio at all (or an unmeasurable count): nothing to add to the video's own span.
     na=$(facts_get "$fs" audio_n)
     case $na in ''|0|*[!0-9]*) ok= ;; *) ok=$(facts_get "$fs" best_audio) ;; esac
   fi
-  IFS=, read -r -a ok <<<"$ok"
+  IFS=' ' read -r -a ok <<<"$ok"
   for i in "${ok[@]}"; do
     case $i in ''|*[!0-9]*) continue ;; esac
     st="${as[$i]:-}"
@@ -1659,6 +1806,13 @@ main() {
   case $MAX_VIDEO_GIB in ''|*[!0-9]*)
     log "WARNING MAX_VIDEO_GIB '$MAX_VIDEO_GIB' is not a number; bounding this run at 120 GiB instead"
     MAX_VIDEO_GIB=120 ;; esac
+  # A cap of zero would leave every rewrite silent, and a non-numeric one would make plan_audio()
+  # compare against nothing.  Both are corrected loudly rather than obeyed quietly.
+  case $MAX_AUDIO_TRACKS in ''|*[!0-9]*)
+    log "WARNING MAX_AUDIO_TRACKS '$MAX_AUDIO_TRACKS' is not a number; keeping at most 4 audio tracks per rewrite"
+    MAX_AUDIO_TRACKS=4 ;; esac
+  (( MAX_AUDIO_TRACKS >= 1 )) || { log "WARNING MAX_AUDIO_TRACKS=$MAX_AUDIO_TRACKS would leave every rewrite with NO audio; using 1"; MAX_AUDIO_TRACKS=1; }
+  log "audio cap: MAX_AUDIO_TRACKS=$MAX_AUDIO_TRACKS (every source track up to that many is kept in stream order; ones the player cannot decode are re-encoded as their own AC-3, not dropped)"
   budget=$(( MAX_VIDEO_GIB * 1024 * 1024 * 1024 ))
   gib() { awk -v x="$1" 'BEGIN{printf "%.1f", x/1073741824}'; }
 
