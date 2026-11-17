@@ -1541,7 +1541,11 @@ process_file() {
   # run until somebody re-grabs it.  Discs are exempt — their facts come from a libbluray title, and
   # disc_select already returns its own "nobody can open this" verdict (rc 2 above).
   if ! is_disc "$src"; then
-    facts "$src"
+    # facts() probes by assignment, and probe_facts FAILS on a file it cannot parse at all.  Called
+    # bare here (not inside an if-condition, unlike conformity_failures), set -e would end the whole
+    # run one line after exactly the files this branch exists to name — measured with bash -x on
+    # Friday IV: FACTS comes out empty and the script exits through its cleanup trap.
+    facts "$src" || :
     if [[ -z $(fact vcodec) || $(fact vcodec) == - ]]; then
       log "skip (unsupported container): $src"
       log "  why: unreadable source — ffprobe gets no usable video stream out of it (video_n=$(fact video_n) vcodec=$(fact vcodec) format=$(fact fmt)), so ffmpeg would fail on the same bytes; nothing is attempted, nothing can be lost, and this needs a re-grab rather than a rewrite"
