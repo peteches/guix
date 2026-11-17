@@ -280,11 +280,14 @@ probe_facts() {  # file (or resolved media input) -> one line of key=value facts
   # a fact read off an absent field comes back empty without ever failing.  height was missing from
   # the list until a converted disc image landed with no quality token at all, because
   # disc_quality_token had nothing to measure — on disk ffprobe had reported 1920x1080 quite happily.
+  # kind says whether this input is a DISC title, which changes one rule below: an mp3 track on a
+  # Blu-ray MPEG-TS is not something ffmpeg can read here, so it must never become kept audio.
+  local kind=file; case $1 in bluray://*) kind=disc ;; esac
   $FP -v error \
       -show_entries stream=codec_type,codec_name,profile,pix_fmt,color_transfer,height,channels,duration,start_time \
       -show_entries stream_tags=language -show_entries format=format_name,duration \
       -of json "${SRC_OPTS[@]}" "$1" 2>/dev/null |
-  jq -r --arg allow "${SUB_LANGS:-}" '
+  jq -r --arg allow "${SUB_LANGS:-}" --arg disc "$kind" '
    # ffprobe says "N/A" when it has no measurement.  Facts spell that "-" so a reader
    # can never confuse "not measured" with a number — verify() depends on the
    # difference, since an unmeasured duration must fall back, not count as zero.
@@ -296,10 +299,18 @@ probe_facts() {  # file (or resolved media input) -> one line of key=value facts
    | [ $s[] | select(.codec_type == "audio") ] as $a
    | [ $s[] | select(.codec_type == "subtitle") ] as $sub
    # audio indexes are positions among AUDIO streams, which is what -map 0:a:N means
+   # Which codecs may be kept as audio at all.  mp3 is decodable by the WebOS client, but it is NOT
+   # readable out of an optical disc here: measured on Ghostbusters - Frozen Empire (2024), libbluray
+   # delivered that track with "[mp3float] Header missing", ffprobe then had no sample rate for it,
+   # and ffmpeg died writing its own output header ("[mp4] sample rate not set", "Could not write
+   # header (incorrect codec parameters ?): Invalid argument") — so one kept mp3 candidate cost the
+   # whole 86 GB rewrite. On a disc source mp3 is therefore no candidate; ordinary files keep it,
+   # where it does parse, and remux() routes around any that still proves unproducible.
+   (if $disc == "disc" then ["ac3", "eac3", "aac"] else ["ac3", "eac3", "aac", "mp3"] end) as $okc
    | ([ $a | to_entries[]
-       | select(.value.codec_name | IN("ac3", "eac3", "aac", "mp3")) | .key ] | join(",")) as $okidx
+       | select(.value.codec_name | IN($okc[])) | .key ] | join(",")) as $okidx
    | ([ $a | to_entries[]
-       | select((.value.codec_name | IN("ac3", "eac3", "aac", "mp3")) | not) ] | length) as $badn
+       | select((.value.codec_name | IN($okc[])) | not) ] | length) as $badn
    | ([ $a[] | (.channels // 0) ] | max // 0) as $maxch
    | ([ $a | to_entries[] | select((.value.channels // 0) == $maxch) | .key ][0] // 0) as $best
    # subtitles: text codecs can be exported to SRT, bitmap ones cannot be kept at all.
@@ -469,20 +480,54 @@ run_mux() {  # src dst <maps and codec args>
 # verify() measures: until now both spelled out -map 0:v:0 and the decodable-audio rule
 # separately, which is how a change to one could silently disagree with the other and
 # make verify judge the rewrite against streams nobody asked for.
-KEPT_MAPS=() KEEP_AOPTS=() KEEP_AUDIO_ENCODE=0 DROP_VIDEO=0 DROP_AUDIO=0 DROP_SUBS=0
-kept_streams() {  # current facts -> KEPT_MAPS, KEEP_AOPTS, KEEP_AUDIO_ENCODE, DROP_*
+# AC-3 caps at 5.1 channels, so anything wider has to be folded down BEFORE the encoder is asked.
+AC3_MAX_CHANNELS=6
+# remux() shaves one audio candidate off and retries, but only while the failure still looks like a
+# stream-setup problem; see the attempt loop for what that window is for.
+MUX_SETUP_WINDOW=120 MUX_MAX_TRIES=8
+KEPT_AIDX=() KEPT_MAPS=() KEEP_AOPTS=() KEEP_AUDIO_ENCODE=0 DOWNMIX_FROM=0
+DROP_VIDEO=0 DROP_AUDIO=0 DROP_SUBS=0
+
+# The codec name of one AUDIO-relative stream index, so a log line can say WHICH track it dropped.
+audio_codec_of() {  # audio-relative idx -> that stream's codec name from the current facts
+  local n=$(( ${1:-0} + 1 )); printf '%s' "$(fact audio_codecs)" | cut -d, -f"$n"
+}
+
+# Map exactly one video track plus whatever audio KEPT_AIDX currently lists.  This is the only place
+# that spells out -map 0:v:0, so remux() and verify() cannot drift apart about what was kept.
+build_kept_maps() {
+  local i; KEPT_MAPS=(-map 0:v:0)
+  for i in "${KEPT_AIDX[@]}"; do KEPT_MAPS+=(-map "0:a:$i"); done
+}
+
+# Encode the loudest mix to AC-3, clamped to what the encoder can carry.  Measured live on
+# /media/library/films/Ghostbusters - Afterlife (2021), whose ONLY audio track is a 7.1 Opus mix:
+# "-c:a ac3 -b:a 448k -ac 8" — what this function used to emit, best_channels being 8 — died with
+# "Specified channel layout '7.1' is not supported by the ac3 encoder", so an over-wide source failed
+# the whole item.  Both "-ac 6" alone and "-ac 6 -channel_layout 5.1" produced codec=ac3 channels=6
+# channel_layout=5.1(side) from that same track; the layout is named explicitly here so the result
+# does not depend on which default layout this build happens to infer.
+ac3_fallback_opts() {  # current facts -> KEPT_AIDX/KEEP_AOPTS encoding the loudest mix as AC-3
+  local bc; bc=$(fact best_channels); case $bc in ''|*[!0-9]*) bc=0 ;; esac
+  DOWNMIX_FROM=$bc; KEPT_AIDX=("$(fact best_audio)"); KEEP_AUDIO_ENCODE=1
+  if (( bc > AC3_MAX_CHANNELS )); then
+    KEEP_AOPTS=(-c:a ac3 -b:a 448k -ac "$AC3_MAX_CHANNELS" -channel_layout 5.1)
+  else
+    KEEP_AOPTS=(-c:a ac3 -b:a 448k -ac "$bc")
+  fi
+}
+
+kept_streams() {  # current facts -> KEPT_AIDX, KEEP_AOPTS, KEEP_AUDIO_ENCODE, DROP_*
   local -a idxs; local i n bad subs
-  KEPT_MAPS=(-map 0:v:0)                 # exactly one video track: see the header note
-  KEEP_AOPTS=(-c:a copy); KEEP_AUDIO_ENCODE=0
+  KEPT_AIDX=(); KEEP_AOPTS=(-c:a copy); KEEP_AUDIO_ENCODE=0; DOWNMIX_FROM=0
   if [[ -n $(fact audio_ok_idx) ]]; then
     # Copy every decodable track in stream order and drop the rest, so language
     # options survive and nothing unplayable is left behind.
     IFS=, read -r -a idxs <<<"$(fact audio_ok_idx)"
-    for i in "${idxs[@]}"; do KEPT_MAPS+=(-map "0:a:$i"); done
+    for i in "${idxs[@]}"; do KEPT_AIDX+=("$i"); done
   elif [[ $(fact audio_n) != 0 ]]; then
-    # Nothing the client can decode at all (a TrueHD/DTS-only disc): one AC-3 mix.
-    KEPT_MAPS+=(-map "0:a:$(fact best_audio)")
-    KEEP_AOPTS=(-c:a ac3 -b:a 448k -ac "$(fact best_channels)"); KEEP_AUDIO_ENCODE=1
+    # Nothing the client can decode at all (a TrueHD/DTS-only disc, or a 7.1 Opus rip): one AC-3 mix.
+    ac3_fallback_opts
   fi
   n=$(fact video_n); case $n in ''|*[!0-9]*) n=0 ;; esac
   if (( n > 1 )); then DROP_VIDEO=$(( n - 1 )); else DROP_VIDEO=0; fi
@@ -491,23 +536,63 @@ kept_streams() {  # current facts -> KEPT_MAPS, KEEP_AOPTS, KEEP_AUDIO_ENCODE, D
 }
 
 remux() {  # src dst
-  local src=$1 dst=$2
-  facts "$src"; kept_streams
+  local src=$1 dst=$2 rc dt l dropped try errf t0
+  facts "$src"; kept_streams; build_kept_maps
   if (( KEEP_AUDIO_ENCODE )); then
     log "audio: no WebOS-decodable track among [$(fact audio_codecs)] -> encoding an AC-3 $(fact best_channels)-channel mix from stream $(fact best_audio)"
+    if (( DOWNMIX_FROM > AC3_MAX_CHANNELS )); then
+      log "downmixed stream $(fact best_audio) ch=$DOWNMIX_FROM -> ac3 5.1 (the source mix is wider than the AC-3 encoder can carry, so it is folded down instead of failing the item)"
+    fi
   fi
-  if video_copyable; then
-    run_mux "$src" "$dst" "${KEPT_MAPS[@]}" -c:v copy "${KEEP_AOPTS[@]}"
-  else
-    # Rare: DivX/Xvid/MPEG-1/… that MP4 will not carry.  Re-encode, and let ffmpeg
-    # pass the source colour metadata through with no -color_* flags of ours:
-    # hevc_nvenc silently ignores primaries/trc, so stamping them used to produce
-    # files whose tags contradicted each other.
-    log "video: $(fact vcodec) cannot be stream-copied into MP4 -> re-encoding to HEVC Main 10, colour metadata passed through"
-    run_mux "$src" "$dst" "${KEPT_MAPS[@]}" -c:v hevc_nvenc -preset p6 -profile:v main10 \
-            -rc vbr -cq "$CQ" -maxrate "$MAXRATE" -bufsize $((MAXRATE * 2)) \
-            -g 96 -keyint_min 96 "${KEEP_AOPTS[@]}"
-  fi
+  # ffmpeg notices some audio streams only when it tries to WRITE the output header, which means one
+  # unmappable track aborted rewrites that had already spent minutes reading the file: Ghostbusters -
+  # Frozen Empire (2024) lost its whole 86 GB rewrite over a single kept mp3 candidate.  A failure
+  # that happens before any real work is therefore retried with ONE audio candidate dropped, named by
+  # index and codec each time, down to encoding the main mix if every copied candidate fails — a
+  # rewrite must never land with no audio at all.  A LATE failure deliberately gets no such retry: by
+  # then bytes have been copying for minutes, so the cause is I/O or free space, and shaving languages
+  # off the output to make those go away would trade one lie for a worse one.
+  for (( try=1; try<=MUX_MAX_TRIES; try++ )); do
+    rc=0; t0=$SECONDS
+    errf=$(mktemp "${TMPDIR:-/tmp}/media-normalise-mux.XXXXXX") || return 1
+    if video_copyable; then
+      run_mux "$src" "$dst" "${KEPT_MAPS[@]}" -c:v copy "${KEEP_AOPTS[@]}" 2>"$errf" || rc=$?
+    else
+      # Rare: DivX/Xvid/MPEG-1/… that MP4 will not carry.  Re-encode, and let ffmpeg
+      # pass the source colour metadata through with no -color_* flags of ours:
+      # hevc_nvenc silently ignores primaries/trc, so stamping them used to produce
+      # files whose tags contradicted each other.
+      if (( try == 1 )); then
+        log "video: $(fact vcodec) cannot be stream-copied into MP4 -> re-encoding to HEVC Main 10, colour metadata passed through"
+      fi
+      run_mux "$src" "$dst" "${KEPT_MAPS[@]}" -c:v hevc_nvenc -preset p6 -profile:v main10 \
+              -rc vbr -cq "$CQ" -maxrate "$MAXRATE" -bufsize $((MAXRATE * 2)) \
+              -g 96 -keyint_min 96 "${KEEP_AOPTS[@]}" 2>"$errf" || rc=$?
+    fi
+    dt=$(( SECONDS - t0 ))
+    # ffmpeg's own words are the evidence, so they reach the log whichever way the attempt went.
+    while IFS= read -r l; do { [[ -z $l ]] || log "  ffmpeg: $l"; }; done <"$errf"
+    if (( rc == 0 )); then rm -f -- "$errf"; return 0; fi
+    rm -f -- "$dst"          # a failed attempt leaves a truncated file, not a rewrite worth keeping
+    if (( dt > MUX_SETUP_WINDOW )) || ! grep -qiE 'could not write header|error while opening encoder|opening of an output stream failed|not supported by the ac3 encoder|sample rate not set' "$errf"; then
+      log "mux: giving up (exit $rc after ${dt}s) — a failure this late, or one that never names a stream, is not something dropping an audio track can fix"
+      rm -f -- "$errf"; return 1
+    fi
+    if (( ${#KEPT_AIDX[@]} > 1 )); then
+      dropped=${KEPT_AIDX[${#KEPT_AIDX[@]}-1]}
+      KEPT_AIDX=("${KEPT_AIDX[@]:0:${#KEPT_AIDX[@]}-1}"); build_kept_maps
+      log "mux: audio stream $dropped ($(audio_codec_of "$dropped")) could not be produced from $(basename "$src") — dropped it alone, ${#KEPT_AIDX[@]} kept-audio candidate(s) left, retrying (attempt $try of $MUX_MAX_TRIES)"
+    elif (( ! KEEP_AUDIO_ENCODE )) && [[ $(fact audio_n) != 0 ]]; then
+      ac3_fallback_opts; build_kept_maps
+      log "mux: every copied audio candidate failed on $(basename "$src") -> encoding stream $(fact best_audio) to AC-3 instead, so this rewrite cannot land with no audio at all"
+    else
+      log "mux: giving up (exit $rc after ${dt}s) — there is no audio candidate left to drop"
+      rm -f -- "$errf"; return 1
+    fi
+    rm -f -- "$errf"
+  done
+  log "mux: gave up after $MUX_MAX_TRIES attempts on $(basename "$src") (every audio candidate dropped and it still failed)"
+  return 1
 }
 
 # Text subtitles become sidecar .srt files beside the video.  Both halves of that
