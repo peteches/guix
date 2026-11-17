@@ -1181,9 +1181,6 @@ item_json() {  # app collection id -> that item's JSON, retried until it parses 
 # re-read the item to prove the change had taken.  It is gone, along with PIN_TRIES,
 # PIN_VERIFY_TRIES, PIN_READ, profile_id() and the pin-failed= tally field; see the comment at
 # its former call site near the end of import_item for why re-pinning stopped.
-  local app=$1 mid=$2 coll pid body got try seen
-  PIN_READ=
-  case $app in radarr) coll=movie ;; sonarr) coll=series ;; esac
 
 
 # IMPORT_POLL_SLEEP spaces out one registration poll.  A full window is spent on each of the
