@@ -59,9 +59,9 @@ SRC_CURRENT=
 
 # Run tallies, logged at the end: this job runs for hours, and "what did it
 # actually do" should not require grepping the whole log.
-# Pin/leftover counters are deliberately NOT folded into failed=: an import can be fully
-# complete — rewrite registered, original unregistered and removed — and still leave the item
-# on the wrong Arr profile, or its old bytes on disk.  Those get their own fields so that
+# Leftover counters are deliberately NOT folded into failed=: an import can be fully
+# complete — rewrite registered, original unregistered and removed — and still leave
+# the original's old bytes on disk.  Those get their own fields so that
 # failed=0 cannot hide them (that is the same dishonesty verify() was fixed for) while
 # failed=N keeps meaning "this title did not make it into the library".
 # unreadable=/ambiguous= count files the walk FOUND but this tool could not judge: a container
@@ -69,7 +69,7 @@ SRC_CURRENT=
 # are too close to call.  They get their own fields rather than being folded into conforming= —
 # "conforming" is a claim about the file, and neither of these is one.
 N_SEEN=0 N_SKIP=0 N_REWRITTEN=0 N_SIDE=0 N_IMPORTED=0 N_FAILED=0
-N_PIN_FAILED=0 N_ORIG_LEFT=0 N_UNREADABLE=0 N_AMBIGUOUS=0
+N_ORIG_LEFT=0 N_UNREADABLE=0 N_AMBIGUOUS=0
 # Rewrites that only barely matched their expected span: they pass (see dur_close) but each one is
 # counted here so a run of near-misses cannot read as clean.  Not folded into failed= — these DID land.
 N_DRIFT=0
@@ -262,8 +262,8 @@ disc_select() {  # disc path -> DISC_URL / DISC_PLAYLIST / SRC_OPTS set, and say
 }
 
 # The stem a rewritten disc lands under, with any disc-origin token taken out.  BR-DISK is the Arr
-# apps' own word for the whole disc — a full remux/ISO — and Normalised-2160p (the profile this tool
-# pins items to) deliberately lists no Remux/BR-DISK ceiling at all, so carrying that token into the
+# apps' own word for the whole disc — a full remux/ISO — and Normalised-2160p (PROFILE_NAME, whose
+# allowed tiers exclude Remux and BR-DISK) lists no such ceiling at all, so carrying that token into the
 # name of one MP4 with one video track would keep claiming something the file is not.  Stripping it
 # here is also what lets disc_landed_mates find an already-landed rewrite by the same rule.
 disc_stem_base() {  # disc path -> stem without disc-origin tokens
@@ -990,10 +990,6 @@ quality_id() {  # app name -> id
   api "$1" GET /qualitydefinition \
     | jq -r --arg n "$2" '.[] | select(.quality.name == $n) | .quality.id' | head -1
 }
-profile_id() {  # app name -> id
-  api "$1" GET /qualityprofile \
-    | jq -r --arg n "$2" '.[] | select(.name == $n) | .id' | head -1
-}
 
 # The app's own view of one item's files, how to find the item that owns a folder, and
 # how to tell the app to look at that folder again.
@@ -1120,7 +1116,7 @@ size_of() { wc -c <"$1" | tr -dc 0-9; }   # no stat on this PATH, and the file i
 # How long to wait for the apps to be coherent.  While a rescan or a delete is still running
 # they answer with something that is not JSON at all (see item_json), so every read that gets
 # believed is retried.  API_RETRY_SLEEP doubles as the knob a test harness sets to 0.
-API_TRIES=${API_TRIES:-3} PIN_TRIES=${PIN_TRIES:-3} PIN_VERIFY_TRIES=${PIN_VERIFY_TRIES:-3}
+API_TRIES=${API_TRIES:-3}
 API_RETRY_SLEEP=${API_RETRY_SLEEP:-5}
 
 # IMPORT BY RESCAN, NOT BY MANUAL IMPORT.  Both halves established against the live apps.
@@ -1181,45 +1177,14 @@ item_json() {  # app collection id -> that item's JSON, retried until it parses 
   return 1
 }
 
-# Pin an item to PROFILE_NAME, say out loud what happened, and count it when it did not take.
-# Two faults this replaces: one unverified PUT whose "profile set" line printed even when the
-# reply had been garbage (live evidence — Radarr movie 128 still reports profile 1 "Any" after
-# a run that logged "import: profile set to Normalised-2160p"), and no tolerance at all for
-# that transient garbage, which turned a momentary bad reply into a permanent-looking one.
-# The PUT body is the item as the app currently holds it, with only qualityProfileId changed;
-# success is decided by reading the item back, never by the PUT's own status code.  This runs
-# after the rewrite is registered and the original removed, so failure here is reported and
-# counted (N_PIN_FAILED) rather than fatal: an imported title still sitting on the wrong profile
-# is not a success, but it is also not something we can undo by refusing to return 0.
-PIN_READ=
-pin_item_to_profile() {  # app movie/series-id -> 0 once the item reports PROFILE_NAME's id
+# pin_item_to_profile USED to live here: it PUT PROFILE_NAME's id onto an imported item and
+# re-read the item to prove the change had taken.  It is gone, along with PIN_TRIES,
+# PIN_VERIFY_TRIES, PIN_READ, profile_id() and the pin-failed= tally field; see the comment at
+# its former call site near the end of import_item for why re-pinning stopped.
   local app=$1 mid=$2 coll pid body got try seen
   PIN_READ=
   case $app in radarr) coll=movie ;; sonarr) coll=series ;; esac
-  pid=$(profile_id "$app" "$PROFILE_NAME") || true
-  if [[ -z $pid || $pid == null ]]; then
-    N_PIN_FAILED=$(( N_PIN_FAILED + 1 ))
-    log "import: WARNING profile $PROFILE_NAME is not known to $app, so nothing could be pinned (counted as pin-failed)"
-    return 1
-  fi
-  for try in $(seq 1 "$PIN_TRIES"); do
-    if body=$(item_json "$app" "$coll" "$mid") &&
-       api "$app" PUT "/$coll/$mid" \
-          "$(jq -c --argjson pid "$pid" '.qualityProfileId = $pid' <<<"$body")" >/dev/null; then
-      for seen in $(seq 1 "$PIN_VERIFY_TRIES"); do
-        sleep "$API_RETRY_SLEEP"
-        got=$(item_json "$app" "$coll" "$mid" | jq -r '.qualityProfileId // empty' 2>/dev/null) || got=
-        PIN_READ=$got
-        [[ $got == "$pid" ]] \
-          && { log "import: profile set to $PROFILE_NAME (#$pid) on item $mid, confirmed by reading it back from $app"; return 0; }
-      done
-    fi
-    (( try < PIN_TRIES )) && sleep "$API_RETRY_SLEEP"
-  done
-  N_PIN_FAILED=$(( N_PIN_FAILED + 1 ))
-  log "import: WARNING profile $PROFILE_NAME could not be pinned on item $mid of $app (it still reads ${PIN_READ:-no parsable reply}); counted as pin-failed, the import itself completed"
-  return 1
-}
+
 
 # IMPORT_POLL_SLEEP spaces out one registration poll.  A full window is spent on each of the
 # two phases import_item runs (ask for it, then ask again after unregistering the original),
@@ -1596,11 +1561,18 @@ import_item() {  # app staged-file staging-dir original -> 0 once the rewrite is
     fi
   done
 
-  # Pin the item to the Normalised profile so the app never "upgrades" it back.  Best effort,
-  # and deliberately last: by now the rewrite is registered and the original is gone, so this
-  # cannot undo anything.  It logs its own verdict and counts N_PIN_FAILED itself — see
-  # pin_item_to_profile for why it must never claim success on the strength of a PUT alone.
-  pin_item_to_profile "$app" "$mid" || true
+  # NO PROFILE PIN ANY MORE: a normalised item keeps whatever quality profile it already has.
+  # Two measured reasons, both read off Radarr on this fleet (2026-11-17):
+  #   * all SEVEN of its quality profiles have upgradeAllowed=false, so the pin never prevented
+  #     the thing it was written to prevent — nothing here can ever be "upgraded" back; and
+  #   * PROFILE_NAME (Normalised-2160p = Radarr profile 7) accepts only 2160p tiers while our
+  #     honest quality tokens are usually below that: of the 26 movies a pin had touched, only
+  #     4 hold files in a tier that profile actually allows.  The pin was not even describing
+  #     reality, and Radarr now says so out loud — every release it offers for movie 140 comes
+  #     back rejected with "…is not wanted in profile", which is the profile doing the one job
+  #     a pin could never do.
+  # PROFILE_NAME is still read (the deployed config sets it) and the profile itself stays in
+  # each app; this tool simply stops writing to any item's qualityProfileId.
 
   # The last claim has to be a measured one.  What the poll above proved is that $app lists our
   # file and no longer lists the original; whether the original's bytes are off the disk is a
@@ -1895,7 +1867,7 @@ main() {
     done < <(sort -z -t$'\t' -k1,1nr -k2,2 "$list")
   rm -f -- "$list"
   log "budget: MAX_VIDEO_GIB=$MAX_VIDEO_GIB ($(gib "$budget") GiB of source video per run); attempted $taken item(s), $(gib "$used") GiB; deferred to the next run: $n_def file(s) in ${#def_dirs[@]} folder(s), $bytes_def B ($(gib "$bytes_def") GiB) left unexamined because they are smaller than what fit — self-balancing resume re-enumerates them biggest-first, so a capped run costs nothing but time and no cursor file is needed"
-  log "summary: $nroots root(s) walked; seen=$N_SEEN conforming=$N_SKIP rewritten=$N_REWRITTEN sidecars=$N_SIDE imported=$N_IMPORTED failed=$N_FAILED pin-failed=$N_PIN_FAILED original-left=$N_ORIG_LEFT unreadable=$N_UNREADABLE ambiguous=$N_AMBIGUOUS drift-warned=$N_DRIFT"
+  log "summary: $nroots root(s) walked; seen=$N_SEEN conforming=$N_SKIP rewritten=$N_REWRITTEN sidecars=$N_SIDE imported=$N_IMPORTED failed=$N_FAILED original-left=$N_ORIG_LEFT unreadable=$N_UNREADABLE ambiguous=$N_AMBIGUOUS drift-warned=$N_DRIFT"
   log "=== media-normalise run end ==="
 }
 

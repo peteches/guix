@@ -98,7 +98,12 @@
   ;; ceiling first, so it stays as-is until that UI work is done deliberately.
   (quality-name media-normalise-configuration-quality-name
                 (default "Bluray-2160p"))
-  ;; Profile pinned onto normalised items so they are never upgraded back.
+  ;; Accepted but UNUSED by the tool since re-pinning stopped: items keep whatever
+  ;; profile they already have, because all seven Radarr profiles have upgradeAllowed=false
+  ;; (so a pin prevents nothing) and Normalised-2160p accepts only 2160p tiers while our
+  ;; honest quality tokens are usually below that.  The field stays, PROFILE_NAME is still
+  ;; written into the config (media-normalise.sh requires it), and the profile itself stays
+  ;; in each app — see peteches/packages/media-normalise.sh near the end of import_item.
   (profile-name media-normalise-configuration-profile-name
                 (default "Normalised-2160p"))
   ;; Which app owns standup-comedy (specials are usually movies).

@@ -119,10 +119,11 @@ Usage: scripts/media-normalise-library [options]
                        (/run/current-system/etc/media-normalise/config), because that is
                        the file the nightly service actually reads.  Pass this to override.
   --sonarr-key FILE    Sonarr API key file on the target (same default, same caveat)
-  --profile NAME       Arr profile pinned onto normalised items (default
-                       Normalised-2160p; a missing profile only warns, so check
-                       it exists in each app before relying on it — verified live:
-                       Radarr has no profile of that name today)
+  --profile NAME       accepted for compatibility and passed through to the target's
+                       config, but UNUSED: the tool stopped re-pinning items (all seven
+                       Radarr profiles have upgradeAllowed=false, so a pin prevents
+                       nothing, and Normalised-2160p accepts only 2160p tiers while our
+                       honest tokens are usually below that).  Items keep their profile.
   --maxrate N          video max bitrate for the rare re-encode fallback, bits/s
   --cq N               hevc_nvenc constant-quality target for that fallback
   --radarr-url URL     Radarr API base incl. /api/v3 (default :7878/api/v3)
@@ -440,7 +441,7 @@ main() {
   for pat in 'skip (conforming)' 'rewrite needed' 'reusing cached rewrite' \
              'subtitles: wrote' 'subtitle:' 'subtitle: placed' 'import: ok' \
              'verify FAILED' 'rewrite FAILED' 'import FAILED' \
-             'registered as file' 'WARNING profile' 'warning: tolerated duration drift' \
+             'registered as file' 'warning: tolerated duration drift' \
              'skip (unsupported container)' 'skip (ambiguous disc titles)' 'selected playlist'; do
     c=$(grep -c -F -- "$pat" "$LOCAL_LOG" 2>/dev/null || true)
     printf '%-26s %s\n' "$pat" "${c:-0}" >&2
