@@ -239,9 +239,10 @@
       ;; she answers at all (7642100300 = Pete's DM, private chat).
       (service ai-bots-service-type
                (ai-bots-configuration
-                (bots (list (append %tiffany-bot
-                                    (ai-bot
-                                     (allowed-chats '("7642100300")))))))))
+                ;; `inherit` is the record-inheritance form (guix records) -- append would
+                ;; get a record where it wants a list.
+                (bots (list (ai-bot (inherit %tiffany-bot)
+                                    (allowed-chats '("7642100300")))))))
       ;; rules-lawyer — Discord bot, uses the strata engine on the comfyui
       ;; box (Intel Arc B70, SC117 Qwen3.8-Flash-Next IQ2_XS, proxied via
       ;; caddy as strata.ts.peteches.co.uk -> comfyui:8000) as its LLM

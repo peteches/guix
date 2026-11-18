@@ -192,7 +192,12 @@
 (define (%chat-id-string c)
   ;; Supergroup ids genuinely begin with a dash ("-1001234567890"), and numeric ids are usually
   ;; written as numbers in the system config; both have to arrive at her as text.
-  (if (number? c) (number->string c) (string c)))
+  ;; Guile's `string' takes CHARACTERS, so calling it on a chat id that is already a string
+  ;; throws "Wrong type (expecting character)" -- which is precisely what this helper exists to
+  ;; keep away.  Accept the two shapes people actually write and reject anything else loudly.
+  (cond ((string? c) c)
+        ((number? c) (number->string c))
+        (else (error "chat id is neither a string nor a number" c))))
 
 (define (ai-bot-shepherd-service b)
   (let* ((pkg (ai-bot-package b))
