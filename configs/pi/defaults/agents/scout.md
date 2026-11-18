@@ -1,6 +1,7 @@
 ---
 name: scout
 description: Fast codebase recon — explores files, finds patterns, maps architecture
+model: strata/qwen3.8-flash-next
 tools: read, grep, find, ls
 system-prompt: append
 auto-exit: true
