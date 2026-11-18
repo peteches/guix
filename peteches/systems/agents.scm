@@ -65,6 +65,7 @@
 ;;
 ;; Secrets (SOPS-decrypted at boot):
 ;;   /run/secrets/rules-lawyer-discord-token  — Discord bot token
+;;   /run/secrets/tiffany-telegram-token       — Tiffany's Telegram bot token, owned
 ;;   /run/secrets/sillytavern-password        — sillytavern basic-auth password
 ;;   /run/secrets/restic-password             — restic backup password
 ;;   /run/secrets/restic-ssh-key              — restic backup SSH key
@@ -93,6 +94,7 @@
   #:use-module (gnu services guix)           ;; guix-home-service-type
   #:use-module (peteches systems vm-base)
   #:use-module (peteches home configs agents-peteches)
+  #:use-module (peteches services ai-bots)
   #:use-module (peteches services alloy)
   #:use-module (peteches services firewall)
   #:use-module (peteches services herdr)
@@ -129,7 +131,7 @@
      (restic-vm-backup-configuration
       (vm-name "agents")
       (synology-host "nas.peteches.co.uk")
-      (backup-paths '("/var/lib/rules-lawyer" "/var/lib/sillytavern"))
+      (backup-paths '("/var/lib/rules-lawyer" "/var/lib/sillytavern" "/var/lib/tiffany"))
       (password-file "/run/secrets/restic-password")
       (ssh-key-file "/run/secrets/restic-ssh-key"))
      #:sops-secrets
@@ -182,7 +184,20 @@
        (user "peteches")
        (group "users")
        (permissions #o400)
-       (path "/run/secrets/peteches-automation-ssh-key")))
+       (path "/run/secrets/peteches-automation-ssh-key"))
+      ;; Tiffany's Telegram bot token, consumed by %tiffany-bot below.  Owned
+      ;; user/group `tiffany' rather than root:root like the entries above,
+      ;; because nothing here reads it as root or peteches: the only consumer is
+      ;; the bot's own unprivileged account, and a #o400 file owned by root would
+      ;; simply be unreadable to it.  (user …)/(group …) are fields of the record,
+      ;; not conventions -- see the automation-key entry above for the precedent.
+      (sops-secret
+       (key '("telegram_bot_token"))
+       (file (local-file "../../secrets/hosts/agents/tiffany-bot.yaml"))
+       (user "tiffany")
+       (group "tiffany")
+       (permissions #o400)
+       (path "/run/secrets/tiffany-telegram-token")))
      #:extra-services
      (list
       ;; One home environment for this box's agent account -- see
@@ -209,6 +224,24 @@
                (herdr-server-configuration
                 (user "peteches")
                 (group "users")))
+      ;; tiffany — the aiBots fleet's first bot: Peteches' Telegram assistant
+      ;; @peteches_pa_bot.  Code comes from the pushed ai-bots repo through
+      ;; (peteches packages ai-bots), so a deploy only ever sees the commit pinned
+      ;; there; state lives in /var/lib/tiffany and logs under /var/log, which
+      ;; alloy ships to Loki below.  It runs as its own unprivileged `tiffany'
+      ;; account, group and data directory included -- the service creates all
+      ;; three.  The packaged config.json is a read-only store file, so runtime
+      ;; paths and the allowlist arrive via the environment (TIFFANY_DATA_DIR,
+      ;; TIFFANY_ALLOWED_CHATS) and the token is opened inside the start lambda:
+      ;; 'sops-secrets is a shepherd requirement, so by the time anything reads it
+      ;; the decrypted file exists.  Chat ids belong in `allowed-chats', not in
+      ;; `environment' -- they are not secret but they are what decides which chats
+      ;; she answers at all (7642100300 = Pete's DM, private chat).
+      (service ai-bots-service-type
+               (ai-bots-configuration
+                (bots (list (append %tiffany-bot
+                                    (ai-bot
+                                     (allowed-chats '("7642100300")))))))))
       ;; rules-lawyer — Discord bot, uses the strata engine on the comfyui
       ;; box (Intel Arc B70, SC117 Qwen3.8-Flash-Next IQ2_XS, proxied via
       ;; caddy as strata.ts.peteches.co.uk -> comfyui:8000) as its LLM
@@ -261,6 +294,7 @@
                                  (cons "/var/log/prometheus-node-exporter.log" "node-exporter")
                                  (cons "/var/log/rules-lawyer.log" "rules-lawyer")
                                  (cons "/var/log/herdr-server.log" "herdr")
+                                 (cons "/var/log/tiffany.log" "ai-bots")
                                  (cons "/var/log/alloy.log" "alloy")
                                   (cons "/var/log/tailscaled-*.log" "tailscale"))))))))))
 
