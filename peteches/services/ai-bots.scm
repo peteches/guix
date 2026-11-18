@@ -20,7 +20,7 @@
             ai-bot-name ai-bot-dir ai-bot-package ai-bot-user ai-bot-group
             ai-bot-data-dir ai-bot-log-file ai-bot-environment ai-bot-secrets
             ai-bot-allowed-chats ai-bot-command-args ai-bot-documentation
-            ai-bot-requirement
+            ai-bot-requirement ai-bot-home ai-bot-extra-paths ai-bot-manage-account?
             ;; Exported so a system config can pick apart the pieces — and so the modules can be
             ;; exercised in Guile without instantiating a whole operating system.
             ai-bots-accounts ai-bots-activation ai-bots-profile ai-bot-shepherd-service
@@ -100,6 +100,15 @@
   (requirement ai-bot-requirement         ; shepherd prerequisites.  Drop 'sops-secrets on a box
                (default '(networking file-systems sops-secrets))) ; that decrypts nothing at boot
                                         ; and uses `environment' for tokens instead.
+  (home ai-bot-home                       ; HOME for the process -- pi reads ~/.pi and herdr finds its
+   (default #f))                          ; socket through ~/.config/herdr, so this is where a bot's
+                                        ; "whose dotfiles" answer lives.  Defaults to data-dir.
+  (extra-paths ai-bot-extra-paths         ; directories prepended to PATH (after the pinned node and
+   (default '()))                         ; ffmpeg).  For binaries in no system profile at all, e.g.
+                                        ; another account's ~/.guix-home/profile/bin.
+  (manage-account? ai-bot-manage-account? ; #f when the bot runs as an existing login: then this
+   (default #t))                          ; service creates no group and no user for it -- see
+                                        ; %account-managed-bots for why that matters.
   (documentation ai-bot-documentation (default "area_51 AI bot.")))
 
 (define-record-type* <ai-bots-configuration>
@@ -116,6 +125,10 @@
 (define (%bot-group b) (or (ai-bot-group b) (%bot-id b)))
 (define (%bot-data-dir b) (or (ai-bot-data-dir b) (string-append "/var/lib/" (%bot-id b))))
 (define (%bot-log-file b) (or (ai-bot-log-file b) (string-append "/var/log/" (%bot-id b) ".log")))
+;; HOME, unlike the account's home-directory, is something a bot may want pointed somewhere other
+;; than its state directory: running as someone else's login means using that login's dotfiles.
+(define (%bot-home b) (or (ai-bot-home b) (%bot-data-dir b)))
+
 (define (%bot-launcher b) (file-append (ai-bot-package b) "/bin/" (%bot-id b)))
 
 ;;; The env-var prefix a bot's config.json is written against: tiffany gives TIFFANY_DATA_DIR and
@@ -124,10 +137,17 @@
 
 ;; ── Accounts ─────────────────────────────────────────────────────────────────────────────────
 
+(define (%account-managed-bots config)
+  ;; Only the bots whose account this service owns.  A bot with manage-account? #f is deliberately
+  ;; pointed at somebody else's login, and a generated user-account carries this module's idea of
+  ;; home-directory plus a nologin shell: emitting one for "peteches" would move his home and take
+  ;; away his login shell.  Groups are skipped with the same vote.
+  (filter (lambda (b) (ai-bot-manage-account? b)) (ai-bots-configuration-bots config)))
+
 (define (%bot-users config)
   ;; Deduped by user name: several bots may deliberately share one account, in which case the
   ;; first one's home directory wins.
-  (let loop ((bots (ai-bots-configuration-bots config)) (seen '()) (out '()))
+  (let loop ((bots (%account-managed-bots config)) (seen '()) (out '()))
     (if (null? bots)
         (reverse out)
         (let* ((b (car bots))
@@ -140,7 +160,7 @@
                            (group (%bot-group b))
                            (system? #t)
                            (comment (string-append "ai-bots service account for " (%bot-id b)))
-                           (home-directory (%bot-data-dir b))
+                           (home-directory (%bot-home b))
                            (shell (file-append shadow "/sbin/nologin")))
                           out)))))))
 
@@ -148,7 +168,7 @@
   ;; Guix's group record is `user-group' and its fields are name, password, id and system? only
   ;; — there is no comment field to fill in here.
   (append (map (lambda (g) (user-group (name g) (system? #t)))
-               (delete-duplicates (map %bot-group (ai-bots-configuration-bots config)) string=))
+               (delete-duplicates (map %bot-group (%account-managed-bots config)) string=))
           (%bot-users config)))
 
 ;; ── Activation: the state directories, which are deliberately not in the store ───────────────
@@ -174,7 +194,14 @@
                       (if pw
                           (begin
                             (chown dir (passwd:uid pw) (passwd:gid pw))
-                            (chmod dir #o750))
+                            (chmod dir #o750)
+                            ;; Re-pointing a bot at a different account leaves everything it already
+                            ;; wrote owned by the old uid, and a sqlite database its service cannot
+                            ;; write is worse than no service at all -- so ownership follows the
+                            ;; account all the way down, not just onto the directory.
+                            (for-each (lambda (path)
+                                        (chown path (passwd:uid pw) (passwd:gid pw)))
+                                      (find-files dir "" #:directories? #t)))
                           (format #t "ai-bots: user ~a is missing, leaving ~a root-owned~%"
                                   uname dir))))
                   '#$specs))))
@@ -213,7 +240,7 @@
            ;; that through user-environment-variables, which nothing in this chain calls), so set
            ;; it to the account's home — the same directory activation creates as data-dir.
            (list (string-append prefix "_DATA_DIR=" (%bot-data-dir b))
-                 (string-append "HOME=" (%bot-data-dir b)))
+                 (string-append "HOME=" (%bot-home b)))
            (let ((chats (ai-bot-allowed-chats b)))
              (if (null? chats)
                  '()
@@ -271,8 +298,14 @@
               ;; list-of-strings? guard then rejects the lot —
               ;;   value (...) of argument 'environment-variables has the wrong type
               ;; — so the service never spawns anything.  cons + append is flat.
+              ;; extra-paths lands after the pinned node and ffmpeg but before the system profile: it
+              ;; is for binaries in no profile at all (another account's ~/.guix-home/profile/bin).  The
+              ;; splice is quoted so it reads as a list literal, not a call of its first string.
               #:environment-variables
               (cons (string-append "PATH=" #$node "/bin:" #$ffmpeg "/bin"
+                                   (let ((extra '#$(ai-bot-extra-paths b)))
+                                     (if (null? extra) ""
+                                         (string-append ":" (string-join extra ":"))))
                                    ":/run/current-system/profile/bin"
                                    ":/run/current-system/profile/sbin:/run/setuid-programs")
                     (append secret-env '#$static-env))

@@ -65,7 +65,8 @@
 ;;
 ;; Secrets (SOPS-decrypted at boot):
 ;;   /run/secrets/rules-lawyer-discord-token  — Discord bot token
-;;   /run/secrets/tiffany-telegram-token       — Tiffany's Telegram bot token, owned
+;;   /run/secrets/tiffany-telegram-token       — Tiffany's Telegram bot token; she runs as peteches,
+;;                                             so it is his to read (see her service stanza below)
 ;;   /run/secrets/sillytavern-password        — sillytavern basic-auth password
 ;;   /run/secrets/restic-password             — restic backup password
 ;;   /run/secrets/restic-ssh-key              — restic backup SSH key
@@ -185,17 +186,15 @@
        (group "users")
        (permissions #o400)
        (path "/run/secrets/peteches-automation-ssh-key"))
-      ;; Tiffany's Telegram bot token, consumed by %tiffany-bot below.  Owned
-      ;; user/group `tiffany' rather than root:root like the entries above,
-      ;; because nothing here reads it as root or peteches: the only consumer is
-      ;; the bot's own unprivileged account, and a #o400 file owned by root would
-      ;; simply be unreadable to it.  (user …)/(group …) are fields of the record,
-      ;; not conventions -- see the automation-key entry above for the precedent.
+      ;; Tiffany's Telegram bot token.  Owned user/group peteches/users because the process that
+      ;; reads it IS peteches -- see her service stanza below.  (user …)/(group …) are fields of the
+      ;; record, and the automation-key entry above is the precedent for pointing them at a real
+      ;; login instead of root: whatever the consumer's uid can't read might as well not exist.
       (sops-secret
        (key '("telegram_bot_token"))
        (file (local-file "../../secrets/hosts/agents/tiffany-bot.yaml"))
-       (user "tiffany")
-       (group "tiffany")
+       (user "peteches")
+       (group "users")
        (permissions #o400)
        (path "/run/secrets/tiffany-telegram-token")))
      #:extra-services
@@ -228,21 +227,33 @@
       ;; @peteches_pa_bot.  Code comes from the pushed ai-bots repo through
       ;; (peteches packages ai-bots), so a deploy only ever sees the commit pinned
       ;; there; state lives in /var/lib/tiffany and logs under /var/log, which
-      ;; alloy ships to Loki below.  It runs as its own unprivileged `tiffany'
-      ;; account, group and data directory included -- the service creates all
-      ;; three.  The packaged config.json is a read-only store file, so runtime
-      ;; paths and the allowlist arrive via the environment (TIFFANY_DATA_DIR,
-      ;; TIFFANY_ALLOWED_CHATS) and the token is opened inside the start lambda:
-      ;; 'sops-secrets is a shepherd requirement, so by the time anything reads it
-      ;; the decrypted file exists.  Chat ids belong in `allowed-chats', not in
-      ;; `environment' -- they are not secret but they are what decides which chats
-      ;; she answers at all (7642100300 = Pete's DM, private chat).
+      ;; alloy ships to Loki below.
+      ;;
+      ;; She runs AS peteches, because that is where her job actually lives: herdr's client socket
+      ;; is under /home/peteches (mode 700), pi and herdr are in his home profile rather than any
+      ;; system profile, and only he has passwordless sudo for herd -- so on a dedicated
+      ;; unprivileged account she could not list a Pi session, let alone start one.  That trades
+      ;; away the privilege separation, which is why manage-account? stays #f: a generated
+      ;; user-account carries this module's idea of home-directory plus a nologin shell, and
+      ;; emitting one for "peteches" would move his home and take away his login shell.  HOME has
+      ;; to be his real home too (pi reads ~/.pi; herdr finds its socket through ~/.config/herdr)
+      ;; while her state stays in /var/lib/tiffany via TIFFANY_DATA_DIR.  extra-paths is where
+      ;; herdr and pi come from, and TIFFANY_WORKSPACE points delegated Pi work at a writable
+      ;; checkout rather than the read-only store copy.  Chat ids belong in `allowed-chats', not in
+      ;; `environment' -- they are not secret, but they decide which chats she answers at all
+      ;; (7642100300 = Pete's DM, private chat).
       (service ai-bots-service-type
                (ai-bots-configuration
-                ;; `inherit` is the record-inheritance form (guix records) -- append would
-                ;; get a record where it wants a list.
                 (bots (list (ai-bot (inherit %tiffany-bot)
-                                    (allowed-chats '("7642100300")))))))
+                                    (allowed-chats '("7642100300"))
+                                    (user "peteches")
+                                    (group "users")
+                                    (manage-account? #f)
+                                    (home "/home/peteches")
+                                    (extra-paths '("/home/peteches/.guix-home/profile/bin"
+                                                   "/home/peteches/.guix-home/profile/sbin"))
+                                    (environment '("STRATA_MODEL=qwen3.8-flash-next"
+                                                   "TIFFANY_WORKSPACE=/home/peteches/area_51/aiBots")))))))
       ;; rules-lawyer — Discord bot, uses the strata engine on the comfyui
       ;; box (Intel Arc B70, SC117 Qwen3.8-Flash-Next IQ2_XS, proxied via
       ;; caddy as strata.ts.peteches.co.uk -> comfyui:8000) as its LLM

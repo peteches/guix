@@ -48,7 +48,7 @@
 (define-public ai-bots-repo-url "https://git.ts.peteches.co.uk/ai-bots.git/")
 
 ;; Pinned commit of the aiBots repository.  Replace the placeholder below together with this.
-(define-public ai-bots-commit "98c58406d98b5bf3c5b185b3d64929c72717d84c")
+(define-public ai-bots-commit "9bf7b6740b298af195af9604ef04c2859728535a")
 
 (define-public ai-bots
   (package
@@ -60,7 +60,7 @@
        (uri (git-reference (url ai-bots-repo-url) (commit ai-bots-commit)))
        (file-name (git-file-name name version))
        ;; Placeholder: replace with the hash Guix reports for the commit above.
-       (sha256 (base32 "1jrynflgn0lnp9gr9jqyabg2bsk80bf87l0p7aqgi8imxyrvr61p"))))
+       (sha256 (base32 "02a1pr4ipic01ikffclb91652ijrw8qilgszl6nncq8lnnjy4wb6"))))
     (build-system copy-build-system)
     ;; Nothing is compiled: node and ffmpeg are wanted at run time by the installed bots, so they
     ;; propagate instead of being build-only inputs.
