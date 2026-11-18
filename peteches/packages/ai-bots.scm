@@ -48,7 +48,7 @@
 (define-public ai-bots-repo-url "https://git.ts.peteches.co.uk/ai-bots.git/")
 
 ;; Pinned commit of the aiBots repository.  Replace the placeholder below together with this.
-(define-public ai-bots-commit "078ae3a2a5d1dda258d13cfeef2caa90588d2185")
+(define-public ai-bots-commit "f4bd8a142837f3ed2db921b544886fe25da4f4a9")
 
 (define-public ai-bots
   (package
@@ -59,10 +59,8 @@
        (method git-fetch)
        (uri (git-reference (url ai-bots-repo-url) (commit ai-bots-commit)))
        (file-name (git-file-name name version))
-       ;; Hash Guix reported for this commit (see the ritual above: poison, build, paste).
-       ;; Fetched here over a local git daemon because the tailnet node key on the git VM had
-       ;; expired and caddy answered 502; the content is that commit either way.
-       (sha256 (base32 "0bj8mviin9j07iqv55pxnclv77ngiql7i1ghkbza1gqq97fpr660"))))
+       ;; Hash Guix reported for this commit (poisoned first, per the ritual above).
+       (sha256 (base32 "1qw1pgqhas6y4qgc3cd2vk3qb7ajb15c52dq8z65j9knnl9fq6vf"))))
     (build-system copy-build-system)
     ;; Nothing is compiled: node and ffmpeg are wanted at run time by the installed bots, so they
     ;; propagate instead of being build-only inputs.
