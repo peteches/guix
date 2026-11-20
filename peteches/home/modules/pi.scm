@@ -47,7 +47,13 @@
 ;;; (creating it if absent), with the declared defaults taking precedence
 ;;; on any overlapping key -- the same "shell out at activation, merge with
 ;;; jq instead of symlinking" idiom claude.scm uses for ~/.claude.json's
-;;; oauth.scopes patch.
+;;; oauth.scopes patch.  That precedence is what makes a fleet default like
+;;; defaultProvider/defaultModel or httpIdleTimeoutMs survive pi's own
+;;; runtime writes until the next model switch rewrites them, and it only
+;;; works if the merge actually runs: the one-shot guix-home-service-type
+;;; starts with hands /activate an environment of HOME plus one marker and
+;;; no PATH, so the script has to carry its own -- see
+;;; %HOME-PI-SYSTEMS-MERGE-SCRIPT.
 ;;;
 ;;; The default models.json wires up koboldcpp.ts.peteches.co.uk (Caddy's
 ;;; reverse proxy onto the comfyui VM's koboldcpp instance) and
@@ -178,6 +184,7 @@
   #:use-module (guix records)
   #:use-module (ice-9 ftw)
   #:use-module (srfi srfi-1)
+  #:use-module ((gnu packages base) #:select (coreutils))
   #:use-module ((gnu packages bash) #:select (bash))
   #:use-module ((gnu packages web) #:select (jq))
   #:use-module ((peteches home modules claude)
@@ -335,6 +342,22 @@ pi-koboldcpp() {
 (define %home-pi-settings-merge-script "\
 set -eu
 defaults=\"$1\"; jq_bin=\"$2\"
+# PATH is passed in as $3 -- the coreutils bin directory, spliced by
+# HOME-PI-SETTINGS-ACTIVATION.  This script runs `dirname', `mkdir' and
+# `mv' by name, so it needs a PATH: when Guix Home's activation is started
+# by guix-home-service-type (the shepherd one-shot that every `guix deploy'
+# or system reconfigure triggers), the environment is exactly what that
+# service passes -- HOME plus GUIX_SYSTEM_IS_RUNNING_HOME_ACTIVATE and
+# nothing else, so PATH is absent and bash falls back to its compiled-in
+# default (/usr/local/bin:/bin:/usr/bin), which on a Guix system holds no
+# coreutils.  Without this line the merge dies in `mkdir -p \"$(dirname …)\"'
+# / `mv', and because HOME-PI-SETTINGS-ACTIVATION used to ignore `system*'
+# exit statuses, nothing said so: observed on agents 2026-11-20, where two
+# activations (Nov 18, Nov 20) had run =/activate= -- update-symlinks placed
+# every symlink, ~/.pi/agent/models.json included -- while this one step
+# silently skipped, leaving pi's runtime-written defaultProvider/defaultModel
+# in place instead of the fleet defaults.
+export PATH=\"$3\"
 target=\"$HOME/.pi/agent/settings.json\"
 mkdir -p \"$(dirname \"$target\")\"
 # Both branches go through a `> tmp && mv` redirection rather than `cp`, so
@@ -350,11 +373,20 @@ tmp=\"$target.merge.tmp\"
 (define (home-pi-settings-activation config)
   (let ((dir (home-pi-configuration-config-directory config)))
     (if (and dir (file-exists? (string-append dir "/settings.json")))
-        (let ((defaults (local-file (string-append dir "/settings.json")))
-              (bash-bin (file-append bash "/bin/bash"))
-              (jq-bin   (file-append jq "/bin/jq")))
-          #~(system* #$bash-bin "-c" #$%home-pi-settings-merge-script
-                     "home-pi-settings-merge" #$defaults #$jq-bin))
+        (let ((defaults       (local-file (string-append dir "/settings.json")))
+              (bash-bin       (file-append bash "/bin/bash"))
+              (jq-bin         (file-append jq "/bin/jq"))
+              (coreutils-bin  (file-append coreutils "/bin")))
+          ;; The exit status is checked on purpose: `system*' returns it rather
+          ;; than raising, which is what made the PATH failure above invisible.
+          ;; A failed merge now aborts home activation instead of drifting in
+          ;; silence -- see %HOME-PI-SETTINGS-MERGE-SCRIPT's PATH note.
+          #~(let ((status (system* #$bash-bin "-c"
+                                   #$%home-pi-settings-merge-script
+                                   "home-pi-settings-merge"
+                                   #$defaults #$jq-bin #$coreutils-bin)))
+              (unless (zero? status)
+                (error "home-pi: settings.json merge failed" status))))
         #~(begin))))
 
 (define-public home-pi-service-type
