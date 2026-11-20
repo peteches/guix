@@ -253,7 +253,16 @@
                                     (extra-paths '("/home/peteches/.guix-home/profile/bin"
                                                    "/home/peteches/.guix-home/profile/sbin"))
                                     (environment '("STRATA_MODEL=qwen3.8-flash-next"
-                                                   "TIFFANY_WORKSPACE=/home/peteches/area_51/aiBots")))))))
+                                                   "TIFFANY_WORKSPACE=/home/peteches/area_51/aiBots"
+                                                   ;; The engine she answers on (bots/Tiffany/host.mjs +
+                                                   ;; docs/rearchitecture-on-pi-durable.md §6 Phase 1). `durable` makes
+                                                   ;; the daemon hold ONE pi-durable Harness over
+                                                   ;; $TIFFANY_DATA_DIR/harness.sqlite3 for its whole life and listen on
+                                                   ;; tiffany-control.sock, so a CLI verb asks her instead of opening a
+                                                   ;; second owner of that file (durable has no cross-process write lock).
+                                                   ;; Roll back by deleting this line: the legacy loop is still there and
+                                                   ;; still the safer of the two until Phase 2 finishes.
+                                                   "TIFFANY_BACKEND=durable")))))))
       ;; rules-lawyer — Discord bot, uses the strata engine on the comfyui
       ;; box (Intel Arc B70, SC117 Qwen3.8-Flash-Next IQ2_XS, proxied via
       ;; caddy as strata.ts.peteches.co.uk -> comfyui:8000) as its LLM
