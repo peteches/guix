@@ -62,12 +62,12 @@
 (define-public ai-bots-repo-url "https://git.ts.peteches.co.uk/ai-bots.git/")
 
 ;; Pinned commit of the aiBots repository.  Replace the placeholder below together with this.
-(define-public ai-bots-commit "16a13bb0d907c477010345c7f0ccaf26e69189d3")
+(define-public ai-bots-commit "cc6e9036270e714f4456576e4bf793f32fe7fe2e")
 
 (define-public ai-bots
   (package
     (name "ai-bots")
-    (version "0.3.3")
+    (version "0.3.4")
     (source
      (origin
        (method git-fetch)
@@ -83,9 +83,9 @@
       ;; …d574 measured here), so the build fails with "hash mismatch" instead of "invalid length".
       ;; Copy the reported string verbatim; `guix hash -rx --format=base16 <checkout>' plus a converter is
       ;; how I confirmed which one was right when Guix's own message misled me.  Every bump repeats the ritual
-      ;; (poison to all-zeros, build once, copy Guix's "actual hash"): this value came from 0.3.3 at 16a13bb.
+      ;; (poison to all-zeros, build once, copy Guix's "actual hash"): this value came from 0.3.4 at cc6e903.
       ;; Note a nix-base32 digest may legitimately start with '0' — it is a digit, not a "0x" prefix.
-       (sha256 (base32 "0fsphbhq6rrgg3pqdb6n9nphx7rqs8l4il98565y7mrdn0f7bjnb"))))
+       (sha256 (base32 "0ixprqfmkjl58rs021rbabxcsjsxb34736myr3rm4z99mxdzl0f4"))))
     (build-system copy-build-system)
     ;; Nothing is compiled: node and ffmpeg are wanted at run time by the installed bots, so they
     ;; propagate instead of being build-only inputs.  The @earendil-works packages propagate too:
