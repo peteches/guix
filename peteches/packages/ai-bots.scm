@@ -73,16 +73,19 @@
 
 (define-public ai-bots-repo-url "https://git.ts.peteches.co.uk/ai-bots.git/")
 
-;; Pinned commit of the aiBots repository: 92b05b6, "fix(tiffany): a dangerous tool says which of its CALLS need asking", on top of
-;; 70d8e6a ("fix(tiffany): approve/deny ask the daemon that owns the store") and 3564fda/1f1e4ce (the approval gate itself, increment B:
-;; risky tools park on a signal instead of holding the turn open) and 3788a3d ("deps: the durable line moves to 1.6.0", which
-;; re-pinned docs/dependencies.json — that JSON is read at RUNTIME by bots/Tiffany/index.mjs status, so the installed
-;; source has to carry it or she reports the wrong pinned versions).  Why these two fixes matter packaged: `bin/tiffany approve` shipped in
-;; the store runs in a shell with no TIFFANY_BACKEND, which is exactly the case that used to skip the daemon's control socket and answer a
-;; lock error; and a gate that asks permission for `{action:"status"}` pings him for every service glance she makes.  The version stays at
+;; Pinned commit of the aiBots repository: 816e973 (docs note + AGENTS for the silent research turn), on top of 13489c2
+;; ("fix(tiffany): search survives DDG's scheme-less wrapper, and a turn that runs out of rounds is continued"), on top of 92b05b6/70d8e6a/3564fda
+;; (the approval gate and its two fixes) and 3788a3d (deps → 1.6.0, which re-pinned docs/dependencies.json — that JSON is read at RUNTIME by
+;; `bots/Tiffany/index.mjs status`, so the installed source has to carry it or she reports the wrong pinned versions).  Why this one matters packaged:
+;; DuckDuckGo is Tiffany's only search provider on this box (no SEARXNG_URL, no BRAVE_API_KEY), and its result wrappers are written
+;; protocol-relative now (`href="//duckduckgo.com/l/?uddg=…"`), which the old `^https?:`-anchored pattern left on every URL — so a packaged
+;; search returned "no results" for queries the live page had ten real hits for, and at 11:14 today a research turn burned six of its eight tool
+;; rounds retrying queries and then hit durable's turn limit without an answer. Packaged too: `agent.maxSteps` 8 → 20 (the same number is
+;; durable's conversation maxTurns) and the continuation in `bots/Tiffany/host.mjs`, so a run that spends its budget gets one more round on the
+;; results it already has instead of answering "that came back empty".  The version stays at
 ;; 0.4.0 on purpose: what is deployed is already 0.4.0, so only the store path's hash moves.  Bump the commit together with the sha256
 ;; below: commit and hash move as one, and a fresh commit on a stale hash silently reuses the old checkout.
-(define-public ai-bots-commit "92b05b69fac0a3c446c9d724a8f179e927c8ce15")
+(define-public ai-bots-commit "816e9732124933d1517a2ad7d50f1dcf13cb547b")
 
 (define-public ai-bots
   (package
@@ -113,13 +116,18 @@
       ;;   expected hash: <the poison>   actual hash: 19vsnzrp65nylzldnf2vs617669x1q0a2if5m0yhg7xrz2s4mpmy
       ;; for the checkout it had just fetched (/gnu/store/v487ypdmnjgrq383ifyf45w08wf9fp1w-ai-bots-0.4.0-checkout);
       ;; pasted back verbatim, the same command built /gnu/store/zgdjhcq1955kqbp976l5yhf4c54c99cq-ai-bots-0.4.0.
+      ;; Same ritual at 816e973: poisoned …mpmy → …mpmz, and `guix build -L . -m /tmp/manifest-ai-bots.scm' answered
+      ;;   expected hash: 19vsnzrp65nylzldnf2vs617669x1q0a2if5m0yhg7xrz2s4mpmz
+      ;;   actual hash:   0lrl19aga7a476r6dw6hyk03qrj45gkkxjcpk880vh3xw2lvj290
+      ;; for /gnu/store/xx05sy8xb2lghq33frs5mi1siqj43jj2-ai-bots-0.4.0-checkout, whose own `guix hash -rx' agrees character for character —
+      ;; and that digest really does begin with the digit '0', which is why this one looks like a hex prefix and is not one.
       ;; Two things do NOT work on this box, both learned doing it: a literal all-zeros digest fails to *load*
       ;; ("guix/base32.scm:237:27 … bytevector-u8-ref: Argument 2 out of range: 28", so poison the last character
       ;; instead — 51 zeros and a '1' loads fine), and the spec `peteches/packages/ai-bots.scm:ai-bots:source'
       ;; answers "unknown package" here, so build through a manifest holding (packages->manifest (list ai-bots))
       ;; and let the source derivation fail early; that is just as cheap, since nothing else builds.
       ;; Note a nix-base32 digest may legitimately start with '0' — it is a digit, not a "0x" prefix.
-       (sha256 (base32 "19vsnzrp65nylzldnf2vs617669x1q0a2if5m0yhg7xrz2s4mpmy"))))
+       (sha256 (base32 "0lrl19aga7a476r6dw6hyk03qrj45gkkxjcpk880vh3xw2lvj290"))))
     (build-system copy-build-system)
     ;; Nothing is compiled: node and ffmpeg are wanted at run time by the installed bots, so they
     ;; propagate instead of being build-only inputs.  The @earendil-works packages propagate too:
