@@ -73,14 +73,16 @@
 
 (define-public ai-bots-repo-url "https://git.ts.peteches.co.uk/ai-bots.git/")
 
-;; Pinned commit of the aiBots repository: 3564fda, "docs §10 + note + AGENTS: increment B — the gate exists", on top of 1f1e4ce ("risky tools wait for his permission, parked on a signal")
-;; instead of holding the turn open, and bots_wait does") and 3788a3d ("deps: the durable line moves to 1.6.0", which
+;; Pinned commit of the aiBots repository: 92b05b6, "fix(tiffany): a dangerous tool says which of its CALLS need asking", on top of
+;; 70d8e6a ("fix(tiffany): approve/deny ask the daemon that owns the store") and 3564fda/1f1e4ce (the approval gate itself, increment B:
+;; risky tools park on a signal instead of holding the turn open) and 3788a3d ("deps: the durable line moves to 1.6.0", which
 ;; re-pinned docs/dependencies.json — that JSON is read at RUNTIME by bots/Tiffany/index.mjs status, so the installed
-;; source has to carry it or she reports the wrong pinned versions).  The version was left at 0.4.0 for this re-pin on
-;; purpose: what is deployed is 0.3.4, so 0.4.0 is already strictly greater and a second bump would only churn the
-;; store-path name.  Bump the commit together with the sha256 below: commit and hash move as one, and a fresh commit
-;; on a stale hash silently reuses the old checkout.
-(define-public ai-bots-commit "3564fdae657af0e6c7d47bd0e3d7977f59b4d42f")
+;; source has to carry it or she reports the wrong pinned versions).  Why these two fixes matter packaged: `bin/tiffany approve` shipped in
+;; the store runs in a shell with no TIFFANY_BACKEND, which is exactly the case that used to skip the daemon's control socket and answer a
+;; lock error; and a gate that asks permission for `{action:"status"}` pings him for every service glance she makes.  The version stays at
+;; 0.4.0 on purpose: what is deployed is already 0.4.0, so only the store path's hash moves.  Bump the commit together with the sha256
+;; below: commit and hash move as one, and a fresh commit on a stale hash silently reuses the old checkout.
+(define-public ai-bots-commit "92b05b69fac0a3c446c9d724a8f179e927c8ce15")
 
 (define-public ai-bots
   (package
@@ -99,25 +101,25 @@
       ;; in this Guix — flip a character instead), build once, copy the
       ;; hash Guix reports.  A stale hash here reuses last week's checkout instead of failing.
       ;; The trap is nix-base32's alphabet, not hex: the digits are 0123456789abcdfghijklmnpqrsvwxyz, so a leading
-      ;; '0' and any 'x' (this digest has one: …grf0xgg0r0lardjgz…) are ordinary characters, not a "0x" prefix Guix
+      ;; '0' and any 'x' (this digest has two: …617669x1q0a… and …xrz2s4mpmy) are ordinary characters, not a "0x" prefix Guix
       ;; added.  Read it as hex anyway, strip the apparent prefix, left-pad back to the 52 characters Guix wants,
       ;; and the file loads, decodes and round-trips while describing a digest differing from the real one only in
       ;; its last byte (measured once on this box: …d500 against …d574) — so it fails as "hash mismatch", which
       ;; looks nothing like the padding mistake it was.  Copy what Guix prints; never re-format a digest by hand.
       ;; Copy the reported string verbatim; `guix hash -rx --format=base16 <checkout>' plus a converter is
       ;; how I confirmed which one was right when Guix's own message misled me.  Every bump repeats the ritual
-      ;; (poison to all-zeros, build once, copy Guix's "actual hash"): this value came from 0.4.0 at 3788a3d and
-      ;; was measured twice rather than typed by hand — `guix build -L . -m /tmp/manifest-ai-bots.scm' answered
-      ;;   expected hash: <the poison>   actual hash: 0112kp4i2ilz8qkmgfj1ldnjwzcrgrf0xgg0r0lardjgz10mbds0
-      ;; and `guix hash -rx /gnu/store/4q5bslgim39vrclvm6hk0i5nqagxc8js-ai-bots-0.4.0-checkout', on the checkout
-      ;; Guix had just fetched, re-derived exactly that string, so the two agree without a converter between them.
+      ;; (poison one character, build once, copy Guix's "actual hash"): this value came from 0.4.0 at 92b05b6, poisoned
+      ;; …yqly → …yqlz, and `guix build -L . -m /tmp/manifest-ai-bots.scm' answered
+      ;;   expected hash: <the poison>   actual hash: 19vsnzrp65nylzldnf2vs617669x1q0a2if5m0yhg7xrz2s4mpmy
+      ;; for the checkout it had just fetched (/gnu/store/v487ypdmnjgrq383ifyf45w08wf9fp1w-ai-bots-0.4.0-checkout);
+      ;; pasted back verbatim, the same command built /gnu/store/zgdjhcq1955kqbp976l5yhf4c54c99cq-ai-bots-0.4.0.
       ;; Two things do NOT work on this box, both learned doing it: a literal all-zeros digest fails to *load*
       ;; ("guix/base32.scm:237:27 … bytevector-u8-ref: Argument 2 out of range: 28", so poison the last character
       ;; instead — 51 zeros and a '1' loads fine), and the spec `peteches/packages/ai-bots.scm:ai-bots:source'
       ;; answers "unknown package" here, so build through a manifest holding (packages->manifest (list ai-bots))
       ;; and let the source derivation fail early; that is just as cheap, since nothing else builds.
       ;; Note a nix-base32 digest may legitimately start with '0' — it is a digit, not a "0x" prefix.
-       (sha256 (base32 "1r6sbf8vfcwpp2x5h2h4nvlp156brykjx9rxpx1i5xijh4wcyqly"))))
+       (sha256 (base32 "19vsnzrp65nylzldnf2vs617669x1q0a2if5m0yhg7xrz2s4mpmy"))))
     (build-system copy-build-system)
     ;; Nothing is compiled: node and ffmpeg are wanted at run time by the installed bots, so they
     ;; propagate instead of being build-only inputs.  The @earendil-works packages propagate too:
