@@ -3231,3 +3231,287 @@ plus @file{<pi agent dir>/mcp.json} for pi-specific overrides.")
     (description
      "Durable, resumable AI conversations and tasks: a Harness that keeps talking across restarts, sleep and failure.")
     (license license:expat)))
+
+;; ── The 1.6.0 line: pi-durable with Signals, parked tools and image fitting ─────────
+;;
+;; @earendil-works/pi-durable 1.6.0 (published 2026-11-20) is the release aiBots
+;; docs/rearchitecture-on-pi-durable.md §6 Phase 4 waits for: defineSignal/harness.signal, tasks that park
+;; inside execute() and resume after a restart, sleeps that wake on a signal, tools that hand back a parked
+;; job, and createFitImagesExtension.  This block pins the whole monorepo line at 1.6.0 — chord, pi-ai,
+;; pi-schema and pi-telemetry move with it because every @earendil-works dependency is an *exact* pin.
+;; Both lines coexist here exactly as chord 0.87.1 and 1.5.2 already do: nothing in
+;; peteches/packages/ai-bots.scm points at these yet, so adding them changes no deployed store path; the
+;; move is made by switching that one input, which also crosses a one-way door for any 1.5.2-written
+;; harness.sqlite3 (a 1.6.0 Harness upgrades pi.tool to v4 / pi.generation to v3 and an older Harness then
+;; blocks those tasks as task_too_old).
+;;
+;; What has to be *built* was re-measured on the unpacked 1.6.0 tarballs instead of carried over from the
+;; 1.5.2 recipes above.  A static+dynamic import walk (import/export statements plus import("…") literals)
+;; over every entry aiBots actually imports — pi-durable "." and "./storage/sqlite/node", chord/context,
+;; pi-ai/models, pi-ai/providers/faux, pi-ai/api/openai-completions.lazy — finds exactly four non-builtin
+;; packages outside this set: @earendil-works/pi-schema (and its /formats subpath), @earendil-works/pi-telemetry,
+;; partial-json and chord itself.  In particular nothing eager reaches diff, @silvia-odwyer/photon or
+;; pi-codemode at 1.6.0; where they really live in the shipped tree:
+;;
+;;   diff            — dist/tools/edit-diff.js only, plus the ./tools barrel (measured: "./tools" wants diff,
+;;                     "." does not), which is durable's apply-patch tool we never register
+;;   photon          — dist/images/{index,node,cloudflare,node-worker}.js, i.e. behind ./images, ./images/node
+;;                     and ./images/cloudflare; the new ./images/fit entry 1.6.0 adds does *not* reach it,
+;;                     so fitting pictures before storing them still needs no photon package
+;;   pi-codemode     — dist/codemode/*.js behind ./codemode (which wants pi-codemode/declarations and
+;;                     /source) and dist/tool-search/tool-search.js
+;;
+;; The failure mode to watch for is the good one: if a swept dependency turns out to be eager after all, the
+;; daemon dies at start with ERR_MODULE_NOT_FOUND naming it.  engines.node is still >=22.19.0 in every one of
+;; these six tarballs, so ai-bots.scm's node floor check stays.
+;;
+;; Sweep lists below were checked name-by-name against each 1.6.0 package.json, not inherited: Guix's configure
+;; phase runs `npm install --offline', which is *not* --omit=dev, while delete-dependencies sweeps
+;; dependencies, devDependencies, peerDependencies and optionalDependencies in one go — so a single declared
+;; name left behind (even an optional peer like chord's esbuild) fails the build with ENOTCACHED.
+
+(define-public node-openai-7.59.0
+  (package
+    (name "node-openai")
+    (version "7.59.0")
+    ;; pi-ai 1.6.0 pins openai at exactly 7.59.0, so this recipe sits beside node-openai-7.19.0 above rather
+    ;; than replacing it — the 1.5.2 line keeps resolving against 7.19.0 until ai-bots.scm moves its pi-durable
+    ;; input.  openai declares no runtime dependencies at all here (streamed chat completions run on Node's
+    ;; built-in fetch); everything in its manifest is an optional peer, and delete-dependencies sweeps peers
+    ;; too, so all seven are named below.
+    ;;
+    ;; google-auth-library is the one name that was NOT in 7.19.0's deletion list: measured from the unpacked
+    ;; 7.59.0 package.json its entire declared set is ws, zod, undici, @smithy/hash-node,
+    ;; @smithy/signature-v4, @aws-sdk/credential-provider-node and google-auth-library (all optional peers).
+    ;; Leave any of them unswept and npm's --offline install dies at 'configure' with ENOTCACHED — that is how
+    ;; the 7.19.0 recipe first failed, on @aws-sdk/credential-provider-node.
+    (source
+     (origin
+       (method url-fetch)
+       (uri "https://registry.npmjs.org/openai/-/openai-7.59.0.tgz")
+       (sha256
+        (base32 "1afvlip452zb8xvxmcb2ica8xqn7a4l06av20afgqznix35fl7bz"))))
+    (build-system node-build-system)
+    (arguments
+     (list
+      #:tests? #f
+      #:phases
+      #~(modify-phases %standard-phases
+          (delete 'build)
+          (add-after 'patch-dependencies 'delete-dev-dependencies
+            (lambda _
+              (modify-json (delete-dependencies '("ws" "zod" "undici"
+                                                  "@smithy/hash-node"
+                                                  "@smithy/signature-v4"
+                                                  "@aws-sdk/credential-provider-node"
+                                                  "google-auth-library"))))))))
+    (home-page "https://github.com/openai/openai-node#readme")
+    (synopsis "The official TypeScript library for the OpenAI API")
+    (description "The official TypeScript library for the OpenAI API")
+    (license license:asl2.0)))
+
+(define-public node-earendil-works-pi-schema-1.6.0
+  (package
+    (name "node-earendil-works-pi-schema")
+    (version "1.6.0")
+    ;; Pure schema code with no runtime dependencies — its package.json declares only devDependencies, and the
+    ;; eight names below are that whole list (verified against 1.6.0: ajv, ajv-formats, zod, typebox, vitest,
+    ;; ata-validator, @oh-my-pi/omptype, @cfworker/json-schema), so nothing is left for npm --offline to chase.
+    ;; pi-schema tests itself against those validators; we only use its dist/.
+    (source
+     (origin
+       (method url-fetch)
+       (uri "https://registry.npmjs.org/@earendil-works/pi-schema/-/pi-schema-1.6.0.tgz")
+       (sha256
+        (base32 "09cdz2746i48f2i2lkpdhb66p3bqj19pva8kw74asnqwk34dy253"))))
+    (build-system node-build-system)
+    (arguments
+     (list
+      #:tests? #f
+      #:phases
+      #~(modify-phases %standard-phases
+          (delete 'build)
+          (add-after 'patch-dependencies 'delete-dev-dependencies
+            (lambda _
+              (modify-json (delete-dependencies '("ajv" "zod" "vitest" "typebox"
+                                                  "ajv-formats" "ata-validator"
+                                                  "@oh-my-pi/omptype"
+                                                  "@cfworker/json-schema"))))))))
+    (home-page "https://github.com/earendil-works/pi#readme")
+    (synopsis
+     "Schema definition and validation library shared by the pi packages")
+    (description
+     "Schema definition and validation library shared by the pi packages.")
+    (license license:expat)))
+
+(define-public node-earendil-works-pi-telemetry-1.6.0
+  (package
+    (name "node-earendil-works-pi-telemetry")
+    (version "1.6.0")
+    ;; No dependencies at all; @types/node and vitest are its complete devDependencies list at 1.6.0, and both
+    ;; must still be deleted or npm --offline tries to fetch them.
+    (source
+     (origin
+       (method url-fetch)
+       (uri "https://registry.npmjs.org/@earendil-works/pi-telemetry/-/pi-telemetry-1.6.0.tgz")
+       (sha256
+        (base32 "1icyqg096qp1k23nw1f23arnxzm0pmwsirlvc501jxfxpwz26a3s"))))
+    (build-system node-build-system)
+    (arguments
+     (list
+      #:tests? #f
+      #:phases
+      #~(modify-phases %standard-phases
+          (delete 'build)
+          (add-after 'patch-dependencies 'delete-dev-dependencies
+            (lambda _
+              (modify-json (delete-dependencies '("@types/node" "vitest"))))))))
+    (home-page "https://github.com/earendil-works/pi#readme")
+    (synopsis
+     "Vendor-neutral telemetry contracts for the pi packages")
+    (description
+     "Vendor-neutral telemetry contracts for the pi packages; a no-op unless an OpenTelemetry SDK is installed.")
+    (license license:expat)))
+
+(define-public node-earendil-works-chord-1.6.0
+  (package
+    (name "node-earendil-works-chord")
+    (version "1.6.0")
+    ;; Declared runtime deps at 1.6.0 are exactly pi-schema and pi-telemetry; esbuild, react and ws remain
+    ;; *optional* peerDependencies (peerDependenciesMeta says so) and the eight names below are that peer set
+    ;; plus its dev list (@types/react, @types/react-dom, @types/ws, react, react-dom, vitest, ws).  So, as at
+    ;; 1.5.2, this recipe needs no esbuild input: re-measured on the unpacked 1.6.0 tree, the seven subpaths
+    ;; pi-durable imports (./context ./delta ./json ./output ./watch ./sqlite ./sqlite/node) import nothing but
+    ;; node:* and pi-telemetry — no ws, no react, and nothing bundles at build time because pi ships prebuilt
+    ;; dist/.  esbuild is named in the deletion list even though it is only a peer: delete-dependencies sweeps
+    ;; peerDependencies as well, and an unswept optional peer still makes npm --offline fail at 'configure'.
+    (source
+     (origin
+       (method url-fetch)
+       (uri "https://registry.npmjs.org/@earendil-works/chord/-/chord-1.6.0.tgz")
+       (sha256
+        (base32 "05ywmsgmm6jj0cj6ycmlzd35jfl5f2hia1sg3s47knqviwx1jrrr"))))
+    (build-system node-build-system)
+    (arguments
+     (list
+      #:tests? #f
+      #:phases
+      #~(modify-phases %standard-phases
+          (delete 'build)
+          (add-after 'patch-dependencies 'delete-dev-dependencies
+            (lambda _
+              (modify-json (delete-dependencies '("ws" "react" "esbuild"
+                                                  "vitest" "@types/ws"
+                                                  "react-dom" "@types/react"
+                                                  "@types/react-dom"))))))))
+    (inputs (list node-earendil-works-pi-schema-1.6.0
+                  node-earendil-works-pi-telemetry-1.6.0))
+    (home-page "https://github.com/earendil-works/pi#readme")
+    (synopsis
+     "Code orchestration and bundling utilities for pi, built on esbuild")
+    (description
+     "Code orchestration and bundling utilities for pi, built on esbuild.")
+    (license license:expat)))
+
+(define-public node-earendil-works-pi-ai-1.6.0
+  (package
+    (name "node-earendil-works-pi-ai")
+    (version "1.6.0")
+    ;; @anthropic-ai/sdk is omitted here, as in the 1.5.2 recipe: re-checked against 1.6.0's declared set it is
+    ;; still there and still pinned exactly at 0.129.0 (the versions this file carries, 0.91.1 and 0.124.0, are
+    ;; for the 0.87.1 line and would not satisfy the pin), and it is still reachable only from
+    ;; dist/api/anthropic-messages(.lazy).js — the import walk over every pi-ai entry aiBots imports
+    ;; (./models, ./providers/faux, ./api/openai-completions.lazy) found no static path to it.  Tiffany talks to
+    ;; strata through openai-completions only; turning Anthropic models on needs the SDK back at 0.129.0, and
+    ;; Bedrock/Gemini need their own closures (see the note at the top of this file).  The other swept provider
+    ;; deps are present under the same names as at 1.5.2, versions only moved: @aws-sdk/client-bedrock-runtime
+    ;; 3.1127.0, @google/genai 2.32.0, @smithy/node-http-handler 4.12.1.
+    ;;
+    ;; The dev list is unchanged in shape too (@types/node 22.19.19, canvas 3.2.3, typebox 1.3.27,
+    ;; vitest 4.1.12) and must stay swept for the same reason the 0.87.1 and 1.5.2 recipes give: Guix's configure
+    ;; phase runs `npm install --offline', which is not --omit=dev, so one leftover dev dependency — @types/node
+    ;; was enough at 1.5.2 — fails the build with ENOTCACHED.  canvas matters most there (a native addon that
+    ;; would try to compile).
+    ;;
+    ;; What did move for us: openai's pin went 7.19.0 -> 7.59.0, so this recipe takes node-openai-7.59.0 as an
+    ;; input; partial-json is still 0.1.7 and both proxy agents are still 9.1.0, so those recipes are untouched.
+    (source
+     (origin
+       (method url-fetch)
+       (uri "https://registry.npmjs.org/@earendil-works/pi-ai/-/pi-ai-1.6.0.tgz")
+       (sha256
+        (base32 "0is7579617imfvl7dgmvv6p6gl3n917xl9pfgz5mkjabazn150yn"))))
+    (build-system node-build-system)
+    (arguments
+     (list
+      #:tests? #f
+      #:phases
+      #~(modify-phases %standard-phases
+          (delete 'build)
+          (add-after 'patch-dependencies 'delete-dev-dependencies
+            (lambda _
+              (modify-json (delete-dependencies '("@anthropic-ai/sdk"
+                                                  "@aws-sdk/client-bedrock-runtime"
+                                                  "@google/genai"
+                                                  "@smithy/node-http-handler"
+                                                  "canvas" "vitest" "typebox"
+                                                  "@types/node"))))))))
+    (inputs (list node-earendil-works-pi-schema-1.6.0
+                  node-earendil-works-pi-telemetry-1.6.0
+                  node-openai-7.59.0
+                  node-partial-json-0.1.7
+                  node-http-proxy-agent-9.1.0
+                  node-https-proxy-agent-9.1.0))
+    (home-page "https://github.com/earendil-works/pi#readme")
+    (synopsis
+     "Unified LLM API with automatic model discovery and provider configuration")
+    (description
+     "Unified LLM API with automatic model discovery and provider configuration.")
+    (license license:expat)))
+
+(define-public node-earendil-works-pi-durable-1.6.0
+  (package
+    (name "node-earendil-works-pi-durable")
+    (version "1.6.0")
+    ;; diff (apply_patch / the ./tools barrel), @silvia-odwyer/photon (image downscaling) and pi-codemode are
+    ;; deleted from package.json because no code path Tiffany uses imports them — measured on 1.6.0 as well as
+    ;; on 1.5.2, with the exact locations in the block comment above this line: diff sits only in
+    ;; dist/tools/edit-diff.js and the ./tools barrel, photon only in dist/images/{index,node,
+    ;; cloudflare,node-worker}.js behind ./images* (the new ./images/fit entry does not reach it), pi-codemode
+    ;; behind ./codemode and dist/tool-search/.  Re-add them if a turn ever asks for apply_patch or the ./tools
+    ;; barrel, sends oversized images down a path that goes through ./images rather than ./images/fit, or
+    ;; enables codemode — each fails when that feature is used, not at load time.
+    ;;
+    ;; 1.6.0 declares all of these (photon now at 0.3.3, which is why this file carries a 0.3.4 recipe for the
+    ;; 0.87.1 line) plus dev-only vitest, fake-indexeddb and @cloudflare/vitest-plugin; those six names are its
+    ;; complete swept set, verified against its package.json, so no name from the 1.5.2 recipe became a real
+    ;; dependency here.
+    (source
+     (origin
+       (method url-fetch)
+       (uri "https://registry.npmjs.org/@earendil-works/pi-durable/-/pi-durable-1.6.0.tgz")
+       (sha256
+        (base32 "0mfqvnk8p538h7ppb82pdpgk8mqgcbysv1yy8nckmmahvxzxsvg7"))))
+    (build-system node-build-system)
+    (arguments
+     (list
+      #:tests? #f
+      #:phases
+      #~(modify-phases %standard-phases
+          (delete 'build)
+          (add-after 'patch-dependencies 'delete-dev-dependencies
+            (lambda _
+              (modify-json (delete-dependencies '("vitest" "fake-indexeddb"
+                                                  "@cloudflare/vitest-plugin"
+                                                  "diff" "@silvia-odwyer/photon"
+                                                  "@earendil-works/pi-codemode"))))))))
+    (inputs (list node-earendil-works-chord-1.6.0
+                  node-earendil-works-pi-ai-1.6.0
+                  node-earendil-works-pi-schema-1.6.0
+                  node-earendil-works-pi-telemetry-1.6.0))
+    (home-page "https://github.com/earendil-works/pi#readme")
+    (synopsis
+     "Durable, resumable AI conversations and tasks for pi")
+    (description
+     "Durable, resumable AI conversations and tasks: a Harness that keeps talking across restarts, sleep and failure.")
+    (license license:expat)))
