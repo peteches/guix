@@ -22,11 +22,14 @@
 ;;; bots/Tiffany/host.mjs imports @earendil-works/pi-durable, /chord/context and pi-ai/models as bare
 ;;; specifiers, and ESM ignores NODE_PATH.  So the package installs a node_modules farm next to the
 ;;; code — symlinks into store paths of Guix-packaged packages from
-;;; peteches/packages/pi-coding-agent.scm (the 1.5.2 line).  Symlinks are enough because each of those
+;;; peteches/packages/pi-coding-agent.scm (the 1.6.0 line from 0.4.0 on; the 1.5.2 line is still packaged
+;;; beside it, but nothing in here points at it any more).  Symlinks are enough because each of those
 ;;; carries its whole npm closure inside itself as real directories (npm --install-links; checked
 ;;; against the built output), which is also why none of the realpath-vs-symlink trouble described at
 ;;; length in that file applies here: nothing resolves out of a symlink into a bare store path.
-;;; openai and partial-json need no entry — they already live inside pi-ai's own tree.
+;;; openai (7.59.0 at this line) and partial-json need no entry: re-measured on the built 1.6.0 output, pi-ai's
+;;; only remaining declared dependencies are absolute file:///gnu/store paths, and those trees sit inside pi-ai's
+;;; own store path as real directories (find … -name openai answers type 'd' with no link target).
 ;;;
 ;;; Source comes from gitolite over plain HTTPS, the same way rules-lawyer does it:
 ;;;
@@ -53,50 +56,76 @@
 ;;; synthesized .wav has to be transcoded before it can be sent.  src/lib/system.mjs looks on
 ;;; PATH first and then scans /gnu/store, so having ffmpeg in the profile is enough either way.
 ;;;
-;;; Updating the pin: set AI-BOTS-COMMIT to the commit you pushed, run
-;;;   guix build -f peteches/packages/ai-bots.scm
-;;; Guix answers "hash mismatch in ... got SHA256: <new>" — put that into the sha256.  Commit
-;;; and hash move together; a fresh commit with a stale hash is the half-update that eats a
+;;; Updating the pin: set ai-bots-commit to the commit you pushed — read it from `git log -1 --format=%H' rather
+;;; than from memory, and confirm it is actually published, because guix fetches over plain HTTPS from
+;;; ai-bots-repo-url and a commit that only exists in someone's working tree is unfetchable (the anonymous ref
+;;; listing at <url>/info/refs?service=git-upload-pack answers without credentials here).  Then poison the
+;;; sha256 below and build through a manifest, because two more convenient forms do not work in this tree:
+;;;   printf '(use-modules (peteches packages ai-bots))\n(packages->manifest (list ai-bots))' >/tmp/manifest-ai-bots.scm
+;;;   guix build -L . -m /tmp/manifest-ai-bots.scm
+;;; Guix answers "expected hash: <poison> / actual hash: <new>" — copy that string verbatim, and re-measure it
+;;; with `guix hash -rx <the …-ai-bots-<version>-checkout> path the message names' before trusting it.  What does
+;;; NOT work here, each measured: `guix build -f peteches/packages/ai-bots.scm' (the file ends in define-public,
+;;; which evaluates to #<unspecified>, so -f reports "not something we can build"), the spec form
+;;; MODULE.scm:ai-bots:source ("unknown package"), and a digest poisoned to literal all-zeros (it fails to load).
+;;; Commit and hash move together; a fresh commit with a stale hash is the half-update that eats a
 ;;; build before it errors.
 
 (define-public ai-bots-repo-url "https://git.ts.peteches.co.uk/ai-bots.git/")
 
-;; Pinned commit of the aiBots repository.  Replace the placeholder below together with this.
-(define-public ai-bots-commit "cc6e9036270e714f4456576e4bf793f32fe7fe2e")
+;; Pinned commit of the aiBots repository: 3788a3d, "deps: the durable line moves to 1.6.0", which re-pins
+;; docs/dependencies.json — that JSON is read at RUNTIME by bots/Tiffany/index.mjs status, so the installed
+;; source has to carry it or she reports the wrong pinned versions.  Bump it together with the sha256 below:
+;; commit and hash move as one, and a fresh commit on a stale hash silently reuses the old checkout.
+(define-public ai-bots-commit "3788a3d8c2cd991d00ad3bc2752ed4e45d8ca2d2")
 
 (define-public ai-bots
   (package
     (name "ai-bots")
-    (version "0.3.4")
+    ;; 0.4.0 because the engine line moves, not just the source: pi-durable 1.6.0 changes restart semantics
+    ;; (a parked tool call is re-asked after a crash instead of answered with a synthetic error).  The version
+    ;; names the store path — …-ai-bots-<version>/bin/tiffany — and that path is what shepherd compares, so
+    ;; bumping here is also how the running service gets forced to notice.  Never goes backwards or stays put.
+    (version "0.4.0")
     (source
      (origin
        (method git-fetch)
        (uri (git-reference (url ai-bots-repo-url) (commit ai-bots-commit)))
        (file-name (git-file-name name version))
-      ;; Hash for the commit above, obtained by the ritual: poison it to all-zeros, build once, copy the
+      ;; Hash for the commit above, obtained by the ritual: poison it (a literal all-zeros digest does not load
+      ;; in this Guix — flip a character instead), build once, copy the
       ;; hash Guix reports.  A stale hash here reuses last week's checkout instead of failing.
-      ;; This one is a trap in two layers: its first two characters are "0x", which reads exactly like a
-      ;; hexadecimal prefix that Guix had added — and 'x' really is a digit in nix-base32 (the alphabet is
-      ;; 0123456789abcdfghijklmnpqrsvwxyz).  Strip those two chars and you get a legal-looking 50-char
-      ;; string; left-pad it back to the 52 Guix wants and the file loads fine, decodes fine, round-trips
-      ;; fine — and describes a digest that differs from the real one only in its last byte (…d500 vs
-      ;; …d574 measured here), so the build fails with "hash mismatch" instead of "invalid length".
+      ;; The trap is nix-base32's alphabet, not hex: the digits are 0123456789abcdfghijklmnpqrsvwxyz, so a leading
+      ;; '0' and any 'x' (this digest has one: …grf0xgg0r0lardjgz…) are ordinary characters, not a "0x" prefix Guix
+      ;; added.  Read it as hex anyway, strip the apparent prefix, left-pad back to the 52 characters Guix wants,
+      ;; and the file loads, decodes and round-trips while describing a digest differing from the real one only in
+      ;; its last byte (measured once on this box: …d500 against …d574) — so it fails as "hash mismatch", which
+      ;; looks nothing like the padding mistake it was.  Copy what Guix prints; never re-format a digest by hand.
       ;; Copy the reported string verbatim; `guix hash -rx --format=base16 <checkout>' plus a converter is
       ;; how I confirmed which one was right when Guix's own message misled me.  Every bump repeats the ritual
-      ;; (poison to all-zeros, build once, copy Guix's "actual hash"): this value came from 0.3.4 at cc6e903.
+      ;; (poison to all-zeros, build once, copy Guix's "actual hash"): this value came from 0.4.0 at 3788a3d and
+      ;; was measured twice rather than typed by hand — `guix build -L . -m /tmp/manifest-ai-bots.scm' answered
+      ;;   expected hash: <the poison>   actual hash: 0112kp4i2ilz8qkmgfj1ldnjwzcrgrf0xgg0r0lardjgz10mbds0
+      ;; and `guix hash -rx /gnu/store/4q5bslgim39vrclvm6hk0i5nqagxc8js-ai-bots-0.4.0-checkout', on the checkout
+      ;; Guix had just fetched, re-derived exactly that string, so the two agree without a converter between them.
+      ;; Two things do NOT work on this box, both learned doing it: a literal all-zeros digest fails to *load*
+      ;; ("guix/base32.scm:237:27 … bytevector-u8-ref: Argument 2 out of range: 28", so poison the last character
+      ;; instead — 51 zeros and a '1' loads fine), and the spec `peteches/packages/ai-bots.scm:ai-bots:source'
+      ;; answers "unknown package" here, so build through a manifest holding (packages->manifest (list ai-bots))
+      ;; and let the source derivation fail early; that is just as cheap, since nothing else builds.
       ;; Note a nix-base32 digest may legitimately start with '0' — it is a digit, not a "0x" prefix.
-       (sha256 (base32 "0ixprqfmkjl58rs021rbabxcsjsxb34736myr3rm4z99mxdzl0f4"))))
+       (sha256 (base32 "0112kp4i2ilz8qkmgfj1ldnjwzcrgrf0xgg0r0lardjgz10mbds0"))))
     (build-system copy-build-system)
     ;; Nothing is compiled: node and ffmpeg are wanted at run time by the installed bots, so they
     ;; propagate instead of being build-only inputs.  The @earendil-works packages propagate too:
     ;; they are what the installed node_modules farm points at, and naming them here keeps
     ;; `guix install ai-bots` from looking like it installs a bot that cannot import its own engine.
     (propagated-inputs (list node ffmpeg
-                  node-earendil-works-pi-durable-1.5.2
-                  node-earendil-works-chord-1.5.2
-                  node-earendil-works-pi-ai-1.5.2
-                  node-earendil-works-pi-schema-1.5.2
-                  node-earendil-works-pi-telemetry-1.5.2))
+                  node-earendil-works-pi-durable-1.6.0
+                  node-earendil-works-chord-1.6.0
+                  node-earendil-works-pi-ai-1.6.0
+                  node-earendil-works-pi-schema-1.6.0
+                  node-earendil-works-pi-telemetry-1.6.0))
     (arguments
      (list
       ;; tests/ is fast and network-free but assumes a writable checkout (it drops fake
@@ -114,7 +143,7 @@
       #~(modify-phases %standard-phases
           (add-after 'install 'assert-node-floor
             (lambda _
-              ;; pi-durable 1.5.2 declares engines.node >=22.19 and its SQLite storage leans on
+              ;; pi-durable 1.6.0 declares engines.node >=22.19 — re-read from the built package.json, same
               ;; node:sqlite APIs from that line, so check the version of the binary the launchers
               ;; actually exec instead of trusting a comment.  This phase's body compiles into the
               ;; builder script, not this file's module, so declare what it uses: (ice-9 popen) for
@@ -142,7 +171,8 @@
               ;; because ESM ignores NODE_PATH: symlink each packaged store package's own install dir.
               ;; Nothing else is needed — every one of them carries its full npm closure inside itself
               ;; as real directories (verified against the built output: pi-durable's inner
-              ;; chord/pi-ai and pi-ai's inner openai/partial-json are directories, not symlinks), so
+              ;; chord/pi-ai and pi-ai's inner openai/partial-json are directories, not symlinks — re-checked on the
+              ;; 1.6.0 build), so
               ;; transitive imports resolve from wherever Node's realpath lands.  That is also why the
               ;; jiti/mlly "symlink realpaths out of its closure" problem documented in
               ;; peteches/packages/pi-coding-agent.scm does not bite here.
@@ -151,19 +181,19 @@
                      (scoped (string-append share "/node_modules/@earendil-works"))
                      (pkgs (list
                             (cons "pi-durable"
-                                  (string-append #$node-earendil-works-pi-durable-1.5.2
+                                  (string-append #$node-earendil-works-pi-durable-1.6.0
                                                  "/lib/node_modules/@earendil-works/pi-durable"))
                             (cons "chord"
-                                  (string-append #$node-earendil-works-chord-1.5.2
+                                  (string-append #$node-earendil-works-chord-1.6.0
                                                  "/lib/node_modules/@earendil-works/chord"))
                             (cons "pi-ai"
-                                  (string-append #$node-earendil-works-pi-ai-1.5.2
+                                  (string-append #$node-earendil-works-pi-ai-1.6.0
                                                  "/lib/node_modules/@earendil-works/pi-ai"))
                             (cons "pi-schema"
-                                  (string-append #$node-earendil-works-pi-schema-1.5.2
+                                  (string-append #$node-earendil-works-pi-schema-1.6.0
                                                  "/lib/node_modules/@earendil-works/pi-schema"))
                             (cons "pi-telemetry"
-                                  (string-append #$node-earendil-works-pi-telemetry-1.5.2
+                                  (string-append #$node-earendil-works-pi-telemetry-1.6.0
                                                  "/lib/node_modules/@earendil-works/pi-telemetry")))))
                 (mkdir-p scoped)
                 (for-each (lambda (entry)
