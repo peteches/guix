@@ -73,14 +73,14 @@
 
 (define-public ai-bots-repo-url "https://git.ts.peteches.co.uk/ai-bots.git/")
 
-;; Pinned commit of the aiBots repository: 0372b30, "docs note: what 1.6.0 gives us for parks, gates and subagents", on top of 06ff892 ("docs §10 + AGENTS: parks") and c4d697c ("a tool can park
+;; Pinned commit of the aiBots repository: 3564fda, "docs §10 + note + AGENTS: increment B — the gate exists", on top of 1f1e4ce ("risky tools wait for his permission, parked on a signal")
 ;; instead of holding the turn open, and bots_wait does") and 3788a3d ("deps: the durable line moves to 1.6.0", which
 ;; re-pinned docs/dependencies.json — that JSON is read at RUNTIME by bots/Tiffany/index.mjs status, so the installed
 ;; source has to carry it or she reports the wrong pinned versions).  The version was left at 0.4.0 for this re-pin on
 ;; purpose: what is deployed is 0.3.4, so 0.4.0 is already strictly greater and a second bump would only churn the
 ;; store-path name.  Bump the commit together with the sha256 below: commit and hash move as one, and a fresh commit
 ;; on a stale hash silently reuses the old checkout.
-(define-public ai-bots-commit "0372b30f654d70ae2d6c2343ee7639e6c7034c3d")
+(define-public ai-bots-commit "3564fdae657af0e6c7d47bd0e3d7977f59b4d42f")
 
 (define-public ai-bots
   (package
@@ -117,7 +117,7 @@
       ;; answers "unknown package" here, so build through a manifest holding (packages->manifest (list ai-bots))
       ;; and let the source derivation fail early; that is just as cheap, since nothing else builds.
       ;; Note a nix-base32 digest may legitimately start with '0' — it is a digit, not a "0x" prefix.
-       (sha256 (base32 "0by4lhhzhjj3w10ww1864s5i2vqnx4ihjhx4r9f84nrc99p7x7jx"))))
+       (sha256 (base32 "1r6sbf8vfcwpp2x5h2h4nvlp156brykjx9rxpx1i5xijh4wcyqly"))))
     (build-system copy-build-system)
     ;; Nothing is compiled: node and ffmpeg are wanted at run time by the installed bots, so they
     ;; propagate instead of being build-only inputs.  The @earendil-works packages propagate too:
