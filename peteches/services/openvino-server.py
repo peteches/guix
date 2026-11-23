@@ -25,8 +25,10 @@ Streaming is off by default and only implemented for chat; a non-streaming
 response is returned for `stream: true' if something goes wrong mid-stream.
 """
 
+import ast
 import json
 import os
+import re
 import sys
 import threading
 
@@ -200,7 +202,7 @@ def _split_thinking(text):
     return text.strip(), "", False
 
 
-def _finish_and_usage(res, cfg, closed):
+def _finish_and_usage(res, cfg, closed, tool_calls=()):
     """Real finish_reason and usage, from the result's own PerfMetrics.
 
     Both used to be hardcoded ("stop" and all-zero usage), so a client could
@@ -217,7 +219,14 @@ def _finish_and_usage(res, cfg, closed):
             print(f"note: perf_metrics unavailable ({exc})", file=sys.stderr)
     limit = getattr(cfg, "max_new_tokens", 0) or 0
     hit_limit = bool(limit) and n_out >= limit
-    finish = "stop" if (closed and not hit_limit) else "length"
+    # A turn that ends in a tool call is complete even though it carries no
+    # prose, so it must not be reported as truncated.
+    if tool_calls:
+        finish = "tool_calls"
+    elif closed and not hit_limit:
+        finish = "stop"
+    else:
+        finish = "length"
     return finish, {"prompt_tokens": n_in, "completion_tokens": n_out,
                     "total_tokens": n_in + n_out}
 
@@ -244,7 +253,7 @@ def _result_text(result):
     return str(result)
 
 
-def _chat_input(messages):
+def _chat_input(messages, tools=None):
     """Wrap messages in the shape GenAI's chat path asks for.
 
     2026.4.1 exposes `ChatHistory(messages: list)' and generate() takes a
@@ -254,10 +263,119 @@ def _chat_input(messages):
     factory = getattr(ov_genai, "ChatHistory", None)
     if factory is not None:
         try:
-            return factory(list(messages)), "chathistory"
+            history = factory(list(messages))
+            # Handing the tool schemas over is what makes the template emit
+            # "List of tools: [...]" into the system prompt, and without that
+            # the model never produces a tool call at all.
+            if tools and hasattr(history, "set_tools"):
+                history.set_tools(list(tools))
+            return history, "chathistory"
         except Exception as exc:
             print(f"note: ChatHistory construction failed: {exc}", file=sys.stderr)
     return list(messages), "message-dicts"
+
+
+# The template renders assistant tool calls as
+#   <|tool_call_start|>[name(arg="value", ...)]<|tool_call_end|>
+# i.e. a Python-expression call list (render_tool_calls in the export's
+# chat_template.jinja).  GenAI ships Llama3PythonicToolParser for exactly this,
+# but measured against 2026.4.1 it silently returns only the LAST call when a
+# turn emits several -- asked for the weather in Paris and Lyon, it parsed back
+# Lyon alone -- so the markers are parsed here with `ast' instead.
+TOOL_CALL_RE = re.compile(r"<\|tool_call_start\|>(.*?)<\|tool_call_end\|>", re.S)
+
+
+def _literal(node):
+    """Best-effort AST node -> Python value, falling back to source text."""
+    try:
+        return ast.literal_eval(node)
+    except Exception:
+        try:
+            return ast.unparse(node)
+        except Exception:
+            return None
+
+
+def _parse_pythonic_calls(body):
+    """Parse `[fn(a=1), fn2(b="x")]' into [{name, arguments}, ...]."""
+    calls = []
+    try:
+        tree = ast.parse(body.strip(), mode="eval")
+    except SyntaxError:
+        return calls
+    node = tree.body
+    elts = node.elts if isinstance(node, (ast.List, ast.Tuple)) else [node]
+    for elt in elts:
+        if not isinstance(elt, ast.Call) or not isinstance(elt.func, ast.Name):
+            continue
+        args = {}
+        # The template only ever emits keyword arguments, but a model is free to
+        # improvise, so positionals are kept rather than dropped.
+        for i, positional in enumerate(elt.args):
+            args[f"arg{i}"] = _literal(positional)
+        for kw in elt.keywords:
+            if kw.arg is not None:
+                args[kw.arg] = _literal(kw.value)
+        calls.append({"name": elt.func.id, "arguments": args})
+    return calls
+
+
+def _extract_tool_calls(text):
+    """Split tool calls out of a completion.
+
+    Returns (text_without_markers, openai_shaped_tool_calls).  Prose and tool
+    calls can coexist in one turn, so the markers are excised rather than the
+    whole text discarded.
+    """
+    bodies = TOOL_CALL_RE.findall(text)
+    if not bodies:
+        return text, []
+    parsed = []
+    for body in bodies:
+        parsed.extend(_parse_pythonic_calls(body))
+    cleaned = TOOL_CALL_RE.sub("", text).strip()
+    calls = [{"id": f"call_{i}", "type": "function",
+              "function": {"name": c["name"],
+                           "arguments": json.dumps(c["arguments"])}}
+             for i, c in enumerate(parsed)]
+    return cleaned, calls
+
+
+def _normalise_messages(messages):
+    """Incoming OpenAI messages -> what GenAI's chat template will accept.
+
+    The template raises outright when an assistant tool_call's `arguments' is a
+    JSON-encoded string ("Tool call arguments must be a mapping ... parse
+    arguments with json.loads() before applying the chat template"), and every
+    OpenAI client sends them as strings.  So decode them back to a mapping on
+    the way in, or the second turn of any agent loop dies.
+    """
+    out = []
+    for m in messages:
+        if not isinstance(m, dict):
+            continue
+        m = dict(m)
+        calls = m.get("tool_calls")
+        if isinstance(calls, list):
+            fixed = []
+            for tc in calls:
+                if not isinstance(tc, dict):
+                    continue
+                tc = dict(tc)
+                fn = tc.get("function")
+                if isinstance(fn, dict):
+                    fn = dict(fn)
+                    args = fn.get("arguments")
+                    if isinstance(args, str):
+                        try:
+                            fn["arguments"] = json.loads(args) if args.strip() else {}
+                        except Exception:
+                            fn["arguments"] = {"_raw": args}
+                    tc["function"] = fn
+                fixed.append(tc)
+            m["tool_calls"] = fixed
+        out.append(m)
+    return out
 
 
 def _special(name, fallback):
@@ -321,13 +439,16 @@ def models():
 @app.post("/v1/chat/completions")
 async def chat(request: Request):
     body = await request.json()
-    messages = _with_default_system(body.get("messages") or [])
+    raw_tools = body.get("tools")
+    tools = ([t for t in raw_tools if isinstance(t, dict)]
+             if isinstance(raw_tools, list) else None) or None
+    messages = _normalise_messages(_with_default_system(body.get("messages") or []))
     cfg = gen_config(body)
     name = os.path.basename(MODEL_DIR.rstrip("/"))
 
     def run():
         with _lock:
-            candidate, how = _chat_input(messages)
+            candidate, how = _chat_input(messages, tools)
             try:
                 # Return the result OBJECT, not its text: finish_reason and
                 # usage both come off its perf_metrics.
@@ -336,35 +457,53 @@ async def chat(request: Request):
                 # Neither ChatHistory nor the bare dict list took it: flatten here.
                 print(f"note: {how} input rejected ({exc}); using flattened text",
                       file=sys.stderr)
-            # Last resort: our own ChatML flattening, read from the export's tokens.
+            # Last resort: our own ChatML flattening, read from the export's
+            # tokens.  Tool schemas cannot survive this path -- it is plain text
+            # -- so a tool-using client silently gets prose instead of calls.
             return PIPELINE.generate(_chat_to_text(messages),
                                      generation_config=cfg)
 
+    def shape(res):
+        """Result object -> (content, reasoning, tool_calls, finish, usage)."""
+        no_markers, tool_calls = _extract_tool_calls(_result_text(res))
+        reasoning, content, closed = _split_thinking(no_markers)
+        finish, usage = _finish_and_usage(res, cfg, closed, tool_calls)
+        return content, reasoning, tool_calls, finish, usage
+
     if body.get("stream"):
         def events():
-            res = run()
-            _reasoning, content, closed = _split_thinking(_result_text(res))
-            finish, _usage = _finish_and_usage(res, cfg, closed)
+            content, reasoning, tool_calls, finish, usage = shape(run())
+            delta = {}
+            if content:
+                delta["content"] = content
+            if reasoning:
+                delta["reasoning_content"] = reasoning
+            if tool_calls:
+                delta["tool_calls"] = tool_calls
             chunk = {"id": "1", "object": "chat.completion.chunk", "model": name,
-                     "choices": [{"index": 0,
-                                  "delta": {"content": content},
+                     "choices": [{"index": 0, "delta": delta,
                                   "finish_reason": None}]}
             yield f"data: {json.dumps(chunk)}\n\n"
+            # usage rides on the final chunk (OpenAI's include_usage shape).
+            # It was absent from the streaming path entirely, which is why pi
+            # recorded input/output 0 for every streamed turn.
             done = {"id": "1", "object": "chat.completion.chunk", "model": name,
-                    "choices": [{"index": 0, "delta": {}, "finish_reason": finish}]}
+                    "choices": [{"index": 0, "delta": {},
+                                 "finish_reason": finish}],
+                    "usage": usage}
             yield f"data: {json.dumps(done)}\n\n"
             yield "data: [DONE]\n\n"
         return StreamingResponse(events(), media_type="text/event-stream")
 
-    res = run()
-    reasoning, content, closed = _split_thinking(_result_text(res))
-    finish, usage = _finish_and_usage(res, cfg, closed)
+    content, reasoning, tool_calls, finish, usage = shape(run())
     message = {"role": "assistant", "content": content}
     if reasoning:
         # Hand the chain of thought back separately instead of buried in
         # content: OpenAI-shaped clients that understand reasoning_content can
         # display or discard it, and everyone else simply gets a clean answer.
         message["reasoning_content"] = reasoning
+    if tool_calls:
+        message["tool_calls"] = tool_calls
     return JSONResponse({
         "id": "1", "object": "chat.completion", "model": name,
         "choices": [{"index": 0, "message": message, "finish_reason": finish}],

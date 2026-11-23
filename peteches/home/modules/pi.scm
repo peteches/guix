@@ -68,14 +68,22 @@
 ;;; when strata was stopped in favour of OpenVINO; Caddy's route was renamed
 ;;; in the same change, so the old hostname no longer resolves to anything.
 ;;;
-;;; CAVEAT, verified against the running server 2026-11-23: openvino-server.py
-;;; implements NO tool calling — it drops the request's `tools` array and never
-;;; returns `tool_calls` — and it serialises every request on a
-;;; threading.Lock, so pi pointed here gets text-only completions one at a
-;;; time and cannot drive its own read/edit/bash tools.  GenAI does support it
-;;; (ChatHistory.set_tools, Llama3JsonToolParser); the server just does not use
-;;; it yet.  Its "streaming" is likewise fake: the whole generation runs, then
-;;; one chunk is emitted, so nothing appears on screen until it finishes.
+;;; CAVEAT, measured against the live endpoint 2026-11-23: tool calling DOES
+;;; work — the server passes `tools' to ChatHistory.set_tools, parses the
+;;; template's <|tool_call_start|>[fn(arg=...)]<|tool_call_end|> markers with
+;;; `ast', and returns OpenAI-shaped tool_calls with finish_reason
+;;; "tool_calls"; pi ran a real bash agent loop against it.  But
+;;; LFM2.5-24B-A2B-int4 is not a reliable agent.  Two failure modes in
+;;; `pi --mode json -p' runs: it looped eight times on a hallucinated
+;;; `ls -la /pi' and never ran the command it had been given, and it ended
+;;; turns with a thinking block and no content at all (stop=length when the
+;;; reasoning overran maxTokens, stop=stop with an empty answer otherwise).
+;;; Plain Q&A is good — Paris, 391, exact JSON, a correct is_palindrome, and it
+;;; avoids the bat-and-ball $0.10 trap.  So this is a fine chat/SillyTavern
+;;; backend and a poor choice for driving pi's own tools.  The server also
+;;; serialises every request on a threading.Lock, and its "streaming" runs the
+;;; whole generation before emitting a single chunk, so nothing appears on
+;;; screen until the turn is finished.
 ;;; The koboldcpp provider
 ;;; replaced nug's own koboldcpp instance and its Tailscale
 ;;; IPv6-literal baseUrl following nug's decommission; the `pi-koboldcpp'
@@ -107,10 +115,14 @@
 ;;; server flag: openvino-server.py sets no context limit of its own, it just
 ;;; hands the messages to GenAI's ChatHistory.  Unlike koboldcpp, the OpenVINO
 ;;; service reserves nothing inside that window, so the prompt space a client
-;;; may use is contextWindow minus its own generation budget: 131072 - 4096 =
-;;; 126976.  maxTokens (4096) is that budget, held far below what the model
-;;; could take because the server's streaming is fake — a large budget is a
-;;; long blank screen with no partial output, not more usable text.
+;;; may use is contextWindow minus its own generation budget: 131072 - 8192 =
+;;; 122880.  maxTokens is 8192 rather than something small because this model
+;;; reasons before it answers and the reasoning counts against the same budget:
+;;; measured thinking lengths ran 71-1240 tokens on plain prompts and overran
+;;; 4096 entirely on agent turns, which pi reported as "Response truncated
+;;; before completion".  Held below the 131072 the model could take because the
+;;; server's streaming is fake — a large budget is a long blank screen, not
+;;; more usable text.
 ;;;
 ;;; compaction.modelOverrides in configs/pi/defaults/settings.json widens
 ;;; reserveTokens for both local models, and those two numbers are derived
@@ -128,7 +140,7 @@
 ;;; is at least 1.43x low, and the overrides are sized for it:
 ;;;
 ;;;   llm        reserveTokens  49152 -> compact above  81920 estimated
-;;;                                        ( 81920 * 1.43 < 126976)
+;;;                                        ( 81920 * 1.43 < 122880)
 ;;;   koboldcpp  reserveTokens  49152 -> compact above  81920 estimated
 ;;;                                        ( 81920 * 1.43 < 131072)
 ;;;
