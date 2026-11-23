@@ -1025,13 +1025,18 @@
       ;; package was rebuilt with ENABLE_INTEL_GPU and GPU_RT_TYPE=ZE, and
       ;; libopenvino_intel_gpu_plugin.so is in its store output.
       ;;
-      ;; CONSEQUENCE: OpenVINO and strata now contend for one 23.9 GiB card rather
-      ;; than being separated structurally.  The 24B int4 export needs ~13 GiB of
-      ;; VRAM, so starting both at once can exhaust it.  OpenVINO auto-starts
-      ;; (it is the fleet's llm.ts.peteches.co.uk endpoint, so a stopped service
-      ;; means caddy proxies to nothing); strata is deliberately left stopped.
-      ;; If both are ever wanted resident, one of them has to move (strata to CPU
-      ;; experts, or OpenVINO back to device=CPU at ~6-8 tok/s).
+      ;; CONSEQUENCE: OpenVINO and strata now share one card rather than being
+      ;; separated structurally.  The B70 has 32 GiB of VRAM (xe reports
+      ;; "Actual physical size 0x800000000, usable size exclude stolen
+      ;; 0x7f9000000" = 31.9 GiB usable), and the 24B int4 export's weights are
+      ;; 12.58 GB (~11.7 GiB), so the two are not obviously mutually exclusive --
+      ;; but strata's own footprint (resident pack plus its expert cache) has not
+      ;; been measured alongside OpenVINO, and running both is untested.
+      ;; OpenVINO auto-starts (it is the fleet's llm.ts.peteches.co.uk endpoint,
+      ;; so a stopped service means caddy proxies to nothing); strata is
+      ;; deliberately left stopped.  If both are ever wanted resident and VRAM
+      ;; runs out, one of them has to move (strata to CPU experts, or OpenVINO
+      ;; back to device=CPU at ~6-8 tok/s).
       ;;
       ;; Weights on disk, all under /media/models/openvino/, each size-checked
       ;; against the HF tree API:

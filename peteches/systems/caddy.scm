@@ -121,9 +121,10 @@
                   ;;
                   ;; This REPLACES the strata.ts.peteches.co.uk route that used
                   ;; to proxy to comfyui:8000.  strata is deliberately stopped
-                  ;; now that OpenVINO serves the B70, and both cannot be
-                  ;; resident at once (the 24B int4 export wants ~13 GiB of the
-                  ;; card's 23.9 GiB).  Anything still dialling the old
+                  ;; now that OpenVINO serves the B70.  The card has 32 GiB of
+                  ;; VRAM and the 24B int4 weights are ~11.7 GiB, so the two are
+                  ;; not obviously mutually exclusive, but running them together
+                  ;; is untested.  Anything still dialling the old
                   ;; strata.ts name will now fail DNS/502 rather than silently
                   ;; reach a dead engine — at the time of the switch that was
                   ;; rules-lawyer's llm-base-url (peteches/systems/agents.scm)
