@@ -113,13 +113,30 @@
                   (caddy-reverse-proxy
                    (domain "koboldcpp.ts.peteches.co.uk")
                    (upstream "comfyui.spaniel-cordylus.ts.net:5001"))
-                  ;; strata-service-type on comfyui.scm — auto-starts at boot
-                  ;; and listens on the tailnet (--access tailscale), so this
-                  ;; proxies to the B70 MoE engine (Qwen3.8-Flash-Next Q2_0)
-                  ;; on the same VM as ComfyUI/koboldcpp (different GPU).
+                  ;; openvino-service-type on comfyui.scm — the fleet's LLM
+                  ;; endpoint.  Auto-starts and binds 0.0.0.0:8093 with the
+                  ;; firewall accept narrowed to the tailnet, so this proxy
+                  ;; reaches LFM2.5-24B-A2B int4 on the Arc Pro B70 (the same
+                  ;; VM as ComfyUI/koboldcpp, and the same card strata used).
+                  ;;
+                  ;; This REPLACES the strata.ts.peteches.co.uk route that used
+                  ;; to proxy to comfyui:8000.  strata is deliberately stopped
+                  ;; now that OpenVINO serves the B70, and both cannot be
+                  ;; resident at once (the 24B int4 export wants ~13 GiB of the
+                  ;; card's 23.9 GiB).  Anything still dialling the old
+                  ;; strata.ts name will now fail DNS/502 rather than silently
+                  ;; reach a dead engine — at the time of the switch that was
+                  ;; rules-lawyer's llm-base-url (peteches/systems/agents.scm)
+                  ;; and SillyTavern, both of which were already down with
+                  ;; strata stopped.
+                  ;;
+                  ;; NOTE: openvino-server.py implements no tool calling (it
+                  ;; ignores `tools` and never returns `tool_calls`) and
+                  ;; serialises every request on a threading.Lock, so this
+                  ;; endpoint serves one non-agentic completion at a time.
                   (caddy-reverse-proxy
-                   (domain "strata.ts.peteches.co.uk")
-                   (upstream "comfyui.spaniel-cordylus.ts.net:8000"))
+                   (domain "llm.ts.peteches.co.uk")
+                   (upstream "comfyui.spaniel-cordylus.ts.net:8093"))
                   ;; alltalk-service-type on comfyui.scm — auto-starts at
                   ;; boot, shares the RTX 4090 with ComfyUI (XTTS v2,
                   ;; ~2-4GB resident vs koboldcpp's 20.47GB).  Two vhosts:

@@ -75,7 +75,7 @@
   ;; also brought the sops/guix-science/nonguix channels this file needs.
   ;; Use the profile guix, not the system one: PATH here resolves to
   ;; /run/current-system/profile/bin/guix, still at the off-pin commit.
-  #:use-module ((gnu packages build-tools) #:select (uv))
+  #:use-module ((gnu packages rust-apps) #:select (uv))
   #:use-module ((gnu packages commencement) #:select (gcc-toolchain-14))
   #:use-module ((gnu packages linux) #:select (linux-libre-headers))
   ;; Nonfree kernel — required by #:with-intel-gpu?, see the header note.
@@ -93,11 +93,13 @@
   #:use-module (peteches services alltalk)
   #:use-module (peteches services comfyui)
   #:use-module (peteches services koboldcpp)
+  #:use-module (peteches services openvino)
   #:use-module (peteches services restic)
   #:use-module (peteches services strata)
   #:use-module (peteches services transcriber)
   #:use-module (peteches services tailscale)
   #:use-module (peteches packages strata)
+  #:use-module (peteches packages pocl)    ;pocl-tests-off (see that module)
   #:use-module (gnu packages base)         ; glibc (for the /lib64 symlink)
   #:use-module (gnu packages gcc)          ; gcc `lib' output (libstdc++/libgcc_s)
   #:use-module (gnu packages oneapi)       ; level-zero (libze_loader.so.1)
@@ -202,7 +204,17 @@
      ;; guix input) — see (peteches services strata)'s header.  In the
      ;; profile so `clinfo`/`ze_*` are available for debugging the B70.
      #:extra-packages
-     (list strata intel-level-zero-gpu intel-igc-core libigdgmm level-zero pocl
+     (list strata intel-level-zero-gpu intel-igc-core intel-igc-opencl
+           intel-opencl-icd libigdgmm level-zero pocl-tests-off
+           ;; intel-igc-opencl (libigdfcl.so.2) and intel-opencl-icd
+           ;; (libigdrcl.so + its ICD descriptor) are here for OpenVINO, not for
+           ;; strata: strata talks to the B70 through its own bundled SYCL/Level
+           ;; Zero stack and needs neither.  OpenVINO's intel_gpu plugin does, even
+           ;; built with GPU_RT_TYPE=ZE, because oneDNN's ZE backend enumerates
+           ;; device extensions through OpenCL.  Both halves are mandatory — with
+           ;; only the ICD installed, kernel compilation fails with
+           ;; CL_COMPILER_NOT_AVAILABLE.  See the long comment above those package
+           ;; definitions in (peteches packages strata).
            ;; The Strata SYCL engine's system-library deps that are NOT in
            ;; %base-packages.  `libOpenCL.so.1' comes from opencl-icd-loader
            ;; (pocl only provides libpocl.so.2, an OpenCL *implementation*,
@@ -1003,6 +1015,96 @@
       ;; first start downloads ~70 GB (the IQ2_XS shards + strata/rt +
       ;; mmproj) and builds the pack (a few minutes); the engine component is
       ;; fetched on the same first start if it is not already on disk.
+      ;; ── OpenVINO GenAI on the Arc Pro B70 (GPU) ────────────────────────
+      ;; An LFM2.5 trial on Intel's OpenVINO runtime with device=GPU, i.e. on the
+      ;; same Arc Pro B70 strata serves from.  That is a real change from how this
+      ;; service started: the earlier device=CPU configuration could not touch the
+      ;; card at all, and the claim recorded here then — that the built openvino
+      ;; package ships only intel_cpu / auto / auto_batch / hetero plugins, so
+      ;; there was "no compiled-in route onto that card" — is no longer true.  The
+      ;; package was rebuilt with ENABLE_INTEL_GPU and GPU_RT_TYPE=ZE, and
+      ;; libopenvino_intel_gpu_plugin.so is in its store output.
+      ;;
+      ;; CONSEQUENCE: OpenVINO and strata now contend for one 23.9 GiB card rather
+      ;; than being separated structurally.  The 24B int4 export needs ~13 GiB of
+      ;; VRAM, so starting both at once can exhaust it.  OpenVINO auto-starts
+      ;; (it is the fleet's llm.ts.peteches.co.uk endpoint, so a stopped service
+      ;; means caddy proxies to nothing); strata is deliberately left stopped.
+      ;; If both are ever wanted resident, one of them has to move (strata to CPU
+      ;; experts, or OpenVINO back to device=CPU at ~6-8 tok/s).
+      ;;
+      ;; Weights on disk, all under /media/models/openvino/, each size-checked
+      ;; against the HF tree API:
+      ;;   LFM2.5-24B-A2B/            base HF safetensors, 27 files,
+      ;;                              47,964,603,149 bytes (sha256-verified on the box).
+      ;;                              GenAI cannot read a plain HF directory —
+      ;;                              measured: "Could not find a model in the
+      ;;                              directory" — so this is input for
+      ;;                              `optimum-cli export openvino', not something
+      ;;                              this service can serve.
+      ;;   LFM2.5-8B-A1B-int4-ov/     Intel's own OpenVINO IR export of the 8B
+      ;;                              sibling, 14 files / 4,557,268,985 bytes; used
+      ;;                              as the stack smoke test.
+      ;;   LFM2.5-24B-A2B-int4-ov/    int4 OpenVINO IR export of the target arch,
+      ;;                             15 files / 12,614,254,830 bytes — but from
+      ;;                             blaj/LFM2.5-24B-A2B-Uncensored-int4-ov, a
+      ;;                             community abliterated derivative rather than
+      ;;                             LiquidAI's base weights.
+      ;; The stack works: measured on this box with strata running next door and
+      ;; INFERENCE_NUM_THREADS=8 under nice 19, the 24B int4 export loaded in 25 s,
+      ;; peaked at 20.2 GB RSS, generated at ~6.2 tok/s on a plain prompt and ~7.9
+      ;; tok/s through openvino_genai.ChatHistory; the 8B export ran the same way at
+      ;; ~9-12 tok/s with an 8.4 GB peak.  What does *not* work is any GGUF route:
+      ;; genai's GGUF loader is compiled into our build (Qwen2.5-0.5B Q8_0 loads and
+      ;; generates), but LFM2.5 MoE dies in it with `IndexError unordered_map::at',
+      ;; i.e. the arch is not in the set its GGUF modeling knows.
+      ;; The base-model int4 export named below (ov-int4/) still does not exist:
+      ;; four optimum runs were OOM-killed with RAM *and* swap exhausted while
+      ;; strata was resident, so producing it needs either strata parked for the
+      ;; conversion or a roomier machine.  Until then, serving anything means
+      ;; pointing model-dir at one of the artifacts above.
+      ;; Network exposure: caddy reverse-proxies llm.ts.peteches.co.uk onto this
+      ;; VM's tailnet address, so the server has to bind beyond loopback and the
+      ;; base drop-input firewall has to accept the port.  Both are narrowed to
+      ;; the tailnet — the server has no authentication whatsoever, and an
+      ;; unrestricted accept would hand an unauthenticated GPU endpoint to every
+      ;; host on the 192.168.50.0/23 LAN.  Same three CIDRs and the same reason
+      ;; as strata's firewall-sources below (caddy dials the MagicDNS name, and
+      ;; Go's dialer may resolve it to either the CGNAT v4 or the ULA v6
+      ;; address).  Loopback is untouched, so on-box health checks still work.
+      ;; auto-start? is #t: this is now a real fleet endpoint, and caddy
+      ;; proxying to a stopped service just yields a 502.
+      (service openvino-service-type
+               (openvino-server-configuration
+                (service-name "openvino-lfm2")
+                ;; NOT LFM2.5-24B-A2B/ov-int4: that directory is the intended
+                ;; export of the *base* weights and is still empty (four optimum
+                ;; runs were OOM-killed producing it — see above).  Serving it
+                ;; fails with "Could not find a model in the directory".  This is
+                ;; the community abliterated int4 IR export that does exist on
+                ;; disk (15 files / 12.6 GB); swap to a base-weights export here
+                ;; if one is ever produced.
+                (model-dir "/media/models/openvino/LFM2.5-24B-A2B-int4-ov")
+                ;; GPU on the Arc Pro B70, measured working: LFM2.5-24B-A2B int4
+                ;; builds in ~3 s and generates at ~164 tok/s (the 8B sibling at
+                ;; ~237 tok/s), against ~6-8 tok/s for the same 24B export on
+                ;; CPU.  Getting here needed more than device=GPU — the plugin
+                ;; requires Intel's OpenCL runtime and its front-end compiler
+                ;; (intel-opencl-icd + intel-igc-opencl in #:extra-packages),
+                ;; OCL_ICD_VENDORS in the service environment, and both
+                ;; runtime/lib/intel64 trees plus both python/ trees named
+                ;; explicitly, none of which the profile merge supplies.
+                ;; The stale comment above ("no intel_gpu, no npu") predates the
+                ;; GPU-enabled rebuild.
+                (device "GPU")
+                (auto-start? #t)
+                (host "0.0.0.0")
+                (open-firewall? #t)
+                (firewall-sources '("100.64.0.0/10"
+                                    "fd7a:115c:a1e0::/48"
+                                    "fd7a:115c:a6e0::/48"))
+                (max-new-tokens 256)))
+
       (service strata-service-type
                (strata-configuration
                 (auto-start? #t)

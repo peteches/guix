@@ -75,7 +75,8 @@
   #:use-module (guix gexp)
   #:use-module (guix packages)
   #:use-module (peteches packages oneapi)
-  #:export (intel-igc-core libigdgmm intel-level-zero-gpu strata
+  #:export (intel-igc-core intel-igc-opencl libigdgmm intel-level-zero-gpu
+            intel-opencl-icd strata
             strata-llama-cpp-src strata-vision strata-sycl-engine))
 
 ;;; ── .deb library wrapper ────────────────────────────────────────────────
@@ -85,7 +86,16 @@
 ;; deb's data tree; the whole directory is copied into $out/lib with
 ;; symlinks preserved (their targets are relative, so they keep working).
 
-(define (deb-libraries-builder lib-src)
+;; ICDF-LIB, when given, also writes an OpenCL ICD descriptor naming that
+;; library out of $out/lib.  Intel's .debs ship their own
+;; /etc/OpenCL/vendors/*.icd but with a hard-coded Debian-multiarch path
+;; (/usr/lib/x86_64-linux-gnu/...) that does not exist on Guix, so the
+;; descriptor has to be rewritten against the store path instead of copied.
+;; The file lands in $out/etc/OpenCL/vendors, which profile-service-type merges
+;; into /run/current-system/profile/etc/OpenCL/vendors — the directory
+;; OCL_ICD_VENDORS already points at on the GPU VMs — so installing the package
+;; is enough to register the platform; no /etc mutation is involved.
+(define* (deb-libraries-builder lib-src #:key icd-lib)
   #~(begin
       (use-modules (guix build utils))
       ;; The build environment has no PATH: every tool is referenced by its
@@ -129,7 +139,22 @@
           (mkdir-p (string-append out "/lib"))
           (invoke cp "-a"
                   (string-append #$lib-src "/.")
-                  (string-append out "/lib")))
+                  (string-append out "/lib"))
+          ;; Spliced as a *list* of gexps rather than guarded by a build-time
+          ;; `when': when icd-lib is #f the list is empty and the generated
+          ;; builder is byte-identical to the pre-ICD one, so the three packages
+          ;; above keep the derivations they already have.  That matters because
+          ;; (peteches services strata) embeds intel-level-zero-gpu's store path
+          ;; in strata's shepherd definition, so a gratuitous rebuild there would
+          ;; restart a fleet-facing service on every comfyui reconfigure.
+          #$@(if icd-lib
+                 (list #~(mkdir-p (string-append out "/etc/OpenCL/vendors"))
+                       #~(call-with-output-file
+                             (string-append out "/etc/OpenCL/vendors/intel.icd")
+                           (lambda (port)
+                             (format port "~a~%"
+                                     (string-append out "/lib/" #$icd-lib)))))
+                 '()))
         (delete-file-recursively tmp)
         #t)))
 
@@ -219,6 +244,110 @@ driver library — no Level Zero ICD descriptor — so the runtime that uses
 it (peteches services strata) writes the ICD json
 (@code{{\"library_path\": ...}}) at start and points @env{ZE_ICD_FILE}
 at it, the same thing the oneAPI installer does.")
+    (license asl2.0)))
+
+;; ── The Intel OpenCL half of the stack ─────────────────────────────────────
+;;
+;; These two are needed even though nothing on these VMs "uses OpenCL" on
+;; purpose.  oneDNN's Level Zero backend reaches into OpenCL to enumerate GPU
+;; device extensions, because Level Zero does not expose them —
+;; src/gpu/intel/ze/device_info.cpp, device_info_t::init_extensions:
+;;
+;;     // TODO: using OpenCL runtime because Level Zero runtime does not
+;;     // provide this information.
+;;     CHECK(xpu::ocl::get_extensions(ze_engine->ocl_device(), extension_string));
+;;
+;; So a Level Zero-only install gets the device enumerated and then fails to
+;; create an engine: clGetDeviceInfo on an invalid device returns
+;; CL_INVALID_DEVICE (-33) at src/xpu/ocl/utils_shared.cpp:269, that CHECK
+;; propagates, src/xpu/ze/verbose.hpp:46 logs "invalid gpu device in
+;; environment: index 0", and OpenVINO surfaces the whole thing as
+;; "[GPU] ProgramBuilder build failed! could not create an engine".  That is
+;; exactly how OpenVINO's intel_gpu plugin failed on the Arc Pro B70 until both
+;; packages below were installed — a working Level Zero driver is necessary but
+;; NOT sufficient for it.
+;;
+;; Two separate pieces are required, and installing only the first just moves
+;; the failure later (to "clBuildProgram, error code: -3
+;; CL_COMPILER_NOT_AVAILABLE"):
+;;   * intel-opencl-icd  — libigdrcl.so, the NEO OpenCL runtime the ICD
+;;     descriptor names.
+;;   * intel-igc-opencl  — libigdfcl.so.2, the OpenCL C front end that
+;;     libigdrcl dlopens to compile a kernel.  It is NOT in intel-igc-core
+;;     (that ships only libigc.so.2, the SPIR-V backend), and nothing declares
+;;     the dependency, so it has to be installed alongside by hand.
+;; Versions must track intel-igc-core: libigdfcl and libigc are two halves of
+;; one compiler release and are built to match.
+
+(define-public intel-igc-opencl
+  (package
+    (name "intel-igc-opencl")
+    (version "2.41.5")
+    (source
+     (origin
+       (method url-fetch)
+       (uri (string-append
+             "https://github.com/intel/intel-graphics-compiler/releases/download/v"
+             version
+             "/intel-igc-opencl-2_" version "+22716_amd64.deb"))
+       (sha256
+        (base32
+         "0n3hp3hzcjanxm0ald7i4anmnrjj4xygda7925bv53h9i2g1p7kp"))))
+    (build-system trivial-build-system)
+    (arguments
+     (list
+      #:modules '((guix build utils))
+      #:builder (deb-libraries-builder "usr/local/lib")))
+    (native-inputs (list binutils tar coreutils bash zstd gzip xz))
+    (home-page "https://github.com/intel/intel-graphics-compiler")
+    (synopsis "Intel GPU OpenCL front-end compiler (libigdfcl.so.2)")
+    (description
+     "Prebuilt Intel Graphics Compiler OpenCL front end, wrapped from Intel's
+@command{intel-igc-opencl-2} .deb release.  Provides @file{libigdfcl.so.2}
+plus its clang libraries, the OpenCL C to SPIR-V translator that the Intel
+OpenCL runtime (@code{libigdrcl.so}) dlopens when it compiles a kernel.  This
+is the piece whose absence reports itself as @code{CL_COMPILER_NOT_AVAILABLE}
+from @code{clBuildProgram}.  Companion to @code{intel-igc-core}, which supplies
+the SPIR-V backend @file{libigc.so.2}; the two are one release and must be
+bumped together.")
+    (license asl2.0)))
+
+(define-public intel-opencl-icd
+  (package
+    (name "intel-opencl-icd")
+    (version "26.35.39758.10")
+    (source
+     (origin
+       (method url-fetch)
+       (uri (string-append
+             "https://github.com/intel/compute-runtime/releases/download/"
+             version
+             "/intel-opencl-icd_" version "-0_amd64.deb"))
+       (sha256
+        (base32
+         "00a3xhqj7skf9hac6widrab5b8py4gxs1qkr9y7d78zbvnm2qwb1"))))
+    (build-system trivial-build-system)
+    (arguments
+     (list
+      #:modules '((guix build utils))
+      #:builder (deb-libraries-builder "usr/lib/x86_64-linux-gnu/intel-opencl"
+                                       #:icd-lib "libigdrcl.so")))
+    (native-inputs (list binutils tar coreutils bash zstd gzip xz))
+    (home-page "https://github.com/intel/compute-runtime")
+    (synopsis "Intel GPU OpenCL runtime (NEO) and its ICD descriptor")
+    (description
+     "Prebuilt Intel OpenCL runtime, wrapped from Intel's compute-runtime
+@command{intel-opencl-icd} .deb release — the same release as
+@code{intel-level-zero-gpu} and @code{libigdgmm}.  Installs
+@file{libigdrcl.so} and rewrites the .deb's @file{intel.icd} descriptor to
+name its store path, so the OpenCL ICD loader enumerates an
+@code{Intel(R) OpenCL Graphics} platform for the Arc GPU.
+
+Install this whenever a Level Zero consumer still needs OpenCL.  oneDNN's ZE
+backend does (see the comment above this package group), which makes it a hard
+requirement for OpenVINO's @code{intel_gpu} plugin even though that plugin is
+built with @code{GPU_RT_TYPE=ZE}.  Requires @code{intel-igc-opencl} for kernel
+compilation, and @code{intel-igc-core} plus @code{libigdgmm} at run time.")
     (license asl2.0)))
 
 ;; PINNED to 0.1.57 (app v0.2.11) — do NOT bump without first checking this is

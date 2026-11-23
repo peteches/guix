@@ -24,7 +24,8 @@
 ;;; openrouter". With the pin removed the spawned pi gets no --model flag
 ;;; and pi's startup model selection (findInitialModel in pi's
 ;;; core/model-resolver.js) falls through to the saved default from
-;;; settings.json -- which for these accounts is the strata model, since
+;;; settings.json -- which for these accounts is the llm (OpenVINO LFM2.5)
+;;; model, since
 ;;; configs/pi/defaults/settings.json declares defaultProvider/defaultModel
 ;;; and the static apiKey "local" in models.json counts as configured auth
 ;;; for that provider. Keep the
@@ -57,12 +58,25 @@
 ;;;
 ;;; The default models.json wires up koboldcpp.ts.peteches.co.uk (Caddy's
 ;;; reverse proxy onto the comfyui VM's koboldcpp instance) and
-;;; strata.ts.peteches.co.uk (Caddy's reverse proxy onto the same VM's
-;;; Strata MoE engine — Qwen3.8-Flash-Next IQ2_XS on the Intel Arc B70,
+;;; llm.ts.peteches.co.uk (Caddy's reverse proxy onto the same VM's
+;;; OpenVINO GenAI server — LFM2.5-24B-A2B int4 on the Intel Arc B70,
 ;;; see peteches/systems/comfyui.scm) as custom providers. configs/pi/
-;;; defaults/settings.json declares strata as the default model
+;;; defaults/settings.json declares llm as the default model
 ;;; (defaultProvider/defaultModel), so pi's startup selection lands there
-;;; on every account that uses this config. The koboldcpp provider
+;;; on every account that uses this config.  The llm provider replaced
+;;; strata.ts.peteches.co.uk (Qwen3.8-Flash-Next IQ2_XS on the same B70)
+;;; when strata was stopped in favour of OpenVINO; Caddy's route was renamed
+;;; in the same change, so the old hostname no longer resolves to anything.
+;;;
+;;; CAVEAT, verified against the running server 2026-11-23: openvino-server.py
+;;; implements NO tool calling — it drops the request's `tools` array and never
+;;; returns `tool_calls` — and it serialises every request on a
+;;; threading.Lock, so pi pointed here gets text-only completions one at a
+;;; time and cannot drive its own read/edit/bash tools.  GenAI does support it
+;;; (ChatHistory.set_tools, Llama3JsonToolParser); the server just does not use
+;;; it yet.  Its "streaming" is likewise fake: the whole generation runs, then
+;;; one chunk is emitted, so nothing appears on screen until it finishes.
+;;; The koboldcpp provider
 ;;; replaced nug's own koboldcpp instance and its Tailscale
 ;;; IPv6-literal baseUrl following nug's decommission; the `pi-koboldcpp'
 ;;; shell function below (NODE_TLS_REJECT_UNAUTHORIZED=0 wrapper) predates
@@ -88,15 +102,15 @@
 ;;; pile-up at exactly 163840 tokens. Measured over one week that was 31.4
 ;;; GPU-hours of prefill -- 45% of all request time, from 7.4% of requests.
 ;;;
-;;; The strata entry's contextWindow must track the strata service's
-;;; `--context' flag on the same VM (peteches/systems/comfyui.scm; 262144
-;;; since 2026-10-29, commit 90661b5, when the engine was moved onto the
-;;; model's full trained window, and it receives the same value as
-;;; --max-context). Unlike koboldcpp, strata reserves
-;;; nothing inside that window, so the prompt space a client may use is
-;;; contextWindow minus its own generation budget: 262144 - 16384 =
-;;; 245760. maxTokens (16384) is that budget, verified accepted by the
-;;; server.
+;;; The llm entry's contextWindow is the model's own trained window
+;;; (max_position_embeddings = 131072 in the export's config.json), not a
+;;; server flag: openvino-server.py sets no context limit of its own, it just
+;;; hands the messages to GenAI's ChatHistory.  Unlike koboldcpp, the OpenVINO
+;;; service reserves nothing inside that window, so the prompt space a client
+;;; may use is contextWindow minus its own generation budget: 131072 - 4096 =
+;;; 126976.  maxTokens (4096) is that budget, held far below what the model
+;;; could take because the server's streaming is fake — a large budget is a
+;;; long blank screen with no partial output, not more usable text.
 ;;;
 ;;; compaction.modelOverrides in configs/pi/defaults/settings.json widens
 ;;; reserveTokens for both local models, and those two numbers are derived
@@ -113,14 +127,14 @@
 ;;; and came back as one token of text with `finish_reason: length'. That
 ;;; is at least 1.43x low, and the overrides are sized for it:
 ;;;
-;;;   strata     reserveTokens  98304 -> compact above 163840 estimated
-;;;                                        (163840 * 1.43 < 245760)
+;;;   llm        reserveTokens  49152 -> compact above  81920 estimated
+;;;                                        ( 81920 * 1.43 < 126976)
 ;;;   koboldcpp  reserveTokens  49152 -> compact above  81920 estimated
 ;;;                                        ( 81920 * 1.43 < 131072)
 ;;;
 ;;; reserveTokens also sets the summarization output budget,
 ;;; min(floor(0.8 * reserveTokens), maxTokens), so each override lands on
-;;; the generation budget that server already accepts (16384 / 32768)
+;;; the generation budget that server already accepts (4096 / 32768)
 ;;; instead of the 13107 the 16384 default yields — not cosmetic, this
 ;;; session's two largest checkpoints came back at 15210 and 15156 tokens,
 ;;; over the budget pi had asked for. Compacting earlier is also what the

@@ -55,6 +55,7 @@
   #:use-module (gnu packages base)
   #:use-module (gnu packages gcc)
   #:use-module (gnu packages opencl)
+  #:use-module (peteches packages pocl)    ;pocl-tests-off
   #:use-module (gnu packages oneapi)
   #:use-module (gnu packages compression)
   #:use-module (peteches packages strata)
@@ -152,7 +153,7 @@
   ;; The engine's system-library dependencies; each contributes
   ;; <store-path>/lib to the wrapper's LD_LIBRARY_PATH.
   (runtime-lib-packages strata-configuration-runtime-lib-packages
-                        (default (list level-zero pocl glibc gcc zlib)))
+                        (default (list level-zero pocl-tests-off glibc gcc zlib)))
   (service-name strata-configuration-service-name
                 (default "strata"))
   (documentation strata-configuration-documentation

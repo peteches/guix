@@ -1,35 +1,24 @@
 {
   "providers": {
-    "strata": {
-      "name": "strata (comfyui)",
+    "llm": {
+      "name": "openvino LFM2.5 (comfyui)",
       "api": "openai-completions",
-      "baseUrl": "https://strata.ts.peteches.co.uk/v1",
+      "baseUrl": "https://llm.ts.peteches.co.uk/v1",
       "apiKey": "local",
       "compat": {
         "maxTokensField": "max_tokens",
-        "supportsUsageInStreaming": true,
+        "supportsUsageInStreaming": false,
         "supportsStrictMode": false,
-        "thinkingFormat": "qwen-chat-template"
+        "supportsFinishReason": true
       },
       "models": [
         {
-          "id": "qwen3.8-flash-next",
-          "name": "Qwen3.8 Flash Next IQ2_XS (comfyui, strata)",
-          "contextWindow": 262144,
-          "maxTokens": 16384,
+          "id": "LFM2.5-24B-A2B-int4-ov",
+          "name": "LFM2.5 24B A2B int4 (comfyui, OpenVINO on Arc B70)",
+          "contextWindow": 131072,
+          "maxTokens": 4096,
           "input": ["text"],
-          "reasoning": true,
-          "thinkingLevelMap": {
-            "off": "off",
-            "minimal": "low",
-            "low": "low",
-            "medium": "medium",
-            "high": "high",
-            "xhigh": "high"
-          },
-          "compat": {
-            "reasoning_budget_tokens": 8192
-          }
+          "reasoning": false
         }
       ]
     },

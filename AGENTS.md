@@ -296,7 +296,7 @@ Each module's header comment documents its keyword arguments — read
 | `critical-grind-outline.scm` | Outline wiki VM — Podman container + local PostgreSQL/Redis (192.168.51.203, :3000) |
 | `plane.scm` | Plane project management VM — Podman containers + PostgreSQL/Redis/RabbitMQ (192.168.51.204, :80) |
 | `claude-workstation.scm` | Jump-box VM — split-tunnel WireGuard + microsocks SOCKS5 (the desktops relay `ygo-server`/`ygoswiss1`/`ygoswiss2` ssh through it), tailscale, alloy; ONE home environment (`peteches`) + a plain `ygo` login account. Claude Code, the `criticalgrind` account and the Postgres/Podman dev-DB stack are gone. It is **not** a deploy origin any more: the automation SSH key it used to decrypt moved to `agents` on 2026-11-05 and its signing key was dropped from `%authorize-coordinator-key` (it had gone stale with the 2026-10-27 MinIO-image rebuild) (192.168.51.205) |
-| `comfyui.scm` | ComfyUI VM — RTX 4090 GPU passthrough with nonguix driver/CUDA; successor to nug's desktop-hosted comfyui. Also runs strata (Intel Arc B70), AllTalk TTS (XTTS on the 4090) and the WhisperX transcriber (speaker-labelled transcripts, :8787) (192.168.51.206) |
+| `comfyui.scm` | ComfyUI VM — RTX 4090 GPU passthrough with nonguix driver/CUDA; successor to nug's desktop-hosted comfyui. Also runs strata (Intel Arc B70), AllTalk TTS (XTTS on the 4090), the WhisperX transcriber (speaker-labelled transcripts, :8787) and the OpenVINO GenAI server (LFM2.5-24B-A2B int4 on the B70, loopback :8093) (192.168.51.206) |
 | `guix-build.scm` | Guix substitute server + build-offload target VM — successor to nug's guix-publish/offload role; signs with `guix-build-substitute-key.pub` (192.168.51.207). Holds BOTH offload trust lists: `guix-offload-authorized-keys` (ssh logins) and `guix-offload-signing-keys` (archive pushes). Until 2026-11-05 the second held one stale key; it now carries every offloader's live key, and `rustdesk` + `nyarlothotep` are the known gap (in the ssh list, no archive key, both unreachable when it was audited) |
 | `agents.scm` | "agents" VM — rules-lawyer Discord bot + SillyTavern + `pi` for the peteches account (home-environment from `peteches/home/configs/agents-peteches.scm`); LLM/stable-diffusion offloaded to other VMs; it also runs the **herdr server** — supervised by the
   system shepherd as `herdr-server-peteches` (`peteches/services/herdr.scm`) —
@@ -403,6 +403,7 @@ culminating package(s) — most of their content is transitive deps.
 | `mcp.scm` | MCP servers: `plane-mcp-server`, `mcp-grafana`, `mcp-outline`, `go-github-com-sonirico-mcp-shell` |
 | `mermaid.scm` | `node-mermaid-js-mermaid-cli` + ~787 node deps |
 | `nvidia-container-runtime.scm` | `nvidia-modprobe`, `libnvidia-container`, `nvidia-container-toolkit` |
+| `openvino.scm` | `openvino`, `openvino-genai` — Intel OpenVINO runtime + GenAI C++/python serving stack, built from source with every FetchContent/submodule dependency vendored as its own source package (see the module comment) |
 | `nyxt.scm` | `sbcl-nyxt-webkit`, `nyxt-webkit`, `nyxt-electron` |
 | `nzbget.scm` | `nzbget` |
 | `pihole-exporter.scm` | `pihole-exporter` |
@@ -420,6 +421,7 @@ culminating package(s) — most of their content is transitive deps.
 | `seerr.scm` | `seerr` |
 | `shims.scm` | `python-six-bootstrap` — compat shim, points at the current `six` |
 | `sonarr.scm` | `sonarr` |
+| `strata.scm` | `strata`, `strata-sycl-engine`, `strata-vision`, `strata-llama-cpp-src` — the Strata MoE engine — plus the Intel Arc GPU driver stack, all five wrapped from Intel's own GitHub `.deb` releases through one shared `deb-libraries-builder`: `intel-level-zero-gpu` (the Level Zero driver), `intel-igc-core` (`libigc.so.2`), `libigdgmm` (`libigdgmm.so.12`), and the OpenCL pair `intel-igc-opencl` (`libigdfcl.so.2`) + `intel-opencl-icd` (`libigdrcl.so`, with its ICD descriptor rewritten from the .deb's Debian path to the store path). **The OpenCL pair is for OpenVINO, not for strata** — strata uses its own bundled SYCL/L0 stack. Read the long comment above those definitions before removing them: oneDNN's Level Zero backend enumerates device extensions through OpenCL, so without them OpenVINO's GPU plugin enumerates the card and then dies at `ProgramBuilder … could not create an engine`. Versions must move together — `libigdfcl` and `libigc` are two halves of one IGC release |
 | `tailscale.scm` | `tailscale` |
 | `terraform.scm` | `terragrunt` |
 | `vault.scm` | `vault` |
@@ -453,6 +455,7 @@ System service *types*, folded in from the retired `peteches` channel.
 | `media-normalise.scm` | `media-normalise-service-type` — nightly media-library normalisation (jellyfin VM) |
 | `nvidia.scm` | `nvidia-vm-service-type` — repo-local NVIDIA VM service type (driver/kernel-module plumbing for `with-nvidia?` systems) |
 | `nzbget.scm` | `nzbget-service-type` |
+| `openvino.scm` | `openvino-service-type` + `openvino-server-configuration` — OpenVINO GenAI model server (FastAPI/uvicorn via the co-located `openvino-server.py`; `openvino-test.py` alongside it is the out-of-band inference probe used for the first run); accepts one configuration or a list of them; loopback-only and `auto-start? #f` by default. The `device` field picks CPU or GPU, and **GPU on the Arc Pro B70 works** (measured: LFM2.5-24B-A2B int4 at ~164 tok/s vs ~6-8 tok/s on CPU). Two non-obvious requirements for the GPU path: the service environment must name both packages' `python/` trees on PYTHONPATH *and* both `runtime/lib/intel64` trees on LD_LIBRARY_PATH (upstream's SDK layout means the profile merge picks up neither), plus `OCL_ICD_VENDORS`, because shepherd passes only the listed variables; and the system profile must carry `intel-opencl-icd` + `intel-igc-opencl` (see `(peteches packages strata)` — oneDNN's Level Zero backend enumerates device extensions through OpenCL, so a Level Zero-only install fails at `ProgramBuilder`/`could not create an engine`) |
 | `outline.scm` | `outline-service-type` |
 | `pihole.scm` | `pihole-service-type` |
 | `plane.scm` | `plane-service-type` |
