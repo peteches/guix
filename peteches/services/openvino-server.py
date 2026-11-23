@@ -56,7 +56,22 @@ THREAD_HINTS = {
     "ENABLE_CPU_PINNING": os.environ.get("OPENVINO_CPU_PINNING", ""),
     "PERFORMANCE_HINT": os.environ.get("OPENVINO_PERF_HINT", ""),
 }
-MAX_NEW_TOKENS = int(os.environ.get("OPENVINO_MAX_NEW_TOKENS", "256"))
+# Raised from 256: LFM2.5 reasons before it answers, and a budget that only
+# covers the reasoning returns no answer at all.  Measured on this box the
+# thinking block alone ran 71-1240 tokens depending on the prompt.
+MAX_NEW_TOKENS = int(os.environ.get("OPENVINO_MAX_NEW_TOKENS", "2048"))
+
+# Prepended when a client sends no system message of its own.  Set to "" to
+# disable.  See _with_default_system for the measurements behind the wording.
+SYSTEM_PROMPT = os.environ.get(
+    "OPENVINO_SYSTEM_PROMPT",
+    "You are a concise assistant. Keep your internal reasoning brief, "
+    "then answer directly.")
+
+# The model's chat template ends every assistant turn with
+# `<|im_start|>assistant\n<think>`, so completions always open inside a
+# thinking block and the user-facing answer starts after this tag.
+THINK_CLOSE = "</think>"
 
 _lock = threading.Lock()          # one generation at a time; see service comment
 
@@ -115,12 +130,31 @@ print("pipeline ready", flush=True)
 
 
 def gen_config(req):
-    cfg = ov_genai.GenerationConfig()
+    """Per-request generation config, layered on top of the MODEL's own.
+
+    This used to start from a fresh `ov_genai.GenerationConfig()', which
+    silently discards the export's generation_config.json.  A blank object
+    carries eos_token_id=-1, an empty stop_token_ids, do_sample=False,
+    temperature=1.0, top_k unlimited and repetition_penalty=1.0, whereas this
+    model ships do_sample=True, temperature=0.1, top_k=50,
+    repetition_penalty=1.05 and eos/stop token 124900 — so every request was
+    decoded with settings nobody chose.  pipeline.get_generation_config()
+    returns the model's values; request fields override them.
+    """
+    try:
+        cfg = PIPELINE.get_generation_config()
+    except Exception as exc:
+        print(f"note: get_generation_config() failed ({exc}); falling back to "
+              f"library defaults", file=sys.stderr)
+        cfg = ov_genai.GenerationConfig()
     cfg.max_new_tokens = int(req.get("max_tokens") or req.get("max_completion_tokens")
                              or MAX_NEW_TOKENS)
     temperature = req.get("temperature")
     if temperature is not None:
         cfg.temperature = float(temperature)
+        # Turning temperature up implies sampling; the model's own config sets
+        # do_sample, but a client asking for temperature 0 wants greedy.
+        cfg.do_sample = float(temperature) > 0
     top_p = req.get("top_p")
     if top_p is not None:
         cfg.top_p = float(top_p)
@@ -128,6 +162,64 @@ def gen_config(req):
     if seed is not None:
         cfg.seed = int(seed)
     return cfg
+
+
+def _with_default_system(messages):
+    """Prepend SYSTEM_PROMPT when the client sent no system message.
+
+    The template always opens the assistant turn with `<think>`, so the model
+    reasons first and the answer only follows the closing tag.  Asking it to
+    keep that reasoning brief cuts the thinking budget several-fold with no
+    measurable loss of answer quality — measured on this box, "in one sentence,
+    explain what a reverse proxy does" went from 1653 generated tokens (8.3 s,
+    and it overran a 1024 budget without ever answering) to 287 tokens (1.5 s)
+    for the same sentence, and the is_palindrome prompt from 1240 tokens (6.3 s)
+    to 381 (2.0 s) with cleaner output.  Callers that supply their own system
+    message are left untouched.
+    """
+    if not SYSTEM_PROMPT:
+        return messages
+    if any(isinstance(m, dict) and m.get("role") == "system" for m in messages):
+        return messages
+    return [{"role": "system", "content": SYSTEM_PROMPT}] + list(messages)
+
+
+def _split_thinking(text):
+    """Split `<think>...</tool_response>` into (reasoning, answer, closed).
+
+    When the model never closed the block — the token budget ran out
+    mid-thought — the partial reasoning goes in `reasoning' and `answer' comes
+    back empty, rather than passing the chain of thought off as the reply.
+    Leaking it as content is exactly what made this endpoint's answers unusable
+    before; `closed' is False so the caller reports finish_reason "length"
+    instead of pretending the response completed.
+    """
+    if THINK_CLOSE in text:
+        think, answer = text.split(THINK_CLOSE, 1)
+        return think.strip(), answer.strip(), True
+    return text.strip(), "", False
+
+
+def _finish_and_usage(res, cfg, closed):
+    """Real finish_reason and usage, from the result's own PerfMetrics.
+
+    Both used to be hardcoded ("stop" and all-zero usage), so a client could
+    not tell a completed answer from one cut off mid-sentence, and pi's
+    context accounting had nothing to work with.
+    """
+    n_in = n_out = 0
+    pm = getattr(res, "perf_metrics", None)
+    if pm is not None:
+        try:
+            n_in = int(pm.get_num_input_tokens())
+            n_out = int(pm.get_num_generated_tokens())
+        except Exception as exc:
+            print(f"note: perf_metrics unavailable ({exc})", file=sys.stderr)
+    limit = getattr(cfg, "max_new_tokens", 0) or 0
+    hit_limit = bool(limit) and n_out >= limit
+    finish = "stop" if (closed and not hit_limit) else "length"
+    return finish, {"prompt_tokens": n_in, "completion_tokens": n_out,
+                    "total_tokens": n_in + n_out}
 
 
 def _result_text(result):
@@ -229,7 +321,7 @@ def models():
 @app.post("/v1/chat/completions")
 async def chat(request: Request):
     body = await request.json()
-    messages = body.get("messages") or []
+    messages = _with_default_system(body.get("messages") or [])
     cfg = gen_config(body)
     name = os.path.basename(MODEL_DIR.rstrip("/"))
 
@@ -237,37 +329,46 @@ async def chat(request: Request):
         with _lock:
             candidate, how = _chat_input(messages)
             try:
-                return _result_text(PIPELINE.generate(candidate,
-                                                      generation_config=cfg))
+                # Return the result OBJECT, not its text: finish_reason and
+                # usage both come off its perf_metrics.
+                return PIPELINE.generate(candidate, generation_config=cfg)
             except TypeError as exc:
                 # Neither ChatHistory nor the bare dict list took it: flatten here.
                 print(f"note: {how} input rejected ({exc}); using flattened text",
                       file=sys.stderr)
             # Last resort: our own ChatML flattening, read from the export's tokens.
-            return _result_text(PIPELINE.generate(_chat_to_text(messages),
-                                                  generation_config=cfg))
+            return PIPELINE.generate(_chat_to_text(messages),
+                                     generation_config=cfg)
 
     if body.get("stream"):
         def events():
-            text = run()
+            res = run()
+            _reasoning, content, closed = _split_thinking(_result_text(res))
+            finish, _usage = _finish_and_usage(res, cfg, closed)
             chunk = {"id": "1", "object": "chat.completion.chunk", "model": name,
                      "choices": [{"index": 0,
-                                  "delta": {"content": text},
+                                  "delta": {"content": content},
                                   "finish_reason": None}]}
             yield f"data: {json.dumps(chunk)}\n\n"
             done = {"id": "1", "object": "chat.completion.chunk", "model": name,
-                    "choices": [{"index": 0, "delta": {}, "finish_reason": "stop"}]}
+                    "choices": [{"index": 0, "delta": {}, "finish_reason": finish}]}
             yield f"data: {json.dumps(done)}\n\n"
             yield "data: [DONE]\n\n"
         return StreamingResponse(events(), media_type="text/event-stream")
 
-    text = run()
+    res = run()
+    reasoning, content, closed = _split_thinking(_result_text(res))
+    finish, usage = _finish_and_usage(res, cfg, closed)
+    message = {"role": "assistant", "content": content}
+    if reasoning:
+        # Hand the chain of thought back separately instead of buried in
+        # content: OpenAI-shaped clients that understand reasoning_content can
+        # display or discard it, and everyone else simply gets a clean answer.
+        message["reasoning_content"] = reasoning
     return JSONResponse({
         "id": "1", "object": "chat.completion", "model": name,
-        "choices": [{"index": 0,
-                     "message": {"role": "assistant", "content": text},
-                     "finish_reason": "stop"}],
-        "usage": {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}})
+        "choices": [{"index": 0, "message": message, "finish_reason": finish}],
+        "usage": usage})
 
 
 @app.post("/v1/completions")
@@ -279,10 +380,16 @@ async def completions(request: Request):
     cfg = gen_config(body)
     name = os.path.basename(MODEL_DIR.rstrip("/"))
     with _lock:
-        text = _result_text(PIPELINE.generate(prompt, generation_config=cfg))
+        res = PIPELINE.generate(prompt, generation_config=cfg)
+    raw = _result_text(res)
+    reasoning, answer, closed = _split_thinking(raw)
+    # A raw-completion endpoint has no reasoning channel, so an unclosed think
+    # block falls back to the literal text rather than an empty string.
+    text = answer if closed else raw
+    finish, _usage = _finish_and_usage(res, cfg, closed)
     return JSONResponse({
         "id": "1", "object": "text_completion", "model": name,
-        "choices": [{"index": 0, "text": text, "finish_reason": "stop"}]})
+        "choices": [{"index": 0, "text": text, "finish_reason": finish}]})
 
 
 if __name__ == "__main__":

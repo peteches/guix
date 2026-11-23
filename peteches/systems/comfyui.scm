@@ -1103,7 +1103,14 @@
                 (firewall-sources '("100.64.0.0/10"
                                     "fd7a:115c:a1e0::/48"
                                     "fd7a:115c:a6e0::/48"))
-                (max-new-tokens 256)))
+                ;; LFM2.5 reasons before it answers, so the budget has to cover
+                ;; the thinking block AND the reply.  Measured thinking lengths
+                ;; on this box: 71-1240 tokens without a brevity system prompt,
+                ;; 81-381 with the one openvino-server.py now injects by
+                ;; default.  256 was far too small — it returned reasoning with
+                ;; the answer truncated away.  Clients can still override per
+                ;; request via max_tokens.
+                (max-new-tokens 2048)))
 
       (service strata-service-type
                (strata-configuration
