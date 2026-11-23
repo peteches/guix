@@ -59,7 +59,7 @@
 ;;; The default models.json wires up koboldcpp.ts.peteches.co.uk (Caddy's
 ;;; reverse proxy onto the comfyui VM's koboldcpp instance) and
 ;;; llm.ts.peteches.co.uk (Caddy's reverse proxy onto the same VM's
-;;; OpenVINO GenAI server — LFM2.5-24B-A2B int4 on the Intel Arc B70,
+;;; OpenVINO GenAI server — LFM2.5-24B-A2B int8 on the Intel Arc B70,
 ;;; see peteches/systems/comfyui.scm) as custom providers. configs/pi/
 ;;; defaults/settings.json declares llm as the default model
 ;;; (defaultProvider/defaultModel), so pi's startup selection lands there
@@ -68,22 +68,35 @@
 ;;; when strata was stopped in favour of OpenVINO; Caddy's route was renamed
 ;;; in the same change, so the old hostname no longer resolves to anything.
 ;;;
-;;; CAVEAT, measured against the live endpoint 2026-11-23: tool calling DOES
-;;; work — the server passes `tools' to ChatHistory.set_tools, parses the
-;;; template's <|tool_call_start|>[fn(arg=...)]<|tool_call_end|> markers with
-;;; `ast', and returns OpenAI-shaped tool_calls with finish_reason
-;;; "tool_calls"; pi ran a real bash agent loop against it.  But
-;;; LFM2.5-24B-A2B-int4 is not a reliable agent.  Two failure modes in
-;;; `pi --mode json -p' runs: it looped eight times on a hallucinated
-;;; `ls -la /pi' and never ran the command it had been given, and it ended
-;;; turns with a thinking block and no content at all (stop=length when the
-;;; reasoning overran maxTokens, stop=stop with an empty answer otherwise).
-;;; Plain Q&A is good — Paris, 391, exact JSON, a correct is_palindrome, and it
-;;; avoids the bat-and-ball $0.10 trap.  So this is a fine chat/SillyTavern
-;;; backend and a poor choice for driving pi's own tools.  The server also
-;;; serialises every request on a threading.Lock, and its "streaming" runs the
-;;; whole generation before emitting a single chunk, so nothing appears on
-;;; screen until the turn is finished.
+;;; CAVEAT RESOLVED 2026-11-23 — and the cause is worth keeping here, because
+;;; it cost a lot of measuring to find.  Tool calling works: the server passes
+;;; `tools' into the chat template, parses the model's
+;;; <|tool_call_start|>[fn(arg=...)]<|tool_call_end|> markers with `ast', and
+;;; returns OpenAI-shaped tool_calls with finish_reason "tool_calls", so pi runs
+;;; a real agent loop against this endpoint.  What did NOT work was the INT4
+;;; export of this model.  With the same server, the same prompt and the same
+;;; tools, it called read_file('fruit.txt') three times, received the correct
+;;; contents every time, then degenerated into repetition and burned 5977 tokens
+;;; over six steps without ever answering; under `pi --mode json -p' it looped
+;;; eight times on a hallucinated `ls -la /pi' and ended turns with a thinking
+;;; block and no content at all (stop=length when the reasoning overran
+;;; maxTokens, stop=stop with an empty answer otherwise).
+;;;
+;;; Switching to the INT8 export of the same weights fixed it outright: the same
+;;; task now completes in two steps and 187 tokens, and pi drives a clean
+;;; find -> read -> wc -l loop to the right answer.  A non-abliterated INT4
+;;; export was tried as well and was worse — it hallucinated paths and decayed
+;;; into raw template tokens — so neither abliteration nor the serving stack was
+;;; at fault.  INT4 weight compression on its own was enough to destroy the
+;;; agentic behaviour.  The cost is ~31% of decode speed (127 tok/s single
+;;; stream vs 183) and 145 s to load the model instead of ~29 s.
+;;;
+;;; Plain Q&A was good at either precision — Paris, 391, exact JSON, a correct
+;;; is_palindrome, and it avoids the bat-and-ball $0.10 trap.
+;;;
+;;; What still holds: the server serialises every request on a threading.Lock,
+;;; and its "streaming" runs the whole generation before emitting a single
+;;; chunk, so nothing appears on screen until the turn is finished.
 ;;; The koboldcpp provider
 ;;; replaced nug's own koboldcpp instance and its Tailscale
 ;;; IPv6-literal baseUrl following nug's decommission; the `pi-koboldcpp'

@@ -1082,14 +1082,31 @@
       (service openvino-service-type
                (openvino-server-configuration
                 (service-name "openvino-lfm2")
-                ;; NOT LFM2.5-24B-A2B/ov-int4: that directory is the intended
-                ;; export of the *base* weights and is still empty (four optimum
-                ;; runs were OOM-killed producing it — see above).  Serving it
-                ;; fails with "Could not find a model in the directory".  This is
-                ;; the community abliterated int4 IR export that does exist on
-                ;; disk (15 files / 12.6 GB); swap to a base-weights export here
-                ;; if one is ever produced.
-                (model-dir "/media/models/openvino/LFM2.5-24B-A2B-int4-ov")
+                ;; INT8, not INT4 — and the reason is measured, not preference.
+                ;; Both exports are the same abliterated weights
+                ;; (blaj/LFM2.5-24B-A2B-Uncensored-*-ov, revision
+                ;; paged-attention, which is the one blaj documents for OpenVINO
+                ;; GenAI on GPU).  Served through this same server with the same
+                ;; prompt and tools, the 24B INT4 export could not complete a
+                ;; two-step agent task: it called read_file('fruit.txt') three
+                ;; times, received the correct contents each time, then
+                ;; degenerated into repetition and burned 5977 tokens across six
+                ;; steps without ever answering.  The INT8 export answered in
+                ;; two steps and 187 tokens, and pi drove a clean three-call loop
+                ;; (find -> read -> wc -l) to the right answer.  So INT4 weight
+                ;; compression, not abliteration and not the serving stack, was
+                ;; what broke agentic use; a non-abliterated INT4 export was
+                ;; tested too and was worse, hallucinating paths and decaying
+                ;; into raw template tokens.
+                ;;
+                ;; Cost: ~31% slower decode (127 tok/s single stream vs 183), as
+                ;; expected when decode is bandwidth-bound and the weights double.
+                ;; Weights are 24.01 GB (22.4 GiB) of the B70's 31.9 GiB usable
+                ;; VRAM, leaving ~9.5 GiB for KV cache and activations — it fits,
+                ;; but there is no longer room to run strata alongside it.
+                ;; INT4 remains on disk at LFM2.5-24B-A2B-int4-ov if the speed is
+                ;; ever worth more than the competence.
+                (model-dir "/media/models/openvino/LFM2.5-24B-A2B-int8-ov")
                 ;; GPU on the Arc Pro B70, measured working: LFM2.5-24B-A2B int4
                 ;; builds in ~3 s and generates at ~164 tok/s (the 8B sibling at
                 ;; ~237 tok/s), against ~6-8 tok/s for the same 24B export on
