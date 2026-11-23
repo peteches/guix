@@ -1967,15 +1967,30 @@
           ;; "pi" executable -- but dist/cli.js here is our own fresh,
           ;; writable output, not a symlink into another store item, so
           ;; chmod/symlink are both safe to do by hand.
+          ;;
+          ;; Guix's npm build system has since grown a `link-bins' phase of
+          ;; its own, which creates bin/pi from package.json's "bin" field.
+          ;; That both reintroduces exactly what --no-bin-links suppresses and
+          ;; points at the WRONG target -- package.json says
+          ;; dist/bundle/cli.js, while every working build of this package has
+          ;; always shipped bin/pi -> dist/cli.js.  Running after `install',
+          ;; link-own-bin won the race and the phase then died with
+          ;; system-error "symlink" "File exists"; so drop link-bins and keep
+          ;; doing the link by hand here.
+          (delete 'link-bins)
           (add-after 'install 'link-own-bin
             (lambda* (#:key outputs #:allow-other-keys)
               (let* ((out (assoc-ref outputs "out"))
                      (cli (string-append
                            out
-                           "/lib/node_modules/@earendil-works/pi-coding-agent/dist/cli.js")))
+                           "/lib/node_modules/@earendil-works/pi-coding-agent/dist/cli.js"))
+                     (bin (string-append out "/bin/pi")))
                 (chmod cli #o755)
                 (mkdir-p (string-append out "/bin"))
-                (symlink cli (string-append out "/bin/pi"))))))))
+                ;; Belt and braces: tolerate whatever an earlier phase left at
+                ;; bin/pi, so this stays correct if link-bins ever comes back.
+                (false-if-exception (delete-file bin))
+                (symlink cli bin)))))))
     (inputs (list node-earendil-works-chord-0.87.1
                   node-earendil-works-pi-agent-core-0.87.1
                   node-earendil-works-pi-protocol-0.87.1
