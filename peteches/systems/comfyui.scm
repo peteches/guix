@@ -1106,7 +1106,7 @@
                 ;; but there is no longer room to run strata alongside it.
                 ;; INT4 remains on disk at LFM2.5-24B-A2B-int4-ov if the speed is
                 ;; ever worth more than the competence.
-                (model-dir "/media/models/openvino/LFM2.5-24B-A2B-int8-ov")
+                (model-dir "/media/models/openvino/LFM2.5-24B-A2B-int4-ov")
                 ;; GPU on the Arc Pro B70, measured working: LFM2.5-24B-A2B int4
                 ;; builds in ~3 s and generates at ~164 tok/s (the 8B sibling at
                 ;; ~237 tok/s), against ~6-8 tok/s for the same 24B export on

@@ -152,10 +152,20 @@
 ;;; and came back as one token of text with `finish_reason: length'. That
 ;;; is at least 1.43x low, and the overrides are sized for it:
 ;;;
-;;;   llm        reserveTokens  49152 -> compact above  81920 estimated
-;;;                                        ( 81920 * 1.43 < 122880)
+;;;   llm        reserveTokens  98304 -> compact above  32768 estimated
+;;;                                        ( 32768 * 1.43 < 122880)
 ;;;   koboldcpp  reserveTokens  49152 -> compact above  81920 estimated
 ;;;                                        ( 81920 * 1.43 < 131072)
+;;;
+;;; The llm override is deliberately tighter than koboldcpp's, and the reason is
+;;; measured rather than tidy: at 49152 this model compacted at ~81k tokens and
+;;; the summarisation request came back having echoed pi's own compaction
+;;; template instead of summarising it, having burned the full 8192-token budget
+;;; ("Auto-compaction failed: Turn prefix summarization failed: generation hit
+;;; the token cap and the summary is incomplete").  LFM2.5 is rated to 131k but
+;;; it does not summarise an 80k context reliably.  Compacting at ~32k keeps the
+;;; request inside what it can actually do; the summarisation output budget is
+;;; unaffected, since min(floor(0.8 * 98304), 8192) is still 8192.
 ;;;
 ;;; reserveTokens also sets the summarization output budget,
 ;;; min(floor(0.8 * reserveTokens), maxTokens), so each override lands on
