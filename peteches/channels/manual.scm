@@ -25,7 +25,7 @@
   (name 'sops-guix)
   (url "https://github.com/fishinthecalculator/sops-guix.git")
   (branch "main")
-  (commit "c53e27e533836ea8595626ba6796dee5362f8c4a")
+  (commit "c3045852cec9e1d4ffa125661789ed22a673cffb")
   (introduction
    (make-channel-introduction
     "0bbaf1fdd25266c7df790f65640aaa01e6d2dbc9"
@@ -36,7 +36,7 @@
   (name 'guix-science)
   (url "https://codeberg.org/guix-science/guix-science.git")
   (branch "master")
-  (commit "52d7ab7851a5ced97c0c8f1a602a103b5ca0b046")
+  (commit "f8b5232a16643ac3fdedc3c2c071b674da823b35")
   (introduction
    (make-channel-introduction
     "b1fe5aaff3ab48e798a4cce02f0212bc91f423dc"
@@ -47,7 +47,7 @@
   (name 'guix-science-nonfree)
   (url "https://codeberg.org/guix-science/guix-science-nonfree.git")
   (branch "master")
-  (commit "54a483df56f24d8fd1c91ed3de547f5f1cf85964")
+  (commit "766a8138ad450832807cde1330ac66b88c40c06d")
   (introduction
    (make-channel-introduction
     "58661b110325fd5d9b40e6f0177cc486a615817e"
@@ -58,7 +58,7 @@
   (name 'nonguix)
   (url "https://gitlab.com/nonguix/nonguix.git")
   (branch "master")
-  (commit "caa8c0b4646b993537be13c9bc819b3df68ab9b2")
+  (commit "ee118ce90d55c9d80af11295f28d6f971369161c")
   (introduction
    (make-channel-introduction
     "897c1a470da759236cc11798f4e0a5f7d4d59fbc"
@@ -69,7 +69,7 @@
   (name 'guix)
   (url "https://codeberg.org/guix/guix.git")
   (branch "master")
-  (commit "b13c7c02b5f6d635e123f863227aa32ac64e3498")
+  (commit "c947335d508e5cde9464b1102bc7fbcfa835d883")
   (introduction
    (make-channel-introduction
     "199fd26ab268d4f26cebcb39e844fe4ff9bea9bc"
@@ -80,4 +80,4 @@
   (name 'guix-hpc-non-free)
   (url "https://gitlab.inria.fr/guix-hpc/guix-hpc.git")
   (branch "master")
-  (commit "d0e90d7f19cbc913099d0bb21284f0c6dd0f4a0f")))
+  (commit "e23f019cbd3322e12dcb3f2f3691b02028ac297d")))

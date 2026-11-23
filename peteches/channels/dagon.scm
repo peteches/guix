@@ -23,6 +23,6 @@
      (name 'guix-hpc-non-free)
      (url "https://gitlab.inria.fr/guix-hpc/guix-hpc.git")
      (branch "master")
-     (commit "d0e90d7f19cbc913099d0bb21284f0c6dd0f4a0f")
+     (commit "e23f019cbd3322e12dcb3f2f3691b02028ac297d")
      ))))
 %dagon-channels
