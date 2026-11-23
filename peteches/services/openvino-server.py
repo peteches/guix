@@ -70,6 +70,38 @@ SYSTEM_PROMPT = os.environ.get(
     "You are a concise assistant. Keep your internal reasoning brief, "
     "then answer directly.")
 
+# Sampling for TOOL-BEARING requests only, and the reason is measured, not
+# stylistic.  The export's generation_config.json ships temperature 0.1 (the
+# model card's chat recommendation), and at 0.1 this model degenerates on a
+# large agent prompt: replaying pi's real 7-tool request (2551 prompt tokens)
+# produced an endless "I'm an expert coding agent. I'm an expert coding
+# agent. ..." loop that ran to the 8192-token cap with finish_reason=length and
+# no tool call at all.  The identical request at temperature 0.6 answered
+# correctly with bash({"command": "ls -la"}) in 461 tokens; 1.0 also worked.
+# Trimming the tool list to 2 of 7 also fixed it at 0.1 (1369 prompt tokens),
+# so the trigger is near-greedy decoding over a big structured prompt.
+# The model card's own agentic benchmarks use exactly this range --
+# AutomationBench and WebArena at temperature 0.6 / top_p 0.95, LiveClaw at
+# 1.0 -- while its chat recommendation stays 0.1.  Plain chat therefore keeps
+# the model's 0.1 (SillyTavern and the Q&A suite both measure better there);
+# only requests that carry `tools' are warmed up.  A client that sends an
+# explicit temperature always wins.
+TOOL_TEMPERATURE = float(os.environ.get("OPENVINO_TOOL_TEMPERATURE", "0.6"))
+TOOL_TOP_P = float(os.environ.get("OPENVINO_TOOL_TOP_P", "0.95"))
+# Measured on pi's real 7-tool request (2551 prompt tokens), temp 0.6, top_k 50,
+# three identical runs per setting -- generation is deterministic here, so these
+# are reproducible rather than lucky samples:
+#   rep 1.05 (the model's own)  671 tokens, usable but verbose, and elsewhere
+#                              produced a 1282-token turn with NO tool call
+#   rep 1.15                     77 tokens, `bash(pwd && ls -la)`  <- chosen
+#   rep 1.20                     39 tokens, `bash(pwd)` -- cheaper but it stopped
+#                              short of listing the directory it needed
+#   rep 1.30                    783 tokens, `bash(pwd)`
+# top_k must stay at the model's 50: setting top_k=0 (disabled) degenerated into
+# a 2048-token repetition loop with no tool call.
+TOOL_REPETITION_PENALTY = float(os.environ.get("OPENVINO_TOOL_REPETITION_PENALTY",
+                                              "1.15"))
+
 # The model's chat template ends every assistant turn with
 # `<|im_start|>assistant\n<think>`, so completions always open inside a
 # thinking block and the user-facing answer starts after this tag.
@@ -131,7 +163,7 @@ PIPELINE = _build_pipeline()
 print("pipeline ready", flush=True)
 
 
-def gen_config(req):
+def gen_config(req, has_tools=False):
     """Per-request generation config, layered on top of the MODEL's own.
 
     This used to start from a fresh `ov_genai.GenerationConfig()', which
@@ -152,17 +184,40 @@ def gen_config(req):
     cfg.max_new_tokens = int(req.get("max_tokens") or req.get("max_completion_tokens")
                              or MAX_NEW_TOKENS)
     temperature = req.get("temperature")
+    if temperature is None and has_tools:
+        # See TOOL_TEMPERATURE: the model's own 0.1 degenerates into a
+        # repetition loop on large agent prompts.
+        temperature = TOOL_TEMPERATURE
     if temperature is not None:
         cfg.temperature = float(temperature)
         # Turning temperature up implies sampling; the model's own config sets
         # do_sample, but a client asking for temperature 0 wants greedy.
         cfg.do_sample = float(temperature) > 0
     top_p = req.get("top_p")
+    if top_p is None and has_tools:
+        top_p = TOOL_TOP_P
     if top_p is not None:
         cfg.top_p = float(top_p)
     seed = req.get("seed")
     if seed is not None:
         cfg.seed = int(seed)
+    # Anti-repetition knobs, passthrough so they can be tuned per request.
+    # This model degenerates into loops ("We need to read files. We need to
+    # read files. ...") on large agent prompts even at temperature 0.6, and the
+    # only levers that reach it are the penalty terms and top_k -- so they have
+    # to be settable from outside rather than welded to generation_config.json.
+    for field, key in (("repetition_penalty", "repetition_penalty"),
+                       ("frequency_penalty", "frequency_penalty"),
+                       ("presence_penalty", "presence_penalty"),
+                       ("top_k", "top_k")):
+        value = req.get(key)
+        if value is None and has_tools and field == "repetition_penalty":
+            value = TOOL_REPETITION_PENALTY
+        if value is not None and hasattr(cfg, field):
+            try:
+                setattr(cfg, field, type(getattr(cfg, field))(value))
+            except Exception as exc:
+                print(f"note: ignoring {key}={value!r}: {exc}", file=sys.stderr)
     return cfg
 
 
@@ -218,7 +273,19 @@ def _finish_and_usage(res, cfg, closed, tool_calls=()):
         except Exception as exc:
             print(f"note: perf_metrics unavailable ({exc})", file=sys.stderr)
     limit = getattr(cfg, "max_new_tokens", 0) or 0
-    hit_limit = bool(limit) and n_out >= limit
+    # Prefer the runtime's own verdict over inferring one from token counts:
+    # DecodedResults carries finish_reasons, and GenerationFinishReason.LENGTH
+    # is unambiguous where "generated >= limit" could also mean it stopped exactly
+    # at the cap by coincidence.
+    reasons = getattr(res, "finish_reasons", None)
+    hit_limit = None
+    if reasons:
+        try:
+            hit_limit = "LENGTH" in str(reasons[0]).upper()
+        except Exception:
+            hit_limit = None
+    if hit_limit is None:
+        hit_limit = bool(limit) and n_out >= limit
     # A turn that ends in a tool call is complete even though it carries no
     # prose, so it must not be reported as truncated.
     if tool_calls:
@@ -393,13 +460,172 @@ def _special(name, fallback):
         return fallback
 
 
-def _chat_to_text(messages):
-    """Fallback when the installed GenAI cannot take message dicts directly.
+CFM_TAG = "CONTINUE_FINAL_MESSAGE_TAG "
+THINK_OPEN = "<think>"
+TOOL_CALL_START = "<|tool_call_start|>"
+TOOL_CALL_END = "<|tool_call_end|>"
 
-    Mirrors the ChatML-ish shape LFM2 uses (<|startoftext|>role ... <|im_end|>) as
-    read from the export, so the fallback does not invent a template the weights
-    were never trained with.  GenAI's own template (applied on the message-dict
-    path) stays the preferred route.
+
+def _parse_content(content):
+    """Mirror the template's `parse_content' macro."""
+    if content is None:
+        return ""
+    if isinstance(content, str):
+        return content
+    if isinstance(content, dict):
+        return json.dumps(content)
+    if isinstance(content, (list, tuple)):
+        parts = []
+        for item in content:            # OpenAI multimodal part list
+            if isinstance(item, str):
+                parts.append(item)
+            elif isinstance(item, dict):
+                if item.get("type") == "image":
+                    parts.append("<image>")
+                else:
+                    parts.append(str(item.get("text") or ""))
+        return "".join(parts)
+    return str(content)
+
+
+def _format_arg_value(value):
+    """Mirror the template's `format_arg_value' macro.
+
+    Strings become Python single-quoted literals (not JSON), mappings and
+    sequences become JSON, everything else is str()'d -- so True renders as
+    "True", matching Jinja's `| string' filter rather than json's "true".
+    """
+    if isinstance(value, str):
+        escaped = (value.replace("\\", "\\\\").replace("'", "\\'")
+                        .replace("\n", "\\n").replace("\r", "\\r"))
+        return "'" + escaped + "'"
+    if isinstance(value, (dict, list, tuple)):
+        return json.dumps(value)
+    return str(value)
+
+
+def _render_tool_calls(tool_calls):
+    """Mirror `render_tool_calls': `[fn(a='b'), g(c=1)]' between the markers."""
+    rendered = []
+    for tc in tool_calls:
+        if not isinstance(tc, dict):
+            continue
+        func = tc.get("function") if isinstance(tc.get("function"), dict) else tc
+        name = func.get("name")
+        if not name:
+            continue
+        args = func.get("arguments")
+        if isinstance(args, str):
+            # The template raises on a JSON-encoded string here, so decode it.
+            try:
+                args = json.loads(args) if args.strip() else {}
+            except Exception:
+                args = {"_raw": args}
+        if not isinstance(args, dict):
+            args = {}
+        pairs = [f"{k}={_format_arg_value(v)}" for k, v in args.items()]
+        rendered.append(f"{name}(" + ", ".join(pairs) + ")")
+    return TOOL_CALL_START + "[" + ", ".join(rendered) + "]" + TOOL_CALL_END
+
+
+def _flatten_tools(tools):
+    """OpenAI's nested {"type":"function","function":{...}} -> the flat
+    {"name","description","parameters"} form the model card documents and the
+    template json-dumps into the system prompt verbatim.
+    """
+    out = []
+    for t in tools or []:
+        if not isinstance(t, dict):
+            continue
+        fn = t.get("function")
+        out.append(fn if isinstance(fn, dict) else t)
+    return out
+
+
+def _render_chatml(messages, tools=None):
+    """Render the conversation exactly as the export's chat_template.jinja does.
+
+    This is the PRIMARY path, not a fallback.  GenAI's ChatHistory cannot carry
+    a tool conversation: measured on 2026.4.1 it JSON-dumps an assistant
+    message's tool_calls straight into the content, and rewrites `role: "tool"'
+    into a `user' message carrying a {"tool_response": ...} blob.  The model
+    therefore never sees its own prior calls, nor their results, in the format
+    it was trained on.  In pi that showed up as the agent re-running the same
+    `ls -la' eight times while every result correctly listed the file it had
+    been asked to read.
+
+    Rendering the template here keeps the documented wire format --
+    `<|tool_call_start|>[fn(arg='v')]<|tool_call_end|>' for calls and
+    `<|fim_prefix|>tool' for results -- and follows the export's own
+    chat_template.jinja clause for clause, including its asymmetry (assistant
+    turns end `</tool_response>\n', every other role ends `</tool_response>'
+    with no newline), the single leading system block with the tool list
+    appended to it, and the preserve_thinking=False default that drops
+    reasoning from all but the current turn.
+    """
+    bos = _special("bos_token", "<|startoftext|>")
+    msgs = [m for m in messages if isinstance(m, dict)]
+
+    system_prompt = ""
+    if msgs and msgs[0].get("role") == "system":
+        system_prompt = _parse_content(msgs[0].get("content"))
+        msgs = msgs[1:]
+
+    flat = _flatten_tools(tools)
+    if flat:
+        listing = ", ".join(json.dumps(t) for t in flat)
+        system_prompt += (("\n" if system_prompt else "")
+                          + "List of tools: [" + listing + "]")
+
+    out = [bos]
+    if system_prompt:
+        out.append(f"<|fim_prefix|>system\n{system_prompt}</tool_response>\n")
+
+    last_user = -1
+    for i, m in enumerate(msgs):
+        if m.get("role") == "user":
+            last_user = i
+
+    for i, m in enumerate(msgs):
+        role = m.get("role") or "user"
+        out.append(f"<|fim_prefix|>{role}\n")
+        if role == "assistant":
+            keep_thinking = i > last_user
+            thinking = (m.get("thinking") or m.get("reasoning")
+                        or m.get("reasoning_content"))
+            if not isinstance(thinking, str):
+                thinking = ""
+            if thinking and keep_thinking:
+                out.append(f"<think>{thinking}</think>")
+            content = _parse_content(m.get("content")) if m.get("content") else ""
+            has_cfm = content.endswith(CFM_TAG)
+            if has_cfm:
+                content = content[:len(content) - len(CFM_TAG)]
+            if not keep_thinking and THINK_CLOSE in content:
+                content = content.split(THINK_CLOSE, 1)[-1].strip()
+            out.append(content)
+            calls = m.get("tool_calls")
+            if isinstance(calls, list) and calls:
+                out.append(_render_tool_calls(calls))
+            if has_cfm:
+                out.append(CFM_TAG)
+            out.append("</tool_response>\n")
+        else:
+            if m.get("content"):
+                out.append(_parse_content(m.get("content")))
+            out.append("</tool_response>")
+
+    out.append(f"<|file_sep|>assistant\n{THINK_OPEN}")
+    return "".join(out)
+
+
+def _chat_to_text(messages):
+    """Last-resort flattening, reached only if _render_chatml AND ChatHistory
+    both raise.
+
+    Approximate on purpose: it uses the bos token as the per-message opener and
+    carries no tool calls, so it is strictly worse than _render_chatml.  It
+    exists so a request degrades to plain text instead of 500-ing.
     """
     start = _special("bos_token", "<|startoftext|>")
     end = _special("eos_token", "<|im_end|>")
@@ -443,23 +669,35 @@ async def chat(request: Request):
     tools = ([t for t in raw_tools if isinstance(t, dict)]
              if isinstance(raw_tools, list) else None) or None
     messages = _normalise_messages(_with_default_system(body.get("messages") or []))
-    cfg = gen_config(body)
+    cfg = gen_config(body, bool(tools))
     name = os.path.basename(MODEL_DIR.rstrip("/"))
 
     def run():
         with _lock:
+            # Render the chat template ourselves rather than handing message
+            # dicts to ChatHistory: ChatHistory JSON-dumps assistant tool_calls
+            # into the content and rewrites the `tool' role to `user', which
+            # breaks every agent loop after its first turn.  See _render_chatml.
+            try:
+                # Pass a ONE-ELEMENT LIST, not a bare string.  Both go down the
+                # same tokenization path (which, unlike Tokenizer.encode, does
+                # recognise the ChatML special tokens), but generate(str)
+                # returns a bare `str' with no perf_metrics or finish_reasons,
+                # while generate([str]) returns DecodedResults carrying both --
+                # which is where usage and an honest finish_reason come from.
+                prompt = _render_chatml(messages, tools)
+                return PIPELINE.generate([prompt], generation_config=cfg)
+            except Exception as exc:
+                print(f"note: rendered-prompt generation failed ({exc}); "
+                      f"falling back to ChatHistory", file=sys.stderr)
             candidate, how = _chat_input(messages, tools)
             try:
-                # Return the result OBJECT, not its text: finish_reason and
-                # usage both come off its perf_metrics.
                 return PIPELINE.generate(candidate, generation_config=cfg)
             except TypeError as exc:
                 # Neither ChatHistory nor the bare dict list took it: flatten here.
                 print(f"note: {how} input rejected ({exc}); using flattened text",
                       file=sys.stderr)
-            # Last resort: our own ChatML flattening, read from the export's
-            # tokens.  Tool schemas cannot survive this path -- it is plain text
-            # -- so a tool-using client silently gets prose instead of calls.
+            # Last resort: the approximate flattening in _chat_to_text.
             return PIPELINE.generate(_chat_to_text(messages),
                                      generation_config=cfg)
 
