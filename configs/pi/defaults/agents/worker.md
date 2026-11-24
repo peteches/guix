@@ -1,7 +1,6 @@
 ---
 name: worker
 description: General-purpose worker — reads, writes, and edits code
-model: strata/qwen3.8-flash-next
 tools: read, write, edit, bash, web_search, web_fetch
 subagent_agents: scout, researcher
 system-prompt: append

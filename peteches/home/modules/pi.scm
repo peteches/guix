@@ -28,8 +28,23 @@
 ;;; model, since
 ;;; configs/pi/defaults/settings.json declares defaultProvider/defaultModel
 ;;; and the static apiKey "local" in models.json counts as configured auth
-;;; for that provider. Keep the
-;;; bodies in sync with the fork when the package pin is bumped.
+;;; for that provider.
+;;;
+;;; DO NOT re-add a `model:' pin here without checking that the provider is
+;;; actually declared in configs/pi/defaults/models.json AND that its backend
+;;; is running.  It has now been done twice and broken both times: the fork's
+;;; openrouter/z-ai/glm-5.3 (no API key on any workstation account), then
+;;; strata/qwen3.8-flash-next in commit 36790e3 -- which was reasonable when
+;;; settings.json still defaulted to a dead koboldcpp, but by 2026-11-24
+;;; `strata' was neither a provider in models.json (it declares only llm and
+;;; koboldcpp) nor a running service (herd showed it stopped on comfyui), so
+;;; every scout/worker/researcher spawn died with exit code 1 in about a
+;;; second.  Inheriting the settings.json default is the intended behaviour and
+;;; is what the parent session itself uses; the pin only ever buys a way to
+;;; diverge from it.  A per-agent pin is still legitimate for an agent that
+;;; genuinely needs a different backend -- just declare that provider first.
+;;;
+;;; Keep the bodies in sync with the fork when the package pin is bumped.
 ;;;
 ;;; configs/pi/defaults/settings.json (if present) is NOT symlinked like
 ;;; every other config-directory child -- pi's SettingsManager actively

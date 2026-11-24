@@ -1,7 +1,6 @@
 ---
 name: researcher
 description: Web researcher — searches the web and synthesizes findings
-model: strata/qwen3.8-flash-next
 tools: web_search, web_fetch, safe_bash
 system-prompt: append
 auto-exit: true

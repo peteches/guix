@@ -18,7 +18,7 @@
           "contextWindow": 131072,
           "maxTokens": 8192,
           "input": ["text"],
-          "reasoning": false
+          "reasoning": true
         }
       ]
     },

@@ -5,7 +5,7 @@
   "defaultModel": "LFM2.5-24B-A2B-int8-ov",
   "compaction": {
     "modelOverrides": {
-      "llm/LFM2.5-24B-A2B-int8-ov": { "reserveTokens": 49152 },
+      "llm/LFM2.5-24B-A2B-int8-ov": { "reserveTokens": 98304 },
       "koboldcpp/koboldcpp/Qwen3.8-27B-Q4_K_M": { "reserveTokens": 49152 }
     }
   }
