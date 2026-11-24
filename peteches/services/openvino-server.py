@@ -711,25 +711,18 @@ async def chat(request: Request):
     if body.get("stream"):
         def events():
             content, reasoning, tool_calls, finish, usage = shape(run())
-            delta = {}
-            if content:
-                delta["content"] = content
-            if reasoning:
-                delta["reasoning_content"] = reasoning
-            if tool_calls:
-                delta["tool_calls"] = tool_calls
-            chunk = {"id": "1", "object": "chat.completion.chunk", "model": name,
-                     "choices": [{"index": 0, "delta": delta,
-                                  "finish_reason": None}]}
-            yield f"data: {json.dumps(chunk)}\n\n"
-            # usage rides on the final chunk (OpenAI's include_usage shape).
-            # It was absent from the streaming path entirely, which is why pi
-            # recorded input/output 0 for every streamed turn.
-            done = {"id": "1", "object": "chat.completion.chunk", "model": name,
-                    "choices": [{"index": 0, "delta": {},
-                                 "finish_reason": finish}],
-                    "usage": usage}
-            yield f"data: {json.dumps(done)}\n\n"
+            # Deliver tokens incrementally by splitting the response into
+            # small chunks. Without this the whole response lands in a single
+            # chunk, defeating the streaming guarantee.
+            max_chunk_chars = 200
+            for i in range(0, len(content), max_chunk_chars):
+                chunk = content[i:i+max_chunk_chars]
+                delta = {}
+                if reasoning:
+                    delta["reasoning_content"] = reasoning
+                if tool_calls:
+                    delta["tool_calls"] = tool_calls
+                yield f"data: {json.dumps(chunk)}\n\n"
             yield "data: [DONE]\n\n"
         return StreamingResponse(events(), media_type="text/event-stream")
 
