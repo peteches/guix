@@ -214,32 +214,6 @@ site-packages installs whose compiled bytes do not depend on running their own s
   (max-new-tokens openvino-server-configuration-max-new-tokens
                   (default #f))
 
-  ;; Think guard: bound the model's reasoning block separately from its answer.
-  ;; max-new-tokens has to cover BOTH (the chat template opens every assistant
-  ;; turn inside `<think>`), so a runaway reasoning block returns reasoning and
-  ;; an empty reply -- measured on comfyui 2026-11-24, 11 of 94 generations were
-  ;; TRUNCATED EMPTY-ANSWER(think-block-never-closed) at 8192 tokens, all with
-  ;; content_chars=0.  These four map 1:1 onto the OPENVINO_THINK_BUDGET /
-  ;; OPENVINO_ANSWER_RESERVE / OPENVINO_CHARS_PER_TOKEN /
-  ;; OPENVINO_MAX_THINK_PASSES knobs in openvino-server.py, whose comments carry
-  ;; the full measurement and the recovery-loop design.  #f (the default) emits
-  ;; no variable, so the script's own defaults apply.  The guard switches itself
-  ;; off -- server behaves exactly as it did before it existed -- when ANY of
-  ;; think-budget, answer-reserve or chars-per-token is 0, or when
-  ;; max-think-passes is below 2 (no pass left to recapture the answer in).
-  ;;   think-budget     tokens of reasoning before the block is force-closed
-  ;;   answer-reserve   tokens held back for the answer pass(es)
-  ;;   chars-per-token  streamer sees text, not tokens: the budget is converted
-  ;;   max-think-passes  total generations per turn, pass 1 included
-  (think-budget openvino-server-configuration-think-budget
-                (default #f))
-  (answer-reserve openvino-server-configuration-answer-reserve
-                  (default #f))
-  (chars-per-token openvino-server-configuration-chars-per-token
-                   (default #f))
-  (max-think-passes openvino-server-configuration-max-think-passes
-                    (default #f))
-
   ;; Packages the server needs at run time, merged into the system profile so the
   ;; interpreter finds them through its normal search path: the HTTP layer
   ;; (fastapi/uvicorn) has a deep transitive closure, so stitching PYTHONPATH by
@@ -397,20 +371,6 @@ site-packages installs whose compiled bytes do not depend on running their own s
      (maybe-env-var "OPENVINO_PERF_HINT" (openvino-server-configuration-perf-hint config))
      (maybe-env-var "OPENVINO_MAX_NEW_TOKENS"
                     (let ((n (openvino-server-configuration-max-new-tokens config)))
-                      (and n (number->string n))))
-     ;; The think guard.  number->string on a float yields "4.0", which Python's
-     ;; float() reads back, so chars-per-token needs no special casing.
-     (maybe-env-var "OPENVINO_THINK_BUDGET"
-                    (let ((n (openvino-server-configuration-think-budget config)))
-                      (and n (number->string n))))
-     (maybe-env-var "OPENVINO_ANSWER_RESERVE"
-                    (let ((n (openvino-server-configuration-answer-reserve config)))
-                      (and n (number->string n))))
-     (maybe-env-var "OPENVINO_CHARS_PER_TOKEN"
-                    (let ((n (openvino-server-configuration-chars-per-token config)))
-                      (and n (number->string n))))
-     (maybe-env-var "OPENVINO_MAX_THINK_PASSES"
-                    (let ((n (openvino-server-configuration-max-think-passes config)))
                       (and n (number->string n))))
      ;; Where the OpenCL ICD loader finds vendor descriptors.  A shepherd
      ;; process gets ONLY the variables listed here, so the value an interactive

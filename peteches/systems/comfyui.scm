@@ -1172,114 +1172,20 @@
                 ;; The per-generation log line now records finish_reason and
                 ;; flags TRUNCATED / EMPTY-ANSWER explicitly, so the next time
                 ;; this is a grep rather than a live repro.
-                (max-new-tokens 4096)
-                ;; The think guard, and the measurement that forced it.  The log
-                ;; line above made this failure greppable; grepping it on
-                ;; 2026-11-24 returned 11 of 94 generations TRUNCATED with
-                ;; EMPTY-ANSWER(think-block-never-closed), every one
-                ;; content_chars=0 -- the client (pi, as provider `llm') got
-                ;; 25-32 KB of reasoning and no reply at all, and stalled on
-                ;; "Response was truncated before completion."  (pi session
-                ;; 01a20d9e-7e64-7104-b3d2-ae272e15e084 carries three such
-                ;; turns, each stopReason=length at usage.output=8192.)  Two
-                ;; signatures: the budget exhausted mid-thought
-                ;; (completion_tokens=8192, reasoning_chars=30368) and EOS
-                ;; emitted INSIDE the block (completion_tokens=6399 < 8192).
-                ;; Raising max-new-tokens is not the answer -- 8192 is what pi
-                ;; already asks for, and successful turns in the same log spent
-                ;; 24201 reasoning chars and still replied -- so reasoning gets
-                ;; bounded separately from the answer: 4096 tokens of thinking,
-                ;; 1024 held back as the floor the answer must have IN THE SAME
-                ;; PASS, and when a turn overruns, the block is force-closed and
-                ;; the answer re-prompted for (at most 3 generations per turn).
-                ;;
-                ;; These are the second attempt, and the first attempt's failure
-                ;; is why they look odd.  6144/2048 went in first on a separation
-                ;; argument: at ~4 chars/token, 6144 is ~24.5k chars and the
-                ;; day's data split cleanly there (longest reasoning that still
-                ;; ANSWERED 24201 chars, shortest that truncated 25722), so the
-                ;; guard would fire only on turns already doomed.  Two hours
-                ;; later it fired on exactly such turns and failed to save them:
-                ;;   15:40:03 finish=length completion_tokens=8192
-                ;;            reasoning_chars=30936 content_chars=0
-                ;;            think_overflow=1 passes=3 pass2_tokens=1528
-                ;;   15:41:27 finish=length completion_tokens=8192
-                ;;            reasoning_chars=28284 content_chars=0
-                ;;            think_overflow=1 passes=3 pass2_tokens=1082
-                ;; Two miscalculations, both legible in those lines.  (a) This
-                ;; model's reasoning runs 3.69 chars/token, not 4.0, so a 24576
-                ;; char budget was really 6664 tokens -- pass 1 ate 81% of pi's
-                ;; 8192 before the guard cut it.  (b) That left 1528 tokens for
-                ;; the whole ladder, and the recovery cap halved it to 764 per
-                ;; pass: less than the 1300-2000 tokens a HEALTHY think block
-                ;; closes in on this box (15:38:17 reasoned 7367 chars and then
-                ;; answered; 15:38:42 reasoned 4757 and called a tool), so both
-                ;; recovery passes were cut before either could answer.  Recovery
-                ;; needs a budget that was not already spent, hence 4096 leaving
-                ;; ~4096 -- and the recovery rule now reserves a FIXED
-                ;; answer-reserve inside each pass instead of halving what is
-                ;; left, which is what starved this one.
-                ;; THIRD ATTEMPT, and it is a disable: think-budget 0 turns the
-                ;; guard off.  4096/1024/3.7 shipped at 16:04 and the next
-                ;; half hour of traffic falsified both halves of the reasoning
-                ;; above.
-                ;;
-                ;; (a) The cap landed INSIDE the healthy distribution.  Every
-                ;; turn that succeeded reasoned below the 15155-char cap and
-                ;; every turn that failed reasoned above it, with no overlap at
-                ;; all -- which is what a cap set through the middle of a working
-                ;; population looks like:
-                ;;   16:19:06 reasoning_chars=6597   -> tool_calls
-                ;;   16:28:39 reasoning_chars=14850  -> stop, content_chars=4072
-                ;;   16:30:09 reasoning_chars=14638  -> tool_calls
-                ;;   16:20:22 reasoning_chars=15168  -> passes=3 content_chars=0
-                ;;   16:29:33 reasoning_chars=15165  -> passes=3 content_chars=0
-                ;;   16:21:42 reasoning_chars=30577  -> passes=3 content_chars=0
-                ;;   16:36:27 reasoning_chars=27443  -> passes=3 content_chars=0
-                ;; Pre-guard history puts healthy reasoning as high as 24201
-                ;; chars, so a 15155 cap was cutting the top third of the turns
-                ;; that would have answered on their own and handing them to
-                ;; recovery.
-                ;;
-                ;; (b) Recovery does not work on this model at any budget tried.
-                ;; Six consecutive failures with 3488 and 3274 tokens of recovery
-                ;; available -- three to four times the 1300-2000 a healthy think
-                ;; block closes in -- every one content_chars=0.  Force-closed,
-                ;; the model opens a FRESH <think> and spirals again: re-prompting
-                ;; mid-turn does not break a spiral, it restarts one.  Reading a
-                ;; 27443-char block explains why.  It is not a repetition loop
-                ;; but non-converging second-guessing ("This is really tricky",
-                ;; "This is a nightmare to get right", "Let's pause and
-                ;; reassess"), on prompts of 42-46k tokens carrying 42 KB tool
-                ;; results.
-                ;;
-                ;; So the guard as built turns "sometimes empty" into "often
-                ;; empty".  Off, a spiral still burns the budget and returns
-                ;; nothing (the original 11 of 94) but a 15-25k-char turn still
-                ;; answers; on, both return nothing.  Off is strictly better
-                ;; until recovery actually recovers.
-                ;;
-                ;; Re-enabling needs BOTH of: a pass-1 cap above ~26k chars so
-                ;; healthy turns are untouched -- which at pi's 8192-token budget
-                ;; leaves only ~1000 tokens for recovery, too little for the
-                ;; mid-turn re-prompt this uses -- AND a recovery pass that does
-                ;; not re-think.  The candidate is a reshaped recovery prompt:
-                ;; close the assistant turn, add a user turn stating that the
-                ;; reasoning budget is spent, and render the next assistant turn
-                ;; WITHOUT the <think> primer, so the pass needs answer tokens
-                ;; only.  That must be measured on the 24B before it goes near
-                ;; this field: both calibrations above were reasoned from proxies
-                ;; (a CPU probe on the 8B export, and a chars/token ratio taken
-                ;; from a different turn shape) and both were wrong.
-                ;; The instrumentation stays -- think_overflow=, passes=,
-                ;; pass2_tokens= and the THINK-* flags are inert but in place and
-                ;; shipping to Loki -- and the three values below are left at
-                ;; their last settings so re-enabling is a one-word change rather
-                ;; than a re-derivation.
-                (think-budget 0)
-                (answer-reserve 1024)
-                (chars-per-token 3.7)
-                (max-think-passes 3)))
+                ;; The four think-guard fields that used to sit here
+                ;; (think-budget / answer-reserve / chars-per-token /
+                ;; max-think-passes) are gone, along with the guard they drove.
+                ;; Measured across a full day on this box it made truncation
+                ;; worse rather than better: 30% of generations returned an
+                ;; empty answer while it was enabled, against ~11% before it
+                ;; existed and 0 in the 53 after it was switched off.  The
+                ;; post-mortem -- both mechanisms tried, the numbers, and why
+                ;; grammar-constrained decoding cannot substitute -- is in
+                ;; docs/openvino-think-budget.md.  What survives is the
+                ;; per-generation log line and its shipment to Loki (the alloy
+                ;; log-files entry above), which is what made any of this
+                ;; diagnosable.
+                (max-new-tokens 4096)))
 
       (service strata-service-type
                (strata-configuration

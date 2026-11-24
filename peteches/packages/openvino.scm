@@ -332,6 +332,49 @@ this runs on.")
 ;;     guaranteed-shaped tool calls) pulls mlc-ai/xgrammar *and its own submodules*.
 ;;     The trial needs none of that yet, and every extra FetchContent tree is another
 ;;     commit to pin and re-pin.  Flip it when tool calling needs guarantees.
+;;
+;;     It HAS been flipped, built and measured (2026-11-24) and the answer for this
+;;     fleet is still OFF.  A variant package built fine once two traps are handled,
+;;     and both are worth writing down because neither is visible until the build or
+;;     the import fails:
+;;       * genai REWRITES ${xgrammar_SOURCE_DIR}/cmake/config.cmake in place
+;;         (src/cpp/CMakeLists.txt:171-181) to flip XGRAMMAR_BUILD_PYTHON_BINDINGS
+;;         OFF — load-bearing, since xgrammar's own config.cmake uses a plain set()
+;;         that shadows genai's FORCE'd cache variable.  So FETCHCONTENT_SOURCE_DIR
+;;         cannot point at a read-only store path; the tree has to be copied into the
+;;         writable build dir first, the way populate-tokenizers-submodule already does.
+;;       * xgrammar compiles its STATIC archive with -flto=auto while
+;;         libopenvino_genai.so links without -flto.  GCC's default under -flto is
+;;         thin bytecode-only objects, so the linker silently drops every archive
+;;         member and the build SUCCEEDS with xgrammar's symbols missing.  Nothing
+;;         fails until dlopen: "undefined symbol: _ZN8xgrammar14GrammarMatcherC1E…".
+;;         Strip -flto=auto (and -Werror) from the vendored copy.
+;;     Vendoring itself is cheap: mlc-ai/xgrammar v0.1.31, commit
+;;     aa44ded202fdaa2cb55f48deb31d17c9822a8a1f, (recursive? #t), guix hash -r of the
+;;     .git-stripped tree = 07nsh6xbzdmilkcvk9phd52izy7049mzm0j3w4pw4db84h7bz9h5.
+;;     3.9 MB, C++17, and it needs NO pcre2 (grep -ril pcre2 over the tree is empty;
+;;     it compiles regexes into its own grammar) — only its dlpack submodule.
+;;
+;;     What the built library then measured, on the Arc Pro B70 and on CPU (full
+;;     numbers in docs/openvino-think-budget.md):
+;;       * json_schema / small grammars work and are cheap — a tool-call schema
+;;         produced valid JSON in 0.78 s, 12 tokens, finish=STOP.  This is the one
+;;         real use for it here, and it fixes a problem nobody has hit yet: every
+;;         tool call in 39 tests parsed correctly through the existing
+;;         ast.literal_eval path.
+;;       * BOUNDED repetition — the only way to express a thinking budget as a
+;;         grammar — costs quadratically in the bound.  {0,200} ran at 53 tok/s,
+;;         {0,2000} at 0.44 tok/s (2.27 s/token on GPU, 3.0 on CPU: the mask is
+;;         computed host-side either way).  A usable think budget needs 15-25k chars,
+;;         which extrapolates to ~100 s/token.  Dead at any useful bound.
+;;       * UNBOUNDED Tag(begin, AnyText(), end) — the form the binding's own
+;;         docstring offers as "the thinking portion of the model output" — costs
+;;         nothing (125 tok/s, same as no grammar) but does not help: forbidding EOS
+;;         before the close tag turned a 3000-token empty answer into an 8192-token
+;;         empty answer, because the model simply never emits the tag.
+;;     So the feature that motivated the flip cannot be built out of this feature.
+;;     Re-enable it if tool calls ever need guaranteed shape; the recipe above is
+;;     ~30 minutes and one 29-minute build.
 ;;   ENABLE_GGUF=ON — costs one small C library and buys the ability to load a .gguf
 ;;     directly, which matters for this fleet: LiquidAI publishes GGUF builds of
 ;;     LFM2.5-24B-A2B, so a GGUF-only path can skip `optimum-cli export openvino'
