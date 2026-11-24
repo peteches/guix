@@ -1188,32 +1188,50 @@
                 ;; Raising max-new-tokens is not the answer -- 8192 is what pi
                 ;; already asks for, and successful turns in the same log spent
                 ;; 24201 reasoning chars and still replied -- so reasoning gets
-                ;; bounded separately from the answer: 6144 tokens of thinking,
-                ;; 2048 held back as the floor the answer must have, and when a
-                ;; turn overruns, the block is force-closed and the answer
-                ;; re-prompted for (at most 3 generations per turn).  Recovery
-                ;; passes cap their own thinking at half the tokens left and the
-                ;; last one runs unguarded; that ladder is what converges
-                ;; instead of reasoning every pass away.
-                ;; 6144 is calibrated on that same log rather than chosen round:
-                ;; at the script's measured ~4 chars/token it is ~24.5k chars,
-                ;; and the day's data separates cleanly right there -- the
-                ;; longest reasoning that still ANSWERED was 24201 chars, the
-                ;; shortest that truncated was 25722.  A tighter cap (4096 went
-                ;; in first) fires on turns that were never going to fail, and
-                ;; each firing costs two extra prefills of a 10-25k-token prompt
-                ;; under the server's global generation lock -- latency charged
-                ;; to every other client on this endpoint.  What the tighter cap
-                ;; buys is recovery room, and that is the trade to watch: 6144
-                ;; leaves 2048 of pi's 8192 for a RE-OPENED think block (the
-                ;; model starts a fresh one after a forced close, measured live)
-                ;; plus the answer.  If Loki shows think_unclosed=1 passes=3
-                ;; with content_chars=0 -- the ladder running out of room rather
-                ;; than the model running out of thought -- lower think-budget
-                ;; and raise answer-reserve.
-                ;; chars-per-token stays at the script's measured 4.0.
-                (think-budget 6144)
-                (answer-reserve 2048)
+                ;; bounded separately from the answer: 4096 tokens of thinking,
+                ;; 1024 held back as the floor the answer must have IN THE SAME
+                ;; PASS, and when a turn overruns, the block is force-closed and
+                ;; the answer re-prompted for (at most 3 generations per turn).
+                ;;
+                ;; These are the second attempt, and the first attempt's failure
+                ;; is why they look odd.  6144/2048 went in first on a separation
+                ;; argument: at ~4 chars/token, 6144 is ~24.5k chars and the
+                ;; day's data split cleanly there (longest reasoning that still
+                ;; ANSWERED 24201 chars, shortest that truncated 25722), so the
+                ;; guard would fire only on turns already doomed.  Two hours
+                ;; later it fired on exactly such turns and failed to save them:
+                ;;   15:40:03 finish=length completion_tokens=8192
+                ;;            reasoning_chars=30936 content_chars=0
+                ;;            think_overflow=1 passes=3 pass2_tokens=1528
+                ;;   15:41:27 finish=length completion_tokens=8192
+                ;;            reasoning_chars=28284 content_chars=0
+                ;;            think_overflow=1 passes=3 pass2_tokens=1082
+                ;; Two miscalculations, both legible in those lines.  (a) This
+                ;; model's reasoning runs 3.69 chars/token, not 4.0, so a 24576
+                ;; char budget was really 6664 tokens -- pass 1 ate 81% of pi's
+                ;; 8192 before the guard cut it.  (b) That left 1528 tokens for
+                ;; the whole ladder, and the recovery cap halved it to 764 per
+                ;; pass: less than the 1300-2000 tokens a HEALTHY think block
+                ;; closes in on this box (15:38:17 reasoned 7367 chars and then
+                ;; answered; 15:38:42 reasoned 4757 and called a tool), so both
+                ;; recovery passes were cut before either could answer.  Recovery
+                ;; needs a budget that was not already spent, hence 4096 leaving
+                ;; ~4096 -- and the recovery rule now reserves a FIXED
+                ;; answer-reserve inside each pass instead of halving what is
+                ;; left, which is what starved this one.
+                ;; Cost accepted, knowingly: 4096 tokens is ~15.1k chars, below
+                ;; the 22141 and 24201 reasoning chars two healthy turns spent
+                ;; that day, so on the order of 2% of turns now pay a recovery
+                ;; pass they would previously have finished in one.  That is the
+                ;; cheaper error -- a rescued turn costs two extra prefills under
+                ;; the generation lock, an unrescued one costs the client its
+                ;; whole turn.
+                ;; chars-per-token is pinned to the 3.69 measured in production
+                ;; rather than left at the script's 4.0 default, so a token
+                ;; budget means the number of tokens it says.
+                (think-budget 4096)
+                (answer-reserve 1024)
+                (chars-per-token 3.7)
                 (max-think-passes 3)))
 
       (service strata-service-type

@@ -446,14 +446,27 @@ def _finish_and_usage(res, cfg, closed, tool_calls=()):
 
 
 def _think_char_budget(requested_tokens):
-    """Char budget for pass-1 reasoning, or None to disable the guard.
+    """Char budget for ONE pass's reasoning, or None to disable the guard.
 
-    The effective cap is min(THINK_BUDGET, requested - ANSWER_RESERVE) tokens,
-    converted to chars at CHARS_PER_TOKEN: never let thinking eat into the
-    reserve the answer needs, and never let pass 2 push the turn past what the
-    client asked for.  If the client requested <= ANSWER_RESERVE there is
-    nothing left to guard, so the guard is disabled and the turn runs exactly
-    as it did before this existed.  Any knob set to 0 disables it too.
+    Applies to pass 1 and to every recovery pass alike, with `requested_tokens'
+    being that pass's own budget: the client's max_tokens for pass 1, whatever
+    is left of it afterwards for the rest.  The effective cap is
+    min(THINK_BUDGET, requested - ANSWER_RESERVE) tokens, converted to chars at
+    CHARS_PER_TOKEN, so ANSWER_RESERVE is room for the answer WITHIN the same
+    pass -- a pass that closes its block still has to produce the reply, and a
+    pass whose thinking is allowed to reach its own ceiling cannot.  If a pass's
+    budget is at or below ANSWER_RESERVE there is nothing left to guard, so the
+    guard switches off and that pass spends everything trying to close and
+    answer, which is the right last resort.  Any knob set to 0 disables it too.
+
+    The subtraction is what a halving rule got wrong in production.  An earlier
+    revision capped recovery passes at HALF the tokens left, "so each leaves the
+    next some room"; measured on comfyui at 15:40 and 15:41 on 2026-11-24 that
+    starved the ladder instead -- pass 1 had already taken 6664 of pi's 8192, so
+    the two recovery passes got 764 tokens each, less than the 1300-2000 a
+    healthy think block on this box closes in, and both were cut before they
+    could answer (passes=3, pass2_tokens=1528, content_chars=0).  Reserving a
+    fixed ANSWER_RESERVE scales with the pass instead of halving it away.
     """
     if (THINK_BUDGET <= 0 or ANSWER_RESERVE <= 0 or CHARS_PER_TOKEN <= 0
             or MAX_THINK_PASSES < 2):
@@ -461,36 +474,6 @@ def _think_char_budget(requested_tokens):
     if not requested_tokens or requested_tokens <= ANSWER_RESERVE:
         return None
     cap_tokens = min(THINK_BUDGET, requested_tokens - ANSWER_RESERVE)
-    if cap_tokens <= 0:
-        return None
-    return int(cap_tokens * CHARS_PER_TOKEN)
-
-
-def _recovery_char_budget(remaining_tokens):
-    """Char budget for a RECOVERY pass's thinking, or None to leave it unguarded.
-
-    Halved on purpose, and the halving is what makes the loop converge.  A
-    recovery pass runs with whatever the client's budget has left, and the model
-    re-opens `<think>` in it (measured, see FORCED_CLOSE_SUFFIX), so an unguarded
-    recovery pass can spend the entire remainder reasoning again and hand back a
-    second empty answer -- which is what an early probe of this design did on
-    every one of four iterations.  Capping an INTERMEDIATE pass's thinking at
-    half of `remaining_tokens' leaves the passes after it at least the other
-    half, and each further pass halves again, so the ladder descends with answer
-    room instead of oscillating.  The last allowed pass is the exception and runs
-    unguarded -- force-closing it would leave no later pass to answer in -- so
-    the guarantee is that the ladder *reaches* a pass with the whole remainder
-    available, not that every pass reserves half.
-
-    Deliberately NOT _think_char_budget(remaining_tokens): that one subtracts
-    ANSWER_RESERVE and returns None -- guard off -- once the remaining budget is
-    at or below the reserve, which is exactly the situation every recovery pass
-    is in.  Here a small budget still gets a (smaller) thinking cap.
-    """
-    if (THINK_BUDGET <= 0 or CHARS_PER_TOKEN <= 0 or MAX_THINK_PASSES < 2
-            or not remaining_tokens or remaining_tokens <= 0):
-        return None
-    cap_tokens = min(THINK_BUDGET, remaining_tokens // 2)
     if cap_tokens <= 0:
         return None
     return int(cap_tokens * CHARS_PER_TOKEN)
@@ -560,7 +543,7 @@ class _ThinkGuard:
     the only behaviour change for turns that close their think block normally --
     for those feed() never returns True and there is no recovery pass.
 
-    .raw         accumulated pass-1 text -- used only to count chars and spot
+    .raw         accumulated pass text -- used only to count chars and spot
                  the close.  The recovery prompt is built from _result_text(res),
                  NOT from .raw: a live probe measured the returned text a couple
                  of chars shorter than the accumulator (327 vs 329), and the
@@ -569,15 +552,13 @@ class _ThinkGuard:
     .overflowed  the char budget fired -> we aborted it, as distinct from the
                  model emitting EOS mid-thought, which leaves .overflowed False
                  and .closed False (both still trigger the recovery loop)
-    .limit_chars None when the guard is disabled for this request
+    .limit_chars None when the guard is disabled for this pass
     """
 
-    def __init__(self, requested_tokens, limit_chars=False):
-        # limit_chars=False (the default) derives the cap from the client's whole
-        # request via _think_char_budget; an explicit int overrides it, which is
-        # how _run_think_recovery applies the halving rule to passes 2+.
-        self.limit_chars = (_think_char_budget(requested_tokens)
-                            if limit_chars is False else limit_chars)
+    def __init__(self, requested_tokens):
+        # The cap is always derived from THIS pass's own budget, pass 1 and
+        # recovery passes alike -- see _think_char_budget.
+        self.limit_chars = _think_char_budget(requested_tokens)
         self.raw = ""
         self.closed = False
         self.overflowed = False
@@ -631,11 +612,11 @@ def _run_think_recovery(prompt, res1, requested, body, has_tools, info):
     and the prompt must match what the model actually produced).  A pass that
     closes the block yields the answer and ends the loop; a pass that re-opens
     `<think>` contributes more reasoning and, budget and MAX_THINK_PASSES
-    permitting, another forced close follows.  Recovery passes are guarded at
-    HALF the tokens left (_recovery_char_budget), so a re-opened block cannot
-    eat the remainder and the answer always has room -- except the last allowed
-    pass, which runs unguarded because force-closing it would leave no later
-    pass to collect the answer.
+    permitting, another forced close follows.  Every pass is guarded by the same
+    rule as pass 1 -- _think_char_budget(remaining), which reserves
+    ANSWER_RESERVE tokens for the answer WITHIN that pass -- and switches itself
+    off once the remainder is too small to reserve from, so the last pass spends
+    everything trying to close and reply.
 
     Returns a _Recovery.  When the loop gives up with no answer, answer is ""
     and the caller reports finish_reason "length" plus the EMPTY-ANSWER flag;
@@ -674,14 +655,12 @@ def _run_think_recovery(prompt, res1, requested, body, has_tools, info):
                        + ("\n" if prev_closed else FORCED_CLOSE_SUFFIX))
         cfg_i = gen_config(body, has_tools)
         cfg_i.max_new_tokens = remaining
-        # Intermediate passes get the halved cap (_recovery_char_budget) so each
-        # one leaves answer room for the next.  The LAST allowed pass runs
-        # UNGUARDED instead: force-closing it would leave no pass after it to
-        # collect the answer, so whatever budget is left goes to closing the
-        # block and replying.  limit_chars=None is the guard's off switch.
-        guard = _ThinkGuard(remaining,
-                            None if passes >= MAX_THINK_PASSES
-                            else _recovery_char_budget(remaining))
+        # Same rule as pass 1, on this pass's own budget: reserve
+        # ANSWER_RESERVE of it for the answer, and switch the guard off when
+        # there is not that much left.  See _think_char_budget for the
+        # production measurement behind using a fixed reserve here rather than
+        # a fraction of what is left.
+        guard = _ThinkGuard(remaining)
         try:
             res_i = PIPELINE.generate([next_prompt], generation_config=cfg_i,
                                       streamer=guard.feed)
