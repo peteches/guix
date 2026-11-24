@@ -31,22 +31,31 @@
 ;;
 ;; The commit pin is the fork's main; bump it (plus the version, which
 ;; tracks the fork's package.json) to update, then redeploy -- the
-;; home-pi-service-type instances on claude-workstation pick it up for all
-;; three accounts in one system reconfigure.
+;; home-pi-service-type instances pick it up for every account in one system
+;; reconfigure.  (Those instances are on `agents' and the two desktops, not
+;; claude-workstation: pi left that box when it became a pure WireGuard/SOCKS
+;; jump box.)
+;;
+;; The pin below is commit 5247053 on the fork's `inherit-parent-model' branch,
+;; not main -- it carries the subagent model-inheritance fallback (a spawn with
+;; no `model' of its own now inherits the parent session's live model instead of
+;; falling through to settings.json's saved default).  Merge the branch to main
+;; and re-bump if you would rather not pin a side branch; the commit stays
+;; fetchable either way as long as the branch is not deleted.
 
 (define-public pi-interactive-subagents
   (package
     (name "pi-interactive-subagents")
-    (version "3.8.0")
+    (version "3.8.1")
     (source
      (origin
        (method git-fetch)
        (uri (git-reference
              (url "https://github.com/peteches/pi-interactive-subagents")
-             (commit "c07dc58726dcc950b1db32449e0d39015cfc1639")))
+             (commit "5247053aa47fd719d0f33cee4801fdfbdb1433b6")))
        (file-name (git-file-name name version))
        (sha256
-        (base32 "14x0031lgrf1sg5wsz94jbr0pk3nlb1m2r9gz7mwvzaqffqbx9nf"))))
+        (base32 "1jvbbgz409r2jx1nz6jqxvzsg6xb03jjq357a8lj46nfp5v3y9xr"))))
     (build-system copy-build-system)
     (arguments
      (list
