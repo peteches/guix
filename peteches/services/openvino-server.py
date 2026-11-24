@@ -21,16 +21,24 @@ from the tokenizer IR).  A bare list of message dicts and a flattened ChatML
 string are kept as fallbacks in case a binding exposes neither — see
 _chat_to_text.  Which path is live is logged once at startup.
 
-Streaming is off by default and only implemented for chat; a non-streaming
-response is returned for `stream: true' if something goes wrong mid-stream.
+Chat streaming is real: `generate(..., streamer=…)` pushes decoded pieces onto
+a queue that the SSE generator drains, so tokens reach the client as they are
+produced and the thinking block arrives *before* the answer rather than being
+bolted on after it.  Tool-bearing turns are the exception and stay buffered --
+a `<|tool_call_start|>` block only parses once complete -- as is any turn where
+the incremental path cannot start, which falls back to one well-formed chunk.
+Every generation logs one metadata line (tokens, finish_reason, latency,
+truncation); set OPENVINO_LOG_REQUESTS=0 to silence it.
 """
 
 import ast
 import json
 import os
+import queue
 import re
 import sys
 import threading
+import time
 
 import openvino as ov
 import openvino_genai as ov_genai
@@ -70,6 +78,15 @@ SYSTEM_PROMPT = os.environ.get(
     "You are a concise assistant. Keep your internal reasoning brief, "
     "then answer directly.")
 
+# Appended to a system message the CALLER supplied.  SYSTEM_PROMPT above only
+# ever applies when a client sends no system message at all, which in practice
+# none of them do (pi, SillyTavern and the rules-lawyer bot all send one), so
+# before this knob existed the brevity nudge never reached a single production
+# request and thinking ran unbounded.  Set to "" to disable.
+REASONING_HINT = os.environ.get(
+    "OPENVINO_REASONING_HINT",
+    "\n\nKeep your internal reasoning brief, then answer directly.")
+
 # Sampling for TOOL-BEARING requests only, and the reason is measured, not
 # stylistic.  The export's generation_config.json ships temperature 0.1 (the
 # model card's chat recommendation), and at 0.1 this model degenerates on a
@@ -108,6 +125,28 @@ TOOL_REPETITION_PENALTY = float(os.environ.get("OPENVINO_TOOL_REPETITION_PENALTY
 THINK_CLOSE = "</think>"
 
 _lock = threading.Lock()          # one generation at a time; see service comment
+
+# Set to "0" to reduce the log to uvicorn's access lines plus startup.
+LOG_REQUESTS = os.environ.get("OPENVINO_LOG_REQUESTS", "1") != "0"
+
+
+def _log(msg):
+    """One line to stdout, which shepherd appends to the log file.
+
+    The access log uvicorn emits says only that a POST returned 200 -- it
+    cannot answer "was that reply truncated?", "how much of the budget went on
+    thinking?" or "how slow was it?", which are the three questions this
+    server actually gets asked.  Every generation therefore logs one line of
+    metadata (never prompt or completion text: this endpoint is shared and the
+    log is world-readable on the box).
+
+    No timestamp of our own: shepherd already prefixes one to every line it
+    captures, so adding a second made each entry read
+    "2026-11-24 10:50:18 2026-11-24 10:50:18 gen ..." (hit live) and broke
+    any grep or Loki pipeline keyed on the leading stamp.
+    """
+    if LOG_REQUESTS:
+        print(f"gen {msg}", flush=True)
 
 
 def _build_pipeline():
@@ -222,7 +261,7 @@ def gen_config(req, has_tools=False):
 
 
 def _with_default_system(messages):
-    """Prepend SYSTEM_PROMPT when the client sent no system message.
+    """Guarantee a system message, and that it asks for brief reasoning.
 
     The template always opens the assistant turn with `<think>`, so the model
     reasons first and the answer only follows the closing tag.  Asking it to
@@ -231,14 +270,55 @@ def _with_default_system(messages):
     explain what a reverse proxy does" went from 1653 generated tokens (8.3 s,
     and it overran a 1024 budget without ever answering) to 287 tokens (1.5 s)
     for the same sentence, and the is_palindrome prompt from 1240 tokens (6.3 s)
-    to 381 (2.0 s) with cleaner output.  Callers that supply their own system
-    message are left untouched.
+    to 381 (2.0 s) with cleaner output.
+
+    That measurement used to be unreachable in production.  This function
+    returned early whenever the caller supplied ANY system message, and every
+    real client does, so the nudge applied to nothing but hand-rolled curl
+    probes while pi's turns kept thinking for as long as they liked (one live
+    request logged 3563 characters of reasoning ahead of an 851-character
+    answer).  Since max_new_tokens has to cover thinking AND reply, that
+    thinking is exactly what was eating the answer budget.
+
+    So: caller has no system message -> prepend SYSTEM_PROMPT, as before.
+    Caller has one -> append REASONING_HINT to it, leaving their own
+    instructions intact and ahead of ours.  Idempotent, so a multi-turn history
+    that replays an already-hinted system message does not stack the hint.
     """
-    if not SYSTEM_PROMPT:
-        return messages
-    if any(isinstance(m, dict) and m.get("role") == "system" for m in messages):
-        return messages
-    return [{"role": "system", "content": SYSTEM_PROMPT}] + list(messages)
+    msgs = list(messages)
+    for i, m in enumerate(msgs):
+        if not (isinstance(m, dict) and m.get("role") == "system"):
+            continue
+        if not REASONING_HINT:
+            return msgs
+        content = m.get("content")
+        needle = REASONING_HINT.strip()
+        if isinstance(content, str):
+            if needle and needle in content:
+                return msgs                      # already hinted
+            patched = dict(m)
+            patched["content"] = content + REASONING_HINT
+            msgs[i] = patched
+            return msgs
+        if isinstance(content, (list, tuple)):
+            # OpenAI multimodal part list.  _parse_content concatenates the
+            # `text' of each dict part, so appending one more text part lands
+            # the hint at the end of the rendered system message.
+            flat = "".join(p.get("text", "") if isinstance(p, dict) else str(p)
+                           for p in content)
+            if needle and needle in flat:
+                return msgs
+            patched = dict(m)
+            patched["content"] = (list(content)
+                                  + [{"type": "text", "text": REASONING_HINT}])
+            msgs[i] = patched
+        # Anything else (a bare dict, a number, None) is left exactly as it
+        # came: better to lose the hint than corrupt a system message we
+        # cannot read.
+        return msgs
+    if SYSTEM_PROMPT:
+        return [{"role": "system", "content": SYSTEM_PROMPT}] + msgs
+    return msgs
 
 
 def _split_thinking(text):
@@ -296,6 +376,109 @@ def _finish_and_usage(res, cfg, closed, tool_calls=()):
         finish = "length"
     return finish, {"prompt_tokens": n_in, "completion_tokens": n_out,
                     "total_tokens": n_in + n_out}
+
+
+class _ThinkSplitter:
+    """Incremental `<think>…</think>` splitter for the streaming path.
+
+    `_split_thinking` needs the whole text; a stream does not have it.  Feed
+    decoded pieces in and it returns (reasoning_delta, content_delta) pairs,
+    holding back only the handful of trailing characters that could still turn
+    out to be the start of the closing tag.
+
+    Returning reasoning strictly before content is the whole point: the model
+    generates the thinking block first, and a response assembled after the
+    fact cannot preserve that order because both halves land in one chunk --
+    which is exactly why clients used to render the answer and then dump the
+    chain of thought underneath it.
+    """
+
+    def __init__(self):
+        self._pending = ""
+        self._closed = False
+        self._holdback = len(THINK_CLOSE) - 1
+        self._content_started = False
+
+    def _content(self, text):
+        """Drop the whitespace the template puts between `</think>` and the answer.
+
+        Without this every streamed reply opened with a stray newline, because
+        the model emits `</think>\n' and the split hands the `\n' to the
+        content side.
+        """
+        if self._content_started:
+            return text
+        stripped = text.lstrip()
+        if not stripped:
+            return ""
+        self._content_started = True
+        return stripped
+
+    def feed(self, piece):
+        """-> (reasoning_delta, content_delta); either may be empty."""
+        self._pending += piece
+        if self._closed:
+            out, self._pending = self._pending, ""
+            return "", self._content(out)
+        idx = self._pending.find(THINK_CLOSE)
+        if idx >= 0:
+            self._closed = True
+            reasoning, self._pending = (self._pending[:idx],
+                                        self._pending[idx + len(THINK_CLOSE):])
+            return reasoning, ""
+        # No closing tag yet, so everything is still reasoning -- except a tail
+        # short enough to be a partial `</think>`, which has to wait.
+        safe = len(self._pending) - self._holdback
+        if safe <= 0:
+            return "", ""
+        out, self._pending = self._pending[:safe], self._pending[safe:]
+        return out, ""
+
+    def flush(self):
+        """End of stream -> (reasoning, content, closed), draining the buffer.
+
+        `closed' False means the token budget ran out mid-thought, so what is
+        left is reasoning and there is no answer to show; the caller turns that
+        into finish_reason "length" rather than passing the chain of thought
+        off as the reply.
+        """
+        rest, self._pending = self._pending, ""
+        if self._closed:
+            return "", self._content(rest), True
+        return rest, "", False
+
+
+_STREAM_DONE = object()           # sentinel: the worker's generate() returned
+
+
+def _stream_worker(prompt, cfg, out_q, holder):
+    """Run one generation on a thread, pushing decoded pieces onto out_q.
+
+    `generate(..., streamer=...)` is the incremental API this build exposes --
+    verified against the running openvino_genai, whose signature is
+    `generate(inputs, generation_config=None, streamer: Callable[[str],
+    int | None] | StreamerBase | None = None, **kwargs)`.  The callback fires
+    per decoded piece; returning None means "keep generating".  Without it the
+    call blocks until the entire answer exists, so an SSE response can only
+    ever arrive in one burst at the end -- which is what this server did
+    before, while claiming to stream.
+
+    `_lock` is taken here rather than in the caller so it is held for the whole
+    generation, streaming included: the queue decouples the producer from the
+    HTTP write, but only one trial may use the GPU at a time.
+    """
+    def streamer(piece):
+        out_q.put(piece)
+        return None
+
+    try:
+        with _lock:
+            holder["res"] = PIPELINE.generate([prompt], generation_config=cfg,
+                                              streamer=streamer)
+    except Exception as exc:            # surfaced to the client below
+        holder["error"] = exc
+    finally:
+        out_q.put(_STREAM_DONE)
 
 
 def _result_text(result):
@@ -709,24 +892,134 @@ async def chat(request: Request):
         return content, reasoning, tool_calls, finish, usage
 
     if body.get("stream"):
-        def events():
+        started = time.monotonic()
+
+        def _chunk(delta, finish=None, usage=None):
+            payload = {"id": "1", "object": "chat.completion.chunk",
+                       "model": name,
+                       "choices": [{"index": 0, "delta": delta,
+                                    "finish_reason": finish}]}
+            # usage rides on the final chunk (OpenAI's include_usage shape).
+            # It was absent from the streaming path entirely, which is why pi
+            # recorded input/output 0 for every streamed turn.
+            if usage is not None:
+                payload["usage"] = usage
+            return f"data: {json.dumps(payload)}\n\n"
+
+        def buffered(why):
+            """Whole-turn fallback: one content chunk, then finish+usage.
+
+            Used for tool-bearing turns and whenever the incremental path
+            cannot start.  Emits well-formed `chat.completion.chunk' objects --
+            an earlier rewrite yielded the bare 200-character text slice as the
+            whole `data:' payload and dropped `delta.content' entirely, which
+            no OpenAI-shaped client can read.
+            """
             content, reasoning, tool_calls, finish, usage = shape(run())
-            # Deliver tokens incrementally by splitting the response into
-            # small chunks. Without this the whole response lands in a single
-            # chunk, defeating the streaming guarantee.
-            max_chunk_chars = 200
-            for i in range(0, len(content), max_chunk_chars):
-                chunk = content[i:i+max_chunk_chars]
-                delta = {}
-                if reasoning:
-                    delta["reasoning_content"] = reasoning
-                if tool_calls:
-                    delta["tool_calls"] = tool_calls
-                yield f"data: {json.dumps(chunk)}\n\n"
+            delta = {}
+            if content:
+                delta["content"] = content
+            if reasoning:
+                delta["reasoning_content"] = reasoning
+            if tool_calls:
+                delta["tool_calls"] = tool_calls
+            yield _chunk(delta)
+            yield _chunk({}, finish, usage)
             yield "data: [DONE]\n\n"
+            _log(f"stream={why} finish={finish}"
+                 f" prompt_tokens={usage['prompt_tokens']}"
+                 f" completion_tokens={usage['completion_tokens']}"
+                 f" reasoning_chars={len(reasoning)}"
+                 f" content_chars={len(content)}"
+                 f"{' TRUNCATED' if finish == 'length' else ''}"
+                 f"{' EMPTY-ANSWER(think-block-never-closed)' if not content and finish == 'length' else ''}"
+                 f" latency_s={time.monotonic() - started:.2f}")
+
+        def events():
+            # A tool call only parses once its `<|tool_call_start|>…` block is
+            # complete (_extract_tool_calls runs ast.literal_eval over the
+            # arguments), so streaming it as text would show the client raw
+            # template markup.  Buffer those turns instead.
+            if tools:
+                yield from buffered("buffered-tools")
+                return
+            try:
+                prompt = _render_chatml(messages, tools)
+            except Exception as exc:
+                print(f"note: rendered-prompt generation unavailable ({exc}); "
+                      f"falling back to a buffered stream", file=sys.stderr)
+                yield from buffered("buffered-render-failed")
+                return
+
+            out_q = queue.Queue()
+            holder = {}
+            worker = threading.Thread(target=_stream_worker,
+                                      args=(prompt, cfg, out_q, holder),
+                                      daemon=True)
+            worker.start()
+            splitter = _ThinkSplitter()
+            reasoning_chars = content_chars = 0
+            # role arrives once, on the first chunk, per OpenAI's convention.
+            # A bare role delta and no empty `content' key: pi skips
+            # zero-length content deltas, but a client that does not would
+            # open a text block before the thinking block and reorder the two.
+            yield _chunk({"role": "assistant"})
+            while True:
+                item = out_q.get()
+                if item is _STREAM_DONE:
+                    break
+                r_delta, c_delta = splitter.feed(item)
+                if r_delta:
+                    reasoning_chars += len(r_delta)
+                    yield _chunk({"reasoning_content": r_delta})
+                if c_delta:
+                    content_chars += len(c_delta)
+                    yield _chunk({"content": c_delta})
+            worker.join(timeout=30)
+            error = holder.get("error")
+            if error is not None:
+                # The headers are already on the wire, so a JSON error body is
+                # not an option; log it and close the stream honestly.
+                print(f"error: streaming generation failed ({error})",
+                      file=sys.stderr)
+                _log(f"stream=true ERROR={type(error).__name__}: {error}"
+                     f" reasoning_chars={reasoning_chars}"
+                     f" content_chars={content_chars}"
+                     f" latency_s={time.monotonic() - started:.2f}")
+                yield _chunk({}, "stop")
+                yield "data: [DONE]\n\n"
+                return
+            tail_reasoning, tail_content, closed = splitter.flush()
+            if tail_reasoning:
+                reasoning_chars += len(tail_reasoning)
+                yield _chunk({"reasoning_content": tail_reasoning})
+            if tail_content:
+                content_chars += len(tail_content)
+                yield _chunk({"content": tail_content})
+            finish, usage = _finish_and_usage(holder.get("res"), cfg, closed)
+            yield _chunk({}, finish, usage)
+            yield "data: [DONE]\n\n"
+            _log(f"stream=true finish={finish}"
+                 f" prompt_tokens={usage['prompt_tokens']}"
+                 f" completion_tokens={usage['completion_tokens']}"
+                 f" reasoning_chars={reasoning_chars}"
+                 f" content_chars={content_chars}"
+                 f"{' TRUNCATED' if finish == 'length' else ''}"
+                 f"{' EMPTY-ANSWER(think-block-never-closed)' if closed is False else ''}"
+                 f" latency_s={time.monotonic() - started:.2f}")
+
         return StreamingResponse(events(), media_type="text/event-stream")
 
+    started = time.monotonic()
     content, reasoning, tool_calls, finish, usage = shape(run())
+    _log(f"stream=false finish={finish}"
+         f" prompt_tokens={usage['prompt_tokens']}"
+         f" completion_tokens={usage['completion_tokens']}"
+         f" tool_calls={len(tool_calls)}"
+         f" reasoning_chars={len(reasoning)} content_chars={len(content)}"
+         f"{' TRUNCATED' if finish == 'length' else ''}"
+         f"{' EMPTY-ANSWER(think-block-never-closed)' if not content and finish == 'length' else ''}"
+         f" latency_s={time.monotonic() - started:.2f}")
     message = {"role": "assistant", "content": content}
     if reasoning:
         # Hand the chain of thought back separately instead of buried in
@@ -757,6 +1050,12 @@ async def completions(request: Request):
     # block falls back to the literal text rather than an empty string.
     text = answer if closed else raw
     finish, _usage = _finish_and_usage(res, cfg, closed)
+    _log(f"endpoint=completions finish={finish}"
+         f" prompt_chars={len(prompt)}"
+         f" completion_tokens={_usage['completion_tokens']}"
+         f" answer_chars={len(text)}"
+         f"{' TRUNCATED' if finish == 'length' else ''}"
+         f"{' THINK-BLOCK-UNCLOSED' if not closed else ''}")
     return JSONResponse({
         "id": "1", "object": "text_completion", "model": name,
         "choices": [{"index": 0, "text": text, "finish_reason": finish}]})

@@ -1105,8 +1105,16 @@
                 ;; VRAM, leaving ~9.5 GiB for KV cache and activations — it fits,
                 ;; but there is no longer room to run strata alongside it.
                 ;; INT4 remains on disk at LFM2.5-24B-A2B-int4-ov if the speed is
-                ;; ever worth more than the competence.
-                (model-dir "/media/models/openvino/LFM2.5-24B-A2B-int4-ov")
+                ;; ever worth more than the competence.  A 2026-11-23 commit
+                ;; flipped this to the int4 export on the claim that it matched
+                ;; "the actual optimised IR export location", which is not true --
+                ;; both exports are on disk and int8 is the one that was loaded
+                ;; and answering at the time -- and it contradicted the
+                ;; measurement recorded immediately above it.  Reverted to int8.
+                ;; pi's models.json also pins the served id
+                ;; "LFM2.5-24B-A2B-int8-ov", so this path and that id have to
+                ;; move together or /v1/models stops matching the client config.
+                (model-dir "/media/models/openvino/LFM2.5-24B-A2B-int8-ov")
                 ;; GPU on the Arc Pro B70, measured working: LFM2.5-24B-A2B int4
                 ;; builds in ~3 s and generates at ~164 tok/s (the 8B sibling at
                 ;; ~237 tok/s), against ~6-8 tok/s for the same 24B export on
@@ -1132,7 +1140,21 @@
                 ;; default.  256 was far too small — it returned reasoning with
                 ;; the answer truncated away.  Clients can still override per
                 ;; request via max_tokens.
-                (max-new-tokens 2048)))
+                ;;
+                ;; Raised 2048 -> 4096.  2048 still truncated in practice: a
+                ;; "explain in detail how a reverse proxy works, with examples"
+                ;; prompt spent 801 tokens thinking and then hit the cap with
+                ;; finish_reason=length at both max_tokens=200 and 1024 (content
+                ;; cut mid-sentence at 4033 chars).  pi declares maxTokens 8192
+                ;; so it sends its own ceiling, but any client that omits
+                ;; max_tokens silently inherited 2048 -- and because
+                ;; _split_thinking returns an empty answer when the think block
+                ;; never closed, running out mid-thought looked less like
+                ;; truncation and more like the server returning nothing at all.
+                ;; The per-generation log line now records finish_reason and
+                ;; flags TRUNCATED / EMPTY-ANSWER explicitly, so the next time
+                ;; this is a grep rather than a live repro.
+                (max-new-tokens 4096)))
 
       (service strata-service-type
                (strata-configuration
