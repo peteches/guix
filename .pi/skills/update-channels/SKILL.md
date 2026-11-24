@@ -136,23 +136,23 @@ If the fetched `NEW_COMMIT` equals the channel's current `commit` value (or the 
 
 ## Step 5 — Update commit hashes in each file
 
-For every channel where the new commit differs from the pinned one, replace the old hash using `mcp__anvil-emacs-eval__file-replace-string` (one call per channel per file):
+For every channel where the new commit differs from the pinned one, replace the old hash using your harness's exact-text-replacement tool (pi's `edit`; one targeted replacement per channel per file):
 
 ```
 old: (commit "<current-hash>")
 new: (commit "<new-hash>")
 ```
 
-If multiple channels in the same file need updating, collapse them into a single `mcp__anvil-emacs-eval__file-batch` call.
+If multiple channels in the same file need updating, do them in a single `edit` call with one entry per replacement (they must not overlap).
 
-After all replacements in a file, verify paren balance:
+After all replacements in a file, verify paren balance with the read-only parse check:
 
-```elisp
-(with-current-buffer (find-file-noselect "/abs/path/to/file.scm")
-  (check-parens))
+```bash
+guile -c '(call-with-input-file "/abs/path/to/file.scm"
+            (lambda (p) (let loop () (unless (eof-object? (read p)) (loop)))))'
 ```
 
-Treat any `check-parens` error as a blocker — do not save until resolved.
+Treat any parse error as a blocker — do not proceed until resolved.
 
 ---
 

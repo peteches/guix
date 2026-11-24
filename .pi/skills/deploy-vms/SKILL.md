@@ -22,7 +22,7 @@ into safe, isolated, sequential invocations of it with a report at the end.
 ## Step 1 — Resolve the target host list
 
 Get the authoritative machine list by parsing `peteches/machines.scm` at run
-time — do not hardcode a copy of it here, it drifts (CLAUDE.md's "Adding a
+time — do not hardcode a copy of it here, it drifts (AGENTS.md's "Adding a
 New VM" step 4 already notes that `scripts/deploy.scm`'s own `%machine-names`
 alist has to be kept in sync by hand; this skill should not add a second
 place that can go stale):

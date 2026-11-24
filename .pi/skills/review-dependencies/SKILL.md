@@ -17,13 +17,13 @@ This is a repository-only skill. Run it from the repo root (`~/area_51/guix`).
 
 ## Step 1 — Run review-channels
 
-Invoke `review-channels` (`.claude/skills/review-channels/SKILL.md`) in
+Invoke `review-channels` (`.pi/skills/review-channels/SKILL.md`) in
 full. Keep its per-channel results: name, file, current commit, latest
 commit, status, and any introduction concerns.
 
 ## Step 2 — Run review-packages
 
-Invoke `review-packages` (`.claude/skills/review-packages/SKILL.md`) in
+Invoke `review-packages` (`.pi/skills/review-packages/SKILL.md`) in
 full. Keep its per-package results: name, file, current version, latest
 found, checker used, confidence.
 

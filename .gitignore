@@ -1,7 +1,6 @@
 *~
 \#*\#
 /.agent-shell/
-/graphify-out/
 /.probe-stcards/
 __pycache__/
 *.pyc

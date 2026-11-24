@@ -53,7 +53,7 @@ Rules:
 
 * How to deploy
 
-*Always use the =deploy-vms= skill* (=.claude/skills/deploy-vms/=) instead of
+*Always use the =deploy-vms= skill* (=.pi/skills/deploy-vms/=) instead of
 calling =scripts/deploy.scm= or =guix deploy= directly. This is not a style
 preference — the skill exists specifically to close two gaps that raw
 invocations don't handle:

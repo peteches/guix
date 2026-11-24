@@ -101,7 +101,7 @@ Evaluate instead.
 For each file in the Step 1 scope, in **one fresh `guix repl -L .` process
 per file** (never share a process across files — a module that fails to
 load can leave a stub that makes a later `resolve-interface` in the *same*
-process spuriously succeed; see this repo's CLAUDE.md):
+process spuriously succeed; see this repo's AGENTS.md):
 
 1. `(use-modules (peteches packages X))`
 2. Find the binding names in that file with a plain `grep -n

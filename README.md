@@ -39,7 +39,7 @@ per-host `guix home` environments.
 | `configs/` | Non-Scheme assets referenced via `repo-directory` (emacs, hypr, claude, bin, alacritty, dms, matugen, nyxt, pi, vllm, wofi) |
 | `containers/` | `guix-builder` Docker image for CI tasks; throwaway postgres test container |
 | `docs/` | `fleet-deployment.org` (deploy rules — source of truth), `secrets-management.org`, `infrastructure.org`, `backups.org`, `dependency-review-todo.org` |
-| `.claude/` | Claude Code skills (`deploy-vms`, `update-channels`, `review-channels`, `review-dependencies`, `review-packages`) |
+| `.pi/` | pi agent assets: `skills/` (`deploy-vms`, `update-channels`, `review-channels`, `review-dependencies`, `review-packages`, `wireguard-socks5`) and `agents/` (repo-local subagents: `guix-validator`, `secrets-sentinel`, `service-reviewer`, `vm-auditor`) |
 | `proxmox-vms.org` | Authoritative VM inventory (IPs, VMIDs, specs) |
 | `.sops.yaml` | SOPS creation rules (per-VM age recipients) |
 
