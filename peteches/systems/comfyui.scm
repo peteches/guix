@@ -1219,17 +1219,64 @@
                 ;; ~4096 -- and the recovery rule now reserves a FIXED
                 ;; answer-reserve inside each pass instead of halving what is
                 ;; left, which is what starved this one.
-                ;; Cost accepted, knowingly: 4096 tokens is ~15.1k chars, below
-                ;; the 22141 and 24201 reasoning chars two healthy turns spent
-                ;; that day, so on the order of 2% of turns now pay a recovery
-                ;; pass they would previously have finished in one.  That is the
-                ;; cheaper error -- a rescued turn costs two extra prefills under
-                ;; the generation lock, an unrescued one costs the client its
-                ;; whole turn.
-                ;; chars-per-token is pinned to the 3.69 measured in production
-                ;; rather than left at the script's 4.0 default, so a token
-                ;; budget means the number of tokens it says.
-                (think-budget 4096)
+                ;; THIRD ATTEMPT, and it is a disable: think-budget 0 turns the
+                ;; guard off.  4096/1024/3.7 shipped at 16:04 and the next
+                ;; half hour of traffic falsified both halves of the reasoning
+                ;; above.
+                ;;
+                ;; (a) The cap landed INSIDE the healthy distribution.  Every
+                ;; turn that succeeded reasoned below the 15155-char cap and
+                ;; every turn that failed reasoned above it, with no overlap at
+                ;; all -- which is what a cap set through the middle of a working
+                ;; population looks like:
+                ;;   16:19:06 reasoning_chars=6597   -> tool_calls
+                ;;   16:28:39 reasoning_chars=14850  -> stop, content_chars=4072
+                ;;   16:30:09 reasoning_chars=14638  -> tool_calls
+                ;;   16:20:22 reasoning_chars=15168  -> passes=3 content_chars=0
+                ;;   16:29:33 reasoning_chars=15165  -> passes=3 content_chars=0
+                ;;   16:21:42 reasoning_chars=30577  -> passes=3 content_chars=0
+                ;;   16:36:27 reasoning_chars=27443  -> passes=3 content_chars=0
+                ;; Pre-guard history puts healthy reasoning as high as 24201
+                ;; chars, so a 15155 cap was cutting the top third of the turns
+                ;; that would have answered on their own and handing them to
+                ;; recovery.
+                ;;
+                ;; (b) Recovery does not work on this model at any budget tried.
+                ;; Six consecutive failures with 3488 and 3274 tokens of recovery
+                ;; available -- three to four times the 1300-2000 a healthy think
+                ;; block closes in -- every one content_chars=0.  Force-closed,
+                ;; the model opens a FRESH <think> and spirals again: re-prompting
+                ;; mid-turn does not break a spiral, it restarts one.  Reading a
+                ;; 27443-char block explains why.  It is not a repetition loop
+                ;; but non-converging second-guessing ("This is really tricky",
+                ;; "This is a nightmare to get right", "Let's pause and
+                ;; reassess"), on prompts of 42-46k tokens carrying 42 KB tool
+                ;; results.
+                ;;
+                ;; So the guard as built turns "sometimes empty" into "often
+                ;; empty".  Off, a spiral still burns the budget and returns
+                ;; nothing (the original 11 of 94) but a 15-25k-char turn still
+                ;; answers; on, both return nothing.  Off is strictly better
+                ;; until recovery actually recovers.
+                ;;
+                ;; Re-enabling needs BOTH of: a pass-1 cap above ~26k chars so
+                ;; healthy turns are untouched -- which at pi's 8192-token budget
+                ;; leaves only ~1000 tokens for recovery, too little for the
+                ;; mid-turn re-prompt this uses -- AND a recovery pass that does
+                ;; not re-think.  The candidate is a reshaped recovery prompt:
+                ;; close the assistant turn, add a user turn stating that the
+                ;; reasoning budget is spent, and render the next assistant turn
+                ;; WITHOUT the <think> primer, so the pass needs answer tokens
+                ;; only.  That must be measured on the 24B before it goes near
+                ;; this field: both calibrations above were reasoned from proxies
+                ;; (a CPU probe on the 8B export, and a chars/token ratio taken
+                ;; from a different turn shape) and both were wrong.
+                ;; The instrumentation stays -- think_overflow=, passes=,
+                ;; pass2_tokens= and the THINK-* flags are inert but in place and
+                ;; shipping to Loki -- and the three values below are left at
+                ;; their last settings so re-enabling is a one-word change rather
+                ;; than a re-derivation.
+                (think-budget 0)
                 (answer-reserve 1024)
                 (chars-per-token 3.7)
                 (max-think-passes 3)))
