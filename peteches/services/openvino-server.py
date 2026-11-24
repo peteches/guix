@@ -87,6 +87,45 @@ REASONING_HINT = os.environ.get(
     "OPENVINO_REASONING_HINT",
     "\n\nKeep your internal reasoning brief, then answer directly.")
 
+# Think guard: bound the reasoning block separately from the answer.  The
+# template opens every assistant turn inside `<think>`, so a completion only
+# reaches the user after `</think>` -- and when the model never closes that
+# block before the budget runs out, _split_thinking returns an EMPTY answer
+# with finish_reason "length".  Measured on the live comfyui log
+# (/var/log/openvino/openvino-lfm2.log, 2026-11-24): 11 of 94 generations were
+# TRUNCATED EMPTY-ANSWER(think-block-never-closed), every one content_chars=0.
+# Two signatures, both leaving the client with reasoning and no reply:
+#   finish=length completion_tokens=8192 reasoning_chars=30368  <- thought to
+#                                                                   the cap
+#   finish=length completion_tokens=6399 reasoning_chars=25722  <- EOS inside
+#                                                                   the block
+# Raising the budget is not the fix (8192 is already large; successful turns in
+# the same log spent 24201 reasoning chars and still answered) -- the thinking
+# has to be bounded apart from the answer.  THINK_BUDGET caps pass-1 reasoning;
+# ANSWER_RESERVE is held back for the forced-close recovery pass(es) that
+# recapture the answer, so recovery never pushes the turn past the client's
+# max_tokens.  Set ANY of the three to 0 (or MAX_THINK_PASSES below 2) to
+# disable the guard entirely, in which case the server behaves exactly as it did
+# before this block existed.  See _ThinkGuard and _run_think_recovery for the
+# bounded recovery loop.
+THINK_BUDGET = int(os.environ.get("OPENVINO_THINK_BUDGET", "2048"))
+ANSWER_RESERVE = int(os.environ.get("OPENVINO_ANSWER_RESERVE", "1024"))
+# The streamer sees decoded TEXT, not token counts, so the think budget is
+# converted to characters at this ratio.  The live log gives it directly:
+# 8192 tokens -> 30368 chars (3.71), 2540 -> 9589 (3.78), 5728 -> 24201 (4.22),
+# 6399 -> 25722 (4.02).  4.0 sits in the middle of those and errs slightly
+# generous, so the guard fires a touch later rather than chopping a think block
+# that was about to close on its own.
+CHARS_PER_TOKEN = float(os.environ.get("OPENVINO_CHARS_PER_TOKEN", "4.0"))
+# The model can RE-OPEN a think block after a forced close -- a live probe
+# (LFM2.5, openvino_genai 2026.4.1) measured pass 2 of a recovered turn
+# beginning with a literal `<think>` -- so one forced close is not always
+# enough.  The recovery loop re-prompts up to MAX_THINK_PASSES times IN TOTAL
+# (pass 1 included) and stops the moment a pass yields a non-empty answer.  Set
+# to 1 (or 0) to allow no recovery pass, which also disables the guard -- there
+# is no point bounding pass 1's thinking if nothing recaptures the answer.
+MAX_THINK_PASSES = int(os.environ.get("OPENVINO_MAX_THINK_PASSES", "3"))
+
 # Sampling for TOOL-BEARING requests only, and the reason is measured, not
 # stylistic.  The export's generation_config.json ships temperature 0.1 (the
 # model card's chat recommendation), and at 0.1 this model degenerates on a
@@ -124,6 +163,17 @@ TOOL_REPETITION_PENALTY = float(os.environ.get("OPENVINO_TOOL_REPETITION_PENALTY
 # thinking block and the user-facing answer starts after this tag.
 THINK_CLOSE = "</think>"
 
+# Appended to a truncated think block to force it shut before a recovery pass:
+# exactly the token sequence the template emits to end the block, so the next
+# pass picks up where the answer begins.  Kept as ONE named constant so it can
+# be retuned in a single place -- a probe is measuring whether a different
+# suffix reduces how often the model re-opens a fresh `<think>` in recovery.
+# We deliberately do NOT use generation_config.stop_strings for this: the export
+# ships stop_strings=set() (measured), and only the streamer abort works
+# uniformly on the streaming and buffered paths while letting us count the block
+# as it grows.
+FORCED_CLOSE_SUFFIX = THINK_CLOSE + "\n"
+
 _lock = threading.Lock()          # one generation at a time; see service comment
 
 # Set to "0" to reduce the log to uvicorn's access lines plus startup.
@@ -139,6 +189,19 @@ def _log(msg):
     server actually gets asked.  Every generation therefore logs one line of
     metadata (never prompt or completion text: this endpoint is shared and the
     log is world-readable on the box).
+
+    The same rule covers EXCEPTION text, and since this file is now tailed by
+    alloy and shipped to Loki (peteches/systems/comfyui.scm's log-files) it
+    covers it fleet-wide rather than just on this box.  Every print that
+    reports a failure from a call carrying a client's conversation -- the
+    chat-template render, ChatHistory construction, generate() itself -- logs
+    the exception's TYPE NAME and not its message, because that message is
+    composed by a third-party pybind/Jinja/C++ layer nobody here controls, and
+    the template's own errors are known to quote the offending value back ("Tool
+    call arguments must be a mapping ...").  Startup, device-property and
+    perf-metrics failures keep their full messages: no client input reaches
+    those calls, and their text is what makes a bad model directory or an
+    unsupported plugin property diagnosable.
 
     No timestamp of our own: shepherd already prefixes one to every line it
     captures, so adding a second made each entry read
@@ -256,7 +319,11 @@ def gen_config(req, has_tools=False):
             try:
                 setattr(cfg, field, type(getattr(cfg, field))(value))
             except Exception as exc:
-                print(f"note: ignoring {key}={value!r}: {exc}", file=sys.stderr)
+                # Type name only, and the client-supplied VALUE is dropped with
+                # it: `key' is from the fixed allowlist above, `value' is
+                # whatever the caller sent.  See _log's docstring.
+                print(f"note: ignoring {key} ({type(exc).__name__})",
+                      file=sys.stderr)
     return cfg
 
 
@@ -378,6 +445,290 @@ def _finish_and_usage(res, cfg, closed, tool_calls=()):
                     "total_tokens": n_in + n_out}
 
 
+def _think_char_budget(requested_tokens):
+    """Char budget for pass-1 reasoning, or None to disable the guard.
+
+    The effective cap is min(THINK_BUDGET, requested - ANSWER_RESERVE) tokens,
+    converted to chars at CHARS_PER_TOKEN: never let thinking eat into the
+    reserve the answer needs, and never let pass 2 push the turn past what the
+    client asked for.  If the client requested <= ANSWER_RESERVE there is
+    nothing left to guard, so the guard is disabled and the turn runs exactly
+    as it did before this existed.  Any knob set to 0 disables it too.
+    """
+    if (THINK_BUDGET <= 0 or ANSWER_RESERVE <= 0 or CHARS_PER_TOKEN <= 0
+            or MAX_THINK_PASSES < 2):
+        return None
+    if not requested_tokens or requested_tokens <= ANSWER_RESERVE:
+        return None
+    cap_tokens = min(THINK_BUDGET, requested_tokens - ANSWER_RESERVE)
+    if cap_tokens <= 0:
+        return None
+    return int(cap_tokens * CHARS_PER_TOKEN)
+
+
+def _recovery_char_budget(remaining_tokens):
+    """Char budget for a RECOVERY pass's thinking, or None to leave it unguarded.
+
+    Halved on purpose, and the halving is what makes the loop converge.  A
+    recovery pass runs with whatever the client's budget has left, and the model
+    re-opens `<think>` in it (measured, see FORCED_CLOSE_SUFFIX), so an unguarded
+    recovery pass can spend the entire remainder reasoning again and hand back a
+    second empty answer -- which is what an early probe of this design did on
+    every one of four iterations.  Capping an INTERMEDIATE pass's thinking at
+    half of `remaining_tokens' leaves the passes after it at least the other
+    half, and each further pass halves again, so the ladder descends with answer
+    room instead of oscillating.  The last allowed pass is the exception and runs
+    unguarded -- force-closing it would leave no later pass to answer in -- so
+    the guarantee is that the ladder *reaches* a pass with the whole remainder
+    available, not that every pass reserves half.
+
+    Deliberately NOT _think_char_budget(remaining_tokens): that one subtracts
+    ANSWER_RESERVE and returns None -- guard off -- once the remaining budget is
+    at or below the reserve, which is exactly the situation every recovery pass
+    is in.  Here a small budget still gets a (smaller) thinking cap.
+    """
+    if (THINK_BUDGET <= 0 or CHARS_PER_TOKEN <= 0 or MAX_THINK_PASSES < 2
+            or not remaining_tokens or remaining_tokens <= 0):
+        return None
+    cap_tokens = min(THINK_BUDGET, remaining_tokens // 2)
+    if cap_tokens <= 0:
+        return None
+    return int(cap_tokens * CHARS_PER_TOKEN)
+
+
+def _input_tokens(res):
+    """perf_metrics.get_num_input_tokens(), or 0 when unavailable."""
+    pm = getattr(res, "perf_metrics", None)
+    if pm is None:
+        return 0
+    try:
+        return int(pm.get_num_input_tokens())
+    except Exception:
+        return 0
+
+
+def _generated_tokens(res, text=""):
+    """perf_metrics.get_num_generated_tokens(), with a char-derived floor.
+
+    The loop's whole "never exceed the client's max_tokens" guarantee rests on
+    this count shrinking `remaining' after every pass, and 0 is the one value
+    that breaks it: `remaining' would never move, so each further pass would be
+    issued at the FULL requested budget.  perf_metrics did survive a streamer
+    abort when measured against this build (openvino_genai 2026.4.1: an aborted
+    pass reported get_num_generated_tokens()=65, and a three-pass turn summed
+    107+215 correctly), but the binding promises nothing about the aborted case,
+    so a 0 is replaced by the text length converted at CHARS_PER_TOKEN.  The
+    error is deliberately one-sided: over-estimating ends recovery early and
+    costs an answer, while under-estimating spends budget the client did not
+    grant.
+    """
+    pm = getattr(res, "perf_metrics", None)
+    n = 0
+    if pm is not None:
+        try:
+            n = int(pm.get_num_generated_tokens())
+        except Exception:
+            n = 0
+    if n <= 0 and text and CHARS_PER_TOKEN > 0:
+        n = max(1, int(len(text) / CHARS_PER_TOKEN))
+    return max(0, n)
+
+
+class _PerfShim:
+    """perf_metrics stand-in carrying token counts we computed ourselves."""
+
+    def __init__(self, n_in, n_out):
+        self._n_in = n_in
+        self._n_out = n_out
+
+    def get_num_input_tokens(self):
+        return self._n_in
+
+    def get_num_generated_tokens(self):
+        return self._n_out
+
+
+class _ThinkGuard:
+    """Bounds one thinking block, in characters, as it streams in.
+
+    Fed every decoded piece; returns True once the accumulated reasoning
+    overruns the budget without having closed the block.  The OpenVINO streamer
+    treats a truthy return as StreamingStatus::STOP (text_streamer.cpp:106),
+    and the stop is clean: handle->stop() defaults to GenerationFinishReason::
+    STOP (generation_handle.hpp:131), so the tokens produced so far are kept and
+    the caller can force the block shut and re-prompt for the answer.  This is
+    the only behaviour change for turns that close their think block normally --
+    for those feed() never returns True and there is no recovery pass.
+
+    .raw         accumulated pass-1 text -- used only to count chars and spot
+                 the close.  The recovery prompt is built from _result_text(res),
+                 NOT from .raw: a live probe measured the returned text a couple
+                 of chars shorter than the accumulator (327 vs 329), and the
+                 prompt must match what the model actually produced.
+    .closed      THINK_CLOSE appeared -> the block ended on its own
+    .overflowed  the char budget fired -> we aborted it, as distinct from the
+                 model emitting EOS mid-thought, which leaves .overflowed False
+                 and .closed False (both still trigger the recovery loop)
+    .limit_chars None when the guard is disabled for this request
+    """
+
+    def __init__(self, requested_tokens, limit_chars=False):
+        # limit_chars=False (the default) derives the cap from the client's whole
+        # request via _think_char_budget; an explicit int overrides it, which is
+        # how _run_think_recovery applies the halving rule to passes 2+.
+        self.limit_chars = (_think_char_budget(requested_tokens)
+                            if limit_chars is False else limit_chars)
+        self.raw = ""
+        self.closed = False
+        self.overflowed = False
+
+    def feed(self, piece):
+        """Accumulate a decoded piece; -> True to stop generation."""
+        if self.closed:
+            return False
+        self.raw += piece
+        if THINK_CLOSE in self.raw:
+            self.closed = True
+            return False
+        if self.limit_chars is not None and len(self.raw) >= self.limit_chars:
+            self.overflowed = True
+            return True
+        return False
+
+
+class _Recovery:
+    """Outcome of the bounded think-recovery loop.
+
+    Reasoning and answer are tracked SEPARATELY: a single _split_thinking over
+    the concatenated passes would split at the FIRST `</think>` and leak a later
+    re-opened `<think>…</think>` into the answer (measured: a recovery pass
+    began with a literal `<think>`).  Exposes perf_metrics and finish_reasons
+    shaped like a DecodedResults so _finish_and_usage works unchanged --
+    prompt_tokens is pass 1's (the client's real prompt; the re-prompts are our
+    internal trick), completion_tokens is the sum across passes, finish_reasons
+    is the LAST pass's.  The caller passes closed=bool(answer), because a
+    guard-aborted pass reads STOP even though it produced no answer: the guard's
+    own state, not finish_reasons, is the authority on whether we recovered.
+    """
+
+    def __init__(self, reasoning, answer, res1, last_res, total_generated):
+        self.reasoning = reasoning
+        self.answer = answer
+        self.last_res = last_res
+        self.total_generated = total_generated
+        self.finish_reasons = getattr(last_res, "finish_reasons", None)
+        self.perf_metrics = _PerfShim(_input_tokens(res1), total_generated)
+
+
+def _run_think_recovery(prompt, res1, requested, body, has_tools, info):
+    """Bounded buffered loop that recovers an answer from an unclosed think block.
+
+    Called once pass 1 has ended inside `<think>` -- the guard aborted it at the
+    char budget (info['overflowed']) or the model emitted EOS mid-thought.  Each
+    pass appends the previous raw text plus FORCED_CLOSE_SUFFIX and regenerates
+    from the result TEXT, not the streamer's accumulator (a live probe measured
+    the two differing by a couple of characters, 329 streamed vs 327 returned,
+    and the prompt must match what the model actually produced).  A pass that
+    closes the block yields the answer and ends the loop; a pass that re-opens
+    `<think>` contributes more reasoning and, budget and MAX_THINK_PASSES
+    permitting, another forced close follows.  Recovery passes are guarded at
+    HALF the tokens left (_recovery_char_budget), so a re-opened block cannot
+    eat the remainder and the answer always has room -- except the last allowed
+    pass, which runs unguarded because force-closing it would leave no later
+    pass to collect the answer.
+
+    Returns a _Recovery.  When the loop gives up with no answer, answer is ""
+    and the caller reports finish_reason "length" plus the EMPTY-ANSWER flag;
+    reasoning is NEVER leaked as the answer (see _split_thinking's docstring --
+    that was already tried and made the endpoint unusable).  Must be called with
+    _lock held; the passes then share the one GPU trial slot, exactly as a single
+    generation does under _stream_worker / run().
+    """
+    reasoning_parts = []
+    answer = ""
+    last_res = res1
+    passes = 1
+    overflowed = bool(info.get("overflowed"))
+
+    prev_prompt = prompt
+    prev_text = _result_text(res1)
+    pass1_generated = _generated_tokens(res1, prev_text)
+    total_generated = pass1_generated
+    prev_closed = THINK_CLOSE in prev_text
+    if prev_closed:
+        head, tail = prev_text.split(THINK_CLOSE, 1)
+        reasoning_parts.append(head)
+        answer = tail.strip()
+    else:
+        reasoning_parts.append(prev_text)
+
+    while answer == "" and passes < MAX_THINK_PASSES:
+        remaining = requested - total_generated
+        if remaining <= 0:
+            break
+        passes += 1
+        # previous prompt + previous raw text + a forced close (only when the
+        # previous pass left the block open) + newline.  FORCED_CLOSE_SUFFIX is
+        # the single place that sequence lives.
+        next_prompt = (prev_prompt + prev_text
+                       + ("\n" if prev_closed else FORCED_CLOSE_SUFFIX))
+        cfg_i = gen_config(body, has_tools)
+        cfg_i.max_new_tokens = remaining
+        # Intermediate passes get the halved cap (_recovery_char_budget) so each
+        # one leaves answer room for the next.  The LAST allowed pass runs
+        # UNGUARDED instead: force-closing it would leave no pass after it to
+        # collect the answer, so whatever budget is left goes to closing the
+        # block and replying.  limit_chars=None is the guard's off switch.
+        guard = _ThinkGuard(remaining,
+                            None if passes >= MAX_THINK_PASSES
+                            else _recovery_char_budget(remaining))
+        try:
+            res_i = PIPELINE.generate([next_prompt], generation_config=cfg_i,
+                                      streamer=guard.feed)
+        except Exception as exc:
+            # The exception TYPE only, not its text.  This is the one new place
+            # that reports a failure from a call carrying the client's whole
+            # conversation, and `exc' is an unbounded string composed by a
+            # third-party pybind/C++ layer; shepherd appends stderr to the same
+            # log the counts-only _log lines are careful about.  Realistic
+            # messages are config/device errors that quote no input, but the
+            # type name carries the same diagnostic value at no disclosure risk.
+            print(f"note: think-recovery pass {passes} failed "
+                  f"({type(exc).__name__}); stopping recovery", file=sys.stderr)
+            # Flagged in the _log line too: a stderr note is easy to miss, and
+            # without a marker a systematic failure here (KV cache refusing the
+            # longer re-prompt, say) reads as "the guard did not help".
+            info["error"] = True
+            break
+        prev_prompt = next_prompt
+        prev_text = _result_text(res_i)
+        spent = _generated_tokens(res_i, prev_text)
+        if spent <= 0:
+            # Cannot account for what that pass cost, so there is no honest
+            # `remaining' to hand the next one.  Stop instead of risking a pass
+            # issued at the client's full budget.
+            info["error"] = True
+            break
+        total_generated += spent
+        last_res = res_i
+        if guard.overflowed:
+            overflowed = True
+        prev_closed = THINK_CLOSE in prev_text
+        if prev_closed:
+            head, tail = prev_text.split(THINK_CLOSE, 1)
+            reasoning_parts.append(head)
+            answer = tail.strip()
+        else:
+            reasoning_parts.append(prev_text)
+
+    info["forced"] = passes > 1
+    info["overflowed"] = overflowed
+    info["passes"] = passes
+    info["pass2_tokens"] = total_generated - pass1_generated
+    reasoning = "".join(part for part in reasoning_parts if part)
+    return _Recovery(reasoning, answer, res1, last_res, total_generated)
+
+
 class _ThinkSplitter:
     """Incremental `<think>…</think>` splitter for the streaming path.
 
@@ -451,7 +802,7 @@ class _ThinkSplitter:
 _STREAM_DONE = object()           # sentinel: the worker's generate() returned
 
 
-def _stream_worker(prompt, cfg, out_q, holder):
+def _stream_worker(prompt, cfg, out_q, holder, guard=None):
     """Run one generation on a thread, pushing decoded pieces onto out_q.
 
     `generate(..., streamer=...)` is the incremental API this build exposes --
@@ -466,10 +817,17 @@ def _stream_worker(prompt, cfg, out_q, holder):
     `_lock` is taken here rather than in the caller so it is held for the whole
     generation, streaming included: the queue decouples the producer from the
     HTTP write, but only one trial may use the GPU at a time.
+
+    When `guard' is supplied every piece is also fed to it and its verdict
+    returned to the runtime, so a runaway think block is stopped at the char
+    budget instead of running to the token cap (see _ThinkGuard).  The piece is
+    queued either way -- the guard only decides whether generation continues.
     """
     def streamer(piece):
         out_q.put(piece)
-        return None
+        # True stops generation (StreamingStatus::STOP), False/None keeps it
+        # going; pybind coerces the returned bool into the callback variant.
+        return guard.feed(piece) if guard is not None else None
 
     try:
         with _lock:
@@ -521,7 +879,10 @@ def _chat_input(messages, tools=None):
                 history.set_tools(list(tools))
             return history, "chathistory"
         except Exception as exc:
-            print(f"note: ChatHistory construction failed: {exc}", file=sys.stderr)
+            # Type name only -- this call takes the client's messages, and the
+            # chat template's own errors quote values back.  See _log's docstring.
+            print(f"note: ChatHistory construction failed "
+                  f"({type(exc).__name__})", file=sys.stderr)
     return list(messages), "message-dicts"
 
 
@@ -855,6 +1216,54 @@ async def chat(request: Request):
     cfg = gen_config(body, bool(tools))
     name = os.path.basename(MODEL_DIR.rstrip("/"))
 
+    # Per-request think-guard state, read back by every _log line below.  Set by
+    # _run_think_recovery (via _guarded_generate on the buffered path, directly
+    # on the streaming path).  Never carries prompt or completion text.
+    guard_info = {"forced": False, "overflowed": False, "passes": 1,
+                  "pass2_tokens": 0, "error": False}
+
+    def _guard_log_suffix():
+        """`think_overflow=1 passes=N pass2_tokens=M THINK-OVERFLOW(forced-close)'
+        when the guard had to force the block shut and re-prompt, else ""."""
+        if not guard_info["forced"]:
+            return ""
+        kind = "think_overflow=1" if guard_info["overflowed"] else "think_unclosed=1"
+        flag = ("THINK-OVERFLOW(forced-close)" if guard_info["overflowed"]
+                else "THINK-UNCLOSED(forced-close)")
+        # Recovery dying on an exception, or on a pass whose token count could
+        # not be read, is its own marker: it means the ladder stopped early for
+        # a reason that has nothing to do with the model's reasoning length.
+        error = " THINK-RECOVERY-ERROR" if guard_info["error"] else ""
+        return (f" {kind} passes={guard_info['passes']}"
+                f" pass2_tokens={guard_info['pass2_tokens']}"
+                f" {flag}{error}")
+
+    def _guarded_generate(prompt):
+        """Pass 1 (+ bounded recovery) for the rendered-prompt path.
+
+        Returns pass 1's DecodedResults when the think block closed on its own
+        or the guard is off -- the common case, with no second pass and no extra
+        cost -- or a _Recovery when pass 1 ended inside `<think>` and had to be
+        forced shut and re-prompted.  Must be called with _lock held, so the
+        recovery passes share pass 1's one GPU trial slot.
+        """
+        guard = _ThinkGuard(cfg.max_new_tokens)
+        # A counting streamer: the buffered path has no queue to push to, so
+        # pieces are only accumulated for the guard's char budget.  The
+        # ONE-ELEMENT LIST stays -- generate([prompt], cfg, streamer=...) still
+        # returns DecodedResults with perf_metrics and finish_reasons, both
+        # valid after a streamer abort (a live probe confirmed the abort reads
+        # STOP, not LENGTH, so the guard's own state decides, not finish_reasons).
+        res1 = PIPELINE.generate([prompt], generation_config=cfg,
+                                 streamer=guard.feed)
+        # The result TEXT is authoritative (the streamer's accumulator runs a
+        # couple of chars long).  Guard off, or the block closed: single pass.
+        if guard.limit_chars is None or THINK_CLOSE in _result_text(res1):
+            return res1
+        guard_info["overflowed"] = guard.overflowed
+        return _run_think_recovery(prompt, res1, cfg.max_new_tokens, body,
+                                   bool(tools), guard_info)
+
     def run():
         with _lock:
             # Render the chat template ourselves rather than handing message
@@ -869,23 +1278,37 @@ async def chat(request: Request):
                 # while generate([str]) returns DecodedResults carrying both --
                 # which is where usage and an honest finish_reason come from.
                 prompt = _render_chatml(messages, tools)
-                return PIPELINE.generate([prompt], generation_config=cfg)
+                return _guarded_generate(prompt)
             except Exception as exc:
-                print(f"note: rendered-prompt generation failed ({exc}); "
-                      f"falling back to ChatHistory", file=sys.stderr)
+                print(f"note: rendered-prompt generation failed "
+                      f"({type(exc).__name__}); falling back to ChatHistory",
+                      file=sys.stderr)
+            # The recovery loop needs a *string* prompt to append the forced
+            # close to, so every fallback below skips the guard and runs one
+            # generation exactly as before.
             candidate, how = _chat_input(messages, tools)
             try:
                 return PIPELINE.generate(candidate, generation_config=cfg)
             except TypeError as exc:
                 # Neither ChatHistory nor the bare dict list took it: flatten here.
-                print(f"note: {how} input rejected ({exc}); using flattened text",
-                      file=sys.stderr)
+                # Type name only -- `how' is one of two fixed labels, but this
+                # call carries the client's messages.  See _log's docstring.
+                print(f"note: {how} input rejected ({type(exc).__name__}); "
+                      f"using flattened text", file=sys.stderr)
             # Last resort: the approximate flattening in _chat_to_text.
             return PIPELINE.generate(_chat_to_text(messages),
                                      generation_config=cfg)
 
     def shape(res):
         """Result object -> (content, reasoning, tool_calls, finish, usage)."""
+        if isinstance(res, _Recovery):
+            # The recovery loop already tracked reasoning and answer separately;
+            # re-splitting their concatenation would leak a re-opened `<think>`
+            # into the answer.  Tool markers, if any, ride in the answer.
+            content, tool_calls = _extract_tool_calls(res.answer)
+            finish, usage = _finish_and_usage(res, cfg, bool(res.answer),
+                                              tool_calls)
+            return content, res.reasoning, tool_calls, finish, usage
         no_markers, tool_calls = _extract_tool_calls(_result_text(res))
         reasoning, content, closed = _split_thinking(no_markers)
         finish, usage = _finish_and_usage(res, cfg, closed, tool_calls)
@@ -933,6 +1356,7 @@ async def chat(request: Request):
                  f" content_chars={len(content)}"
                  f"{' TRUNCATED' if finish == 'length' else ''}"
                  f"{' EMPTY-ANSWER(think-block-never-closed)' if not content and finish == 'length' else ''}"
+                 f"{_guard_log_suffix()}"
                  f" latency_s={time.monotonic() - started:.2f}")
 
         def events():
@@ -946,15 +1370,21 @@ async def chat(request: Request):
             try:
                 prompt = _render_chatml(messages, tools)
             except Exception as exc:
-                print(f"note: rendered-prompt generation unavailable ({exc}); "
-                      f"falling back to a buffered stream", file=sys.stderr)
+                print(f"note: rendered-prompt generation unavailable "
+                      f"({type(exc).__name__}); falling back to a buffered "
+                      f"stream", file=sys.stderr)
                 yield from buffered("buffered-render-failed")
                 return
 
             out_q = queue.Queue()
             holder = {}
+            # Pass 1 is guarded: the streamer both pushes pieces to the SSE
+            # queue and feeds the guard, so a runaway think block is stopped at
+            # the char budget instead of running to the token cap.
+            guard = _ThinkGuard(cfg.max_new_tokens)
             worker = threading.Thread(target=_stream_worker,
                                       args=(prompt, cfg, out_q, holder),
+                                      kwargs={"guard": guard},
                                       daemon=True)
             worker.start()
             splitter = _ThinkSplitter()
@@ -980,9 +1410,9 @@ async def chat(request: Request):
             if error is not None:
                 # The headers are already on the wire, so a JSON error body is
                 # not an option; log it and close the stream honestly.
-                print(f"error: streaming generation failed ({error})",
-                      file=sys.stderr)
-                _log(f"stream=true ERROR={type(error).__name__}: {error}"
+                print(f"error: streaming generation failed "
+                      f"({type(error).__name__})", file=sys.stderr)
+                _log(f"stream=true ERROR={type(error).__name__}"
                      f" reasoning_chars={reasoning_chars}"
                      f" content_chars={content_chars}"
                      f" latency_s={time.monotonic() - started:.2f}")
@@ -996,7 +1426,26 @@ async def chat(request: Request):
             if tail_content:
                 content_chars += len(tail_content)
                 yield _chunk({"content": tail_content})
-            finish, usage = _finish_and_usage(holder.get("res"), cfg, closed)
+            res1 = holder.get("res")
+            # Think-guard recovery.  Only pass 1 streams live: teaching
+            # _ThinkSplitter about repeated think blocks is not worth it for a
+            # path that fires on ~12% of turns and is already slow, so when
+            # pass 1 ends inside `<think>` the bounded recovery loop runs
+            # BUFFERED and its answer lands as one content chunk.  The loop's
+            # extra reasoning stays internal -- pass 1's reasoning already went
+            # to the client live -- and is never leaked as content.
+            if not closed and guard.limit_chars is not None:
+                guard_info["overflowed"] = guard.overflowed
+                with _lock:
+                    rec = _run_think_recovery(prompt, res1, cfg.max_new_tokens,
+                                              body, bool(tools), guard_info)
+                if rec.answer:
+                    content_chars += len(rec.answer)
+                    yield _chunk({"content": rec.answer})
+                finish, usage = _finish_and_usage(rec, cfg, bool(rec.answer))
+                closed = bool(rec.answer)   # a recovered turn is not truncated
+            else:
+                finish, usage = _finish_and_usage(res1, cfg, closed)
             yield _chunk({}, finish, usage)
             yield "data: [DONE]\n\n"
             _log(f"stream=true finish={finish}"
@@ -1006,6 +1455,7 @@ async def chat(request: Request):
                  f" content_chars={content_chars}"
                  f"{' TRUNCATED' if finish == 'length' else ''}"
                  f"{' EMPTY-ANSWER(think-block-never-closed)' if closed is False else ''}"
+                 f"{_guard_log_suffix()}"
                  f" latency_s={time.monotonic() - started:.2f}")
 
         return StreamingResponse(events(), media_type="text/event-stream")
@@ -1019,6 +1469,7 @@ async def chat(request: Request):
          f" reasoning_chars={len(reasoning)} content_chars={len(content)}"
          f"{' TRUNCATED' if finish == 'length' else ''}"
          f"{' EMPTY-ANSWER(think-block-never-closed)' if not content and finish == 'length' else ''}"
+         f"{_guard_log_suffix()}"
          f" latency_s={time.monotonic() - started:.2f}")
     message = {"role": "assistant", "content": content}
     if reasoning:

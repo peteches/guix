@@ -1002,7 +1002,25 @@
                                  ;; WhisperX transcriber daemon log.
                                  (cons "/var/log/transcriber/transcriber.log"
                                        "transcriber")
-                                 (cons "/var/log/comfyui/comfyui/update.log" "comfyui")))))
+                                 (cons "/var/log/comfyui/comfyui/update.log" "comfyui")
+                                 ;; The OpenVINO LLM server's shepherd log --
+                                 ;; the fleet's only view of the `llm' provider
+                                 ;; pi, herdr and the bots all share.  Its
+                                 ;; per-generation lines carry finish_reason,
+                                 ;; token/char counts and the think-guard flags
+                                 ;; (TRUNCATED, EMPTY-ANSWER, THINK-OVERFLOW,
+                                 ;; passes=, pass2_tokens=).  That is how the
+                                 ;; 2026-11-24 "11 of 94 generations returned
+                                 ;; reasoning and no answer" measurement was
+                                 ;; taken -- by SSHing in and grepping, because
+                                 ;; nothing shipped the file, so whether the
+                                 ;; guard is rescuing turns or force-closing
+                                 ;; healthy ones was invisible from anywhere
+                                 ;; else.  Same ownership and mode as strata.log
+                                 ;; and alltalk.log above (root:root 640), both
+                                 ;; of which alloy already reads.
+                                 (cons "/var/log/openvino/openvino-lfm2.log"
+                                       "openvino")))))
       ;; Strata — the SC117 abliterated Qwen3.8-Flash-Next (IQ2_XS) on the
       ;; Intel Arc B70 via its SYCL/Level Zero backend, run through the
       ;; native-pack path.  The catalog's fingerprint and SHA-256 gates
@@ -1154,7 +1172,49 @@
                 ;; The per-generation log line now records finish_reason and
                 ;; flags TRUNCATED / EMPTY-ANSWER explicitly, so the next time
                 ;; this is a grep rather than a live repro.
-                (max-new-tokens 4096)))
+                (max-new-tokens 4096)
+                ;; The think guard, and the measurement that forced it.  The log
+                ;; line above made this failure greppable; grepping it on
+                ;; 2026-11-24 returned 11 of 94 generations TRUNCATED with
+                ;; EMPTY-ANSWER(think-block-never-closed), every one
+                ;; content_chars=0 -- the client (pi, as provider `llm') got
+                ;; 25-32 KB of reasoning and no reply at all, and stalled on
+                ;; "Response was truncated before completion."  (pi session
+                ;; 01a20d9e-7e64-7104-b3d2-ae272e15e084 carries three such
+                ;; turns, each stopReason=length at usage.output=8192.)  Two
+                ;; signatures: the budget exhausted mid-thought
+                ;; (completion_tokens=8192, reasoning_chars=30368) and EOS
+                ;; emitted INSIDE the block (completion_tokens=6399 < 8192).
+                ;; Raising max-new-tokens is not the answer -- 8192 is what pi
+                ;; already asks for, and successful turns in the same log spent
+                ;; 24201 reasoning chars and still replied -- so reasoning gets
+                ;; bounded separately from the answer: 6144 tokens of thinking,
+                ;; 2048 held back as the floor the answer must have, and when a
+                ;; turn overruns, the block is force-closed and the answer
+                ;; re-prompted for (at most 3 generations per turn).  Recovery
+                ;; passes cap their own thinking at half the tokens left and the
+                ;; last one runs unguarded; that ladder is what converges
+                ;; instead of reasoning every pass away.
+                ;; 6144 is calibrated on that same log rather than chosen round:
+                ;; at the script's measured ~4 chars/token it is ~24.5k chars,
+                ;; and the day's data separates cleanly right there -- the
+                ;; longest reasoning that still ANSWERED was 24201 chars, the
+                ;; shortest that truncated was 25722.  A tighter cap (4096 went
+                ;; in first) fires on turns that were never going to fail, and
+                ;; each firing costs two extra prefills of a 10-25k-token prompt
+                ;; under the server's global generation lock -- latency charged
+                ;; to every other client on this endpoint.  What the tighter cap
+                ;; buys is recovery room, and that is the trade to watch: 6144
+                ;; leaves 2048 of pi's 8192 for a RE-OPENED think block (the
+                ;; model starts a fresh one after a forced close, measured live)
+                ;; plus the answer.  If Loki shows think_unclosed=1 passes=3
+                ;; with content_chars=0 -- the ladder running out of room rather
+                ;; than the model running out of thought -- lower think-budget
+                ;; and raise answer-reserve.
+                ;; chars-per-token stays at the script's measured 4.0.
+                (think-budget 6144)
+                (answer-reserve 2048)
+                (max-think-passes 3)))
 
       (service strata-service-type
                (strata-configuration
