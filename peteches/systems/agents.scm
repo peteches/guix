@@ -252,7 +252,7 @@
                                     (home "/home/peteches")
                                     (extra-paths '("/home/peteches/.guix-home/profile/bin"
                                                    "/home/peteches/.guix-home/profile/sbin"))
-                                    (environment '("STRATA_URL=http://comfyui.spaniel-cordylus.ts.net:8093/v1"
+                                    (environment '("STRATA_URL=https://llm.ts.peteches.co.uk/v1"
                                                    "STRATA_MODEL=lfm2"
                                                    "TIFFANY_WORKSPACE=/home/peteches/area_51/aiBots"
                                                    ;; The engine she answers on (bots/Tiffany/host.mjs +

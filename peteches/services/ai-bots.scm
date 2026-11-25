@@ -352,5 +352,5 @@ AllTalk, draws herself in ComfyUI, and drives herdr and pi sessions on this box.
    (secrets '("TIFFANY_TELEGRAM_BOT_TOKEN=/run/secrets/tiffany-telegram-token"))
    ;; Endpoints come from bots/Tiffany/config.json with ${VAR:-default} fallbacks; override the
    ;; ones you want pinned here.  Chat ids belong in `allowed-chats', not in this list.
-   (environment '("STRATA_URL=http://comfyui.spaniel-cordylus.ts.net:8093/v1"
+   (environment '("STRATA_URL=https://llm.ts.peteches.co.uk/v1"
                   "STRATA_MODEL=lfm2"))))
