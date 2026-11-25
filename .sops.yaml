@@ -75,7 +75,6 @@ creation_rules:
   # and the operator PGP key stays, as in every rule in this file, so a desktop
   # can still edit it with gpg-agent.
   - path_regex: secrets/hosts/agents/.*\.yaml$
-    pgp: "5FFB7006A36B0AEDE8D08E3753B1E002546A642A"
     age: "age1ytrm8ea22xsvzlhqxc7jykuscn8wp4hmj8vg9ul7fcy9ncxutcwqepxjtd"
 
   - path_regex: secrets/groups/media/.*\.yaml$
