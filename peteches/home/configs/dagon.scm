@@ -62,7 +62,7 @@
   #:use-module (peteches packages docker-compose)
   #:use-module (peteches packages zoom)
 
-  #:use-module (peteches channels dagon)
+  #:use-module (peteches channels)
 )
 
 ;; Packages unique to dagon (same set as nug).

@@ -142,14 +142,11 @@ run:
 
     export GIT_SSL_CAINFO=$SSL_CERT_FILE
 
-    $GIT clone https://codeberg.org/peteches/guix-channel /dev/shm/peteches-channel
-
+    # sops-guix: pinned to a commit with binary packages (not Go source) that
+    # matches the worker's guix environment at 520785e. Later commits compile
+    # sops from Go source requiring unavailable packages. c53e27e re-exports
+    # from (gnu packages password-utils) which also lacks sops at 520785e.
     $GIT clone https://github.com/fishinthecalculator/sops-guix.git /dev/shm/sops-guix
-    # Use the last commit that has: (1) binary trivial-build-system sops package
-    # (not Go source), and (2) optional config field in sops-service-configuration.
-    # Later commits (252aa05+) compile sops from Go source requiring packages not
-    # in the worker's guix at 520785e. c53e27e re-exports from (gnu packages
-    # password-utils) which also lacks sops at 520785e.
     $GIT -C /dev/shm/sops-guix checkout a1e3e55175f6fffe8c3237aac5d0872d016be194
     # Locate the guix module root inside sops-guix (per .guix-channel directory field).
     SOPS_GUIX_L=$(find /dev/shm/sops-guix -name "secrets.scm" -path "*/sops/*" 2>/dev/null \
@@ -158,17 +155,28 @@ run:
 
     # nonguix + guix-science-nonfree: vm-base.scm imports (nongnu services
     # nvidia), (nongnu packages nvidia) and (guix-science-nonfree packages
-    # cuda-modules) at the top level for make-vm-os's #:with-nvidia? path. The
-    # builder image ships plain upstream guix, so without these on the load
+    # cuda-modules) at the top level for make-vm-os's #:with-nvidia? path.
+    # The builder image ships plain upstream guix, so without these on the load
     # path vm-base fails to load and every VM build dies with
     # "make-vm-os: unbound variable". Both keep their modules at the repo root;
     # cuda-modules is self-contained (no guix-science / guix-past needed).
-    # Pinned to the commits in peteches/channels/base.scm.
-    $GIT clone https://gitlab.com/nonguix/nonguix.git /dev/shm/nonguix
-    $GIT -C /dev/shm/nonguix checkout bf39542ca537fde8839b209ac21d6f3254469b15
+    #
+    # Pins are read from channels.scm — the single source of truth — so CI
+    # always builds against exactly the same channel versions as local builds.
+    # No more drift between CI (which had nonguix@bf39542 vs channels@ee118ce)
+    # and manual testing, which caused silent miscompilations.
+    # Extract commit SHAs via awk from channels.scm's canonical module definition.
+    NONGUIX_COMMIT=$(awk '/\(name.*nonguix/{found=1; next} found{if(/^\)/){found=0}else if(/\(commit "/&&!(done)){split($0,a,"\""); print a[2]; done=1}}' repo/peteches/channels/channels.scm)
+    GUIX_SCIENCE_NONFREE_COMMIT=$(awk '/\(name.*guix-science-nonfree/{found=1; next} found{if(/^\)/){found=0}else if(/\(commit "/&&!(done)){split($0,a,"\""); print a[2]; done=1}}' repo/peteches/channels/channels.scm)
+    [ -z "$NONGUIX_COMMIT" ] && NONGUIX_COMMIT="ee118ce90d55c9d80af11295f28d6f971369161c"
+    [ -z "$GUIX_SCIENCE_NONFREE_COMMIT" ] && GUIX_SCIENCE_NONFREE_COMMIT="766a8138ad450832807cde1330ac66b88c40c06d"
 
-    $GIT clone https://codeberg.org/guix-science/guix-science-nonfree.git /dev/shm/guix-science-nonfree
-    $GIT -C /dev/shm/guix-science-nonfree checkout f30ef0318dd1c26bcb9d952a50cfa777429ab4e9
+    $GIT clone https://gitlab.com/nonguix/nonguix.git /dev/shm/nonguix
+    $GIT -C /dev/shm/nonguix checkout "$NONGUIX_COMMIT"
+
+    $GIT clone https://codeberg.org/guix-science/guix-science-nonfree.git \
+      /dev/shm/guix-science-nonfree
+    $GIT -C /dev/shm/guix-science-nonfree checkout "$GUIX_SCIENCE_NONFREE_COMMIT"
 
     # ── Skip rebuild if an identical image already exists ─────────────────────
     # Compute the image DERIVATION without building it (guix system image -d is
@@ -182,7 +190,6 @@ run:
     # build below or the derivation hash will differ.
     IMG_DRV=$($WORKER_GUIX system image \
       -L repo \
-      -L /dev/shm/peteches-channel \
       -L "$SOPS_GUIX_L" \
       -L /dev/shm/nonguix \
       -L /dev/shm/guix-science-nonfree \
@@ -252,7 +259,6 @@ run:
     # guix system image prints the store path of the built image to stdout.
     STORE_IMG=$($WORKER_GUIX system image \
       -L repo \
-      -L /dev/shm/peteches-channel \
       -L "$SOPS_GUIX_L" \
       -L /dev/shm/nonguix \
       -L /dev/shm/guix-science-nonfree \

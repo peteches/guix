@@ -99,18 +99,25 @@ Shared fragments — imported by host configs and composed into `base-packages` 
 
 ### `peteches/channels/`
 
-Five files. The first three carry the routine channel set's pinned commits,
-duplicated and kept in sync **by hand**; the last two are a separate pair for
-the private `critical-grind` channel. Prefer the `/update-channels` skill
-over editing pins directly.
+Three files. All routine channel pins live in a single module
+(`channels.scm`); `manual.scm` re-exports it for `guix pull -C`. The
+`critical-grind` channel has its own dedicated entry because it needs SSH
+agent authentication and is deliberately not shared with routine pulls.
+Prefer updating pins via the `/update-channels` skill (it edits all relevant
+files).
 
 | File | Purpose |
 |---|---|
-| `base.scm` | `%base-channels` — the reference. Module. Pinned: sops-guix, guix-science, guix-science-nonfree, nonguix, guix |
-| `dagon.scm` | Module exporting `%dagon-channels` = `%base-channels` + guix-hpc-non-free |
-| `manual.scm` | **Full** plain channels list (all 6) for `guix pull -C` / symlinking to `~/.config/guix/channels.scm` |
-| `critical-grind.scm` | The `critical-grind` channel's own dedicated entry — a private GitHub repo fetched over SSH, deliberately **not** in `base.scm`/`manual.scm`; only machines that load the read-only deploy key into an agent should pull it |
-| `deploy-critical-grind.scm` | Duplicates `base.scm`'s entries plus `critical-grind.scm`'s, for an operator machine's `guix pull -C` with the deploy key in an ssh-agent |
+| `channels.scm` | **Single source of truth** for all routine channel pins. Exports `%base-channels` and `%dagon-channels` as Guile modules. Used by nyarlothotep, dagon's home config, and system configs that import `(peteches channels)`. Pinned: sops-guix, guix-science, guix-science-nonfree, nonguix, guix. |
+| `manual.scm` | Thin wrapper — uses `(peteches channels)` to re-export `%dagon-channels` as a plain `(list …)` expression for `guix pull -C` or symlinking to `~/.config/guix/channels.scm`. Contains no independent pin data; if you edit it, you're editing comments. |
+| `critical-grind.scm` | The `critical-grind` channel's own dedicated entry — a private GitHub repo fetched over SSH, deliberately **not** in `channels.scm`/`manual.scm`; only machines that load the read-only deploy key into an agent should pull it. Exports both a module (`(peteches channels critical-grind)`) and a bare list form. No channel introduction: commits are unauthenticated. |
+
+No more `base.scm`/`dagon.scm`/`deploy-critical-grind.scm` duplication. There
+used to be three files all copying the same commit SHAs by hand, with nothing
+enforcing agreement between them — we just proved that caused ABI mismatch
+crashes when the system-installed guix version diverged from the pins. Now
+every routine pin has exactly one copy, imported programmatically where needed.
+
 
 ### `peteches/packages/`
 
@@ -344,8 +351,8 @@ service type is just editing the file.
 a channel supplying `(critical-grind packages campaign)` and
 `(critical-grind services campaign)`. It has **no channel introduction**, so
 commits are not signature-verified and every pull warns. Releasing a new
-version of the app is a commit bump in `critical-grind.scm` and
-`deploy-critical-grind.scm` — `scripts/bump-channel.sh` does exactly this —
+version of the app is a single commit bump in `critical-grind.scm` —
+`scripts/bump-channel.sh` updates it — and there is nothing to build by hand.
 and there is nothing to build by hand.
 
 It is a **private GitHub repo fetched over SSH**
@@ -360,11 +367,13 @@ authenticate. Exposing every machine's routine `guix pull` to it would fail
 with a `remote rejected authentication` message that names neither ssh-agent
 nor the key.
 
-**Pins are duplicated across files** — the routine set across
-(`base.scm`, `dagon.scm`, `manual.scm`) and the critical-grind pin across
-(`critical-grind.scm`, `deploy-critical-grind.scm`) — with nothing enforcing
-agreement. Update them together — use the `/update-channels` skill.
+**Pins live in a single file** — `channels.scm` contains all routine channel
+pins. The `/update-channels` skill edits them there, and other files import
+programmatically via `#:use-module`. No more manual synchronization or drift.
 
 For `guix pull -C` or symlinking to `~/.config/guix/channels.scm`, use
-**`manual.scm`** (the full plain list).
+**`manual.scm`** (the thin wrapper). For standard `guix pull`, it works directly
+because guix installs channel modules into your profile automatically — the old
+setup needed `guix pull -C` plus explicit `-L` flags for every channel, which
+caused ABI mismatches when the pulled guix version differed from the system one.
 

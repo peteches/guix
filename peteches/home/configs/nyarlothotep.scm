@@ -20,7 +20,7 @@
   #:use-module (gnu home services)
   #:use-module (gnu home services guix)
   #:use-module (gnu home services xdg)
-  #:use-module (peteches channels base)
+  #:use-module (peteches channels)
   #:use-module (peteches packages lycheeslicer)
   #:use-module (peteches packages rclone)
   #:use-module (peteches packages zoom)

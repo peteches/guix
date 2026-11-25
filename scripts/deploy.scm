@@ -1,5 +1,5 @@
 #!/bin/sh
-exec guix repl -- "$0" "$@"
+exec /home/peteches/.config/guix/current/bin/guix repl -- "$0" "$@"
 !#
 ;;; scripts/deploy.scm --- Wraps `guix deploy' with optional host filtering.
 ;;;
@@ -169,5 +169,6 @@ For bare patterns (no KEY= prefix), tries both 'name' and 'host-name'."
 
 (exit
  (status:exit-val
-  (apply system* "guix" "deploy" "-L" repo-root "-e" deploy-expr passthrough)))
+  (apply system* "/home/peteches/.config/guix/current/bin/guix" "deploy"
+         "-L" repo-root "-e" deploy-expr passthrough)))
 ) ;; end when
