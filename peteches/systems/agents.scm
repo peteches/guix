@@ -252,7 +252,8 @@
                                     (home "/home/peteches")
                                     (extra-paths '("/home/peteches/.guix-home/profile/bin"
                                                    "/home/peteches/.guix-home/profile/sbin"))
-                                    (environment '("STRATA_MODEL=qwen3.8-flash-next"
+                                    (environment '("STRATA_URL=http://comfyui.spaniel-cordylus.ts.net:8093/v1"
+                                                   "STRATA_MODEL=lfm2"
                                                    "TIFFANY_WORKSPACE=/home/peteches/area_51/aiBots"
                                                    ;; The engine she answers on (bots/Tiffany/host.mjs +
                                                    ;; docs/rearchitecture-on-pi-durable.md §6 Phase 1). `durable` makes
