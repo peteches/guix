@@ -16,7 +16,7 @@
           "id": "LFM2.5-24B-A2B-int8-ov",
           "name": "LFM2.5 24B A2B int8 (comfyui, OpenVINO on Arc B70)",
           "contextWindow": 131072,
-          "maxTokens": 8192,
+          "maxTokens": 24576,
           "input": ["text"],
           "reasoning": true
         }

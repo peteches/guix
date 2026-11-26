@@ -167,39 +167,177 @@
 ;;; and came back as one token of text with `finish_reason: length'. That
 ;;; is at least 1.43x low, and the overrides are sized for it:
 ;;;
-;;;   llm        reserveTokens  98304 -> compact above  32768 estimated
-;;;                                        ( 32768 * 1.43 < 122880)
+;;;   llm        reserveTokens  40960 -> compact above  90112 estimated
 ;;;   koboldcpp  reserveTokens  49152 -> compact above  81920 estimated
 ;;;                                        ( 81920 * 1.43 < 131072)
 ;;;
-;;; The llm override is deliberately tighter than koboldcpp's, and the reason is
-;;; measured rather than tidy: at 49152 this model compacted at ~81k tokens and
-;;; the summarisation request came back having echoed pi's own compaction
-;;; template instead of summarising it, having burned the full 8192-token budget
-;;; ("Auto-compaction failed: Turn prefix summarization failed: generation hit
-;;; the token cap and the summary is incomplete").  LFM2.5 is rated to 131k but
-;;; it does not summarise an 80k context reliably.  Compacting at ~32k keeps the
-;;; request inside what it can actually do; the summarisation output budget is
-;;; unaffected, since min(floor(0.8 * 98304), 8192) is still 8192.
+;;; (The llm figure anticipates the budget-derived sizing below; the
+;;; 1.43x heuristic that motivates this table is koboldcpp's.)
 ;;;
-;;; reserveTokens also sets the summarization output budget,
-;;; min(floor(0.8 * reserveTokens), maxTokens), so each override lands on
-;;; the generation budget that server already accepts (4096 / 32768)
-;;; instead of the 13107 the 16384 default yields — not cosmetic, this
-;;; session's two largest checkpoints came back at 15210 and 15156 tokens,
-;;; over the budget pi had asked for. Compacting earlier is also what the
-;;; --genlimit note in peteches/systems/comfyui.scm credits with clearing
-;;; that VM's memory thrashing, so the earlier trigger costs less than it
-;;; looks like: prefill, not tokens saved, is what this box pays for.
+;;; That 1.43x is a koboldcpp/Qwen measurement and does NOT carry over to
+;;; llm: LFM2.5 decodes at 4.4 chars/token (36236 reasoning chars over 8192
+;;; generated tokens, openvino-lfm2.log 2026-11-25), so pi's chars/4
+;;; heuristic slightly OVER-estimates this model and its trigger is already
+;;; conservative.  llm's override is sized by a different constraint --
+;;; the summarisation budget -- and getting that wrong is what produced the
+;;; 2026-11-25 auto-compaction livelock.  TWO numbers come out of
+;;; reserveTokens and they must be held apart:
 ;;;
-;;; keepRecentTokens stays at its 20000 default on purpose. Lowering it
-;;; would guarantee that a truncated-response recovery always finds
-;;; something older than the cut point to summarize — a compact-and-retry
-;;; recovery that finds nothing returns early without retrying, which is
-;;; the "Response was truncated before completion." stall that session hit
-;;; four times — but it buys that guarantee by discarding more of the
-;;; agent's recent verbatim work at every compaction, and leaves the
-;;; checkpoint more content to compress into the same output budget.
+;;;   trigger         contextTokens > contextWindow - reserveTokens
+;;;   summary budget  min(floor(0.8 * reserveTokens), model.maxTokens)
+;;;
+;;; (shouldCompact and generateSummaryWithUsage, both in pi's
+;;; dist/core/compaction/compaction.js.)  While 0.8 * reserveTokens exceeds
+;;; maxTokens the second is decided by models.json ALONE, and moving
+;;; reserveTokens moves only the trigger.  At the previous 98304/8192
+;;; pairing the budget was min(78643, 8192) = 8192 however far the trigger
+;;; was dropped, so "compact earlier and there will be less to summarise"
+;;; kept shrinking the conversation being summarised into the same
+;;; 8192-token box -- and the box was the thing overflowing.  It was
+;;; dropped for exactly that reason (49152 -> 98304, commit 8becf7b) and
+;;; still failed.
+;;;
+;;; What the box measured, /var/log/openvino/openvino-lfm2.log over
+;;; 2026-11-25.  The compaction path is the `stream=true' shape -- small
+;;; prompt, no tool_calls field; see the classification recipe at the end of
+;;; docs/openvino-think-budget.md:
+;;;
+;;;   - 56 of 155 such generations ended finish=length: a 36% failure rate
+;;;     on the one path already known to be fragile.
+;;;   - The failures are an unclosed `<think>': completion_tokens=8192 (the
+;;;     whole budget), reasoning_chars 34564-37575, content_chars=0.  At 4.4
+;;;     chars/token that is ~8500 tokens of thinking and nothing left for
+;;;     the summary -- pi's "generation hit the token cap and the summary is
+;;;     incomplete", verbatim.
+;;;   - The SUCCESSES are pinned to the same ceiling: 8104, 8012, 7984,
+;;;     7375, 7178 completion tokens out of 8192.  The budget was not
+;;;     occasionally tight, it was the operating point.
+;;;   - One prompt (prompt_tokens=4884) was regenerated five times at ~65 s
+;;;     intervals with byte-identical reasoning_chars.  That is the
+;;;     livelock rather than a coincidence: on a length stop pi throws,
+;;;     _runAutoCompaction persists NOTHING and keeps no cooldown, so the
+;;;     next turn re-triggers on an unchanged context; and a tool-less
+;;;     request keeps the model's own temperature 0.1 (the server's
+;;;     TOOL_TEMPERATURE warm-up applies only when `tools' is present), so
+;;;     the retry is deterministic and fails identically.  Every turn then
+;;;     pays 8192 tokens at ~136 tok/s = the 60 s stall, forever, at 25% of
+;;;     a 131k window that is never reached.
+;;;
+;;; Hence the sizing rule, which is worth stating once because the old
+;;; numbers violated it by a factor of twelve.  Write M = model.maxTokens and
+;;; R = reserveTokens.  The budget is min(floor(0.8 * R), M), so:
+;;;
+;;;   R > 1.25 * M   budget is M, but the trigger sits LOWER than it could --
+;;;                  window given up and nothing bought with it
+;;;   R = 1.25 * M   budget is exactly M and the trigger is as high as the
+;;;                  window allows: the optimum
+;;;   R < 1.25 * M   budget becomes 0.8 * R and SHRINKS below M -- the
+;;;                  generation cap is now the wasted half
+;;;
+;;; The previous 98304/8192 pair was the first case taken to an extreme:
+;;; 1.25 * 8192 = 10240 would have triggered at 120832 (92% of the window)
+;;; with the identical 8192 budget, but R was set to 98304 and triggered at
+;;; 32768 (25%).  Two thirds of a 131k window was discarded for free.  That
+;;; is the whole answer to "what is the point of a 131k context" -- nothing
+;;; was enforcing 25%, it was a mis-derived number that the old commentary
+;;; here then rationalised.
+;;;
+;;; What M itself has to cover is the one thing pi's schema cannot separate:
+;;; the SAME field is the per-turn generation cap and the compaction summary
+;;; budget, and maxTokens is a permanent reservation against prompt space
+;;; (usable prompt = contextWindow - M) whether or not a turn generates it.
+;;; M must therefore be >= the largest summary a long session produces, and
+;;; summaries ACCUMULATE -- the UPDATE_SUMMARIZATION_PROMPT pi sends on every
+;;; compaction after the first says "PRESERVE all existing information from
+;;; the previous summary, ADD new progress".  The largest this box has
+;;; produced is content_chars 5575 (~1300 tokens) against ~8500 tokens of
+;;; thinking, but the 15210/15156-token checkpoints recorded below prove the
+;;; accumulated case reaches ~15k on a long session.  1300 + 8500 fits in
+;;; 16384; 15000 + 8500 does not.  So M = 24576, and R = 40960 rather than
+;;; the 1.25 * M = 30720 optimum -- deliberately past it, buying 16384 tokens
+;;; of slack, because openvino-server.py never checks
+;;; prompt + max_new_tokens <= max_position_embeddings (an overshoot is a 500
+;;; that pi retries three times) and the chars/4 estimate was measured 1.43x
+;;; LOW on koboldcpp's tokenizer even though it runs ~10% high on this one.
+;;;
+;;;   llm maxTokens       8192 -> 24576   configs/pi/defaults/models.json
+;;;   llm reserveTokens  98304 -> 40960   configs/pi/defaults/settings.json
+;;;   llm keepRecentTokens (default 20000) -> 40000, same file
+;;;
+;;; which lands on: trigger 131072 - 40960 = 90112 (69% of the window, was
+;;; 25%); summary budget min(32768, 24576) = 24576 (was 8192); worst case
+;;; prompt + generation 114688 of 131072; summarised prefix
+;;; 90112 - 40000 = 50112 estimated, inside the 64456 largest prompt this
+;;; server has ever been sent (and pi truncates each tool result to 2000
+;;; chars when it serialises, so the real figure is lower).
+;;;
+;;; What the wider window actually costs is prefill, and it is the only real
+;;; objection: measured cold prefill on the B70 is 4000-5500 tok/s at 52-64k
+;;; prompts (61754 tokens in 15.8 s; 64456 with ~13 s of prefill; 55621 with
+;;; ~10 s), so a turn at the new trigger pays ~20 s of prefill against ~6 s
+;;; at the old one -- every turn, and the server serialises them on a lock.
+;;; Sessions spend most of their life between the post-compaction floor
+;;; (~43k) and the trigger, so the average is nearer 13-15 s.  If that is too
+;;; slow, R = 65536 (trigger 65536, ~13 s worst case) is the dial-back and it
+;;; costs only window, not correctness -- the budget stays 24576 either way,
+;;; since 0.8 * 65536 = 52428 is still above M.
+;;;
+;;; Cost of the wider window, checked rather than assumed: only 10 of this
+;;; export's 40 layers are full_attention (the other 30 are conv, whose
+;;; state is a fixed conv_L_cache=3, not per-token), so KV is
+;;; 2 * 8 kv-heads * 64 head-dim * 2 bytes * 10 layers = 20 KiB/token and
+;;; the WHOLE 131072-token window is 2.5 GiB -- inside the ~9.5 GiB the B70
+;;; keeps after the int8 export's 24.01 GB of weights.  Streaming is real
+;;; for tool-less turns (the _ThinkSplitter path), so the larger ceiling is
+;;; not a longer blank screen either; the only regression is that a
+;;; genuinely degenerate turn takes ~181 s to give up instead of ~64 s, at
+;;; the measured ~136 tok/s.  The
+;;; "compacting early cleared that VM's memory thrashing" credit below
+;;; belongs to koboldcpp's --genlimit note in peteches/systems/comfyui.scm
+;;; and is about host RAM under koboldcpp's SmartCache, not this service's
+;;; VRAM.  Note also that comfyui.scm's (max-new-tokens 4096) is only the
+;;; server's default for clients that omit max_tokens -- pi always sends
+;;; its own, so the two are not required to agree.
+;;;
+;;; reserveTokens still sets the summarization output budget for koboldcpp,
+;;; min(floor(0.8 * 49152), 32768) = 32768, which lands on the generation
+;;; budget that server already accepts (--genlimit 32768) instead of the
+;;; 13107 the 16384 default yields — not cosmetic, this session's two
+;;; largest checkpoints came back at 15210 and 15156 tokens, over the budget
+;;; pi had asked for.
+;;;
+;;; If length-stops on the compaction path return despite the headroom, the
+;;; next lever is NOT another trigger move — it is a `session_before_compact'
+;;; extension (pi's docs/compaction.md, shippable through
+;;; EXTRA-EXTENSION-FILES below) that summarises with its own budget and
+;;; RETURNS a compaction result instead of throwing, so a cap-hit degrades
+;;; to a partial checkpoint rather than stalling every subsequent turn.
+;;;
+;;; keepRecentTokens must never be LOWERED below the point where a
+;;; truncated-response recovery still finds something older than the cut
+;;; point to summarize — a compact-and-retry recovery that finds nothing
+;;; returns early without retrying, which is the "Response was truncated
+;;; before completion." stall that session hit four times.  llm now RAISES it
+;;; instead, 20000 -> 40000, for two reasons that both point the same way:
+;;; it keeps twice as much of the agent's recent verbatim work (large tool
+;;; output is what eats a session here, and that is exactly what a lower
+;;; value would hand to the summariser), and it shrinks the serialised prefix
+;;; the summary request has to carry, which is what keeps a 90112 trigger
+;;; inside the 64456 prompt ceiling this model has actually been measured on.
+;;; The cost is a higher post-compaction floor — context lands at roughly
+;;; keepRecentTokens + summary, ~43k, so ~47k of headroom per cycle instead
+;;; of ~12k, which is the point, but it is fewer, larger compactions rather
+;;; than free ones.
+;;;
+;;; INVARIANT, and the failure mode is worse than the one being fixed:
+;;; keepRecentTokens must stay comfortably below contextWindow -
+;;; reserveTokens.  If it ever approaches the trigger, findProjectedCutPoint
+;;; keeps everything, prepareCompaction finds nothing to summarise and
+;;; returns undefined, and _runAutoCompaction returns false WITHOUT an error
+;;; — shouldCompact stays true, so every turn silently re-attempts a
+;;; compaction that can never do anything.  No message, no log line, just a
+;;; session that has stopped making progress.  40000 against a 90112 trigger
+;;; leaves 2.25x of room; do not close that gap without re-checking it.
 ;;;
 ;;; EXTENSIONS (a list of packages, e.g. pi-mcp-adapter from peteches
 ;;; packages pi-coding-agent) symlinks each package's own
