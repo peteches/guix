@@ -134,12 +134,13 @@
                   ;; NOTE: openvino-server.py does support tool calling -- it
                   ;; passes `tools' to ChatHistory.set_tools and parses the
                   ;; template's <|tool_call_start|>[fn(arg=...)] markers back
-                  ;; into OpenAI tool_calls -- but it serialises every request
-                  ;; on a threading.Lock and its "streaming" emits one chunk
-                  ;; only after the whole generation finishes, so this endpoint
-                  ;; serves one completion at a time with no incremental
-                  ;; output.  Fine for chat and SillyTavern; see (peteches home
-                  ;; modules pi) for why it is a weak agent backend.
+                  ;; into OpenAI tool_calls -- and since 36ff6b5 its SSE
+                  ;; streaming is real (_ThinkSplitter emits reasoning deltas
+                  ;; strictly before content).  It still serialises every
+                  ;; request on a threading.Lock, so this endpoint serves one
+                  ;; completion at a time -- fine for chat and SillyTavern;
+                  ;; see (peteches home modules pi) for why that makes it a
+                  ;; weak multi-agent backend.
                   (caddy-reverse-proxy
                    (domain "llm.ts.peteches.co.uk")
                    (upstream "comfyui.spaniel-cordylus.ts.net:8093"))

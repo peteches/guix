@@ -9,24 +9,24 @@
 ;; runner), speaking /v1/chat/completions and /v1/completions so the rest of the
 ;; fleet can talk to it like any other chat backend.
 ;;
-;; THE STRATA RULE — READ THIS BEFORE TURNING IT ON.
-;; comfyui's Arc B-series GPU (8086:e223) and the RAM strata holds against it are
-;; strata's until Peteches says otherwise; nothing in this trial may compete for
-;; them.  Two things enforce that rather than just requesting it:
-;;   1. The `openvino' package is built with -DENABLE_INTEL_GPU=OFF (and NPU off),
-;;      so the GPU plugin does not exist in the runtime at all — there is no
-;;      device="GPU" to ask for, and OV cannot wander onto the B-series by accident
-;;      or because someone flipped a config value.  Same "structurally incapable"
-;;      argument colibri.scm makes for its CPU-only variant.
-;;   2. device defaults to CPU below, which on comfyui means the i9-14900KS: no
-;;      SYCL, no Level Zero, no CUDA, no torch.  ("CORE" is *not* an available
-;;      device name in this build — measured: the runtime registers CPU/AUTO/
-;;      HETERO/MULTI/TEMPLATE and asking for CORE fails with `Device with "CORE"
-;;      name is not registered', so the narrower string is also the correct one.)
-;; What it *does* still take is CPU threads and host RAM — bf16 weights for a 24B
-;; MoE are ~48 GB against this VM's 54 GiB, so the first test should use a
-;; quantised/INT4 export (or fewer experts resident), not the raw download.  That
-;; is a capacity question to settle before auto-start?, not a GPU one.
+;; GPU STATUS — updated by ed6307f (replaces "THE STRATA RULE", CPU-only era).
+;; The `openvino' package is now built with -DENABLE_INTEL_GPU=ON (NPU still
+;; off; see peteches/packages/openvino.scm), so the Arc B-series plugin *does*
+;; exist in the runtime, and the comfyui instance runs (device "GPU") on the
+;; Arc Pro B70 (8086:e223) — intel-opencl-icd / intel-igc-opencl in its
+;; profile, OCL_ICD_VENDORS set by openvino-environment (oneDNN's Level Zero
+;; backend enumerates devices through OpenCL, so the GPU path has a hard
+;; OpenCL dependency).
+;; The old "structurally incapable of touching the B-series" guarantee is
+;; gone: the record default is still CPU, but GPU is a live config value and
+;; strata co-residency on the same card is currently arbitrated by leaving
+;; strata stopped (see peteches/systems/comfyui.scm) — verify before running
+;; both.  ("CORE" is still *not* a valid device name: measured, the runtime
+;; registers CPU/AUTO/HETERO/MULTI/TEMPLATE, and asking for CORE fails with
+;; `Device with "CORE" name is not registered'.)
+;; What the server *does* still take is host RAM — bf16 weights for a 24B MoE
+;; are ~48 GB against this VM's 54 GiB, so serve a quantised export, not the
+;; raw download; the live instance serves int8.
 ;;
 ;; auto-start? defaults to #f: the model directory is a large out-of-band artifact
 ;; that has to be converted first (`optimum-cli export openvino'), and a boot-time

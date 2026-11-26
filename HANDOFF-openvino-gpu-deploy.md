@@ -1,5 +1,14 @@
 # Handoff: deploy `device=GPU` to comfyui + OpenVINO GPU test on B70
 
+> **COMPLETED / SUPERSEDED (2026-11-25).** Both goals of this handoff are
+> done in git: the `device=GPU` change is deployed to comfyui and serving as
+> `llm.ts.peteches.co.uk` (ed6307f), and the record-ABI-mismatch blocker
+> below resolved with the channel pull (current profile: guix c947335).
+> Verification against the pinned pins also requires
+> `export PATH="$HOME/.config/guix/current/bin:$PATH"` — the system Guix on
+> this box predates `linux-libre-7.3`. See `docs/openvino-deploy-fixes.md`
+> for the closure record; kept below for history.
+
 **Working dir:** `~/area_51/guix` (on the `agents` VM). **Target:** `comfyui.spaniel-cordylus.ts.net`.
 **You are on the `agents` VM (4 cores / 3 GB). Do NOT loop — execute, then report.**
 

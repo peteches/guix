@@ -1,5 +1,17 @@
 # OpenVINO / ComfyUI Deployment — State Summary
 
+> **SUPERSEDED (2026-11-25).** The central claim of this document — that
+> `peteches/services/openvino.scm` "cannot be loaded" — is an environment
+> artifact, not a code defect: the checks in that session ran the *system*
+> Guix (`/run/current-system/profile/bin/guix`, 1.5.0-7.5ceffb6, too old for
+> the pinned nonguix) instead of the pulled profile. With
+> `export PATH="$HOME/.config/guix/current/bin:$PATH"` the module loads and
+> `guix system build -L . --dry-run peteches/systems/comfyui.scm` completes
+> the full derivation graph; the GPU deploy this document planned is live
+> (ed6307f, think-guard removed in 74e1c30). Retained for history only —
+> current status lives in `docs/openvino-deploy-fixes.md` and
+> `docs/openvino-think-budget.md`.
+
 **Date:** 2026-11-23 (session continuation)
 **Environment:** Agents VM (4 cores / 3 GB RAM)
 **Goal:** Clean automated deployment of OpenVINO + WhisperX to comfyui.spaniel-cordylus.ts.net, or a documented partial/failure mode.

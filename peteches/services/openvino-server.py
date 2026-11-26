@@ -7,10 +7,11 @@ fleet (pi, herdr, SillyTavern, the rules-lawyer bot all speak OpenAI shapes).
 
 Deliberately small.  No transformers, no optimum, no torch: the model directory
 is expected to already hold OpenVINO IR plus a GenAI-readable tokenizer, which is
-what `optimum-cli export openvino' writes.  Loading HF safetensors here would put
-the whole torch stack on a box whose GPU memory is spoken for by strata, and this
-server's whole reason to exist is CPU inference that must not reach for the
-Arc B-series.
+what `optimum-cli export openvino' writes.  This server was written during the
+CPU-only era so it would not compete with strata for the Arc B-series; since
+ed6307f the GPU plugin *is* compiled into the openvino package and the comfyui
+instance runs it with OPENVINO_DEVICE=GPU on the B70 (strata still stopped — see
+the service header, (peteches services openvino)).
 
 Two input shapes are accepted:
   POST /v1/chat/completions   {"model","messages":[{role,content}...], ...}
@@ -49,8 +50,9 @@ MODEL_DIR = os.environ["OPENVINO_MODEL_DIR"]
 # "CPU", not "CORE": measured against this build (openvino 2026.4.1), the runtime
 # registers CPU/AUTO/HETERO/MULTI/TEMPLATE and there is no device named CORE —
 # LLMPipeline(dir, "CORE") dies with `Device with "CORE" name is not registered'
-# while "CPU" and "AUTO" both construct fine.  AUTO would also work here (no GPU
-# plugin is compiled in), but CPU states the strata rule outright.
+# while "CPU" and "AUTO" both construct fine.  CPU stays the *default*; the
+# comfyui instance overrides OPENVINO_DEVICE to GPU since ed6307f built the
+# package with -DENABLE_INTEL_GPU=ON.
 DEVICE = os.environ.get("OPENVINO_DEVICE", "CPU")
 # Thread/pinning hints for the CPU plugin.  The names are what this build
 # actually accepts, taken out of libopenvino_intel_cpu_plugin.so and then checked

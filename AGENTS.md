@@ -62,7 +62,11 @@ guix system build -L . --dry-run peteches/systems/<host>.scm
 guix system image -L . -t qcow2 peteches/systems/<vm>.scm
 
 # Pull channels (updates all pinned channels).
-# Use manual.scm — it is the full plain list. See the "Channels" section of docs/file-map.md.
+# Pins live in channels.scm since dde86b3; manual.scm re-exports it.
+# WARNING: `guix pull -C' currently FAILS on both files — channel files are
+# evaluated under %safe-channel-bindings, which lacks use-modules/define-module
+# (open issue; see the "Channels" section of docs/file-map.md). Until fixed,
+# materialise a bare (list …) channel file for the pull.
 guix pull -C peteches/channels/manual.scm
 
 # Deploy to all VMs (or filter with --hosts)
@@ -140,7 +144,7 @@ done
 channels.** `(peteches services ...)`, `(peteches home services ...)` and
 `(peteches packages ...)` are local now (just `-L .`), but several of them
 import `(nongnu ...)`, `(sops ...)`, `(guix-science-nonfree ...)` from the
-dependency channels this repo still pulls in (see `peteches/channels/base.scm`
+dependency channels this repo still pulls in (see `peteches/channels/channels.scm`
 for URLs/commits). None of these need to be *pulled* — a plain shallow clone
 at the pinned commit is enough, passed via repeated `-L`:
 
@@ -173,9 +177,13 @@ ls /var/guix/daemon-socket/socket   # present => builds work
 guix describe                       # lists channels => pulled guix in use
 ```
 
-The `manual.scm` channel file is a bare `(list …)` with no `define-module`
-header — a plain channel list for `guix pull -C`. It uses Guix record macros,
-so bare `guile` still cannot load it — validate with a read-only parse instead:
+Channel pins are single-sourced in `peteches/channels/channels.scm` since
+dde86b3 (`%dagon-channels`); `manual.scm` is a thin re-export of it intended
+for `guix pull -C`, and `critical-grind.scm` pins the external app channel.
+Note: `guix pull -C` on these re-export files currently fails — channel files
+are read under `%safe-channel-bindings`, which lacks `use-modules` /
+`define-module` (open issue). The files use Guix record macros, so bare
+`guile` cannot load them anyway — validate with a read-only parse instead:
 ```bash
 guile -c '(call-with-input-file "peteches/channels/manual.scm"
             (lambda (p) (let loop () (unless (eof-object? (read p)) (loop)))))'
@@ -190,7 +198,7 @@ Two sources are easy to confuse when reading a `#:use-module` line:
 | Module prefix | Where it lives |
 |---|---|
 | `(gnu ...)`, `(guix ...)` | upstream Guix |
-| `(critical-grind packages ...)`, `(critical-grind services ...)` | the **`critical-grind` channel** — the private application repo at `git@github.com:peteches/critical-grind-battlefronts.git`, pinned in its own dedicated file `peteches/channels/critical-grind.scm` (deliberately not in `base.scm`) — **not in this repo** |
+| `(critical-grind packages ...)`, `(critical-grind services ...)` | the **`critical-grind` channel** — the private application repo at `git@github.com:peteches/critical-grind-battlefronts.git`, pinned in its own dedicated file `peteches/channels/critical-grind.scm` (deliberately not in `channels.scm`) — **not in this repo** |
 | `(peteches services ...)`, `(peteches home services ...)`, `(peteches packages ...)`, `(peteches systems ...)`, `(peteches home modules ...)`, `(peteches home configs ...)`, `(peteches channels ...)`, `(containers ...)` | this repo |
 
 So `alloy-service-type`, `restic-vm-backup-service-type`, `firewall-service-type`,
@@ -201,8 +209,8 @@ So `alloy-service-type`, `restic-vm-backup-service-type`, `firewall-service-type
 service type is just editing the file; there is no channel to re-pin.
 
 These package/service directories used to live in a separate private Codeberg
-channel repo (`peteches/guix-channel`), pulled as `(peteches ...)` via
-`peteches/channels/base.scm`. Codeberg changed its ToS to prohibit
+channel repo (`peteches/guix-channel`), pulled as `(peteches ...)` via the
+now-removed `peteches/channels/base.scm`. Codeberg changed its ToS to prohibit
 AI-generated code; since this repo is developed with AI coding agents, the channel
 was folded back in here instead of continuing to host it there. The only
 channel that remains genuinely external is `critical-grind` (a separate
