@@ -69,13 +69,19 @@
   #:use-module (gnu system keyboard)
   ;; Canonical home of `uv' at the pinned guix commit (b13c7c0) is
   ;; (gnu packages build-tools); (gnu packages rust-apps) only carries a
-  ;; deprecated alias for it. The load failure seen here was not the import but
-  ;; a drifted local guix (64d4de2, where the package itself moved to
+  ;; deprecated alias for it, and importing from there makes every expansion
+  ;; site emit `'uv' is deprecated, use '(@ (gnu packages build-tools) uv)'
+  ;; instead' under a forced compile-file.  Verified at c947335: `(gnu
+  ;; packages build-tools)' resolves and carries uv 0.10.12
+  ;; (gnu/packages/build-tools.scm:1840), so this is the canonical import the
+  ;; deprecation message itself names.
+  ;; The load failure seen here historically was not the import but a drifted
+  ;; local guix (64d4de2, where the package itself moved to
   ;; rust-apps) -- fixed by `guix pull -C peteches/channels/manual.scm`, which
   ;; also brought the sops/guix-science/nonguix channels this file needs.
   ;; Use the profile guix, not the system one: PATH here resolves to
   ;; /run/current-system/profile/bin/guix, still at the off-pin commit.
-  #:use-module ((gnu packages rust-apps) #:select (uv))
+  #:use-module ((gnu packages build-tools) #:select (uv))
   #:use-module ((gnu packages commencement) #:select (gcc-toolchain-14))
   #:use-module ((gnu packages linux) #:select (linux-libre-headers))
   ;; Nonfree kernel — required by #:with-intel-gpu?, see the header note.
@@ -93,7 +99,7 @@
   #:use-module (peteches services alltalk)
   #:use-module (peteches services comfyui)
   #:use-module (peteches services koboldcpp)
-  #:use-module (peteches services openvino)
+  #:use-module (peteches services ovms)
   #:use-module (peteches services restic)
   #:use-module (peteches services strata)
   #:use-module (peteches services transcriber)
@@ -1003,24 +1009,30 @@
                                  (cons "/var/log/transcriber/transcriber.log"
                                        "transcriber")
                                  (cons "/var/log/comfyui/comfyui/update.log" "comfyui")
-                                 ;; The OpenVINO LLM server's shepherd log --
-                                 ;; the fleet's only view of the `llm' provider
-                                 ;; pi, herdr and the bots all share.  Its
-                                 ;; per-generation lines carry finish_reason,
-                                 ;; token/char counts and the think-guard flags
-                                 ;; (TRUNCATED, EMPTY-ANSWER, THINK-OVERFLOW,
-                                 ;; passes=, pass2_tokens=).  That is how the
-                                 ;; 2026-11-24 "11 of 94 generations returned
-                                 ;; reasoning and no answer" measurement was
-                                 ;; taken -- by SSHing in and grepping, because
-                                 ;; nothing shipped the file, so whether the
-                                 ;; guard is rescuing turns or force-closing
-                                 ;; healthy ones was invisible from anywhere
-                                 ;; else.  Same ownership and mode as strata.log
-                                 ;; and alltalk.log above (root:root 640), both
+                                 ;; The LLM server's shepherd log -- the
+                                 ;; fleet's only view of the `llm' provider
+                                 ;; pi, herdr and the bots all share.  OVMS's
+                                 ;; own per-request lines are what tells a
+                                 ;; truncation from a parse failure once a
+                                 ;; turn goes wrong.
+                                 ;;
+                                 ;; HISTORY: during the 2026-11-26 migration
+                                 ;; BOTH engines' logs shipped, the
+                                 ;; openvino-server.py shim's alongside
+                                 ;; OVMS's, so the two stayed comparable side
+                                 ;; by side in Loki.  The shim's log is what
+                                 ;; made docs/openvino-think-budget.md
+                                 ;; diagnosable in the first place.  Its
+                                 ;; entry (/var/log/openvino/
+                                 ;; openvino-lfm2.log, label "openvino") was
+                                 ;; dropped here when openvino-service-type
+                                 ;; was retired and its module deleted; this
+                                 ;; is now the only LLM log the fleet ships.
+                                 ;; Same ownership and mode as strata.log and
+                                 ;; alltalk.log above (root:root 640), both
                                  ;; of which alloy already reads.
-                                 (cons "/var/log/openvino/openvino-lfm2.log"
-                                       "openvino")))))
+                                 (cons "/var/log/ovms/ovms-qwen36.log"
+                                       "ovms")))))
       ;; Strata — the SC117 abliterated Qwen3.8-Flash-Next (IQ2_XS) on the
       ;; Intel Arc B70 via its SYCL/Level Zero backend, run through the
       ;; native-pack path.  The catalog's fingerprint and SHA-256 gates
@@ -1033,159 +1045,192 @@
       ;; first start downloads ~70 GB (the IQ2_XS shards + strata/rt +
       ;; mmproj) and builds the pack (a few minutes); the engine component is
       ;; fetched on the same first start if it is not already on disk.
-      ;; ── OpenVINO GenAI on the Arc Pro B70 (GPU) ────────────────────────
-      ;; An LFM2.5 trial on Intel's OpenVINO runtime with device=GPU, i.e. on the
-      ;; same Arc Pro B70 strata serves from.  That is a real change from how this
-      ;; service started: the earlier device=CPU configuration could not touch the
-      ;; card at all, and the claim recorded here then — that the built openvino
-      ;; package ships only intel_cpu / auto / auto_batch / hetero plugins, so
-      ;; there was "no compiled-in route onto that card" — is no longer true.  The
-      ;; package was rebuilt with ENABLE_INTEL_GPU and GPU_RT_TYPE=ZE, and
-      ;; libopenvino_intel_gpu_plugin.so is in its store output.
+
+      ;; ── OVMS on the Arc Pro B70 (GPU): the fleet's LLM endpoint ────────
+      ;; Intel's own OpenVINO Model Server serving Qwen3.6-35B-A3B INT4, on
+      ;; port 8093 -- the port caddy's llm.ts.peteches.co.uk upstream already
+      ;; points at, so no FUNCTIONAL caddy change is needed.  caddy.scm's
+      ;; comment block for that route IS rewritten in the same commit (it
+      ;; described the deleted shim), but that edit is comment-only and
+      ;; provably derivation-neutral -- HEAD's caddy.scm and the edited copy
+      ;; compute a byte-identical system.drv -- so caddy is not owed a deploy.
+      ;; See (peteches
+      ;; services ovms) for the service's runtime-environment requirements
+      ;; and (peteches packages ovms) for why this is a prebuilt-tarball
+      ;; package rather than a source build (OVMS builds only via Docker +
+      ;; Bazel, and Guix packages neither bazel nor drogon).
       ;;
-      ;; CONSEQUENCE: OpenVINO and strata now share one card rather than being
-      ;; separated structurally.  The B70 has 32 GiB of VRAM (xe reports
-      ;; "Actual physical size 0x800000000, usable size exclude stolen
-      ;; 0x7f9000000" = 31.9 GiB usable), and the 24B int4 export's weights are
-      ;; 12.58 GB (~11.7 GiB), so the two are not obviously mutually exclusive --
-      ;; but strata's own footprint (resident pack plus its expert cache) has not
-      ;; been measured alongside OpenVINO, and running both is untested.
-      ;; OpenVINO auto-starts (it is the fleet's llm.ts.peteches.co.uk endpoint,
-      ;; so a stopped service means caddy proxies to nothing); strata is
-      ;; deliberately left stopped.  If both are ever wanted resident and VRAM
-      ;; runs out, one of them has to move (strata to CPU experts, or OpenVINO
-      ;; back to device=CPU at ~6-8 tok/s).
+      ;; WHAT IT REPLACED, AND WHY.  This box served LFM2.5-24B-A2B INT8
+      ;; until 2026-11-26, first through a 1095-line hand-written OpenAI shim
+      ;; over the openvino-genai Python bindings
+      ;; (peteches/services/openvino-server.py) and then through OVMS.  Both
+      ;; that instance and the shim are gone: the MODEL was the problem, not
+      ;; the server.  An identical agentic benchmark task (report the exact
+      ;; line counts of three files using only the `read' tool, no shell) was
+      ;; run through real pi subagent sessions and scored by counting
+      ;; repeated n-grams in the transcript:
       ;;
-      ;; Weights on disk, all under /media/models/openvino/, each size-checked
-      ;; against the HF tree API:
-      ;;   LFM2.5-24B-A2B/            base HF safetensors, 27 files,
-      ;;                              47,964,603,149 bytes (sha256-verified on the box).
-      ;;                              GenAI cannot read a plain HF directory —
-      ;;                              measured: "Could not find a model in the
-      ;;                              directory" — so this is input for
-      ;;                              `optimum-cli export openvino', not something
-      ;;                              this service can serve.
-      ;;   LFM2.5-8B-A1B-int4-ov/     Intel's own OpenVINO IR export of the 8B
-      ;;                              sibling, 14 files / 4,557,268,985 bytes; used
-      ;;                              as the stack smoke test.
-      ;;   LFM2.5-24B-A2B-int4-ov/    int4 OpenVINO IR export of the target arch,
-      ;;                             15 files / 12,614,254,830 bytes — but from
-      ;;                             blaj/LFM2.5-24B-A2B-Uncensored-int4-ov, a
-      ;;                             community abliterated derivative rather than
-      ;;                             LiquidAI's base weights.
-      ;; The stack works: measured on this box with strata running next door and
-      ;; INFERENCE_NUM_THREADS=8 under nice 19, the 24B int4 export loaded in 25 s,
-      ;; peaked at 20.2 GB RSS, generated at ~6.2 tok/s on a plain prompt and ~7.9
-      ;; tok/s through openvino_genai.ChatHistory; the 8B export ran the same way at
-      ;; ~9-12 tok/s with an 8.4 GB peak.  What does *not* work is any GGUF route:
-      ;; genai's GGUF loader is compiled into our build (Qwen2.5-0.5B Q8_0 loads and
-      ;; generates), but LFM2.5 MoE dies in it with `IndexError unordered_map::at',
-      ;; i.e. the arch is not in the set its GGUF modeling knows.
-      ;; The base-model int4 export named below (ov-int4/) still does not exist:
-      ;; four optimum runs were OOM-killed with RAM *and* swap exhausted while
-      ;; strata was resident, so producing it needs either strata parked for the
-      ;; conversion or a roomier machine.  Until then, serving anything means
-      ;; pointing model-dir at one of the artifacts above.
-      ;; Network exposure: caddy reverse-proxies llm.ts.peteches.co.uk onto this
-      ;; VM's tailnet address, so the server has to bind beyond loopback and the
-      ;; base drop-input firewall has to accept the port.  Both are narrowed to
-      ;; the tailnet — the server has no authentication whatsoever, and an
-      ;; unrestricted accept would hand an unauthenticated GPU endpoint to every
-      ;; host on the 192.168.50.0/23 LAN.  Same three CIDRs and the same reason
-      ;; as strata's firewall-sources below (caddy dials the MagicDNS name, and
-      ;; Go's dialer may resolve it to either the CGNAT v4 or the ULA v6
-      ;; address).  Loopback is untouched, so on-box health checks still work.
-      ;; auto-start? is #t: this is now a real fleet endpoint, and caddy
-      ;; proxying to a stopped service just yields a 502.
-      (service openvino-service-type
-               (openvino-server-configuration
-                (service-name "openvino-lfm2")
-                ;; INT8, not INT4 — and the reason is measured, not preference.
-                ;; Both exports are the same abliterated weights
-                ;; (blaj/LFM2.5-24B-A2B-Uncensored-*-ov, revision
-                ;; paged-attention, which is the one blaj documents for OpenVINO
-                ;; GenAI on GPU).  Served through this same server with the same
-                ;; prompt and tools, the 24B INT4 export could not complete a
-                ;; two-step agent task: it called read_file('fruit.txt') three
-                ;; times, received the correct contents each time, then
-                ;; degenerated into repetition and burned 5977 tokens across six
-                ;; steps without ever answering.  The INT8 export answered in
-                ;; two steps and 187 tokens, and pi drove a clean three-call loop
-                ;; (find -> read -> wc -l) to the right answer.  So INT4 weight
-                ;; compression, not abliteration and not the serving stack, was
-                ;; what broke agentic use; a non-abliterated INT4 export was
-                ;; tested too and was worse, hallucinating paths and decaying
-                ;; into raw template tokens.
-                ;;
-                ;; Cost: ~31% slower decode (127 tok/s single stream vs 183), as
-                ;; expected when decode is bandwidth-bound and the weights double.
-                ;; Weights are 24.01 GB (22.4 GiB) of the B70's 31.9 GiB usable
-                ;; VRAM, leaving ~9.5 GiB for KV cache and activations — it fits,
-                ;; but there is no longer room to run strata alongside it.
-                ;; INT4 remains on disk at LFM2.5-24B-A2B-int4-ov if the speed is
-                ;; ever worth more than the competence.  A 2026-11-23 commit
-                ;; flipped this to the int4 export on the claim that it matched
-                ;; "the actual optimised IR export location", which is not true --
-                ;; both exports are on disk and int8 is the one that was loaded
-                ;; and answering at the time -- and it contradicted the
-                ;; measurement recorded immediately above it.  Reverted to int8.
-                ;; pi's models.json also pins the served id
-                ;; "LFM2.5-24B-A2B-int8-ov", so this path and that id have to
-                ;; move together or /v1/models stops matching the client config.
-                (model-dir "/media/models/openvino/LFM2.5-24B-A2B-int8-ov")
-                ;; GPU on the Arc Pro B70, measured working: LFM2.5-24B-A2B int4
-                ;; builds in ~3 s and generates at ~164 tok/s (the 8B sibling at
-                ;; ~237 tok/s), against ~6-8 tok/s for the same 24B export on
-                ;; CPU.  Getting here needed more than device=GPU — the plugin
-                ;; requires Intel's OpenCL runtime and its front-end compiler
-                ;; (intel-opencl-icd + intel-igc-opencl in #:extra-packages),
-                ;; OCL_ICD_VENDORS in the service environment, and both
-                ;; runtime/lib/intel64 trees plus both python/ trees named
-                ;; explicitly, none of which the profile merge supplies.
-                ;; The stale comment above ("no intel_gpu, no npu") predates the
-                ;; GPU-enabled rebuild.
-                (device "GPU")
-                (auto-start? #t)
+      ;;   Qwen3.6-35B-A3B int4 + OVMS + B70      8-gram repeat 2, largest
+      ;;     thinking block 2972 chars, 6 clean tool calls, 3/3 correct, 1m2s
+      ;;   control, remote qwen3.8-max            repeat 1, 1188 chars,
+      ;;     15 clean calls, 3/3 correct, 1m9s
+      ;;   LFM2.5 int8 + OVMS continuous batching, best of four sampling
+      ;;     configs                              repeat 47, 40121 chars,
+      ;;     13 calls, 1/3 correct, 7.5m
+      ;;   LFM2.5 int8 + OVMS 2026.5.0 weekly, CB repeat 407, 89199 chars,
+      ;;     10 calls, 0/3 correct, 10m
+      ;;   LFM2.5 int8 + OVMS --pipeline_type LM  repeat 3, 3664 chars,
+      ;;     5 calls, clean output but then HUNG (30 min timeout)
+      ;;   LFM2.5 Q4_K_M + koboldcpp Vulkan       repeat 5, 7920 chars,
+      ;;     3 calls, 0/3, tool markup leaked as text, 42s
+      ;;   Qwen3.6-35B-A3B Q4_K + koboldcpp Vulkan repeat 0, 22 clean calls,
+      ;;     0/3, starved, 99m then killed
+      ;;
+      ;; Ruled out as the cause of LFM2.5's degeneration, each by direct
+      ;; measurement: abliteration (the official non-abliterated INT4 export
+      ;; spiralled worst, one line repeated 1430x), a missing paged-attention
+      ;; graph fix (the served INT8 graph sha256-matches blaj's
+      ;; `paged-attention' branch, which adds an explicit position_ids
+      ;; Parameter layer), sampling temperature, repetition_penalty,
+      ;; KV-cache size (1.4 GB vs 8 GB made no difference), prefill
+      ;; throughput, and the OVMS version.  Two independent serving stacks
+      ;; (OpenVINO/OVMS and llama.cpp/koboldcpp) both fail with LFM2.5, so
+      ;; the model is the variable.
+      ;;
+      ;; THE MODEL.  HuggingFace `OpenVINO/Qwen3.6-35B-A3B-int4-ov', an
+      ;; official Intel export created 2026-05-20, 19.43 GB total:
+      ;; openvino_language_model.bin 17.99 GB plus openvino_mtp_model.bin
+      ;; 0.44 GB, openvino_text_embeddings_model.bin 0.51 GB and
+      ;; openvino_vision_embeddings_merger_model.bin 0.44 GB.  Intel
+      ;; publishes ONLY INT4 for this model -- there is no int8 or fp16
+      ;; export to choose between, so unlike the LFM2.5 instance this one
+      ;; replaced there is no precision trade-off to re-litigate.
+      ;; config.json says model_type qwen3_5_moe and max_position_embeddings
+      ;; 262144.
+      ;;
+      ;; CONTEXT CEILING, VERIFIED EMPIRICALLY rather than read from config:
+      ;; a 224017-token prompt was accepted; a 280017-token prompt returned
+      ;; `HTTP 400 ... Number of prompt tokens: 280017 exceeds model max
+      ;; length: 262144'.  So the usable window is 262144 and OVMS enforces
+      ;; it.  That number is what configs/pi/defaults/models.json declares
+      ;; as contextWindow and what peteches/home/modules/pi.scm derives
+      ;; reserveTokens from -- move the two together.
+      ;;
+      ;; MEASURED ON OVMS 2026.4.1 / ARC PRO B70, 2026-11-26.  ~35 s to
+      ;; AVAILABLE; `Initializing Language Model Continuous Batching
+      ;; servable' under --pipeline_type AUTO; decode 101.4-101.9 T/s over
+      ;; 1500-token completions, stable across temperature 1.0 / model
+      ;; default / 0; KV cache 1.0 GB allocated dynamically, peaking at
+      ;; 67.6% during the agentic test.  Streaming: prose turns give block
+      ;; order R C F=stop (reasoning strictly before content), tool turns
+      ;; give R T F=tool_calls with incremental tool-call deltas, a
+      ;; deliberate max_tokens=8 truncation returns finish_reason=length,
+      ;; and streaming `usage' is present in the final chunk when
+      ;; stream_options.include_usage is set.  generation_config.json ships
+      ;; temperature 1.0 / top_k 20 / top_p 0.95; pi sends no sampling
+      ;; parameters, so those defaults are what production runs on and what
+      ;; every number here was taken at.
+      ;;
+      ;; PARSERS ARE AUTO-DETECTED -- do not pin them.  The startup log reads
+      ;; `Auto-detected tool_parser: qwen3coder' and `Auto-detected
+      ;; reasoning_parser: qwen3', with no `Minja cannot render' failure
+      ;; (that failure mode was specific to LFM2, whose template the C++
+      ;; minja engine cannot render).  This instance therefore sets neither
+      ;; `tool-parser' nor `reasoning-parser'; both now default to #f in
+      ;; (peteches services ovms), which omits the flags entirely.  The
+      ;; retired LFM2.5 instance pinned both to `lfm2', which is wrong for
+      ;; Qwen.
+      ;;
+      ;; PREFIX CACHING IS THE WHOLE GAME -- 8.2x, never turn it off.  Cold
+      ;; prefill of a 44817-token prompt took 30.84 s (1453 T/s); the SAME
+      ;; prompt repeated with --enable_prefix_caching took 3.78 s (11850 T/s
+      ;; effective).  Multi-turn agent work re-sends almost the whole
+      ;; conversation every turn, so this is the difference between a viable
+      ;; backend and an unusable one: koboldcpp on the same card, which has
+      ;; no GPU-resident prefix cache, spent 99 minutes and never finished
+      ;; the task OVMS finished in 62 seconds.  `enable-prefix-caching?'
+      ;; defaults to #t in the record, so it is not set explicitly here.
+      ;;
+      ;; MTP / SPECULATIVE DECODING: TESTED AND REJECTED.  Do not add
+      ;; --draft_model_path.  The IR ships openvino_mtp_model.xml/.bin and
+      ;; config.json carries "mtp_num_hidden_layers": 1, so
+      ;; `--draft_model_path <same model dir> --draft_device GPU' does start
+      ;; -- it logs `Draft model strategy: MTP (Multi-Token Prediction)' and
+      ;; switches the servable to `Initializing Visual Language Model
+      ;; Continuous Batching servable', because the IR also contains a vision
+      ;; embeddings merger.  But:
+      ;;   * It is MUTUALLY EXCLUSIVE WITH PREFIX CACHING.  With both
+      ;;     enabled the first request aborts the executor -- `Check
+      ;;     '!m_scheduler->get_config().enable_prefix_caching' failed at
+      ;;     continuous_batching/pipeline_impl.cpp:388: Linear-attention
+      ;;     verifier speculative decoding requires
+      ;;     enable_prefix_caching=false (not yet supported).' -- and OVMS
+      ;;     then SEGFAULTS rather than failing gracefully (dmesg:
+      ;;     `ovms[6824]: segfault at 55ec78d2662e ip 000055e8f4e31173 ...
+      ;;     in ovms[3c3173,55e8f4a6e000+21be000]').
+      ;;   * Measured with prefix caching OFF: decode 104-110 T/s against the
+      ;;     101.4-101.9 baseline, but the repeated 44817-token prompt cost
+      ;;     31.92 s instead of 3.78 s -- no reuse at all.  That is +5-10%
+      ;;     decode in exchange for 8.4x worse prefill on every turn after
+      ;;     the first: over a 20-turn agent session, roughly +560 s of
+      ;;     prefill to save ~18 s of decode.  Prefix caching wins by ~30x.
+      ;;   * It forces greedy decoding (the binary contains `WARNING: MTP
+      ;;     greedy decoding enforced: setting do_sample to false and
+      ;;     num_beams to 1.' and `Overriding num_assistant_tokens to default
+      ;;     value of 5 for MTP decoding') AND CHANGES GREEDY OUTPUT:
+      ;;     baseline greedy produced 6100 chars of reasoning and 1077 of
+      ;;     content, MTP greedy produced 6627 and 50.  Greedy speculative
+      ;;     decoding should be token-exact, so that is a correctness concern
+      ;;     independent of speed.
+      ;;
+      ;; model-name MUST stay "Qwen3.6-35B-A3B-int4-ov".  OVMS routes
+      ;; requests by --model_name and /v1/models returns it verbatim, and
+      ;; configs/pi/defaults/models.json pins that exact id, so any other
+      ;; value 404s every pi request.  During testing it was temporarily
+      ;; spoofed as "LFM2.5-24B-A2B-int8-ov" so the then-live client config
+      ;; kept working; that must not survive into this file.
+      ;;
+      ;; The same client/server coupling runs the other way for the
+      ;; `developer' role and is a LIVE PRODUCTION REQUIREMENT: pi computes
+      ;; the instruction role as `model.reasoning &&
+      ;; compat.supportsDeveloperRole ? "developer" : "system"', this
+      ;; provider sets reasoning true, and Qwen3's chat template validates
+      ;; roles -- measured against this endpoint, role=system OK,
+      ;; role=user OK, role=developer HTTP 400 "Unexpected message role."
+      ;; So configs/pi/defaults/models.json must carry
+      ;; "supportsDeveloperRole": false or every single pi request 400s in
+      ;; under a second.  LFM2.5's template tolerated `developer', which is
+      ;; why six hours of LFM2.5 testing never surfaced it.  See (peteches
+      ;; home modules pi).
+      ;;
+      ;; target-device "GPU" is unambiguous on this VM despite it also
+      ;; holding an RTX 4090 (reserved for ComfyUI, never used for LLM
+      ;; inference): (peteches services ovms) synthesises a per-instance
+      ;; OpenCL vendors directory containing only intel.icd, so OVMS cannot
+      ;; enumerate the NVIDIA card or a pocl pseudo-GPU.  Pointing
+      ;; OCL_ICD_VENDORS at the whole profile merge is exactly what let an
+      ;; earlier hand-run select the 4090 and fail to allocate.
+      ;;
+      ;; open-firewall? #t with the same three tailnet CIDRs caddy arrives
+      ;; over (caddy dials the MagicDNS name, and Go's dialer may resolve it
+      ;; to either the CGNAT v4 or the ULA v6 address).  ovms-firewall-rules
+      ;; REFUSES to compile open-firewall? #t with no api-key-file and no
+      ;; sources, so the CIDRs are not optional.  Loopback is untouched, so
+      ;; on-box health checks still work.
+      (service ovms-service-type
+               (ovms-server-configuration
+                (service-name "ovms-qwen36")
+                (model-name "Qwen3.6-35B-A3B-int4-ov")
+                (model-path "/media/models/openvino/Qwen3.6-35B-A3B-int4-ov")
+                (port 8093)
                 (host "0.0.0.0")
+                (target-device "GPU")
+                (pipeline-type "AUTO")
+                (auto-start? #t)
                 (open-firewall? #t)
                 (firewall-sources '("100.64.0.0/10"
                                     "fd7a:115c:a1e0::/48"
-                                    "fd7a:115c:a6e0::/48"))
-                ;; LFM2.5 reasons before it answers, so the budget has to cover
-                ;; the thinking block AND the reply.  Measured thinking lengths
-                ;; on this box: 71-1240 tokens without a brevity system prompt,
-                ;; 81-381 with the one openvino-server.py now injects by
-                ;; default.  256 was far too small — it returned reasoning with
-                ;; the answer truncated away.  Clients can still override per
-                ;; request via max_tokens.
-                ;;
-                ;; Raised 2048 -> 4096.  2048 still truncated in practice: a
-                ;; "explain in detail how a reverse proxy works, with examples"
-                ;; prompt spent 801 tokens thinking and then hit the cap with
-                ;; finish_reason=length at both max_tokens=200 and 1024 (content
-                ;; cut mid-sentence at 4033 chars).  pi declares maxTokens 8192
-                ;; so it sends its own ceiling, but any client that omits
-                ;; max_tokens silently inherited 2048 -- and because
-                ;; _split_thinking returns an empty answer when the think block
-                ;; never closed, running out mid-thought looked less like
-                ;; truncation and more like the server returning nothing at all.
-                ;; The per-generation log line now records finish_reason and
-                ;; flags TRUNCATED / EMPTY-ANSWER explicitly, so the next time
-                ;; this is a grep rather than a live repro.
-                ;; The four think-guard fields that used to sit here
-                ;; (think-budget / answer-reserve / chars-per-token /
-                ;; max-think-passes) are gone, along with the guard they drove.
-                ;; Measured across a full day on this box it made truncation
-                ;; worse rather than better: 30% of generations returned an
-                ;; empty answer while it was enabled, against ~11% before it
-                ;; existed and 0 in the 53 after it was switched off.  The
-                ;; post-mortem -- both mechanisms tried, the numbers, and why
-                ;; grammar-constrained decoding cannot substitute -- is in
-                ;; docs/openvino-think-budget.md.  What survives is the
-                ;; per-generation log line and its shipment to Loki (the alloy
-                ;; log-files entry above), which is what made any of this
-                ;; diagnosable.
-                (max-new-tokens 4096)))
+                                    "fd7a:115c:a6e0::/48"))))
 
       (service strata-service-type
                (strata-configuration

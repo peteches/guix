@@ -1,5 +1,33 @@
 # Running LFM2.5-24B on the Arc Pro B70 with koboldcpp (Vulkan)
 
+> **POSTSCRIPT (2026-11-26) — re-tested, and now ruled out for agent work.**
+> koboldcpp-on-Vulkan was re-run on the B70 against **both** LFM2.5 Q4_K_M and
+> Qwen3.6-35B-A3B Q4_K. The conclusion is no longer model-specific: **the
+> absence of GPU-resident prefix caching makes koboldcpp unusable for
+> multi-turn agent work regardless of which model is loaded.**
+>
+> The identical agentic benchmark task (report the exact line counts of three
+> files using only the `read` tool, no shell) took **99 minutes and 48 requests
+> without finishing** on koboldcpp with Qwen3.6 Q4_K, versus **62 seconds** for
+> the same task on OVMS serving Qwen3.6 INT4 on the same card. Prefill is
+> re-run in full on every turn — 27k–44k tokens at 206–280 T/s — because there
+> is no cache to hit, and the run produced **163 SmartCache "RNN Lifeboat"
+> save-states** that pushed **7 GB into swap**.
+>
+> LFM2.5 Q4_K_M was worse in kind, not just in degree: 3 tool calls, 0/3
+> correct, with tool markup leaking into the response as literal text
+> (`8-gram repeat 5`, largest thinking block 7 920 chars, 42 s).
+>
+> One flag correction while this doc was re-read: a `--contextsize` of
+> **163840** — copied from the 4090/CUDA koboldcpp service config — is **wrong
+> for the B70**. The `32768` in the command line below is the validated figure
+> for this card, and it is the one `peteches/home/modules/pi.scm`'s
+> `contextWindow = --contextsize - --genlimit` entry is derived from.
+>
+> The body below is unchanged: its measurements of the Vulkan path are still
+> accurate as far as they go, and it remains the record of how to get an Intel
+> Arc talking to a prebuilt `nocuda` koboldcpp binary at all.
+
 Status: **validated, not adopted.** Proven working on comfyui 2026-11-24 as a
 fallback for the OpenVINO-served `llm` provider. Nothing here is deployed; the
 GGUFs are on the box and the binary is already packaged.

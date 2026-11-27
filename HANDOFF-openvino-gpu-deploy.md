@@ -1,5 +1,9 @@
 # Handoff: deploy `device=GPU` to comfyui + OpenVINO GPU test on B70
 
+> **RETIRED (2026-11-26).** The `openvino-server.py` shim this handoff deploys
+> was deleted on 2026-11-26 in favour of `(peteches services ovms)`, which
+> `peteches/systems/comfyui.scm` wires to serve Qwen3.6-35B-A3B INT4 on comfyui.
+
 > **COMPLETED / SUPERSEDED (2026-11-25).** Both goals of this handoff are
 > done in git: the `device=GPU` change is deployed to comfyui and serving as
 > `llm.ts.peteches.co.uk` (ed6307f), and the record-ABI-mismatch blocker

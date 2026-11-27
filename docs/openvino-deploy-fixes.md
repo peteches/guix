@@ -1,5 +1,11 @@
 # OpenVINO (comfyui) deploy fixes — RESOLVED
 
+> **RETIRED (2026-11-26).** The `openvino-server.py` shim and its
+> `openvino-service-type` this document describes were deleted on 2026-11-26 in
+> favour of `(peteches services ovms)`, which `peteches/systems/comfyui.scm`
+> wires to serve Qwen3.6-35B-A3B INT4 on comfyui. `(peteches packages openvino)`
+> was kept but is currently unused.
+
 Originally captured 2026-11-22 while manually getting an OpenVINO instance
 serving on the comfyui box. **Status as of 2026-11-25: every item below is
 closed in git.** Kept as a record of what the working values were and why.

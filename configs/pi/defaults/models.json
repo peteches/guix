@@ -1,21 +1,22 @@
 {
   "providers": {
     "llm": {
-      "name": "openvino LFM2.5 (comfyui)",
+      "name": "OVMS Qwen3.6-35B-A3B int4 (comfyui)",
       "api": "openai-completions",
       "baseUrl": "https://llm.ts.peteches.co.uk/v1",
       "apiKey": "local",
       "compat": {
         "maxTokensField": "max_tokens",
-        "supportsUsageInStreaming": false,
+        "supportsUsageInStreaming": true,
         "supportsStrictMode": false,
-        "supportsFinishReason": true
+        "supportsFinishReason": true,
+        "supportsDeveloperRole": false
       },
       "models": [
         {
-          "id": "LFM2.5-24B-A2B-int8-ov",
-          "name": "LFM2.5 24B A2B int8 (comfyui, OpenVINO on Arc B70)",
-          "contextWindow": 131072,
+          "id": "Qwen3.6-35B-A3B-int4-ov",
+          "name": "Qwen3.6 35B A3B int4 (comfyui, OVMS on Arc Pro B70)",
+          "contextWindow": 262144,
           "maxTokens": 24576,
           "input": ["text"],
           "reasoning": true
@@ -29,7 +30,7 @@
       "apiKey": "local",
       "compat": {
         "maxTokensField": "max_tokens",
-        "supportsUsageInStreaming": true,
+        "supportsUsageInStreaming": false,
         "supportsStrictMode": false
       },
       "models": [

@@ -25,9 +25,10 @@
 
 Guix's build systems read #:tests? through assq-ref, so the FIRST such key in a package's
 arguments list wins.  We prepend our own and drop any the package already carried, which
-forces tests off regardless of upstream's setting.  Same mechanism as
-package-with-tests-off in (peteches services openvino), kept local here to avoid coupling
-this package module to that service."
+forces tests off regardless of upstream's setting.  Same mechanism as the
+package-with-tests-off helper that lived in the now-deleted (peteches services
+openvino), kept local here so this package module never had to import a service
+module."
   (package
     (inherit pkg)
     (arguments

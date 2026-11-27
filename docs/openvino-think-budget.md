@@ -1,5 +1,35 @@
 # OpenVINO think budget: what was tried, measured, and abandoned
 
+> **POSTSCRIPT (2026-11-26) — the shim this document analyses is retired.**
+> `peteches/services/openvino-server.py`, `peteches/services/openvino.scm`
+> (`openvino-service-type`) and `peteches/services/openvino-test.py` were all
+> **deleted** on 2026-11-26. The fleet's `llm` provider is now configured as
+> `(peteches services ovms)` serving **Qwen3.6-35B-A3B INT4** on comfyui's Arc
+> Pro B70.
+>
+> **The think-budget problem was a property of LFM2.5, and it did not carry
+> over.** On the agentic benchmark that retired that model, Qwen3.6 measured an
+> **8-gram repeat count of 2** and a **largest thinking block of 2 972
+> characters**, on the same task where LFM2.5 scored **47–1428** on the repeat
+> metric and **40 121–94 722 characters** for its largest thinking block
+> (across continuous batching, the 2026.5.0 weekly build, `--pipeline_type LM`,
+> and the official non-abliterated INT4 export, which spiralled worst — one line
+> repeated 1430×).
+>
+> So there is no think-budget mechanism to build for the current backend, and
+> the two mechanisms analysed below were never going to generalise: both were
+> attempts to cap a reasoning block that only LFM2.5 grew to that size.
+>
+> **This document is retained as a historical record. The body is unchanged** —
+> its measurements of the shim, of the streamer-abort and forced-close
+> re-prompt, and of xgrammar-constrained decoding are still accurate as a
+> description of what that code did. Its classification recipe (how to read a
+> `stream=true` compaction turn out of the log) is still cited by
+> `peteches/home/modules/pi.scm`'s 2026-11-25 livelock post-mortem, which is
+> also retained as history. Note the log it reads,
+> `/var/log/openvino/openvino-lfm2.log`, no longer exists and is no longer
+> shipped to Loki.
+
 Status: **no think-budget mechanism is deployed.** `openvino-lfm2` on comfyui runs
 one generation per request with no reasoning cap, which is what it did before any
 of this work. This file exists so the next person does not spend a day

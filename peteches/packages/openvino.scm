@@ -1,4 +1,16 @@
-;; peteches/packages/openvino.scm — OpenVINO runtime + GenAI, for the LFM2.5 trial.
+;; peteches/packages/openvino.scm — OpenVINO runtime + GenAI, built from source.
+;;
+;; STATUS 2026-11-26: **CURRENTLY UNUSED BY ANY SYSTEM CONFIG.**  This module's
+;; only consumer was `(peteches services openvino)`, the FastAPI/uvicorn shim
+;; service that served LFM2.5-24B-A2B int8 on comfyui; that service, its
+;; `openvino-server.py` and its `openvino-test.py` probe were deleted when
+;; LFM2.5 was retired in favour of `(peteches services ovms)` serving
+;; Qwen3.6-35B-A3B INT4.  OVMS bundles its own OpenVINO and does not use this
+;; package.  It is KEPT deliberately rather than deleted: it is not
+;; LFM2-specific, it is this repo's only from-source Guix packaging of the
+;; OpenVINO runtime + openvino-genai (with every FetchContent dependency
+;; vendored), and it is the fallback if OVMS's bundled runtime ever becomes a
+;; problem.  Nothing below describes a live deployment.
 ;;
 ;; Intel's OpenVINO inference runtime (`openvino') and its generative-AI
 ;; front-end library (`openvino-genai'), built from source so they can be used
@@ -62,8 +74,9 @@
 ;;                                -DOpenVINO_DIR has to name, NOT lib/cmake/OpenVINO
 ;;     python/openvino/           the pybind11 module
 ;; 123 MB total.  That is why nixpkgs carries install-path patches; rather than fight it we
-;; point consumers at the paths upstream actually wrote, and (peteches services openvino)
-;; names them explicitly instead of relying on a profile merge.  Python bindings install into
+;; point consumers at the paths upstream actually wrote, and the now-deleted
+;; (peteches services openvino) named them explicitly instead of relying on a
+;; profile merge.  Python bindings install into
 ;; lib/python3.<minor>/site-packages/openvino with <minor> read from the very
 ;; python package passed as an input, so the two cannot drift apart.
 
@@ -291,7 +304,8 @@ this runs on.")
 ;;     lib/pythonX.Y/site-packages.  That distinction is not cosmetic: guix's
 ;;     system-profile merge only folds in lib/pythonX.Y/site-packages, so neither OV
 ;;     python package would be importable from a profile on its own and
-;;     (peteches services openvino) names <pkg>/python in PYTHONPATH explicitly.
+;;     the now-deleted (peteches services openvino) named <pkg>/python in
+;;     PYTHONPATH explicitly.
 ;;   * Everything else goes to destinations the project hardcodes: libs to
 ;;     ${LIBRARY_DESTINATION} (pinned to `lib` below), headers to runtime/include,
 ;;     the exported cmake package to runtime/cmake.  Since install(EXPORT) writes

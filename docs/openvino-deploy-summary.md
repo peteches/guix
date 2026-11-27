@@ -1,5 +1,10 @@
 # OpenVINO / ComfyUI Deployment — State Summary
 
+> **RETIRED (2026-11-26).** The `openvino-server.py` shim this document
+> describes was deleted on 2026-11-26 in favour of `(peteches services ovms)`,
+> which `peteches/systems/comfyui.scm` wires to serve Qwen3.6-35B-A3B INT4 on
+> comfyui.
+
 > **SUPERSEDED (2026-11-25).** The central claim of this document — that
 > `peteches/services/openvino.scm` "cannot be loaded" — is an environment
 > artifact, not a code defect: the checks in that session ran the *system*

@@ -24,7 +24,7 @@
 ;;; openrouter". With the pin removed the spawned pi gets no --model flag
 ;;; and pi's startup model selection (findInitialModel in pi's
 ;;; core/model-resolver.js) falls through to the saved default from
-;;; settings.json -- which for these accounts is the llm (OpenVINO LFM2.5)
+;;; settings.json -- which for these accounts is the llm (OVMS/Qwen3.6)
 ;;; model, since
 ;;; configs/pi/defaults/settings.json declares defaultProvider/defaultModel
 ;;; and the static apiKey "local" in models.json counts as configured auth
@@ -74,54 +74,118 @@
 ;;; The default models.json wires up koboldcpp.ts.peteches.co.uk (Caddy's
 ;;; reverse proxy onto the comfyui VM's koboldcpp instance) and
 ;;; llm.ts.peteches.co.uk (Caddy's reverse proxy onto the same VM's
-;;; OpenVINO GenAI server — LFM2.5-24B-A2B int8 on the Intel Arc B70,
+;;; OpenVINO Model Server — Qwen3.6-35B-A3B INT4 on the Intel Arc Pro B70,
 ;;; see peteches/systems/comfyui.scm) as custom providers. configs/pi/
 ;;; defaults/settings.json declares llm as the default model
 ;;; (defaultProvider/defaultModel), so pi's startup selection lands there
 ;;; on every account that uses this config.  The llm provider replaced
 ;;; strata.ts.peteches.co.uk (Qwen3.8-Flash-Next IQ2_XS on the same B70)
-;;; when strata was stopped in favour of OpenVINO; Caddy's route was renamed
-;;; in the same change, so the old hostname no longer resolves to anything.
+;;; when strata was stopped; Caddy's route was renamed in the same change,
+;;; so the old hostname no longer resolves to anything.
 ;;;
-;;; CAVEAT RESOLVED 2026-11-23 — and the cause is worth keeping here, because
-;;; it cost a lot of measuring to find.  Tool calling works: the server passes
-;;; `tools' into the chat template, parses the model's
-;;; <|tool_call_start|>[fn(arg=...)]<|tool_call_end|> markers with `ast', and
-;;; returns OpenAI-shaped tool_calls with finish_reason "tool_calls", so pi runs
-;;; a real agent loop against this endpoint.  What did NOT work was the INT4
-;;; export of this model.  With the same server, the same prompt and the same
-;;; tools, it called read_file('fruit.txt') three times, received the correct
-;;; contents every time, then degenerated into repetition and burned 5977 tokens
-;;; over six steps without ever answering; under `pi --mode json -p' it looped
-;;; eight times on a hallucinated `ls -la /pi' and ended turns with a thinking
-;;; block and no content at all (stop=length when the reasoning overran
-;;; maxTokens, stop=stop with an empty answer otherwise).
+;;; BACKEND HISTORY, because a lot of the measurement below is attached to
+;;; the older ones.  llm.ts.peteches.co.uk:8093 has had three backends:
+;;;   1. a 1095-line hand-written OpenAI shim over openvino-genai
+;;;      (peteches/services/openvino-server.py) serving LFM2.5-24B-A2B int8;
+;;;   2. Intel's OpenVINO Model Server (peteches/services/ovms.scm) serving
+;;;      the same LFM2.5 export;
+;;;   3. OVMS serving Qwen3.6-35B-A3B INT4 — CURRENT, since 2026-11-26.
+;;; The shim, its service type and its test probe were deleted at (3);
+;;; LFM2.5 was retired because it degenerated on multi-turn agent work under
+;;; two independent serving stacks (8-gram repeat 47-407 and thinking blocks
+;;; to 89 199 chars on OVMS continuous batching, and tool markup leaking as
+;;; text under koboldcpp), while Qwen3.6 on the same OVMS scored 8-gram
+;;; repeat 2, largest thinking block 2 972 chars, 6 clean tool calls and 3/3
+;;; correct in 62 s.  The full table and the ruled-out causes are in
+;;; peteches/systems/comfyui.scm's ovms instance comment and
+;;; (peteches services ovms)'s header.  Anything below measured "on this box"
+;;; before 2026-11-26 was measured against LFM2.5 and is labelled as such.
 ;;;
-;;; Switching to the INT8 export of the same weights fixed it outright: the same
-;;; task now completes in two steps and 187 tokens, and pi drives a clean
-;;; find -> read -> wc -l loop to the right answer.  A non-abliterated INT4
-;;; export was tried as well and was worse — it hallucinated paths and decayed
-;;; into raw template tokens — so neither abliteration nor the serving stack was
-;;; at fault.  INT4 weight compression on its own was enough to destroy the
-;;; agentic behaviour.  The cost is ~31% of decode speed (127 tok/s single
-;;; stream vs 183) and 145 s to load the model instead of ~29 s.
+;;; ── THREE COMPAT FLAGS THAT ARE LIVE REQUIREMENTS, NOT PREFERENCES ──
 ;;;
-;;; Plain Q&A was good at either precision — Paris, 391, exact JSON, a correct
-;;; is_palindrome, and it avoids the bat-and-ball $0.10 trap.
+;;; models.json is plain JSON and cannot carry comments, so this module is
+;;; where the client-side flags the backend's correctness depends on get
+;;; their rationale.
 ;;;
-;;; What still holds: the server serialises every request on a threading.Lock,
-;;; and its "streaming" runs the whole generation before emitting a single
-;;; chunk, so nothing appears on screen until the turn is finished.
-;;; The koboldcpp provider
-;;; replaced nug's own koboldcpp instance and its Tailscale
-;;; IPv6-literal baseUrl following nug's decommission; the `pi-koboldcpp'
-;;; shell function below (NODE_TLS_REJECT_UNAUTHORIZED=0 wrapper) predates
-;;; that move and may no longer be necessary now that the baseUrl is a
-;;; plain domain behind Caddy's own cert — left in place, unverified,
-;;; since it's harmless if unneeded.
+;;; 1. `"supportsDeveloperRole": false` on the llm provider is MANDATORY.
+;;;    pi computes the instruction role as
+;;;      instructionRole = model.reasoning && compat.supportsDeveloperRole
+;;;                            ? "developer" : "system"
+;;;    (dist/bundle/chunks/openai-completions-*.js, in convertMessages).  Our
+;;;    llm provider sets `"reasoning": true`, and pi's own detectCompat()
+;;;    DEFAULTS supportsDeveloperRole TO TRUE for a custom provider — the
+;;;    expression is `isOpenRouterDeveloperRoleModel || !isNonStandard &&
+;;;    !isOpenRouter`, and a plain custom baseUrl is neither non-standard nor
+;;;    OpenRouter.  So omitting the key silently opts INTO `developer`.
+;;;    Qwen3's chat template validates message roles; measured against this
+;;;    endpoint: role=system OK, role=user OK, role=developer HTTP 400
+;;;    "Unexpected message role."  Without the explicit false, EVERY pi
+;;;    request 400s in under a second.  LFM2.5's template tolerated
+;;;    `developer`, which is why six hours of LFM2.5 testing never surfaced
+;;;    this.  Every one of pi's built-in model definitions sets
+;;;    `supportsDeveloperRole: !1` explicitly, so the trap only bites custom
+;;;    providers declared here.  This is invisible from the server side:
+;;;    (peteches services ovms) logs a clean 400 and nothing else.
 ;;;
-;;; models.json is plain JSON and cannot carry comments, so the coupling
-;;; between its two size fields and the server's flags is documented here.
+;;; 2. `"supportsUsageInStreaming": true` on llm, and it has to be explicit.
+;;;    THIS FLAG IS THE SINGLE POINT OF FAILURE FOR THE ENTIRE reserveTokens
+;;;    DERIVATION BELOW, and it is invisible from either side alone: the
+;;;    server looks perfectly healthy whether or not the client asks, and the
+;;;    client has no way to notice that it stopped asking.
+;;;
+;;;    Client half, verbatim from pi's buildParams
+;;;    (dist/bundle/chunks/openai-completions-*.js):
+;;;      compat.supportsUsageInStreaming !== !1 &&
+;;;        (params.stream_options = {include_usage: !0})
+;;;    i.e. pi only REQUESTS streaming usage when the flag is not explicitly
+;;;    false.  Leaving it false drops pi back onto its chars/4 context
+;;;    estimate, which is precisely the 1.43x-low heuristic the sizing below
+;;;    exists to survive.
+;;;
+;;;    Server half, measured 2026-11-26 on OVMS 2026.4.1 / comfyui / Arc Pro
+;;;    B70, always with `stream_options: {"include_usage": true}` in the
+;;;    request.  Both models and both servable shapes return a real usage
+;;;    object in the final chunk, including on a truncation:
+;;;
+;;;      Qwen3.6-35B-A3B int4 (the current backend)
+;;;        stream + tools : order=R T F=tool_calls
+;;;                         usage={'prompt_tokens': 289,
+;;;                                'completion_tokens': 82,
+;;;                                'total_tokens': 371}
+;;;        stream truncate: order=R F=length
+;;;                         usage={'prompt_tokens': 16,
+;;;                                'completion_tokens': 8,
+;;;                                'total_tokens': 24}
+;;;      LFM2.5-24B-A2B int8 (the retired backend, same server)
+;;;        stream + tools : final chunk usage={'prompt_tokens': 83,
+;;;                                'completion_tokens': 144,
+;;;                                'total_tokens': 227}
+;;;        stream prose   : final chunk usage={'prompt_tokens': 21,
+;;;                                'completion_tokens': 132,
+;;;                                'total_tokens': 153}
+;;;        n chunks w/ usage: yes
+;;;
+;;;    HISTORY OF THE `false`, stated no more strongly than the evidence
+;;;    allows: it appears to predate the shim's streaming-usage fix and was
+;;;    never revisited.  What is confirmable is that the shim's `_chunk`
+;;;    helper attached `usage` to the final chunk UNCONDITIONALLY -- not gated
+;;;    on `stream_options.include_usage` -- with a comment noting that usage
+;;;    had been "absent from the streaming path entirely, which is why pi
+;;;    recorded input/output 0 for every streamed turn".  So the flag looks
+;;;    stale for the shim too.  The shim is deleted in this change and can no
+;;;    longer be re-measured, so no causal claim is made here.
+;;;
+;;; 3. `"supportsUsageInStreaming": false` on the koboldcpp provider, which
+;;;    is the opposite and was MEASURED, not assumed: koboldcpp 1.118.1
+;;;    returns `usage: None` in the stream even with
+;;;    `stream_options: {"include_usage": true}` set, while non-streaming
+;;;    usage works fine.  It previously declared true here, which would
+;;;    silently push pi onto a chars/4 estimate it believed was
+;;;    provider-accurate.  Declaring false at least makes pi's accounting
+;;;    honestly heuristic for that provider.
+;;;
+;;; ── contextWindow AND maxTokens ──
+;;;
 ;;; Both must track the koboldcpp service on comfyui
 ;;; (peteches/systems/comfyui.scm):
 ;;;
@@ -138,94 +202,82 @@
 ;;; pile-up at exactly 163840 tokens. Measured over one week that was 31.4
 ;;; GPU-hours of prefill -- 45% of all request time, from 7.4% of requests.
 ;;;
-;;; The llm entry's contextWindow is the model's own trained window
-;;; (max_position_embeddings = 131072 in the export's config.json), not a
-;;; server flag: openvino-server.py sets no context limit of its own, it just
-;;; hands the messages to GenAI's ChatHistory.  Unlike koboldcpp, the OpenVINO
-;;; service reserves nothing inside that window, so the prompt space a client
-;;; may use is contextWindow minus its own generation budget: 131072 - 8192 =
-;;; 122880.  maxTokens is 8192 rather than something small because this model
-;;; reasons before it answers and the reasoning counts against the same budget:
-;;; measured thinking lengths ran 71-1240 tokens on plain prompts and overran
-;;; 4096 entirely on agent turns, which pi reported as "Response truncated
-;;; before completion".  Held below the 131072 the model could take because the
-;;; server's streaming is fake — a large budget is a long blank screen, not
-;;; more usable text.
+;;; The llm entry's contextWindow is the MODEL's own window, not a server
+;;; flag, and OVMS enforces it: `max_position_embeddings: 262144` in the
+;;; Qwen3.6 IR's config.json, confirmed empirically rather than trusted --
+;;; a 224 017-token prompt was accepted, a 280 017-token prompt returned
+;;; `HTTP 400 ... Number of prompt tokens: 280017 exceeds model max length:
+;;; 262144`.  So contextWindow is 262144 and there is a hard server-side
+;;; ceiling behind it.  Unlike koboldcpp, OVMS reserves nothing inside that
+;;; window, so the prompt space a client may use is contextWindow minus its
+;;; own generation budget: 262144 - 24576 = 237568.
 ;;;
-;;; compaction.modelOverrides in configs/pi/defaults/settings.json widens
-;;; reserveTokens for both local models, and those two numbers are derived
-;;; rather than tuned. pi's context accounting is provider-accurate only
-;;; while the last assistant usage entry is newer than the newest
-;;; context_edit or compaction entry — `estimateProjectedContextTokens()`
+;;; That is the ONE structural improvement over the shim worth naming here:
+;;; openvino-server.py never checked
+;;; prompt + max_new_tokens <= max_position_embeddings, so an overshoot came
+;;; back as a 500 that pi retried three times.  OVMS returns a precise HTTP
+;;; 400 naming both numbers, so the same overshoot is loud instead of
+;;; silent.  It is still a failed turn -- which is exactly why the compaction
+;;; trigger below has to leave room for a full maxTokens generation -- but
+;;; it now says why.
+;;;
+;;; maxTokens is 24576, unchanged across the backend move, because it is
+;;; derived from pi's own compaction arithmetic rather than from the model:
+;;; the SAME field is the per-turn generation cap and the compaction summary
+;;; budget, and maxTokens is a permanent reservation against prompt space
+;;; whether or not a turn generates it.  M must be >= the largest summary a
+;;; long session produces, and summaries ACCUMULATE -- the
+;;; UPDATE_SUMMARIZATION_PROMPT pi sends on every compaction after the first
+;;; says "PRESERVE all existing information from the previous summary, ADD
+;;; new progress".  The 15210/15156-token checkpoints recorded in the
+;;; livelock post-mortem below prove the accumulated case reaches ~15k on a
+;;; long session, and that session's thinking blocks ran to ~8500 tokens, so
+;;; 15000 + 8500 does not fit in 16384 and M = 24576 is the smallest round
+;;; number that covers it.  (Those two token counts are LFM2.5-era
+;;; measurements; nothing equivalent has been measured for Qwen3.6, whose
+;;; largest observed thinking block on the agentic benchmark was 2 972
+;;; chars -- an order of magnitude smaller.  M is left at 24576 rather than
+;;; shrunk on that basis, because the summary half of the budget is a
+;;; pi-side property and the accumulated-checkpoint evidence has not been
+;;; re-taken.)
+;;;
+;;; ── compaction.modelOverrides: DERIVED, NOT TUNED ──
+;;;
+;;; reserveTokens in configs/pi/defaults/settings.json is derived rather than
+;;; tuned, because pi's context accounting is provider-accurate only while
+;;; the last assistant usage entry is newer than the newest context_edit or
+;;; compaction entry -- `estimateProjectedContextTokens()`
 ;;; (dist/bundle/chunks/chunk-OJP47DM6.js) throws the usage figure away as
 ;;; soon as one of those is appended after it, and every later turn is
 ;;; measured by the chars/4 heuristic that replaces it. Measured on pi
-;;; session 01a188e2 (2026-10-30): that heuristic put the context at
-;;; 161700 tokens when the provider had just reported 198345 — 1.22x low —
-;;; and a koboldcpp request that cleared the pre-prompt threshold check
-;;; carried 163839 real tokens, one token of room at --contextsize 163840,
-;;; and came back as one token of text with `finish_reason: length'. That
-;;; is at least 1.43x low, and the overrides are sized for it:
-;;;
-;;;   llm        reserveTokens  40960 -> compact above  90112 estimated
-;;;   koboldcpp  reserveTokens  49152 -> compact above  81920 estimated
-;;;                                        ( 81920 * 1.43 < 131072)
-;;;
-;;; (The llm figure anticipates the budget-derived sizing below; the
-;;; 1.43x heuristic that motivates this table is koboldcpp's.)
+;;; session 01a188e2 (2026-10-30, koboldcpp provider): that heuristic put
+;;; the context at 161700 tokens when the provider had just reported 198345
+;;; -- 1.22x low -- and a koboldcpp request that cleared the pre-prompt
+;;; threshold check carried 163839 real tokens, one token of room at
+;;; --contextsize 163840, and came back as one token of text with
+;;; `finish_reason: length'. That is at least 1.43x low.
 ;;;
 ;;; That 1.43x is a koboldcpp/Qwen measurement and does NOT carry over to
-;;; llm: LFM2.5 decodes at 4.4 chars/token (36236 reasoning chars over 8192
-;;; generated tokens, openvino-lfm2.log 2026-11-25), so pi's chars/4
-;;; heuristic slightly OVER-estimates this model and its trigger is already
-;;; conservative.  llm's override is sized by a different constraint --
-;;; the summarisation budget -- and getting that wrong is what produced the
-;;; 2026-11-25 auto-compaction livelock.  TWO numbers come out of
-;;; reserveTokens and they must be held apart:
+;;; llm -- and the llm-side figure that used to sit here (LFM2.5 decoded at
+;;; 4.4 chars/token, 36236 reasoning chars over 8192 generated tokens,
+;;; openvino-lfm2.log 2026-11-25, so pi's chars/4 slightly OVER-estimated
+;;; it) is a measurement of a retired model, not of Qwen3.6.  No
+;;; chars/token ratio has been measured for Qwen3.6.  That is a reason to
+;;; keep llm's `supportsUsageInStreaming` true rather than to relax the
+;;; sizing: with real usage figures the heuristic is only a fallback for the
+;;; turns immediately after a compaction, which is where the slack matters.
 ;;;
-;;;   trigger         contextTokens > contextWindow - reserveTokens
-;;;   summary budget  min(floor(0.8 * reserveTokens), model.maxTokens)
+;;; TWO numbers come out of reserveTokens and they must be held apart.
+;;; Write M = model.maxTokens and R = reserveTokens:
+;;;
+;;;   trigger         contextTokens > contextWindow - R
+;;;   summary budget  min(floor(0.8 * R), M)
 ;;;
 ;;; (shouldCompact and generateSummaryWithUsage, both in pi's
-;;; dist/core/compaction/compaction.js.)  While 0.8 * reserveTokens exceeds
-;;; maxTokens the second is decided by models.json ALONE, and moving
-;;; reserveTokens moves only the trigger.  At the previous 98304/8192
-;;; pairing the budget was min(78643, 8192) = 8192 however far the trigger
-;;; was dropped, so "compact earlier and there will be less to summarise"
-;;; kept shrinking the conversation being summarised into the same
-;;; 8192-token box -- and the box was the thing overflowing.  It was
-;;; dropped for exactly that reason (49152 -> 98304, commit 8becf7b) and
-;;; still failed.
-;;;
-;;; What the box measured, /var/log/openvino/openvino-lfm2.log over
-;;; 2026-11-25.  The compaction path is the `stream=true' shape -- small
-;;; prompt, no tool_calls field; see the classification recipe at the end of
-;;; docs/openvino-think-budget.md:
-;;;
-;;;   - 56 of 155 such generations ended finish=length: a 36% failure rate
-;;;     on the one path already known to be fragile.
-;;;   - The failures are an unclosed `<think>': completion_tokens=8192 (the
-;;;     whole budget), reasoning_chars 34564-37575, content_chars=0.  At 4.4
-;;;     chars/token that is ~8500 tokens of thinking and nothing left for
-;;;     the summary -- pi's "generation hit the token cap and the summary is
-;;;     incomplete", verbatim.
-;;;   - The SUCCESSES are pinned to the same ceiling: 8104, 8012, 7984,
-;;;     7375, 7178 completion tokens out of 8192.  The budget was not
-;;;     occasionally tight, it was the operating point.
-;;;   - One prompt (prompt_tokens=4884) was regenerated five times at ~65 s
-;;;     intervals with byte-identical reasoning_chars.  That is the
-;;;     livelock rather than a coincidence: on a length stop pi throws,
-;;;     _runAutoCompaction persists NOTHING and keeps no cooldown, so the
-;;;     next turn re-triggers on an unchanged context; and a tool-less
-;;;     request keeps the model's own temperature 0.1 (the server's
-;;;     TOOL_TEMPERATURE warm-up applies only when `tools' is present), so
-;;;     the retry is deterministic and fails identically.  Every turn then
-;;;     pays 8192 tokens at ~136 tok/s = the 60 s stall, forever, at 25% of
-;;;     a 131k window that is never reached.
-;;;
-;;; Hence the sizing rule, which is worth stating once because the old
-;;; numbers violated it by a factor of twelve.  Write M = model.maxTokens and
-;;; R = reserveTokens.  The budget is min(floor(0.8 * R), M), so:
+;;; dist/core/compaction/compaction.js.)  While 0.8 * R exceeds M the second
+;;; is decided by models.json ALONE, and moving R moves only the trigger.
+;;; Hence the sizing rule, worth stating once because the numbers before
+;;; 2026-11-25 violated it by a factor of twelve:
 ;;;
 ;;;   R > 1.25 * M   budget is M, but the trigger sits LOWER than it could --
 ;;;                  window given up and nothing bought with it
@@ -234,80 +286,127 @@
 ;;;   R < 1.25 * M   budget becomes 0.8 * R and SHRINKS below M -- the
 ;;;                  generation cap is now the wasted half
 ;;;
-;;; The previous 98304/8192 pair was the first case taken to an extreme:
-;;; 1.25 * 8192 = 10240 would have triggered at 120832 (92% of the window)
-;;; with the identical 8192 budget, but R was set to 98304 and triggered at
-;;; 32768 (25%).  Two thirds of a 131k window was discarded for free.  That
-;;; is the whole answer to "what is the point of a 131k context" -- nothing
-;;; was enforcing 25%, it was a mis-derived number that the old commentary
-;;; here then rationalised.
+;;; CURRENT ARITHMETIC for llm/Qwen3.6-35B-A3B-int4-ov, at the optimum:
 ;;;
-;;; What M itself has to cover is the one thing pi's schema cannot separate:
-;;; the SAME field is the per-turn generation cap and the compaction summary
-;;; budget, and maxTokens is a permanent reservation against prompt space
-;;; (usable prompt = contextWindow - M) whether or not a turn generates it.
-;;; M must therefore be >= the largest summary a long session produces, and
-;;; summaries ACCUMULATE -- the UPDATE_SUMMARIZATION_PROMPT pi sends on every
-;;; compaction after the first says "PRESERVE all existing information from
-;;; the previous summary, ADD new progress".  The largest this box has
-;;; produced is content_chars 5575 (~1300 tokens) against ~8500 tokens of
-;;; thinking, but the 15210/15156-token checkpoints recorded below prove the
-;;; accumulated case reaches ~15k on a long session.  1300 + 8500 fits in
-;;; 16384; 15000 + 8500 does not.  So M = 24576, and R = 40960 rather than
-;;; the 1.25 * M = 30720 optimum -- deliberately past it, buying 16384 tokens
-;;; of slack, because openvino-server.py never checks
-;;; prompt + max_new_tokens <= max_position_embeddings (an overshoot is a 500
-;;; that pi retries three times) and the chars/4 estimate was measured 1.43x
-;;; LOW on koboldcpp's tokenizer even though it runs ~10% high on this one.
+;;;   M            = 24576                      (models.json)
+;;;   R            = 1.25 * M = 30720           (settings.json)
+;;;   trigger      = 262144 - 30720 = 231424
+;;;   summary budget = min(floor(0.8 * 30720), 24576)
+;;;                  = min(24576, 24576) = 24576
+;;;   worst case   = a prompt sitting exactly at the trigger plus a full
+;;;                  generation = 231424 + 24576 = 256000 < 262144.  That FITS
+;;;                  **only if the trigger figure is accurate**, and it is an
+;;;                  ESTIMATE: this same file documents pi's chars/4 fallback as
+;;;                  measured up to 1.43x LOW, and 191424 * 1.43 is ~274k, past
+;;;                  the ceiling.  Two things BOUND that risk without removing
+;;;                  it -- `supportsUsageInStreaming: true' means the provider's
+;;;                  real token counts are used except immediately after a
+;;;                  compaction or context_edit entry (see the
+;;;                  estimateProjectedContextTokens note above), and OVMS
+;;;                  answers an over-ceiling prompt with a precise HTTP 400
+;;;                  naming both numbers instead of the shim's silent 500 that
+;;;                  pi retried three times.  So the residual failure mode is a
+;;;                  LOUD 400 on post-compaction turns, not a silent one-token
+;;;                  reply -- acceptable, but do not read 256000 < 262144 as a
+;;;                  guarantee.
+;;;   summarised prefix = 231424 - 40000 (keepRecentTokens) = 191424
+;;;                  estimated, against a server ceiling verified to accept
+;;;                  224 017 real tokens
 ;;;
-;;;   llm maxTokens       8192 -> 24576   configs/pi/defaults/models.json
-;;;   llm reserveTokens  98304 -> 40960   configs/pi/defaults/settings.json
-;;;   llm keepRecentTokens (default 20000) -> 40000, same file
+;;; The previous R was 40960, sized against a 131072 window where it
+;;; deliberately OVERSHOT the 1.25 * M optimum to buy 16384 tokens of slack
+;;; for two shim-era risks: openvino-server.py never checked the prompt
+;;; ceiling (so an overshoot was a silent 500 pi retried three times), and
+;;; the chars/4 estimate was measured 1.43x LOW on koboldcpp's tokenizer.
+;;; With a 262144 window, a server that returns a precise 400 at the
+;;; ceiling, and provider-accurate usage restored, the optimum is both
+;;; correct and safe -- 256000 of 262144 used in the worst case, with
+;;; 6144 tokens of margin.  Do not "restore slack" by raising R again
+;;; without re-deriving it: R = 40960 against this window would put the
+;;; trigger at 221184 and the worst case at 245760, buying nothing but a
+;;; lower usable window, since the budget is M either way.
 ;;;
-;;; which lands on: trigger 131072 - 40960 = 90112 (69% of the window, was
-;;; 25%); summary budget min(32768, 24576) = 24576 (was 8192); worst case
-;;; prompt + generation 114688 of 131072; summarised prefix
-;;; 90112 - 40000 = 50112 estimated, inside the 64456 largest prompt this
-;;; server has ever been sent (and pi truncates each tool result to 2000
-;;; chars when it serialises, so the real figure is lower).
+;;; koboldcpp's override (reserveTokens 49152) is unchanged and is sized by
+;;; the other half of the rule: it sets that model's summarisation output
+;;; budget, min(floor(0.8 * 49152), 32768) = 32768, which lands on the
+;;; generation budget that server already accepts (--genlimit 32768) instead
+;;; of the 13107 the 16384 default yields -- not cosmetic, since the two
+;;; largest checkpoints this box produced came back at 15210 and 15156
+;;; tokens, over the budget pi had asked for.  Its trigger is
+;;; 131072 - 49152 = 81920 estimated, and 81920 * 1.43 < 131072.
 ;;;
-;;; What the wider window actually costs is prefill, and it is the only real
-;;; objection: measured cold prefill on the B70 is 4000-5500 tok/s at 52-64k
-;;; prompts (61754 tokens in 15.8 s; 64456 with ~13 s of prefill; 55621 with
-;;; ~10 s), so a turn at the new trigger pays ~20 s of prefill against ~6 s
-;;; at the old one -- every turn, and the server serialises them on a lock.
-;;; Sessions spend most of their life between the post-compaction floor
-;;; (~43k) and the trigger, so the average is nearer 13-15 s.  If that is too
-;;; slow, R = 65536 (trigger 65536, ~13 s worst case) is the dial-back and it
-;;; costs only window, not correctness -- the budget stays 24576 either way,
-;;; since 0.8 * 65536 = 52428 is still above M.
+;;; ── THE 2026-11-25 AUTO-COMPACTION LIVELOCK (HISTORY, LFM2.5) ──
 ;;;
-;;; Cost of the wider window, checked rather than assumed: only 10 of this
-;;; export's 40 layers are full_attention (the other 30 are conv, whose
-;;; state is a fixed conv_L_cache=3, not per-token), so KV is
-;;; 2 * 8 kv-heads * 64 head-dim * 2 bytes * 10 layers = 20 KiB/token and
-;;; the WHOLE 131072-token window is 2.5 GiB -- inside the ~9.5 GiB the B70
-;;; keeps after the int8 export's 24.01 GB of weights.  Streaming is real
-;;; for tool-less turns (the _ThinkSplitter path), so the larger ceiling is
-;;; not a longer blank screen either; the only regression is that a
-;;; genuinely degenerate turn takes ~181 s to give up instead of ~64 s, at
-;;; the measured ~136 tok/s.  The
-;;; "compacting early cleared that VM's memory thrashing" credit below
-;;; belongs to koboldcpp's --genlimit note in peteches/systems/comfyui.scm
-;;; and is about host RAM under koboldcpp's SmartCache, not this service's
-;;; VRAM.  Note also that comfyui.scm's (max-new-tokens 4096) is only the
-;;; server's default for clients that omit max_tokens -- pi always sends
-;;; its own, so the two are not required to agree.
+;;; Kept in full because it is the evidence for the sizing rule above and
+;;; the failure mode is silent.  Measured from
+;;; /var/log/openvino/openvino-lfm2.log -- the shim's log, which no longer
+;;; exists; the classification recipe is at the end of
+;;; docs/openvino-think-budget.md (retained as history).  The compaction path
+;;; is the `stream=true' shape: small prompt, no tool_calls field.
 ;;;
-;;; reserveTokens still sets the summarization output budget for koboldcpp,
-;;; min(floor(0.8 * 49152), 32768) = 32768, which lands on the generation
-;;; budget that server already accepts (--genlimit 32768) instead of the
-;;; 13107 the 16384 default yields — not cosmetic, this session's two
-;;; largest checkpoints came back at 15210 and 15156 tokens, over the budget
-;;; pi had asked for.
+;;;   - 56 of 155 such generations ended finish=length: a 36% failure rate
+;;;     on the one path already known to be fragile.
+;;;   - The failures are an unclosed `<think>': completion_tokens=8192 (the
+;;;     whole budget), reasoning_chars 34564-37575, content_chars=0.  At
+;;;     LFM2.5's measured 4.4 chars/token that is ~8500 tokens of thinking
+;;;     and nothing left for the summary -- pi's "generation hit the token
+;;;     cap and the summary is incomplete", verbatim.
+;;;   - The SUCCESSES are pinned to the same ceiling: 8104, 8012, 7984,
+;;;     7375, 7178 completion tokens out of 8192.  The budget was not
+;;;     occasionally tight, it was the operating point.
+;;;   - One prompt (prompt_tokens=4884) was regenerated five times at ~65 s
+;;;     intervals with byte-identical reasoning_chars.  That is the
+;;;     livelock rather than a coincidence: on a length stop pi throws,
+;;;     _runAutoCompaction persists NOTHING and keeps no cooldown, so the
+;;;     next turn re-triggers on an unchanged context; and a tool-less
+;;;     request kept the shim's own model temperature (its TOOL_TEMPERATURE
+;;;     warm-up applied only when `tools' was present), so the retry was
+;;;     deterministic and failed identically.  Every turn then paid 8192
+;;;     tokens at ~136 tok/s = the 60 s stall, forever, at 25% of a 131k
+;;;     window that was never reached.
+;;;
+;;; The R = 98304 / M = 8192 pair then in force was the `R > 1.25 * M' case
+;;; taken to an extreme: 1.25 * 8192 = 10240 would have triggered at 120832
+;;; (92% of the window) with the identical 8192 budget, but R was 98304 and
+;;; triggered at 32768 (25%).  Two thirds of a 131k window was discarded for
+;;; free.  That is the whole answer to "what is the point of a 131k context"
+;;; -- nothing was enforcing 25%, it was a mis-derived number that the old
+;;; commentary here then rationalised.  It was dropped 49152 -> 98304 in
+;;; commit 8becf7b for exactly the wrong reason ("compact earlier and there
+;;; will be less to summarise"), which kept shrinking the conversation being
+;;; summarised into the same 8192-token box -- and the box was the thing
+;;; overflowing.
+;;;
+;;; WHICH PARTS OF THAT ARE MODEL-SPECIFIC.  The livelock MECHANISM (pi
+;;; throws on a length stop, persists nothing, keeps no cooldown, so an
+;;; unchanged context re-triggers forever) is a pi-side property and applies
+;;; to any backend.  The TRIGGER for it here was LFM2.5's think-first
+;;; behaviour spending the whole budget before emitting content; whether
+;;; Qwen3.6 has the same exposure was not measured directly, but its largest
+;;; observed thinking block was 2 972 chars against LFM2.5's
+;;; 40 121-89 199, and M = 24576 now gives the summary 3x the box it was
+;;; failing in.
+;;;
+;;; What the wider window cost under LFM2.5 was prefill, and that objection
+;;; has largely evaporated: the cold-prefill figures recorded then (4000-5500
+;;; tok/s at 52-64k prompts on the B70) are LFM2.5-era.  Qwen3.6 on OVMS
+;;; measures 1453 T/s cold on a 44 817-token prompt (30.84 s) but 11 850 T/s
+;;; effective (3.78 s) when the same prompt repeats, because
+;;; --enable_prefix_caching is on -- an 8.2x speedup, and multi-turn agent
+;;; work re-sends almost the whole conversation every turn.  That flag is
+;;; what makes a 231 424 trigger affordable at all; koboldcpp on the same
+;;; card, which has no GPU-resident prefix cache, spent 99 minutes and 48
+;;; requests without finishing the task OVMS finished in 62 seconds.  See
+;;; (peteches services ovms).
+;;;
+;;; The LFM2.5-era KV arithmetic recorded here (10 of 40 layers full
+;;; attention, 20 KiB/token, 2.5 GiB for the whole 131072 window) does not
+;;; describe Qwen3.6 and is not replaced by an equivalent calculation.  What
+;;; was observed instead: OVMS allocated 1.0 GB of KV cache dynamically and
+;;; peaked at 67.6% of it during the agentic test.
 ;;;
 ;;; If length-stops on the compaction path return despite the headroom, the
-;;; next lever is NOT another trigger move — it is a `session_before_compact'
+;;; next lever is NOT another trigger move -- it is a `session_before_compact'
 ;;; extension (pi's docs/compaction.md, shippable through
 ;;; EXTRA-EXTENSION-FILES below) that summarises with its own budget and
 ;;; RETURNS a compaction result instead of throwing, so a cap-hit degrades
@@ -315,29 +414,35 @@
 ;;;
 ;;; keepRecentTokens must never be LOWERED below the point where a
 ;;; truncated-response recovery still finds something older than the cut
-;;; point to summarize — a compact-and-retry recovery that finds nothing
+;;; point to summarize -- a compact-and-retry recovery that finds nothing
 ;;; returns early without retrying, which is the "Response was truncated
-;;; before completion." stall that session hit four times.  llm now RAISES it
-;;; instead, 20000 -> 40000, for two reasons that both point the same way:
-;;; it keeps twice as much of the agent's recent verbatim work (large tool
-;;; output is what eats a session here, and that is exactly what a lower
-;;; value would hand to the summariser), and it shrinks the serialised prefix
-;;; the summary request has to carry, which is what keeps a 90112 trigger
-;;; inside the 64456 prompt ceiling this model has actually been measured on.
-;;; The cost is a higher post-compaction floor — context lands at roughly
-;;; keepRecentTokens + summary, ~43k, so ~47k of headroom per cycle instead
-;;; of ~12k, which is the point, but it is fewer, larger compactions rather
-;;; than free ones.
+;;; before completion." stall that session hit four times.  llm RAISES it
+;;; from pi's 20000 default to 40000, for two reasons that both point the
+;;; same way: it keeps twice as much of the agent's recent verbatim work
+;;; (large tool output is what eats a session here, and that is exactly what
+;;; a lower value would hand to the summariser), and it shrinks the
+;;; serialised prefix the summary request has to carry.  The cost is a higher
+;;; post-compaction floor -- context lands at roughly keepRecentTokens +
+;;; summary, so up to ~64k of the 262144 window -- which is the point: fewer,
+;;; larger compactions rather than free ones.
 ;;;
 ;;; INVARIANT, and the failure mode is worse than the one being fixed:
 ;;; keepRecentTokens must stay comfortably below contextWindow -
 ;;; reserveTokens.  If it ever approaches the trigger, findProjectedCutPoint
 ;;; keeps everything, prepareCompaction finds nothing to summarise and
 ;;; returns undefined, and _runAutoCompaction returns false WITHOUT an error
-;;; — shouldCompact stays true, so every turn silently re-attempts a
+;;; -- shouldCompact stays true, so every turn silently re-attempts a
 ;;; compaction that can never do anything.  No message, no log line, just a
-;;; session that has stopped making progress.  40000 against a 90112 trigger
-;;; leaves 2.25x of room; do not close that gap without re-checking it.
+;;; session that has stopped making progress.  40000 against a 231424
+;;; trigger leaves 5.8x of room (it was 2.25x against the old 90112); do not
+;;; close that gap without re-checking it.
+;;;
+;;; The koboldcpp provider entry and its `pi-koboldcpp' shell function below
+;;; (a NODE_TLS_REJECT_UNAUTHORIZED=0 wrapper) replaced nug's own koboldcpp
+;;; instance and its Tailscale IPv6-literal baseUrl following nug's
+;;; decommission; the wrapper predates that move and may no longer be
+;;; necessary now that the baseUrl is a plain domain behind Caddy's own
+;;; cert -- left in place, unverified, since it's harmless if unneeded.
 ;;;
 ;;; EXTENSIONS (a list of packages, e.g. pi-mcp-adapter from peteches
 ;;; packages pi-coding-agent) symlinks each package's own

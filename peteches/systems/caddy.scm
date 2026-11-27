@@ -113,34 +113,39 @@
                   (caddy-reverse-proxy
                    (domain "koboldcpp.ts.peteches.co.uk")
                    (upstream "comfyui.spaniel-cordylus.ts.net:5001"))
-                  ;; openvino-service-type on comfyui.scm — the fleet's LLM
+                  ;; ovms-service-type on comfyui.scm — the fleet's LLM
                   ;; endpoint.  Auto-starts and binds 0.0.0.0:8093 with the
                   ;; firewall accept narrowed to the tailnet, so this proxy
-                  ;; reaches LFM2.5-24B-A2B int4 on the Arc Pro B70 (the same
-                  ;; VM as ComfyUI/koboldcpp, and the same card strata used).
+                  ;; reaches Qwen3.6-35B-A3B INT4 on the Arc Pro B70 (the
+                  ;; same VM as ComfyUI/koboldcpp).
                   ;;
-                  ;; This REPLACES the strata.ts.peteches.co.uk route that used
-                  ;; to proxy to comfyui:8000.  strata is deliberately stopped
-                  ;; now that OpenVINO serves the B70.  The card has 32 GiB of
-                  ;; VRAM and the 24B int4 weights are ~11.7 GiB, so the two are
-                  ;; not obviously mutually exclusive, but running them together
-                  ;; is untested.  Anything still dialling the old
-                  ;; strata.ts name will now fail DNS/502 rather than silently
-                  ;; reach a dead engine — at the time of the switch that was
-                  ;; rules-lawyer's llm-base-url (peteches/systems/agents.scm)
-                  ;; and SillyTavern, both of which were already down with
-                  ;; strata stopped.
+                  ;; The DOMAIN AND PORT ARE THE ONLY STABLE PARTS OF THIS
+                  ;; ROUTE.  Behind 8093 the backend has moved twice: the
+                  ;; hand-written openvino-server.py shim serving
+                  ;; LFM2.5-24B-A2B int8, then Intel's OpenVINO Model Server
+                  ;; on the same model, then (2026-11-26) OVMS on Qwen3.6.
+                  ;; Nothing here changed for any of those, which is the
+                  ;; point of pinning the vhost to a port rather than to a
+                  ;; service.  Clients pin the MODEL ID instead, in
+                  ;; configs/pi/defaults/models.json, and that has to move
+                  ;; with the service's `model-name'.
                   ;;
-                  ;; NOTE: openvino-server.py does support tool calling -- it
-                  ;; passes `tools' to ChatHistory.set_tools and parses the
-                  ;; template's <|tool_call_start|>[fn(arg=...)] markers back
-                  ;; into OpenAI tool_calls -- and since 36ff6b5 its SSE
-                  ;; streaming is real (_ThinkSplitter emits reasoning deltas
-                  ;; strictly before content).  It still serialises every
-                  ;; request on a threading.Lock, so this endpoint serves one
-                  ;; completion at a time -- fine for chat and SillyTavern;
-                  ;; see (peteches home modules pi) for why that makes it a
-                  ;; weak multi-agent backend.
+                  ;; This REPLACES the strata.ts.peteches.co.uk route that
+                  ;; used to proxy to comfyui:8000.  Anything still dialling
+                  ;; the old strata.ts name will fail DNS/502 rather than
+                  ;; silently reach a dead engine — at the time of that
+                  ;; switch it was rules-lawyer's llm-base-url
+                  ;; (peteches/systems/agents.scm) and SillyTavern, both of
+                  ;; which were already down with strata stopped.
+                  ;;
+                  ;; NOTE (superseded 2026-11-26, kept for the shape of the
+                  ;; argument): the retired shim serialised every request on
+                  ;; a threading.Lock and ran the whole generation before
+                  ;; emitting one chunk, which made it a weak multi-agent
+                  ;; backend — see (peteches home modules pi).  OVMS runs a
+                  ;; Continuous Batching servable instead and streams for
+                  ;; real, so that objection no longer applies to this
+                  ;; route.
                   (caddy-reverse-proxy
                    (domain "llm.ts.peteches.co.uk")
                    (upstream "comfyui.spaniel-cordylus.ts.net:8093"))

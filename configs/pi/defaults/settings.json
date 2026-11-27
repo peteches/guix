@@ -2,10 +2,10 @@
   "httpIdleTimeoutMs": 1800000,
   "retry": { "maxRetries": 3 },
   "defaultProvider": "llm",
-  "defaultModel": "LFM2.5-24B-A2B-int8-ov",
+  "defaultModel": "Qwen3.6-35B-A3B-int4-ov",
   "compaction": {
     "modelOverrides": {
-      "llm/LFM2.5-24B-A2B-int8-ov": { "reserveTokens": 40960, "keepRecentTokens": 40000 },
+      "llm/Qwen3.6-35B-A3B-int4-ov": { "reserveTokens": 30720, "keepRecentTokens": 40000 },
       "koboldcpp/koboldcpp/Qwen3.8-27B-Q4_K_M": { "reserveTokens": 49152 }
     }
   }
