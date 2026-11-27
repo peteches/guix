@@ -1345,12 +1345,20 @@
       ;; --- DEGENERATE CHUNKS MUST BE DROPPED BEFORE INDEXING -------------
       ;; PDF extraction of rulebooks routinely yields empty pages, image-only
       ;; pages, headers/footers, page numbers and failed table extraction.
-      ;; Filter these at the indexer.  This is not hygiene, it is load-
-      ;; bearing: with LAST pooling a single "" PERMANENTLY WEDGES
-      ;; ovms-embed (see the KNOWN DEFECT note below), which would abort a
-      ;; multi-hour index run partway through and need
-      ;; `herd restart ovms-embed' to resume.  You also do not want empty
-      ;; chunks in the store regardless -- they match nothing or everything.
+      ;; Filter these at the indexer -- drop anything empty after .strip(),
+      ;; or simply guarantee at least one non-empty element per batch.
+      ;; The second alone is sufficient, and the precise reason is in the
+      ;; KNOWN DEFECT note below: what PERMANENTLY WEDGES ovms-embed is a
+      ;; batch in which EVERY element is content-free, not a batch that
+      ;; merely contains an empty string.  A mixed batch is completely safe
+      ;; (measured: 20 batches of 32 with 20% empty returned 640/640
+      ;; vectors).  The realistic way to hit the fatal case is a ragged
+      ;; FINAL batch drawn from a run of degenerate chunks, or a filter that
+      ;; strips everything -- which would abort a multi-hour index run
+      ;; partway through and need `herd restart ovms-embed' to resume.
+      ;; You also do not want empty chunks in the store regardless: they
+      ;; match nothing or everything.  Whitespace-only chunks are NOT a wedge
+      ;; risk (they tokenize to something), but they are still noise.
       ;;
       ;; --- BULK INDEXING -------------------------------------------------
       ;; Index and query MUST use the same model: they have to live in one
@@ -1538,32 +1546,65 @@
       ;; normalize=true default is already what we want.  Add them via
       ;; extra-args only if auto-detection ever proves wrong.
       ;;
-      ;; KNOWN DEFECT, MEASURED 2026-11-27 -- AN EMPTY STRING WEDGES THIS
-      ;; SERVICABLE PERMANENTLY.  POSTing an input array containing ""
-      ;; returns HTTP 400 `RET_CHECK failure
+      ;; KNOWN DEFECT, MEASURED 2026-11-27 -- AN ALL-EMPTY BATCH WEDGES THIS
+      ;; SERVICABLE PERMANENTLY.  The trigger is NARROWER than it first
+      ;; looked, and getting it wrong sends you to the wrong mitigation.
+      ;;
+      ;;   FATAL (permanent wedge): an input array in which EVERY element is
+      ;;     content-free -- [""], ["",""], [""] x 32.
+      ;;   SAFE: any batch containing at least one non-empty element.  Mixed
+      ;;     batches are completely fine and the empty members still come
+      ;;     back with vectors: [GOOD,""] -> 200 with 2 vectors, ["",GOOD]
+      ;;     -> 200, [GOOD,"",GOOD] -> 200 with 3, and 1 empty + 31 good at
+      ;;     B32 -> 200 with all 32.  A realistic dirty-batch simulation
+      ;;     (20 batches x 32, 20% empty + 10% whitespace) returned
+      ;;     640/640 vectors with every post-check 200.
+      ;;
+      ;; Established by a 48-cell matrix (12 input shapes x 2 models x 2
+      ;; devices) with a FRESHLY RESTARTED INSTANCE PER CELL.  That matters:
+      ;; the first pass -- and the first live probe against this endpoint --
+      ;; tested [""] alone BEFORE testing a mixed batch, so the mixed batch
+      ;; then failed as a CONSEQUENCE of the existing wedge and read as its
+      ;; own cause.  Ordering-confounded; do not repeat that mistake.
+      ;;
+      ;; On wedge: HTTP 400 `RET_CHECK failure
       ;; (src/embeddings/embeddings_calculator_ov.cc:382)', and every request
-      ;; AFTER that also 400s -- including the exact payload that returned
-      ;; 200 seconds earlier -- until `herd restart ovms-embed'.  The process
-      ;; stays alive and shepherd reports it running, so nothing self-heals
-      ;; and nothing alerts.  Verified by a strict before/empty/after
-      ;; sequence against the live endpoint:
-      ;;     normal sentence -> 200 (2 vectors, dim 1024)
-      ;;     [""]            -> 400 RET_CHECK
-      ;;     normal sentence -> 400  (wedged)
-      ;; CAUSE is LAST pooling on a zero-token sequence: there is no last
-      ;; token to select.  A CLS-pooled model is immune -- measured,
-      ;; bge-base-en-v1.5-int8-ov returns 200 for [""], for ["   "] and for a
-      ;; batch with "" in the middle, and keeps serving normally afterwards,
-      ;; because a BERT-family tokenizer emits [CLS]/[SEP] even for "".
+      ;; AFTER that also 400s until `herd restart ovms-embed'.  Permanence
+      ;; verified, not assumed: 30 consecutive benign probes over 90 s (one
+      ;; every 3 s, each on a brand-new HTTP connection, all ordinary English
+      ;; text) returned 400 in ~0.002 s.  0/30 recovered.  The process stays
+      ;; alive and shepherd reports it running, so nothing self-heals.
+      ;; GREP BOTH ASSERTION SITES when diagnosing -- the log shows
+      ;; `:382 ... false' AND `:388 ... embeddingsTensor.get_shape().size()
+      ;; == 2'; searching only for :382 misses half the signature.
+      ;;
+      ;; CAUSE is LAST pooling with no token to land on.  TWO QUALIFICATIONS:
+      ;;   * It is GPU-SPECIFIC.  On `--target_device CPU' the same model
+      ;;     returns 200 for [""] and merely rejects an all-empty batch with
+      ;;     400 while staying alive.  (That is not an argument for running
+      ;;     CPU -- see the measured throughput and host-RAM findings below.)
+      ;;   * Whitespace is NOT a trigger.  Measured 200 and harmless on both
+      ;;     models and both devices: "   \n\t  ", " ", "\n", "\n\n\n",
+      ;;     "\u200b", ".", "!", "a", "hi", CJK, emoji.  They all tokenize to
+      ;;     something, so LAST pooling has a token.  Only the truly empty
+      ;;     string is content-free.
+      ;; A CLS-pooled model does not wedge, but is not fully "immune" either:
+      ;; bge-m3 accepts [""] with 200 yet still rejects an all-empty
+      ;; MULTI-element batch with 400 -- it just stays alive afterwards.
       ;; Do NOT "fix" this by forcing --pooling CLS on THIS model:
       ;; Qwen3-Embedding is trained for last-token pooling, so CLS would
       ;; silently produce meaningless vectors rather than an error.
       ;;
       ;; MITIGATION, AND WHY THERE ISN'T ONE YET.  Prevention belongs at the
-      ;; source: the indexer and every query path must drop empty and
-      ;; whitespace-only strings before POSTing -- which they should do
-      ;; anyway, since an empty chunk in the store matches nothing or
-      ;; everything.  Detection is weaker than it looks.  The
+      ;; source and is one line: in the indexer and every query path, drop
+      ;; chunks that are empty after .strip(), OR guarantee at least one
+      ;; non-empty element per batch.  Either is sufficient -- the second is
+      ;; enough on its own given the trigger above.  Filtering empties is
+      ;; good practice regardless, since an empty chunk in the store matches
+      ;; nothing or everything, but it is the ALL-EMPTY BATCH that is
+      ;; load-bearing to prevent (a ragged final batch from a corpus of
+      ;; degenerate chunks, or a filter that strips everything, are the
+      ;; realistic ways to produce one).  Detection is weaker than it looks.  The
       ;; /var/log/ovms/*.log alloy glob makes the RET_CHECK lines QUERYABLE
       ;; in Loki, but NOTHING IN THIS FLEET ALERTS: no alertmanager is
       ;; deployed anywhere, prometheus.scm's `rule-files' field is supported
@@ -1589,15 +1630,105 @@
       ;; routing embedding clients through caddy rather than tailnet-direct,
       ;; since direct callers would bypass any such filter -- or switching to
       ;; a CLS-pooled model.  bge-m3 keeps CLS with 8192 context, is already
-      ;; on disk at /media/models/openvino/bge-m3-int8-ov, and was measured
-      ;; robust to every poison input tried; it costs roughly 10 points of
-      ;; English retrieval and 4x less context.  Note the reranker has NO
-      ;; analogous defect: nothing wedges it.
+      ;; on disk at /media/models/openvino/bge-m3-int8-ov, and does not wedge
+      ;; on any input tried (it does still 400 on an all-empty MULTI-element
+      ;; batch, but stays alive); it costs roughly 10 points of English
+      ;; retrieval and 4x less context, and is 1.53x FASTER to index with
+      ;; (517 vs 333 pass/s) and lower-latency at query time (p50 10.1 vs
+      ;; 15.9 ms).  Note the reranker has NO analogous defect: nothing
+      ;; wedges it.
       ;; Relatedly, oversized input is rejected rather than truncated
       ;; (--truncate defaults false): `Input length 60002 longer than allowed
       ;; 32768'.  That one returns a clean INVALID_ARGUMENT per request and
       ;; does NOT wedge the servable, but a RAG pipeline chunking past 32768
       ;; tokens will see 400s.
+      ;;
+      ;; MEASURED PERFORMANCE AND BULK-INDEXING SETTINGS (2026-11-27, this
+      ;; box, hand-run instances on :8099 -- production was never load-
+      ;; tested).  Deterministic corpus, 2048 unique Markov-generated
+      ;; passages per length bucket, token counts taken from the server's own
+      ;; usage.prompt_tokens.  Reproducible: the harness is kept at
+      ;; /media/models/bench-embedding/ (bench.py, gen_corpus.py --seed
+      ;; 20261127, report.py, run_all.sh) with results in results/REPORT.txt
+      ;; plus per-phase .jsonl and 1 Hz .res.csv samples.  Re-measure after
+      ;; any model or flag change rather than trusting these.
+      ;;
+      ;; THROUGHPUT, L200 (~178 tok/passage), GPU, best config:
+      ;;   Qwen3-Embedding-0.6B  333 pass/s (B32, 2 clients)  = 59.2k tok/s
+      ;;   bge-m3                517 pass/s                  = 113k  tok/s
+      ;;   bge-base-en-v1.5     1768 pass/s                  = 323k  tok/s
+      ;; Use PASSAGES/s for corpus wall-clock, NOT tok/s: bge-m3's tokenizer
+      ;; emits ~24% more tokens on identical text, so tok/s overstates its
+      ;; lead (1.88x in tok/s is only 1.53x in pass/s).
+      ;; GPU batching is worth 6.2x over B1 (Qwen3 51.3 -> 322.4 pass/s).
+      ;;
+      ;; EXTRAPOLATED time to index N passages of ~200 tokens on GPU, Qwen3:
+      ;; 100k = 5 min, 1M = 50 min, 10M = 8.3 h.  These EXCLUDE HNSW graph
+      ;; construction, chunking, document I/O and DB writes, all of which are
+      ;; real -- treat them as lower bounds.
+      ;;
+      ;; QUERY LATENCY, batch=1, ~20-token query, 400 iterations:
+      ;;   Qwen3 GPU  p50 15.9 ms / p95 23.3 / p99 26.1
+      ;;   Qwen3 CPU  p50 25.0 ms / p95 33.0 / p99 38.4
+      ;;   bge-m3 GPU p50 10.1 ms / p99 19.2
+      ;; Either is immaterial next to the LLM call that follows it.
+      ;;
+      ;; CONTENTION -- THE IMPORTANT OPERATIONAL FACT.  Sustained GPU
+      ;; embedding load (L200, B128, 4 clients, ~329 pass/s, +1.96 GiB VRAM)
+      ;; degrades ovms-qwen36 on :8093 by ~11x, measured with single small
+      ;; chat probes before/during/after:
+      ;;   before  non-stream 0.163 s, stream TTFT 0.066 s
+      ;;   during  non-stream 1.79-1.96 s (4/4 probes), TTFT 0.31-0.42 s
+      ;;   after   non-stream 0.151 s, TTFT 0.056 s  (recovered within 5 s)
+      ;; Completion token counts were identical throughout, so correctness is
+      ;; unaffected -- this is latency only, and it is fully reversible.  So a
+      ;; bulk index job CAN run while the fleet LLM is live, but interactive
+      ;; latency will be ~10x worse for the duration.  That makes indexing a
+      ;; SCHEDULING question: 5 min for 100k is imperceptible, 50 min for 1M
+      ;; is a coffee break, 8.3 h for 10M wants an overnight window.
+      ;;
+      ;; CPU IS NOT A VIABLE INDEXING DEVICE above ~100k passages, despite
+      ;; the wedge being GPU-only.  Three independent reasons, all measured:
+      ;;   * 42-50x slower.  Qwen3 CPU 7.3 pass/s vs 322 GPU -> 1M passages
+      ;;     is 36 h instead of 50 min.  "Overnight" does not cover it.
+      ;;   * It CANNOT BE PARALLELISED.  OVMS embeddings on CPU serialises:
+      ;;     throughput at 1 client and 8 clients is identical to within 1%
+      ;;     while p95 request latency goes 4.8 s -> 38.6 s.  Running 8
+      ;;     indexing workers buys exactly nothing.
+      ;;   * HOST-RAM RISK.  A single L1024xB128 request (131k tokens) drove
+      ;;     ovms RSS to 19.5 GiB and host MemAvailable down to 928 MB on a
+      ;;     box co-hosting a live 35B LLM, then died without completing.  No
+      ;;     kernel OOM-kill fired -- that was luck, not design.  Cap CPU
+      ;;     requests well below 70k nominal tokens if you ever do this.
+      ;;
+      ;; DO NOT SET --num_streams.  Measured harmful: ns2 is 19-30% WORSE
+      ;; (Qwen3 CPU B32 1214 -> 869 tok/s; bge-m3 2008 -> 1396) and ns4 is
+      ;; within noise at 1 client (+3-5%) for a 1.4-1.7x peak-RSS increase.
+      ;; OVMS's own help text ("use at least 2 on 2 socket CPU systems") does
+      ;; not transfer to this single-socket i9-14900KS.
+      ;;
+      ;; CONCURRENCY: use 2 clients for bulk work.  C1->C2 is the only gain
+      ;; that exists (+7% Qwen3, +8% bge-m3, +29% bge-base); beyond that
+      ;; throughput is dead flat to C8 while request latency inflates 5-11x,
+      ;; i.e. pure queueing.
+      ;;
+      ;; VRAM: weights at rest are small (+0.66 GiB Qwen3, +0.62 bge-m3).
+      ;; The large peaks are ACTIVATION memory from long-context x big-batch
+      ;; combinations -- L1024xB128 peaked at +8.47 GiB.  At realistic
+      ;; indexing settings (L200, B128, C4) Qwen3 costs only +1.96 GiB,
+      ;; which fits the ~13 GiB free.  So: batch 128-256, 2 clients, and
+      ;; LENGTH-BUCKET the corpus so 200-token chunks are never padded to
+      ;; 1024.  Avoid L1024xB128 specifically.
+      ;;
+      ;; RELIABILITY: a bge-m3 GPU instance segfaulted once in ~8 exposures
+      ;; (libstdc++, after 343 successful passages) and was NOT reproduced in
+      ;; 7 further fresh-instance attempts over ~25k requests.  Intermittent,
+      ;; not a reason to reject the model, but a reason to put a liveness
+      ;; probe + auto-restart on the INDEXING JOB (a batch script can safely
+      ;; retry; the auto-restart caution in the TODO above is about the
+      ;; shared production servable, which is a different risk).  Note this
+      ;; box has pre-existing OVMS-on-Arc crash history in dmesg unrelated to
+      ;; any of this testing; neither production servable was affected.
       ;;
       ;; `model-name' is the CLIENT-VISIBLE id and is deliberately a STABLE
       ;; ALIAS rather than the IR directory name, unlike ovms-qwen36 above.

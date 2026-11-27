@@ -315,6 +315,33 @@ respective home environments. `docs/` is not embedded anywhere —
 `grep -rn 'local-file\|plain-file\|computed-file' peteches/` is the
 up-to-date inventory.
 
+### Derivation trap 2: a system config embeds *itself*, so its comments are not free
+
+`peteches/systems/<host>.scm` is copied into that host's own derivation as
+`configuration.scm` (visible on the box as
+`/run/current-system/configuration.scm` → a store path). Consequence,
+measured 2026-11-27: **a comment-only edit to a system config changes that
+host's `system.drv`.** Comment edits to `comfyui.scm` moved
+`jhkbzxwqxz860sjq4h9xw9ka4291cxdm-system.drv` →
+`qaz3q7522ay6rx74pmbgypb78d5zvn2k-system.drv` with `git diff -U0` showing
+**zero** non-comment lines changed, and the new comment text is present
+verbatim in the deployed `configuration.scm`.
+
+So the phrase "comment-only, therefore derivation-neutral" is **false** for:
+`peteches/systems/*.scm` (this trap), anything under `scripts/` or
+`configs/bin/` (trap 1), and any `.py`/asset pulled in via `local-file`.
+It remains **true** for `docs/`, `*.md`, `*.org`, and for library modules such
+as `peteches/services/*.scm` and `peteches/packages/*.scm`, which Guix
+*evaluates* rather than embeds — editing a comment there changes nothing.
+
+This is cosmetic, not functional: the rebuilt derivation produces an
+identical running system, and the only cost is that the host shows as owing a
+deploy until someone reconfigures it. It matters because it invalidates the
+common shorthand "it's only a comment", and because a fleet-consistency audit
+comparing `system.drv` hashes will flag such a host as drifted. Verify with
+the `--dry-run` hash check above before claiming neutrality — do not reason
+from the diff.
+
 ## System Configurations (`peteches/systems/`)
 
 Two base constructors exist for different machine classes:
