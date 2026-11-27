@@ -1,7 +1,8 @@
 # review-channels
 
-Report-only freshness check across every `peteches/channels/*.scm` file. This
-is the channel half of the scheduled dependency review — it **never edits
+Report-only freshness check across every `peteches/channels/*.scm` file;
+compares current pinned commits vs latest upstream without editing anything.
+This is the channel half of the scheduled dependency review — it **never edits
 any file**, never touches commit pins, and never adds a channel
 introduction. To actually apply an update, use `/update-channels`.
 

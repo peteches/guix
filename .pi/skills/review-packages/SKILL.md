@@ -1,7 +1,8 @@
 # review-packages
 
-Report-only version-freshness check for the custom packages this repo
-actually deploys. This is the package half of the scheduled dependency
+Report-only version-freshness check for custom packages deployed by this repo;
+compares current versions vs latest upstream without editing anything.
+This is the package half of the scheduled dependency
 review — it **never edits any file, never touches a `sha256`, and never
 triggers a rebuild.** Detection only.
 

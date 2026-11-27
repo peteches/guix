@@ -1,7 +1,7 @@
 # deploy-vms
 
-Deploy one or more VMs (or the whole fleet) via `scripts/deploy.scm`, one host
-at a time, with a clear pass/fail summary at the end.
+Deploys one or more VMs (or the whole fleet) via `scripts/deploy.scm`, one
+host at a time, with SSH liveness checks and a pass/fail report.
 
 **Usage:**
 - `deploy-vms` — deploy every machine in `peteches/machines.scm`, one at a time

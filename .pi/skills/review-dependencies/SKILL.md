@@ -1,8 +1,8 @@
 # review-dependencies
 
 Single entry point for the scheduled dependency review: runs the channel and
-package checks and merges their results into one report. This is what the
-monthly cron routine calls — it is **report-only end to end**, same as the
+package freshness checks and merges their results into one report. This is what
+the monthly cron routine calls — it is **report-only end to end**, same as the
 two skills it wraps: no file edits, no `git add`/`commit`/`push`, no
 `sha256` touches, no rebuilds. Applying anything found stays a manual step
 (`/update-channels` for channels; there is no `/update-packages` apply skill

@@ -1,6 +1,7 @@
 # update-channels
 
-Update pinned channel commits in all `peteches/channels/*.scm` files, and detect any missing channel introductions.
+Updates pinned channel commits in all `peteches/channels/*.scm` files, and
+detects any missing channel introductions requiring manual attention.
 
 **Usage:**
 - `update-channels` — update each channel to its latest commit
