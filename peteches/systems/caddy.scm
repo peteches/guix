@@ -149,6 +149,18 @@
                   (caddy-reverse-proxy
                    (domain "llm.ts.peteches.co.uk")
                    (upstream "comfyui.spaniel-cordylus.ts.net:8093"))
+                  ;; Second ovms-service-type instance on comfyui.scm — the
+                  ;; embeddings endpoint: OpenVINO/Qwen3-Embedding-0.6B-int8-ov
+                  ;; served under OVMS's `--task embeddings' at
+                  ;; /v3/embeddings, client-visible model id "embeddings".
+                  ;; Same always-on Arc Pro B70 tenant as llm.ts above (both
+                  ;; auto-start? #t), different port; measured combined VRAM
+                  ;; 18.54 of 31.9 GiB.  NV-Embed-v2 was the original target
+                  ;; and is architecturally unservable by OVMS — see that
+                  ;; block in comfyui.scm before proposing it again.
+                  (caddy-reverse-proxy
+                   (domain "embeddings.ts.peteches.co.uk")
+                   (upstream "comfyui.spaniel-cordylus.ts.net:8094"))
                   ;; alltalk-service-type on comfyui.scm — auto-starts at
                   ;; boot, shares the RTX 4090 with ComfyUI (XTTS v2,
                   ;; ~2-4GB resident vs koboldcpp's 20.47GB).  Two vhosts:

@@ -4,7 +4,12 @@
 
 * Status
 
-*PLAN ONLY — nothing below has been implemented.* Diagnosed 2026-10-29 after
+*PLAN ONLY — nothing below has been implemented.*  HISTORICAL (2026-11-27):
+the strata backend named throughout was retired from comfyui in favour of
+OVMS, and rules-lawyer now points at =llm.ts.peteches.co.uk= / model
+=Qwen3.6-35B-A3B-int4-ov= — the =strata.ts.peteches.co.uk= URLs and
+=qwen3.8-flash-next= model id below no longer route anywhere.  Kept as the
+record of the loop diagnosis.  Diagnosed 2026-10-29 after
 the first real Discord question produced no answer. Sources of truth for the
 investigation: =/var/log/rules-lawyer.log= on =agents=, and the strata engine
 log =/var/log/strata/strata.log= on =comfyui=.

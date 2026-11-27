@@ -252,7 +252,7 @@ Each module's header comment documents its keyword arguments — read
 | `infra/` | Terraform infrastructure-as-code for Proxmox VM provisioning |
 | `ci/` | Concourse CI pipeline and task definitions |
 | `containers/` | Container definitions |
-| `scripts/deploy.scm` | `guix deploy` wrapper with `--hosts` filtering — **the supported deploy entry point** |
+| `scripts/deploy.scm` | `guix deploy` wrapper with `--hosts` filtering — **the supported deploy entry point**. **Derivation trap:** `peteches/packages/generation-gc.scm` embeds the *whole* `scripts/` directory via `(local-file ... #:recursive? #t)` and ships in every `vm-base` VM's profile, so **any** edit under `scripts/` — even a comment — changes every VM's `system.drv` and is a fleet-wide deploy-owed change, not a local one (see `docs/file-map.md`'s "Derivation trap" section for the before/after check) |
 | `proxmox-vms.org` | VM inventory and IP reference table — **authoritative** for IPs |
 | `docs/` | Architecture documentation — includes `docs/file-map.md`, the detailed per-file reference split out of this document |
 | `.pi/skills/` | Automation skills: `update-channels`, `deploy-vms` (fleet deploys per docs/fleet-deployment.org), `wireguard-socks5` (claude-workstation's split tunnel — moved here out of `configs/claude/ygo-only/skills/` when Claude Code left the box, since the tunnel it documents outlived the CLI), plus the `review-*` skills |

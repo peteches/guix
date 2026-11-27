@@ -53,6 +53,8 @@ Why each part is needed (all verified against the box):
   `libopenvino_genai.so` and the plugins actually land.
 
 Remaining (unchanged) caveat: **strata co-residency on the B70 is untested** —
-comfyui keeps strata stopped. Follow-up: see `docs/openvino-think-budget.md`
+comfyui kept strata stopped, and strata has since been retired entirely
+(2026-11-27, in favour of OVMS), so the caveat is moot. Follow-up: see
+`docs/openvino-think-budget.md`
 for the thinking-block measurement and the residual ~11% empty-answer triage
 recipe.

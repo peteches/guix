@@ -53,7 +53,9 @@ Each VM in =main.tf= is a =module= block that calls =./modules/proxmox-vm= with:
   =floating = 0= (no balloon device), =true= means =floating = dedicated=,
   which is the provider's documented way to turn ballooning ON.  =comfyui=
   passes =false=: a balloon inflation there takes back the guest page cache
-  strata's =--mmap-experts= expert tiers depend on, and PVE's own guidance is
+  the B70 workload depends on (historically strata's =--mmap-experts= expert
+  tiers; strata was retired 2026-11-27 but the setting stays — passed-through
+  devices alone justify =balloon 0=), and PVE's own guidance is
   =balloon 0= for VMs with passed-through devices
 - =disk.size= — root disk in GiB (minimum 25)
 - =bios= / =machine= — always =ovmf= / =q35= for UEFI
@@ -77,10 +79,11 @@ while =qm config 118= had 2; both are now recorded as they run live.  =memory=
 and =ballooning= are written to the running VM's config immediately, but they
 take effect only at the next VM *start* — a guest reboot is not enough,
 because QEMU fixes the guest's RAM when the VM starts, so apply them with
-=qm stop <vmid>= followed by =qm start <vmid>=.  For =comfyui= that start is
-also when the strata wrapper rewrites
-=/var/lib/strata/run-strata.sh= and the run config, so engine options added in
-=(peteches services strata)= reach the engine at the same time.
+=qm stop <vmid>= followed by =qm start <vmid>=.  (For =comfyui= that start
+used to also be when the strata wrapper rewrote =/var/lib/strata/run-strata.sh=
+and the run config, so engine options added in =(peteches services strata)=
+reached the engine at the same time; strata was retired 2026-11-27, so that
+part no longer applies — the =false= ballooning and 16-core values stay.)
 
 * Concourse CI (=ci/=)
 

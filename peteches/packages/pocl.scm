@@ -1,6 +1,13 @@
 ;; peteches/packages/pocl.scm — pocl with its (failing) test suite disabled.
 ;;
-;; comfyui's Intel Arc / Level Zero OpenCL stack lists upstream `pocl' directly, both in
+;; STATUS 2026-11-27: `pocl-tests-off' is currently in NO profile.  It was in
+;; comfyui's #:extra-packages and in the strata service's default
+;; runtime-lib-packages until the strata retirement removed both; the only
+;; remaining reference is (peteches services strata)'s now-unwired default.
+;; Kept because the OVMS/OpenCL debugging story may want a CPU OpenCL
+;; implementation again, and the test-disable rationale below still applies.
+;;
+;; comfyui's Intel Arc / Level Zero OpenCL stack listed upstream `pocl' directly, both in
 ;; the system profile (#:extra-packages in peteches/systems/comfyui.scm) and as a default
 ;; runtime-lib-package of the strata service (peteches/services/strata.scm).  At pocl 6.0
 ;; its own `check' phase fails deterministically on the offload builder

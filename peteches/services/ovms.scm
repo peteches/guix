@@ -458,14 +458,58 @@
 ;; means OVMS picks GPU — so a deliberate CPU-only trial must say "CPU"
 ;; explicitly rather than rely on the default.
 ;;
-;; CURRENT SHAPE, as wired in peteches/systems/comfyui.scm.  The instance there
-;; is `ovms-qwen36` on port **8093**, `(host "0.0.0.0")`, `open-firewall? #t`
-;; with the three tailnet CIDRs (`100.64.0.0/10`, `fd7a:115c:a1e0::/48`,
-;; `fd7a:115c:a6e0::/48`) — caddy dials comfyui over the tailnet, not over
-;; loopback, so all three are required.  `service-name` drives the log path
-;; (/var/log/ovms/ovms-qwen36.log, shipped to Loki by comfyui's alloy log-files
-;; entry) and the state dir (/var/lib/ovms/ovms-qwen36), which is also where the
-;; synthesised opencl-vendors directory lives.
+;; CURRENT SHAPE, as wired in peteches/systems/comfyui.scm.  THREE instances,
+;; declared in ONE `(service ovms-service-type (list cfg1 cfg2 cfg3))' value so
+;; ovms-accounts' dedup-by-user-name runs (separate service forms would each
+;; contribute an `ovms' account, and Guix only warns).  All three are
+;; `(host "0.0.0.0")`, `open-firewall? #t` with the three tailnet CIDRs
+;; (`100.64.0.0/10`, `fd7a:115c:a1e0::/48`, `fd7a:115c:a6e0::/48`) — caddy
+;; dials comfyui over the tailnet, not over loopback, so all three are
+;; required — and all three are `auto-start? #t`:
+;;
+;;   * `ovms-qwen36`, port **8093**, generative (`text_generation`): serves
+;;     Qwen3.6-35B-A3B-int4-ov, caddy-proxied as `llm.ts.peteches.co.uk`.
+;;     Its `model-name' is pinned to the IR name because
+;;     configs/pi/defaults/models.json depends on that exact string.
+;;
+;;   * `ovms-embed`, port **8094**, `--task embeddings': serves
+;;     OpenVINO/Qwen3-Embedding-0.6B-int8-ov (dim 1024, 32768 context, LAST
+;;     pooling, Apache-2.0), caddy-proxied as `embeddings.ts.peteches.co.uk`.
+;;     Its client-visible `model-name' is the stable alias **"embeddings"**,
+;;     deliberately NOT the IR name — embedding clients ask for a *role*, so
+;;     the underlying checkpoint can be swapped without touching them;
+;;     qwen36 pins the IR name only because pi's model id already is that
+;;     string.  Has a KNOWN DEFECT: an input containing "" wedges it
+;;     permanently and silently — see the block in comfyui.scm.
+;;
+;;   * `ovms-rerank`, port **8095**, `--task rerank': serves
+;;     OpenVINO/bge-reranker-v2-m3-int8-ov
+;;     (XLMRobertaForSequenceClassification, 8194 context, Apache-2.0) under
+;;     the client-visible alias **"reranker"**.  Second stage of
+;;     retrieve-then-rerank.  NO caddy route, deliberately: its only clients
+;;     are fleet-internal bots, which reach
+;;     comfyui.spaniel-cordylus.ts.net:8095 directly over the tailnet (already
+;;     encrypted), and a new *.ts.peteches.co.uk vhost would add a
+;;     deSEC-CNAME/ACME dependency for nothing.  Its API is COHERE-shaped
+;;     (POST /v3/rerank), NOT OpenAI-shaped — see comfyui.scm.
+;;
+;; Measured VRAM on the Arc, all three resident: qwen36 alone 17.88 GiB; +668
+;; MiB for embed; +633 MiB for rerank; 19.22 GiB of 31.9 GiB total, 12.7 GiB
+;; free.  `intel_gpu_top' does NOT work on the xe driver; read
+;;     /sys/kernel/debug/dri/0000:02:00.0/tile0/vram_mm instead.
+;;
+;; `service-name` drives the log path (/var/log/ovms/ovms-qwen36.log,
+;; ovms-embed.log, ovms-rerank.log) and the state dir (/var/lib/ovms/<service-
+;; name>), which is also where the synthesised opencl-vendors directory
+;; lives.  comfyui's alloy log-files entry ships the glob
+;; /var/log/ovms/*.log — covering all three — and that Loki stream is the only
+;; fleet-visible signal for them: this service type exposes no metrics endpoint
+;; (`GET :8093/metrics` returns HTTP 400) and prometheus.scm has no
+;; HTTP-probe/blackbox job.  NOTE that "ships to Loki" means QUERYABLE, not
+;; ALERTING: nothing in this fleet routes alerts — no alertmanager is deployed
+;; anywhere, prometheus.scm's `rule-files' field is supported but unset, and
+;; there is no Loki ruler.  A wedged ovms-embed is therefore something a human
+;; has to go and look for, not something that pages anyone.
 ;;
 ;; **No FUNCTIONAL caddy change was part of the Qwen3.6 cutover.**
 ;; peteches/systems/caddy.scm keeps proxying `llm.ts.peteches.co.uk` →
@@ -821,12 +865,28 @@ copying the `null?' arm again."
   ;; general lesson (a servable reaching AVAILABLE is NOT evidence of correct
   ;; output) are in the module header.  Choose this field from measured output
   ;; quality per model, not from a successful startup or a vendor KB article.
+  ;;
+  ;; SILENTLY IGNORED FOR NON-GENERATIVE TASKS: ovms-serve-args omits this flag
+  ;; entirely unless ovms-generative-task? holds, because OVMS rejects it at the
+  ;; option-parse phase under `embeddings' and `rerank'.  So setting
+  ;; `pipeline-type' on such an instance does nothing at all -- it is dropped,
+  ;; not passed and not an error.  That is a deliberate exception to this
+  ;; module's usual refusal to ignore configuration quietly (contrast
+  ;; ovms-firewall-rules, which RAISES); it is acceptable here only because
+  ;; there is no sensible value for a non-generative task.  Do not "fix" it by
+  ;; rendering the flag unconditionally.
   (pipeline-type ovms-server-configuration-pipeline-type
                  (default "AUTO"))
 
   ;; Native markup parsers (--tool_parser / --reasoning_parser).  BOTH DEFAULT
   ;; TO #f, i.e. the flags are OMITTED and OVMS auto-detects from the model's
-  ;; chat template.  Auto-detection is the default because the fleet no longer
+  ;; chat template.  GENERATION-SIDE FIELDS, and unlike pipeline-type and the
+  ;; CB booleans they are NOT task-gated -- `maybe-option' already omits them
+  ;; while they are #f, which is the only state a non-generative instance
+  ;; should leave them in.  Setting either on an `embeddings' or `rerank'
+  ;; instance would render it and hit the same "unmatched arguments" parse
+  ;; failure the gate exists to prevent; neither task has a chat template to
+  ;; parse.  Auto-detection is the default because the fleet no longer
   ;; serves a single model family: it measured correct for both models this
   ;; service has run — Qwen3.6-35B-A3B logs `Auto-detected tool_parser:
   ;; qwen3coder' and `Auto-detected reasoning_parser: qwen3', and the retired
@@ -858,13 +918,22 @@ copying the `null?' arm again."
   (reasoning-parser ovms-server-configuration-reasoning-parser
                     (default #f))
 
-  ;; Continuous-Batching knobs.  The three booleans are always rendered as
-  ;; `true'/'false' — never omitted — so the command line is a complete statement
-  ;; of the configuration and cannot change meaning when an OVMS release moves an
-  ;; upstream default.  max-num-seqs (#f = OVMS's 256) caps concurrent sequences;
+  ;; Continuous-Batching knobs.  For a GENERATIVE task the three booleans are
+  ;; always rendered as `true'/'false' — never omitted — so the command line
+  ;; is a complete statement of the configuration and cannot change meaning
+  ;; when an OVMS release moves an upstream default.  For a non-generative
+  ;; task they are omitted ENTIRELY, because OVMS rejects them at the option
+  ;; parse; see %ovms-generative-tasks.  max-num-seqs (#f = OVMS's 256) caps
+  ;; concurrent sequences;
   ;; cache-size is the KV cache budget in GB (#f = OVMS's own default, 0 = grow
   ;; dynamically) and is the knob to reach for when this VM's other GPU tenants
-  ;; (ComfyUI, strata) need the memory back.
+  ;; (ComfyUI, and the ovms retrieval instances) need the memory back.
+  ;;
+  ;; max-num-seqs, cache-size and kv-cache-precision below are ALSO
+  ;; generation-side and ALSO not task-gated -- same reasoning as the parser
+  ;; fields above: `maybe-option' omits them while they are #f, which is the
+  ;; only state any non-generative instance should leave them in.  Setting one
+  ;; on an `embeddings' or `rerank' instance risks the same parse failure.
   (enable-tool-guided-generation?
    ovms-server-configuration-enable-tool-guided-generation?
    (default #f))
@@ -1028,7 +1097,16 @@ account still needs a home that is not /var/empty, and shepherd sets HOME from
 the passwd entry rather than from this service's environment list.  Per
 service-name so two instances do not share one directory.  When several instances
 share a *user* name, the first one wins the account's home (see ovms-accounts);
-the others still get their own directory created and chowned by activation."
+the others still get their own directory created and chowned by activation.
+
+That shared HOME is currently harmless, and was verified empirically rather than
+assumed: comfyui runs three instances under one `ovms' account, so ovms-embed and
+ovms-rerank both run with HOME=/var/lib/ovms/ovms-qwen36, and ovms-embed served
+for hours that way with nothing written there.  It holds only because OVMS is
+given neither --pull nor --log_path.  If a future OVMS ever caches under $HOME (a
+Hugging Face hub cache, crash dumps, a telemetry spool) the three processes would
+share one directory and could race -- at which point give the instances distinct
+users rather than relying on this."
   (string-append "/var/lib/ovms/"
                  (ovms-server-configuration-service-name config)))
 
@@ -1062,6 +1140,46 @@ here at meta time."
 
 ;;; ── Command line ─────────────────────────────────────────────────────────
 
+;; Tasks whose OVMS option grammar accepts the generation-only flags
+;; (--pipeline_type, --enable_tool_guided_generation,
+;; --enable_prefix_caching, --dynamic_split_fuse).
+;;
+;; MEASURED on OVMS 2026.4.1 (comfyui, 2026-11-27): under `--task embeddings'
+;; all FOUR are rejected at the PARSE phase, before any model is touched --
+;;
+;;   task: embeddings - error parsing options - unmatched arguments :
+;;   --pipeline_type, AUTO, --enable_tool_guided_generation, false,
+;;   --enable_prefix_caching, true, --dynamic_split_fuse, true
+;;
+;; and the identical command line minus those four parses cleanly, enumerates
+;; CPU + GPU and binds the port, failing only later at model load.  cxxopts
+;; rejects a flag that is not in the selected task's grammar rather than
+;; ignoring it, so these must be omitted per task: while they were rendered
+;; unconditionally an `embeddings' instance could never start at all.
+;;
+;; `text_generation' is the only task this fleet has measured as accepting
+;; them.  Add another task here ONLY after measuring it the same way -- the
+;; safe assumption for an unmeasured task is that it does not.
+;;
+;; NOTE this is defined here, below the record type, not up with the other
+;; helpers: define-record-type* binds its accessors as SYNTAX TRANSFORMERS,
+;; so a function body that calls one must be expanded after the record
+;; definition.  Placing this beside bool->ovms compiles but fails at runtime
+;; with "Wrong type to apply: #<syntax-transformer
+;; ovms-server-configuration-task>".
+(define %ovms-generative-tasks '("text_generation"))
+
+(define (ovms-generative-task? config)
+  "True when CONFIG's task accepts OVMS's generation-only flags.
+
+#f (task omitted) is treated as generative, because OVMS then infers the task
+from the model config and every model this fleet has served that way was a
+generation model; being wrong in that direction only reproduces the
+long-standing behaviour rather than silently dropping --enable_prefix_caching
+from an LLM, which costs 8.2x on repeated prompts."
+  (let ((task (ovms-server-configuration-task config)))
+    (or (not task) (member task %ovms-generative-tasks))))
+
 (define (ovms-serve-args config)
   "Render CONFIG's ovms command line, minus the executable itself.
 
@@ -1080,9 +1198,12 @@ which yields '() instead.  The rendered argv for the production instance was
 verified to be 22 elements with no #f anywhere in it — see the module's
 `CURRENT SHAPE' header section for what that command line must contain.
 
-The three Continuous-Batching booleans are the exception to maybe-option: they
-are always rendered, as the literal strings `true' and `false', so the command
-line stays a complete statement of the configuration."
+The three Continuous-Batching booleans are the exception to maybe-option: for a
+generative task they are always rendered, as the literal strings `true' and
+`false', so the command line stays a complete statement of the configuration.
+For any other task they — and --pipeline_type — are omitted entirely rather than
+passed, because OVMS's cxxopts grammar is per-task and rejects them; see
+%ovms-generative-tasks for the measured error text."
   (let ((grpc-port (ovms-server-configuration-grpc-port config)))
     (append
      (list "--model_name" (ovms-server-configuration-model-name config)
@@ -1096,20 +1217,30 @@ line stays a complete statement of the configuration."
            (ovms-server-configuration-host config))
      (maybe-option "--target_device"
                    (ovms-server-configuration-target-device config))
-     (maybe-option "--pipeline_type"
-                   (ovms-server-configuration-pipeline-type config))
+     (if (ovms-generative-task? config)
+         (maybe-option "--pipeline_type"
+                       (ovms-server-configuration-pipeline-type config))
+         '())
      (maybe-option "--tool_parser"
                    (ovms-server-configuration-tool-parser config))
      (maybe-option "--reasoning_parser"
                    (ovms-server-configuration-reasoning-parser config))
-     ;; Booleans always rendered as true/false — see the field comments.
-     (list "--enable_tool_guided_generation"
-           (bool->ovms
-            (ovms-server-configuration-enable-tool-guided-generation? config))
-           "--enable_prefix_caching"
-           (bool->ovms (ovms-server-configuration-enable-prefix-caching? config))
-           "--dynamic_split_fuse"
-           (bool->ovms (ovms-server-configuration-dynamic-split-fuse? config)))
+     ;; Booleans always rendered as true/false -- see the field comments --
+     ;; but ONLY for a generative task.  All four of these (including
+     ;; --pipeline_type above) are rejected outright by OVMS's option parser
+     ;; under `--task embeddings'; see %ovms-generative-tasks for the
+     ;; measured error text.
+     (if (ovms-generative-task? config)
+         (list "--enable_tool_guided_generation"
+               (bool->ovms
+                (ovms-server-configuration-enable-tool-guided-generation? config))
+               "--enable_prefix_caching"
+               (bool->ovms
+                (ovms-server-configuration-enable-prefix-caching? config))
+               "--dynamic_split_fuse"
+               (bool->ovms
+                (ovms-server-configuration-dynamic-split-fuse? config)))
+         '())
      (maybe-option "--max_num_seqs"
                    (ovms-server-configuration-max-num-seqs config))
      (maybe-option "--cache_size"

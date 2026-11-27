@@ -21,7 +21,8 @@
 ;;;
 ;;; WHAT IT DELIBERATELY DOES NOT GET:
 ;;;   * Claude Code at all -- claude-code, ~/.claude, the Claude MCP servers.
-;;;     The harness is `pi' now (strata on comfyui and koboldcpp on the
+;;;     The harness is `pi' now (the OVMS instance on comfyui —
+;;;     llm.ts.peteches.co.uk, then strata — and koboldcpp on the
 ;;;     desktop as its local backends), so nothing on this box needs Anthropic's
 ;;;     CLI.  It is the reason this file does not import (peteches home modules
 ;;;     claude) or (peteches home modules base).

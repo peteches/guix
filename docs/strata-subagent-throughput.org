@@ -1,6 +1,7 @@
 #+TITLE: Strata throughput plan for the orchestrator + subagents workflow
 #+DATE: [2026-11-06]
 #+STATUS: implemented through Phase C and the model swap (2026-11-06) — engine 0.1.57 live, the native-path batch/parallel/serve plumbing wired, parking raised to 9 windows, ISTA IQ2_XS serving. ~--parallel~ is OFF: measured, it costs throughput on this card (§11).
+#+STATUS: RETIRED (2026-11-27) — the strata service was removed from comfyui entirely in favour of OVMS ((peteches services ovms), Qwen3.6-35B-A3B INT4 on :8093 + Qwen3-Embedding on :8094). Everything below is the historical record of the strata-era tuning work; none of its endpoints (=strata.ts.peteches.co.uk=, :8000) route anywhere any more.
 
 * 0. Summary — what to change, in what order
 | Phase | Engine config                                        | Lanes | pi working set | Expert cache          | Expected result                |

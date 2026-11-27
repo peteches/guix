@@ -545,8 +545,9 @@
    ;; `(service home-claude-service-type ...)
    ;; plus its own inline copy of the %desktop-mcp-servers list above.
    ;; Claude Code came off every machine -- the harness is `pi' now,
-   ;; with strata on comfyui and koboldcpp on the desktop as its local
-   ;; backends -- so this box gets no ~/.claude and no claude binary.
+   ;; with the OVMS instance on comfyui (llm.ts.peteches.co.uk, then
+   ;; strata; strata retired 2026-11-27) and koboldcpp on the desktop as
+   ;; its local backends -- so this box gets no ~/.claude and no claude binary.
    ;; The service type itself is unwired rather than deleted:
    ;; (peteches home modules claude) and configs/claude/ still exist,
    ;; and this module still imports that one for the

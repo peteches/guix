@@ -1,5 +1,29 @@
 ;; peteches/services/strata.scm — Strata MoE inference engine (system).
 ;;
+;; *** UNWIRED as of 2026-11-27 — RETIRED from comfyui in favour of OVMS. ***
+;; No system file references `strata-service-type' any more: the ~326-line
+;; service block, the (peteches services strata) + (peteches packages pocl)
+;; imports, the /var/log/strata/strata.log alloy entry and the `strata' +
+;; `pocl-tests-off' #:extra-packages entries were all removed from
+;; peteches/systems/comfyui.scm (generation 152).  (peteches packages strata)
+;; — a DIFFERENT module — is still imported there: it defines the Intel Arc
+;; driver packages (intel-igc-core, intel-igc-opencl, libigdgmm,
+;; intel-level-zero-gpu, intel-opencl-icd) that OVMS's intel_gpu plugin needs.
+;; This service module is kept for reference / possible reuse; deleting it is
+;; a separate decision for the operator.  Note the default
+;; `runtime-lib-packages' below lists `pocl-tests-off', which is no longer in
+;; any profile — reviving this service as-is would pull pocl back into
+;; whatever system wires it.
+;;
+;; END-STATE, so it is not re-diagnosed from scratch: before the retirement,
+;; the service had independently gone stopped+disabled from a UID-drift bug —
+;; /var/lib/strata/sc117-iq3xxs.json was owned by orphan UID 971 while the
+;; service ran as UID 966, so `cat > "$CFG"' at run-strata.sh:108 got EACCES.
+;; It surfaced only when strata's 76 GB model download finally completed and
+;; the wrapper reached that line; nothing about the failure named the real
+;; cause (shepherd just reported the start failing).  Any revival should
+;; chown/replace the state-dir config JSON rather than append to it.
+;;
 ;; System service for the Strata inference engine
 ;; (github.com/Niko1221/Strata), targeting the Intel Arc B70 (Battlemage)
 ;; via its SYCL/oneAPI backend — NOT the CUDA path (that is the RTX 4090's

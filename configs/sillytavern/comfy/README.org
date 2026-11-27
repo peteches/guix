@@ -527,7 +527,7 @@ already correct, listed so the diff is obvious):
 | =model=                     | =qwen_image_2512_fp8_e4m3fn.safetensors= | ignored until you use =%model%= |
 | =enable_hr=, =hr_*=         | =false= / defaults                    | OK (WebUI-only anyway) |
 | =multimodal_captioning=     | =false=                                 | keep off unless a vision LLM is wired |
-| =caption.source=            | ="extras"= (no Extras server running)   | keep captioning off, or point =refine_mode= at Strata vision |
+| =caption.source=            | ="extras"= (no Extras server running)   | keep captioning off — the Strata vision backend this could point =refine_mode= at was retired 2026-11-27 and no vision LLM is wired now |
 | =function_tool=             | =true=                                  | fine, but the LLM can fire a 9-25 s generation unprompted |
 
 Concrete levers, in priority order:
@@ -575,7 +575,8 @@ pretty" pass, F when you need on-image text or a specific layout.
 * Operational notes / follow-ups
 
 - The 4090 is single-purpose: koboldcpp and ComfyUI cannot both hold it. The LLM
-  now runs on the Intel Arc B70 via Strata, so koboldcpp should stay stopped
+  now runs on the Intel Arc B70 via OVMS (llm.ts.peteches.co.uk; the Strata
+  engine it replaced was retired 2026-11-27), so koboldcpp should stay stopped
   (=herd stop koboldcpp=) during image work; consider =auto-start? #f= for
   koboldcpp and =auto-start? #t= for ComfyUI in =peteches/systems/comfyui.scm=.
 - The ComfyUI update bumped =torch= from 2.14.0+cu130 to **2.15.0+cu132**; the

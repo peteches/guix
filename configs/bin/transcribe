@@ -7,7 +7,7 @@
 #   transcribe FILE                       # labelled transcript to stdout
 #   transcribe FILE -o meeting.txt        # ...written here instead
 #   transcribe FILE                       # + $TRANSCRIBE_OUT_DIR set -> file there
-#   transcribe FILE --summarize           # + strata minutes (summary, decisions,
+#   transcribe FILE --summarize           # + LLM minutes (summary, decisions,
 #                                         #   agreed tasks with owners, open
 #                                         #   questions) appended after "---"
 #   transcribe FILE --labels "Gareth,Pete"  # name the voices (order of first

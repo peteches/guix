@@ -1,7 +1,10 @@
 ;; agents.scm — "agents" VM: hosts rules-lawyer (Discord bot) and sillytavern
-;; (LLM roleplay frontend).  rules-lawyer's LLM backend is the strata MoE
-;; engine on the comfyui box (proxied via caddy as strata.ts.peteches.co.uk);
-;; sillytavern picks its own backend in its web UI (see below).
+;; (LLM roleplay frontend).  rules-lawyer's LLM backend is the OVMS instance
+;; on the comfyui box (Intel Arc B70, Qwen3.6-35B-A3B INT4, proxied via caddy
+;; as llm.ts.peteches.co.uk); sillytavern picks its own backend in its web UI
+;; (see below).  The backend used to be the strata MoE engine
+;; (strata.ts.peteches.co.uk), retired from comfyui 2026-11-27 — see the
+;; rules-lawyer service comment below for the full history.
 ;;
 ;; NOTE: rules-lawyer service requires (gnu packages admin) shadow import —
 ;; fixed in 3806683, and the service's start gexp was rewritten in the
@@ -10,7 +13,8 @@
 ;; encrypted files (age key + .sops.yaml rule for agents landed in 75b6ce9).
 ;;
 ;; Services:
-;;   rules-lawyer — Discord bot, uses strata.ts.peteches.co.uk as its LLM
+;;   rules-lawyer — Discord bot, uses llm.ts.peteches.co.uk (OVMS on comfyui)
+;;                  as its LLM
 ;;   sillytavern  — LLM roleplay web frontend on :8001, basic-auth protected
 ;;   tailscale    — MagicDNS mesh connectivity
 ;;   guix-home    — ONE home environment, `peteches', from
@@ -264,22 +268,30 @@
                                                    ;; Roll back by deleting this line: the legacy loop is still there and
                                                    ;; still the safer of the two until Phase 2 finishes.
                                                    "TIFFANY_BACKEND=durable")))))))
-      ;; rules-lawyer — Discord bot, uses the strata engine on the comfyui
-      ;; box (Intel Arc B70, SC117 Qwen3.8-Flash-Next IQ2_XS, proxied via
-      ;; caddy as strata.ts.peteches.co.uk -> comfyui:8000) as its LLM
-      ;; backend.  Successor to the koboldcpp endpoint: koboldcpp holds the
-      ;; RTX 4090 and is auto-start? #f, so answers depended on someone
-      ;; remembering to `herd start koboldcpp`, whereas strata auto-starts
-      ;; at boot.  Strata runs with no API key, so no llm-api-key-file is
-      ;; configured (and none of the comfyui strata config sets one).
-      ;; The model name is the id strata reports from /v1/models; the
+      ;; rules-lawyer — Discord bot.  LLM backend is the OVMS instance on
+      ;; the comfyui box (Intel Arc B70, Qwen3.6-35B-A3B INT4, proxied via
+      ;; caddy as llm.ts.peteches.co.uk -> comfyui:8093), the same endpoint
+      ;; pi uses.  Successor to two earlier backends: koboldcpp, which holds
+      ;; the RTX 4090 and is auto-start? #f, so answers depended on someone
+      ;; remembering to `herd start koboldcpp`; and strata, which
+      ;; auto-started but has since been RETIRED from comfyui entirely in
+      ;; favour of OVMS -- its strata.ts.peteches.co.uk route was renamed to
+      ;; llm.ts long before that, so this was already pointing at a dead
+      ;; name and the strata removal made it permanently dead rather than
+      ;; temporarily stopped.  OVMS runs with no API key, so no
+      ;; llm-api-key-file is configured (and the comfyui ovms config sets
+      ;; none); reachability is narrowed by that service's firewall-sources
+      ;; to the tailnet, which is how this bot reaches it.
+      ;; llm-model MUST equal the ovms instance's `model-name' exactly --
+      ;; OVMS routes requests by --model_name and returns that string from
+      ;; /v1/models, so a mismatch 404s every request.  The
       ;; '(ice-9 textual-ports) get-string-all' / quoted-splice / deferred
       ;; constructor gotchas that kept this service from ever starting live
       ;; in (peteches services rules-lawyer)'s commentary.
       (service rules-lawyer-service-type
                (rules-lawyer-configuration
-                (llm-base-url "http://strata.ts.peteches.co.uk/v1")
-                (llm-model "qwen3.8-flash-next")
+                (llm-base-url "http://llm.ts.peteches.co.uk/v1")
+                (llm-model "Qwen3.6-35B-A3B-int4-ov")
                 (discord-token-file "/run/secrets/rules-lawyer-discord-token")))
       ;; sillytavern — LLM roleplay web frontend on :8001, basic-auth
       ;; protected. LLM backend (koboldcpp) is configured through the

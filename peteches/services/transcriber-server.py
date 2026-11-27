@@ -15,7 +15,8 @@ Endpoints:
   POST /transcribe  multipart `file` + optional `format` (json|srt|vtt|txt),
                     `language` (ISO code, default auto-detect), `diarize`
                     (bool, default true), `summarize` (bool, default false:
-                    ask the local strata LLM for minutes + task allocation),
+                    ask the configured summarizer LLM for minutes + task
+                    allocation),
                     `speaker_labels` (comma-separated names for the voices, in
                     order of first speech).  Minutes ride along in the body: a
                     `summary_markdown' field for json, a `---'-separated section
@@ -61,8 +62,9 @@ Design notes:
     --utterance-gap.  Word level matters: on the reference file 48 of 282
     whisperx segments straddled a turn change, and labelling those segments as
     a unit would misattribute about a fifth of the transcript.
-  - Summarization (optional) posts the labelled transcript to strata's
-    OpenAI-compatible endpoint on the same host and asks for markdown minutes:
+  - Summarization (optional) posts the labelled transcript to the configured
+    OpenAI-compatible endpoint on the same host (comfyui: the ovms-qwen36
+    OVMS instance on :8093) and asks for markdown minutes:
     summary, decisions, agreed tasks with owners, open questions and a
     per-person action list.  It runs *outside* the GPU lock so a slow LLM never
     blocks transcription, and its failure never loses the transcript.
@@ -137,7 +139,14 @@ parser.add_argument("--assign-window", type=float, default=1.0,
 parser.add_argument("--utterance-gap", type=float, default=2.0,
                     help="split an utterance after this much silence")
 
-# Summarization backend: strata on comfyui (OpenAI-compatible), loopback.
+# Summarization backend: any OpenAI-compatible chat endpoint on loopback.
+# STALE DEFAULT (2026-11-27): :8000 was strata, which was retired from
+# comfyui in favour of OVMS -- nothing listens there any more.  The argparse
+# default is deliberately left as-is (this file is embedded into the service
+# derivation via local-file, and comfyui overrides both flags anyway): the
+# comfyui wiring passes --summarizer-base-url http://127.0.0.1:8093
+# --summarizer-model Qwen3.6-35B-A3B-int4-ov (the ovms-qwen36 instance).
+# Any new host wiring this service MUST set both explicitly.
 parser.add_argument("--summarizer-base-url", default="http://127.0.0.1:8000")
 parser.add_argument("--summarizer-model", default="",
                     help="model id; empty = ask the server (/v1/models)")
@@ -315,7 +324,7 @@ def ensure_sortformer_model():
     return str(path)
 
 
-# ── Summarization via strata (OpenAI-compatible endpoint) ───────────────
+# ── Summarization via the configured OpenAI-compatible endpoint ──────────
 
 SUMMARY_PROMPT = """\
 You are writing the minutes of a recorded meeting. The transcript below is
@@ -372,7 +381,7 @@ def summarizer_model():
 
 
 def summarize_transcript(labelled_text):
-    """Ask strata for minutes + task allocation; returns markdown."""
+    """Ask the summarizer LLM for minutes + task allocation; returns markdown."""
     import requests
 
     body = {"model": summarizer_model(), "stream": False, "temperature": 0.2,
@@ -616,7 +625,7 @@ INDEX_HTML = """<!doctype html>
  .hint { color:#9aa0a6; font-size:.85rem; }
  .err { color:#f87171; }
 </style></head><body>
-<h1>transcriber <small>WhisperX large-v3 on the 4090 — SortFormer speaker diarization, strata minutes</small></h1>
+<h1>transcriber <small>WhisperX large-v3 on the 4090 — SortFormer speaker diarization, LLM minutes</small></h1>
 <form id="f">
   <fieldset><legend>Audio</legend>
     <label>File <input type="file" name="file" id="file" accept="audio/*,video/*" required></label>

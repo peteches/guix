@@ -48,8 +48,11 @@
 ;; keeps diarization off the GPU, which is shared with ComfyUI and AllTalk.
 ;;
 ;; Minutes: `summarize=true' posts the speaker-labelled transcript to an
-;; OpenAI-compatible endpoint (default strata on loopback) for meeting minutes
-;; plus task allocation — who was assigned what.  The server writes nothing:
+;; OpenAI-compatible endpoint for meeting minutes plus task allocation — who
+;; was assigned what.  On comfyui that is the ovms-qwen36 OVMS instance on
+;; loopback :8093 (set explicitly; the record's `http://127.0.0.1:8000'
+;; default is dead since strata's 2026-11-27 retirement — see
+;; summarizer-base-url below).  The server writes nothing:
 ;; this is a processor, not a store, so configs/bin/transcribe decides where the
 ;; text lands (-o, $TRANSCRIBE_OUT_DIR, or stdout).
 ;;
@@ -211,10 +214,19 @@
   (diarizer-threads transcriber-configuration-diarizer-threads
                     (default 0))
 
-  ;; Minutes backend: any OpenAI-compatible chat endpoint.  The default is strata
-  ;; on the same VM — the container runner passes `--network', which shares the
-  ;; host's network namespace, so loopback reaches it without another firewall
+  ;; Minutes backend: any OpenAI-compatible chat endpoint.  The container
+  ;; runner passes `--network', which shares the host's network namespace, so
+  ;; a loopback URL reaches a co-resident server without another firewall
   ;; hole or tailnet hop.  An empty model id means "ask /v1/models".
+  ;;
+  ;; STALE DEFAULT (2026-11-27): `http://127.0.0.1:8000' below was strata,
+  ;; which was retired from comfyui in favour of OVMS — nothing listens on
+  ;; :8000 any more, so the default is dead.  The value is deliberately
+  ;; UNCHANGED (changing it would alter the service derivation for a field
+  ;; every real wiring overrides anyway): comfyui sets summarizer-base-url to
+  ;; the ovms-qwen36 instance (http://127.0.0.1:8093) and summarizer-model to
+  ;; `Qwen3.6-35B-A3B-int4-ov' explicitly.  Any NEW host wiring this service
+  ;; MUST set both fields explicitly rather than inherit the dead default.
   (summarizer-base-url transcriber-configuration-summarizer-base-url
                        (default "http://127.0.0.1:8000"))
   (summarizer-model transcriber-configuration-summarizer-model
