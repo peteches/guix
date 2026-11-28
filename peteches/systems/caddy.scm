@@ -113,6 +113,16 @@
                   (caddy-reverse-proxy
                    (domain "koboldcpp.ts.peteches.co.uk")
                    (upstream "comfyui.spaniel-cordylus.ts.net:5001"))
+                  ;; ovms-rerank on comfyui.scm -- the bge-reranker-v2-m3-int8-ov
+                  ;; reranker on port 8095, formerly tailnet-only.  Exposed now
+                  ;; because an external LLM client (not fleet-internal) needs
+                  ;; TLS-terminated reranking; POST /v3/rerank, COHERE-shaped
+                  ;; API.  No TLS backend on the proxy side: the connection
+                  ;; between caddy and comfyui is already encrypted over the
+                  ;; tailnet, and ovms-rerank speaks plain HTTP.
+                  (caddy-reverse-proxy
+                   (domain "rerank.ts.peteches.co.uk")
+                   (upstream "comfyui.spaniel-cordylus.ts.net:8095"))
                   ;; ovms-service-type on comfyui.scm — the fleet's LLM
                   ;; endpoint.  Auto-starts and binds 0.0.0.0:8093 with the
                   ;; firewall accept narrowed to the tailnet, so this proxy
