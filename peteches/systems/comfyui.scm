@@ -1908,16 +1908,15 @@
                 ;; /dev/dri/renderD128, whose driver symlink is
                 ;; /sys/bus/pci/drivers/xe and whose card is PCI
                 ;; 0000:02:00.0.  (renderD129 is the 4090 and was untouched.)
-                ;; There is no caddy route for this endpoint: its only clients
-                ;; are fleet-internal bots, which reach
-                ;; comfyui.spaniel-cordylus.ts.net:8095 directly over the
-                ;; tailnet (already encrypted), and the firewall below
-                ;; narrows it to the same three CIDRs.  Add a
-                ;; rerank.ts.peteches.co.uk vhost to caddy.scm only if an
-                ;; external client ever needs TLS termination -- note that a
-                ;; NEW subdomain also needs its deSEC CNAME to exist before
-                ;; the ACME DNS-01 challenge will pass, which did not happen
-                ;; automatically for embeddings.ts.
+                ;; Caddy now proxies this as rerank.ts.peteches.co.uk (added
+                ;; 2025-11-28), so external clients can reach it over TLS.
+                ;; Fleet-internal bots that were already dialing
+                ;; comfyui.spaniel-cordylus.ts.net:8095 over the tailnet
+                ;; (already encrypted) continue to do so — the firewall below
+                ;; still narrows it to the same three CIDRs, and the CNAME
+                ;; for rerank.ts.peteches.co.uk points at caddy.spaniel-
+                ;; cordylus.ts.net instead of here, so the direct path is
+                ;; unchanged for existing consumers.
                 ;;
                 ;; auto-start? #t, and the IR is an out-of-band artifact like
                 ;; every other ovms model: it must be present at model-path
